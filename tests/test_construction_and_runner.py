@@ -25,6 +25,34 @@ def test_tool_runner_executes_tool_call() -> None:
     assert result.output == "3"
 
 
+def test_tool_runner_strips_reserved_arg_names() -> None:
+    """Regression test for the `context` collision bug.
+
+    Some LLMs (notably ``bedrock/openai.gpt-oss-120b-1:0``) occasionally
+    emit a ``context`` key in tool call arguments, which would collide with
+    the positional ``context`` parameter the runner passes to ``tool.run()``
+    and raise ``TypeError: got multiple values for argument 'context'``.
+
+    The runner must strip ``context`` (and other Python-reserved names like
+    ``self``) from tool-call arguments before forwarding.
+    """
+    def add(a: int, b: int) -> str:
+        return str(a + b)
+
+    registry = construct_tool_registry(tools=[FunctionTool.from_callable(add)])
+    runner = ToolRunner(registry)
+
+    # LLM hallucinates `context` and `self` as arguments — runner must strip them
+    result = runner.run_tool_call(
+        ToolCall(
+            name="add",
+            arguments={"a": 1, "b": 2, "context": "should be stripped", "self": "ignored"},
+        ),
+        ToolContext(prompt="sum"),
+    )
+    assert result.output == "3"
+
+
 def test_get_builtin_tools_includes_expected_capabilities() -> None:
     tools = get_builtin_tools(llm=SimpleEchoLLM())
     tool_names = {tool.name for tool in tools}

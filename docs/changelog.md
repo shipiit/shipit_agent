@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.0.1 — 2026-04-09
+
+Maintenance release. Bug fix in the tool runner plus repo hygiene, contributor experience, and CI hardening. **Strongly recommended upgrade** from 1.0.0 if you use Bedrock `gpt-oss-120b`.
+
+### Fixed
+
+- **`ToolRunner` argument collision** — Fixed `TypeError: got multiple values for argument 'context'` when an LLM (notably `bedrock/openai.gpt-oss-120b-1:0`) emits `context` as a tool-call argument. The runner now strips reserved argument names (`context`, `self`) from tool-call arguments before forwarding. Affects every built-in tool.
+
+### Added
+
+- **`CHANGELOG.md`** at repo root in Keep a Changelog format
+- **`CONTRIBUTING.md`** with dev setup, commit conventions, PR checklist, and "how to add a new LLM adapter / tool" guides
+- **GitHub issue templates** — structured bug report, feature request, and config forms
+- **PR template** with 12-item verification checklist
+- **Test CI** — `pytest -q` on Python 3.11 + 3.12 × Ubuntu + macOS (4 matrix cells), with smoke-test of all 11 LLM adapter imports
+- **Gitleaks secret scanning CI** with SARIF upload to GitHub Security tab, inline PR comments, Actions summary
+- **Pre-commit hooks** — trailing whitespace, EOF fixer, YAML/TOML validation, gitleaks v8.21.2, ruff lint + format
+- **Gitleaks allowlist** for runtime tool outputs (scraped HTML contains false-positive "API keys" like Pushly domainKeys)
+
+### Changed
+
+- `.gitignore` rewritten to dedupe entries and cover all runtime directories (`site/`, `.eggs/`, `pip-wheel-metadata/`)
+- Runtime tool outputs untracked from git (`sessions/`, `traces/`, `memory.json`, `.shipit_notebooks/**`) — they were accidentally committed in 1.0.0
+
+### Security
+
+- Added CI and pre-commit secret scanning to prevent future credential leaks
+- No runtime code changed — `shipit_agent/` module is byte-identical to 1.0.0
+
+---
+
 ## v1.0.0 — 2026-04-09
 
 First stable release. Focused on making the agent loop **observable, interchangeable, and out of the way**.

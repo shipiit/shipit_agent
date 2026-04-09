@@ -1,3 +1,9 @@
+try:
+    from importlib.metadata import version as _pkg_version
+    __version__ = _pkg_version("shipit-agent")
+except Exception:
+    __version__ = "0.0.0+unknown"
+
 from .exceptions import DuplicateToolError, ShipitAgentError
 from .agent import Agent
 from .builtins import get_builtin_tools

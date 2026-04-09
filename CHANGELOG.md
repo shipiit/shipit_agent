@@ -7,16 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [1.0.1] — 2026-04-09
+
+Maintenance release. Bug fix in the tool runner plus repo hygiene,
+contributor experience, and CI hardening. **Strongly recommended upgrade**
+from 1.0.0 if you use Bedrock `gpt-oss-120b` or any model that occasionally
+hallucinates `context` as a tool-call argument.
+
+### Fixed
+
+- **`ToolRunner.run_tool_call` argument collision** — Some LLMs (notably
+  `bedrock/openai.gpt-oss-120b-1:0`) occasionally emit a `context` key in
+  tool-call arguments, which would collide with the positional `context`
+  parameter the runner passes to `tool.run()` and raise
+  `TypeError: got multiple values for argument 'context'`. The runner now
+  strips a reserved set of argument names (`context`, `self`) from tool-call
+  arguments before forwarding them. Affects every built-in tool. Regression
+  test added in `tests/test_construction_and_runner.py`.
+
 ### Added
-- `CHANGELOG.md` at repo root (mirrors `docs/changelog.md` for GitHub release pages)
-- `CONTRIBUTING.md` with development setup, commit conventions, and PR checklist
-- GitHub issue templates (`bug_report.yml`, `feature_request.yml`)
-- `.github/workflows/test.yml` — runs `pytest -q` on every PR and push to `main` across Python 3.11 and 3.12
-- `.github/workflows/gitleaks.yml` — secret scanning on every PR
-- `.pre-commit-config.yaml` — local secret scan, trailing whitespace, YAML/TOML validation
+
+- **`CHANGELOG.md`** at repo root in [Keep a Changelog](https://keepachangelog.com/) format. Mirrors `docs/changelog.md` but lives where GitHub Releases expects it.
+- **`CONTRIBUTING.md`** at repo root with complete development setup, commit conventions, PR checklist, and step-by-step instructions for adding new LLM adapters and built-in tools.
+- **GitHub issue templates** (`.github/ISSUE_TEMPLATE/`):
+    - `bug_report.yml` — structured bug form with version, OS, provider, repro, traceback fields
+    - `feature_request.yml` — structured feature proposal form with problem-first framing
+    - `config.yml` — disables blank issues, adds contact links to docs, discussions, and security advisories
+- **GitHub pull request template** (`.github/PULL_REQUEST_TEMPLATE.md`) with 12-item verification checklist.
+- **Test CI workflow** (`.github/workflows/test.yml`) — runs `pytest -q` on Python 3.11 + 3.12 × Ubuntu + macOS (4 matrix cells). Smoke-tests all 11 LLM adapter imports including `LiteLLMProxyChatLLM` and `VertexAIChatLLM`. Cancels older runs on the same branch via concurrency group.
+- **Gitleaks CI workflow** (`.github/workflows/gitleaks.yml`) — secret scanning on every push and PR via the licensed `gitleaks-action@v2`. Full git history scanned (`fetch-depth: 0`). Uploads SARIF findings to the GitHub Security tab, posts inline comments on PRs, and shows findings in the Actions summary panel.
+- **Pre-commit config** (`.pre-commit-config.yaml`) — local hooks for trailing whitespace, EOF fixer, YAML/TOML validation, merge-conflict detection, private-key detection, `gitleaks v8.21.2`, and `ruff` lint + format. Install with `pre-commit install` after cloning.
+- **Gitleaks allowlist** (`.gitleaks.toml`) — 14 path patterns and 12 regex patterns. Allowlists:
+    - `.env.example`, docs, notebooks, tests (placeholder credentials)
+    - `.shipit_notebooks/`, `.shipit_workspace/`, `sessions/`, `traces/`, `memory.json` (runtime tool outputs that contain scraped HTML like Pushly domainKeys)
+    - Common scraped client-side ID patterns: `pushly(...)`, `UA-xxx`, `G-xxx`, `GTM-xxx`
 
 ### Changed
-- Nothing code-level — v1.0.0 is current PyPI release
+
+- **`.gitignore`** — rewritten to deduplicate entries and add `site/` (MkDocs build output), `.eggs/`, `pip-wheel-metadata/`. All runtime directories (`.shipit_workspace/`, `.shipit_notebooks/`, `.shipit_notebook_workspace/`) now properly ignored.
+- Runtime tool outputs (`sessions/`, `traces/`, `memory.json`, `.shipit_notebooks/**`) untracked from git via `git rm --cached`. They were committed in 1.0.0 because `.gitignore` didn't cover them — gitleaks flagged scraped HTML content as false-positive "leaks" which is how the gap was discovered.
+
+### Security
+
+- **Added secret scanning to CI.** Every push and PR is scanned for leaked API keys, tokens, `.env` contents, and private keys before merge. False positives are managed via `.gitleaks.toml` allowlist.
+- **Pre-commit secret scanning.** Contributors who install `pre-commit` hooks get gitleaks scanning on every local `git commit` — catches leaks before they reach GitHub.
+
+### Docs
+
+- **Contributing guide** with sections for "how to add a new LLM adapter" and "how to add a new built-in tool" — documents the patterns used for `VertexAIChatLLM` and `LiteLLMProxyChatLLM` in 1.0.0.
+- **Release process** documented for maintainers (version bump → CHANGELOG move → commit → tag → push → CI publishes).
+
+### Internal
+
+- No runtime code changed. `shipit_agent/` module is byte-identical to 1.0.0.
+- All 91 tests pass unchanged.
+- PyPI package contents identical to 1.0.0 except for bumped version metadata and updated README.
 
 ---
 
@@ -123,5 +172,6 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/shipiit/shipit_agent/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/shipiit/shipit_agent/releases/tag/v1.0.0

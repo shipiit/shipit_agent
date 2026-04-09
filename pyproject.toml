@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shipit-agent"
-version = "1.0.0"
+version = "1.0.1"
 description = "A clean, powerful agent runtime with tools, MCP support, profiles, and streaming events."
 readme = "README.md"
 requires-python = ">=3.11"

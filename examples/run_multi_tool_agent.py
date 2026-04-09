@@ -118,7 +118,14 @@ def build_llm_from_env(provider: str | None = None):
         )
     if selected == 'openai':
         _require_any(['OPENAI_API_KEY'], provider='openai')
-        return OpenAIChatLLM(model=os.getenv('SHIPIT_OPENAI_MODEL', 'gpt-4o-mini'))
+        # SHIPIT_OPENAI_TOOL_CHOICE=required forces at least one tool call per
+        # turn — useful for gpt-4o-mini and other lazy models. Accepts any
+        # value OpenAI's API accepts ("auto"|"required"|"none").
+        tool_choice = os.getenv('SHIPIT_OPENAI_TOOL_CHOICE') or None
+        return OpenAIChatLLM(
+            model=os.getenv('SHIPIT_OPENAI_MODEL', 'gpt-4o-mini'),
+            tool_choice=tool_choice,
+        )
     if selected == 'anthropic':
         _require_any(['ANTHROPIC_API_KEY'], provider='anthropic')
         return AnthropicChatLLM(model=os.getenv('SHIPIT_ANTHROPIC_MODEL', 'claude-3-5-sonnet-latest'))

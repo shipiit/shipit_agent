@@ -258,7 +258,7 @@ class RemoteMCPServer(MCPServer):
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "clientInfo": {"name": "shipit_agent", "version": "0.1.0"},
+                "clientInfo": {"name": "shipit_agent", "version": "1.0.0"},
             },
         )
 

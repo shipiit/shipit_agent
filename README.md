@@ -27,7 +27,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.0-blue?style=for-the-badge" alt="Version" />
   <img src="https://img.shields.io/badge/python-%3E%3D3.11-green?style=for-the-badge" alt="Python" />
   <img src="https://img.shields.io/badge/runtime-agent%20library-purple?style=for-the-badge" alt="Agent Runtime" />
   <img src="https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge" alt="License" />
@@ -46,24 +46,35 @@
   <img src="https://img.shields.io/badge/Custom%20API-supported-gray?style=flat-square" alt="Custom" />
 </p>
 
-`shipit_agent` is a standalone Python agent library focused on a clean runtime:
+## 🚀 What's new in 1.0
 
-- bring your own LLM
-- attach Python tools
-- attach MCP servers
-- use prebuilt tools like web search, open URL, ask user, and human review
-- support iterative multi-step tool loops
-- support memory and session stores
-- support OpenAI, Anthropic, and LiteLLM adapters
-- support Bedrock, Gemini, Groq, Together, Ollama, and other LiteLLM-backed providers
-- stream structured events
-- inspect each step
-- compose reusable agent profiles
-- keep clean boundaries between runtime, tools, MCP, and profiles
-- ship with a strong default system prompt and runtime policies
-- support persistent file-backed session and memory stores
-- support connector-style third-party tools such as Gmail
-- support persistent MCP subprocess sessions
+**SHIPIT Agent 1.0** is the first stable release. It ships a production-ready agent runtime built around three ideas: **every step is observable**, **every provider is interchangeable**, and **the runtime stays out of your way**. The headline features:
+
+- **🧠 Live reasoning / "thinking" events.** When the underlying model surfaces a reasoning block — OpenAI o-series (`o1`, `o3`, `o4`), `gpt-5`, DeepSeek R1, Anthropic Claude extended thinking, or AWS Bedrock `openai.gpt-oss-120b` — the runtime extracts it and emits `reasoning_started` / `reasoning_completed` events **before** the corresponding `tool_called` events. Your UI can render a live "Thinking" panel that matches what the model is actually doing under the hood, with no manual wiring. All three LLM adapters (direct OpenAI, direct Anthropic, LiteLLM/Bedrock) now share a common `reasoning_content` extraction helper that handles flat `reasoning_content` attributes, Anthropic-style `thinking_blocks`, and pydantic `model_dump()` fallbacks.
+- **⚡ Truly incremental streaming.** `agent.stream()` now runs the agent on a background worker thread and yields `AgentEvent` objects through a thread-safe queue as they are emitted by the runtime. No more "everything arrives at once at the end" — each `run_started`, `reasoning_completed`, `tool_called`, `tool_completed` event reaches your loop the instant it happens. Works in Jupyter, VS Code, JupyterLab, WebSocket/SSE packet transports, and plain terminals. Errors in the background worker are captured and re-raised on the consumer thread so nothing gets silently swallowed.
+- **🛡️ Bulletproof Bedrock tool pairing.** AWS Bedrock's Converse API enforces strict 1:1 pairing between `toolUse` blocks in an assistant turn and `toolResult` blocks in the next user turn. The 1.0 runtime guarantees this invariant everywhere: the planner output is injected as a `user`-role context message rather than an orphan `toolResult`; every `response.tool_calls` entry gets **either** a real tool-result **or** a synthetic error tool-result (for hallucinated tool names) so pairing never drifts; each call is stamped with a stable `call_{iteration}_{index}` ID that round-trips through the message metadata. Multi-iteration tool loops on Bedrock Claude, Bedrock gpt-oss, and Anthropic native all work reliably without `modify_params` band-aids.
+- **🔑 Zero-friction provider switching via `.env`.** `build_llm_from_env()` now walks upward from CWD to discover a `.env` file, so the same notebook or script works whether CWD is the repo root, a `notebooks/` subdirectory, or a deeply nested workspace. Switching providers is a one-line `.env` edit (`SHIPIT_LLM_PROVIDER=openai|anthropic|bedrock|gemini|groq|together|ollama`) — no kernel restarts, no code edits, no custom boot scripts. Seven providers supported out of the box with credential validation that raises a helpful error pointing to the exact env var you forgot to set.
+- **🌐 In-process Playwright for `open_url`.** The built-in `open_url` tool now uses Playwright's Chromium directly (headless, realistic desktop UA, 1280×800 viewport, `en-US` locale) as its primary fetch path. Handles JS-rendered pages, anti-bot protections, and modern TLS/ALPN without depending on any external scraper service. Stdlib `urllib` is kept as a zero-dep fallback for static pages and environments without Playwright installed. No third-party HTTP libraries (no `httpx`, no `requests`, no `beautifulsoup4`) — just Playwright and the standard library. Errors never raise out of the tool: they come back as a normal `ToolOutput` with a `warnings` list in metadata, so the runtime's tool pairing stays balanced even when a target URL is down.
+- **🪵 Full event table for observability.** 14 distinct event types are emitted over the lifetime of a run: `run_started`, `mcp_attached`, `planning_started`, `planning_completed`, `step_started`, `reasoning_started`, `reasoning_completed`, `tool_called`, `tool_completed`, `tool_retry`, `tool_failed`, `llm_retry`, `interactive_request`, `run_completed` — each with a documented payload and a stable shape. The [Streaming Events](#streaming-events) section below has a complete reference and a 17-step example trace of a real Bedrock run.
+- **🔁 Iteration-cap summarization fallback.** If the model is still calling tools when the loop hits `max_iterations`, the runtime automatically gives it one more turn with `tools=[]` to force a natural-language summary, so consumers never see an empty final answer. The fallback is guarded with try/except so a summarization failure can't mask the rest of the run.
+- **🧩 Clean separation of concerns.** Runtime, tool registry, LLM adapters, MCP integration, memory, sessions, tracing, retry/router policies, and agent profiles are each one small module with a well-defined boundary. If you want to bring your own tool, your own LLM, your own MCP transport, or your own session store, you implement a single protocol and plug it in — no framework ceremony, no metaclasses, no hidden globals.
+
+### Core feature summary
+
+- bring your own LLM, or use any of the seven built-in provider adapters
+- attach Python tools as classes, as `FunctionTool` wrappers, or as connector-style third-party tools (Gmail, Google Drive, Slack, …)
+- attach local and remote MCP servers — HTTP, stdio subprocess, and persistent sessions all supported
+- use prebuilt tools like `web_search`, `open_url` (Playwright-backed), `ask_user`, `human_review`, `code_interpreter`, `file_editor`, and more
+- iterative multi-step tool loops with configurable `max_iterations` and an automatic summarization fallback
+- built-in retry policies for transient LLM and tool errors, with dedicated `llm_retry` / `tool_retry` events
+- memory store (in-memory or file-backed) for cross-turn facts, session store for conversation resumption, trace store for audit logs
+- support for **OpenAI, Anthropic, AWS Bedrock, Google Gemini, Groq, Together AI, Ollama, Vertex AI, OpenRouter**, and any other LiteLLM-backed provider
+- stream structured events through `agent.stream()`, `chat_session.stream_packets(transport="websocket")`, or `chat_session.stream_packets(transport="sse")`
+- inspect every step: reasoning, tool arguments, tool outputs, retries, iteration counts, final answer
+- compose reusable agent profiles with system prompts, tool selections, and policies locked in
+- ship with a strong default system prompt and router/retry policies that work out of the box
+- persistent file-backed session and memory stores for long-running, resumable agents
+- persistent MCP subprocess sessions with graceful shutdown on run completion
 
 ## Install
 

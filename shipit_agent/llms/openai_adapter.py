@@ -32,6 +32,7 @@ class OpenAIChatLLM:
         api_key: str | None = None,
         *,
         reasoning_effort: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
         **client_kwargs: Any,
     ) -> None:
         self.model = model
@@ -40,6 +41,11 @@ class OpenAIChatLLM:
         self.reasoning_effort = reasoning_effort or (
             "medium" if _is_reasoning_model(model) else None
         )
+        # Pass-through for OpenAI's `tool_choice` kwarg. Set this to "required"
+        # to force the model to call at least one tool per turn. Useful with
+        # gpt-4o-mini and other lazy models that otherwise return prose-only
+        # answers even when tools are clearly needed.
+        self.tool_choice = tool_choice
         self.client_kwargs = client_kwargs
 
     def complete(
@@ -66,6 +72,10 @@ class OpenAIChatLLM:
         # Tell reasoning-capable models to actually emit a thinking block.
         if self.reasoning_effort:
             kwargs["reasoning_effort"] = self.reasoning_effort
+        # Only send tool_choice when we actually have tools to call — OpenAI
+        # rejects the parameter otherwise.
+        if self.tool_choice and tools:
+            kwargs["tool_choice"] = self.tool_choice
 
         response = client.chat.completions.create(**kwargs)
         choice = response.choices[0].message

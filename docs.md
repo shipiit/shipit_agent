@@ -86,7 +86,7 @@ Optional dependency groups:
 
 - `openai`: OpenAI SDK adapter
 - `anthropic`: Anthropic SDK adapter
-- `litellm`: LiteLLM adapter, including Bedrock, Gemini, Groq, Together, Ollama, and other LiteLLM-backed providers
+- `litellm`: LiteLLM adapter, including Bedrock, Gemini, Vertex AI, Groq, Together, Ollama, LiteLLM proxy/server routes, and other LiteLLM-backed providers
 - `playwright`: Playwright browser support
 - `all`: installs all optional groups
 
@@ -187,6 +187,8 @@ Provider-specific variables:
 - OpenAI: `OPENAI_API_KEY` and optionally `SHIPIT_OPENAI_MODEL`.
 - Anthropic: `ANTHROPIC_API_KEY` and optionally `SHIPIT_ANTHROPIC_MODEL`.
 - Gemini: `GEMINI_API_KEY` or `GOOGLE_API_KEY`, plus optionally `SHIPIT_GEMINI_MODEL`.
+- Vertex AI: `SHIPIT_VERTEX_CREDENTIALS_FILE` or `GOOGLE_APPLICATION_CREDENTIALS`, plus `VERTEXAI_PROJECT` or `GOOGLE_CLOUD_PROJECT`, plus `VERTEXAI_LOCATION` or `VERTEX_LOCATION` or `GOOGLE_CLOUD_LOCATION`, and optionally `SHIPIT_VERTEX_MODEL`.
+- Generic LiteLLM: `SHIPIT_LITELLM_MODEL`, plus optionally `SHIPIT_LITELLM_API_BASE`, `SHIPIT_LITELLM_API_KEY`, and `SHIPIT_LITELLM_CUSTOM_PROVIDER`.
 - Groq: `GROQ_API_KEY` and optionally `SHIPIT_GROQ_MODEL`.
 - Together: `TOGETHERAI_API_KEY` or `TOGETHER_API_KEY`, plus optionally `SHIPIT_TOGETHER_MODEL`.
 - Ollama: `OLLAMA_API_BASE` if you are not using the default local endpoint, plus optionally `SHIPIT_OLLAMA_MODEL`.
@@ -231,6 +233,27 @@ from shipit_agent.llms import GeminiChatLLM
 agent = Agent(llm=GeminiChatLLM(model="gemini/gemini-1.5-pro"))
 ```
 
+### Vertex AI
+
+Use a Google service-account JSON file:
+
+```env
+SHIPIT_LLM_PROVIDER=vertex
+SHIPIT_VERTEX_MODEL=vertex_ai/gemini-1.5-pro
+SHIPIT_VERTEX_CREDENTIALS_FILE=/absolute/path/to/vertex-service-account.json
+VERTEXAI_PROJECT=your-gcp-project-id
+VERTEXAI_LOCATION=us-central1
+```
+
+```python
+from shipit_agent import Agent
+from shipit_agent.llms import VertexAIChatLLM
+
+agent = Agent(llm=VertexAIChatLLM(model="vertex_ai/gemini-1.5-pro"))
+```
+
+`SHIPIT_VERTEX_CREDENTIALS_FILE` is mapped to `GOOGLE_APPLICATION_CREDENTIALS` automatically by the example helper.
+
 ### Groq
 
 ```python
@@ -256,6 +279,32 @@ from shipit_agent import Agent
 from shipit_agent.llms import OllamaChatLLM
 
 agent = Agent(llm=OllamaChatLLM(model="ollama/llama3.1"))
+```
+
+### Generic LiteLLM Server / Proxy
+
+Use this when you want `shipit_agent` to talk to a LiteLLM proxy or any custom LiteLLM-backed route.
+
+```env
+SHIPIT_LLM_PROVIDER=litellm
+SHIPIT_LITELLM_MODEL=openrouter/openai/gpt-4o-mini
+SHIPIT_LITELLM_API_BASE=http://localhost:4000
+SHIPIT_LITELLM_API_KEY=your-litellm-key
+SHIPIT_LITELLM_CUSTOM_PROVIDER=openrouter
+```
+
+```python
+from shipit_agent import Agent
+from shipit_agent.llms import LiteLLMChatLLM
+
+agent = Agent(
+    llm=LiteLLMChatLLM(
+        model="openrouter/openai/gpt-4o-mini",
+        api_base="http://localhost:4000",
+        api_key="your-litellm-key",
+        custom_llm_provider="openrouter",
+    )
+)
 ```
 
 ## Package Overview

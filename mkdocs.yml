@@ -1,0 +1,127 @@
+site_name: SHIPIT Agent
+site_description: A clean, powerful Python agent library with tools, MCP, streaming events, reasoning capture, and runtime policies.
+site_url: https://shipiit.github.io/shipit_agent/
+site_author: Rahul Raj
+
+repo_name: shipiit/shipit_agent
+repo_url: https://github.com/shipiit/shipit_agent
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2026 SHIPIT Agent contributors
+
+theme:
+  name: material
+  language: en
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.action.edit
+    - content.action.view
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.critic
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+
+plugins:
+  - search:
+      lang: en
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: date
+      fallback_to_build_date: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/shipiit/shipit_agent
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/shipit-agent/
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/install.md
+      - Quick Start: getting-started/quickstart.md
+      - Environment Setup: getting-started/environment.md
+  - Guides:
+      - Streaming Events: guides/streaming.md
+      - Reasoning & Thinking Steps: guides/reasoning.md
+      - Tool Search & Discovery: guides/tool-search.md
+      - Prebuilt Tools: guides/prebuilt-tools.md
+      - Creating Custom Tools: guides/custom-tools.md
+      - MCP Integration: guides/mcp.md
+      - Sessions & Memory: guides/sessions.md
+  - Reference:
+      - Architecture: reference/architecture.md
+      - Event Types: reference/events.md
+      - Model Adapters: reference/adapters.md
+      - Tools Manifest: reference/tools.md
+  - Security: security.md
+  - Changelog: changelog.md

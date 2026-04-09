@@ -13,12 +13,12 @@
 </p>
 
 <p align="center">
-  <a href="docs.md">Full docs</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#one-running-setup-example">Run an agent</a> ·
-  <a href="#using-tools-and-mcp-together">Tools + MCP</a> ·
-  <a href="#streaming-events">Streaming</a> ·
-  <a href="#gmail-and-third-party-tools">Third-party tools</a> ·
+  <a href="https://shipiit.github.io/shipit_agent/"><strong>📖 Documentation</strong></a> ·
+  <a href="https://pypi.org/project/shipit-agent/"><strong>📦 PyPI</strong></a> ·
+  <a href="https://shipiit.github.io/shipit_agent/getting-started/quickstart/">Quick start</a> ·
+  <a href="https://shipiit.github.io/shipit_agent/guides/streaming/">Streaming</a> ·
+  <a href="https://shipiit.github.io/shipit_agent/guides/reasoning/">Reasoning</a> ·
+  <a href="https://shipiit.github.io/shipit_agent/guides/tool-search/">Tool search</a> ·
   <a href="SECURITY.md">Security</a>
 </p>
 
@@ -27,10 +27,15 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue?style=for-the-badge" alt="Version" />
-  <img src="https://img.shields.io/badge/python-%3E%3D3.11-green?style=for-the-badge" alt="Python" />
-  <img src="https://img.shields.io/badge/runtime-agent%20library-purple?style=for-the-badge" alt="Agent Runtime" />
-  <img src="https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge" alt="License" />
+  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/v/shipit-agent?style=for-the-badge&color=blue&label=pypi" alt="PyPI" /></a>
+  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/pyversions/shipit-agent?style=for-the-badge&color=green" alt="Python versions" /></a>
+  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/dm/shipit-agent?style=for-the-badge&color=purple&label=downloads" alt="Downloads" /></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge" alt="License" /></a>
+  <a href="https://shipiit.github.io/shipit_agent/"><img src="https://img.shields.io/badge/docs-mkdocs--material-483D8B?style=for-the-badge" alt="Docs" /></a>
+</p>
+
+<p align="center">
+  <strong>Install</strong> &nbsp;·&nbsp; <code>pip install shipit-agent</code>
 </p>
 
 <p align="center">
@@ -53,7 +58,7 @@
 - **🧠 Live reasoning / "thinking" events.** When the underlying model surfaces a reasoning block — OpenAI o-series (`o1`, `o3`, `o4`), `gpt-5`, DeepSeek R1, Anthropic Claude extended thinking, or AWS Bedrock `openai.gpt-oss-120b` — the runtime extracts it and emits `reasoning_started` / `reasoning_completed` events **before** the corresponding `tool_called` events. Your UI can render a live "Thinking" panel that matches what the model is actually doing under the hood, with no manual wiring. All three LLM adapters (direct OpenAI, direct Anthropic, LiteLLM/Bedrock) now share a common `reasoning_content` extraction helper that handles flat `reasoning_content` attributes, Anthropic-style `thinking_blocks`, and pydantic `model_dump()` fallbacks.
 - **⚡ Truly incremental streaming.** `agent.stream()` now runs the agent on a background worker thread and yields `AgentEvent` objects through a thread-safe queue as they are emitted by the runtime. No more "everything arrives at once at the end" — each `run_started`, `reasoning_completed`, `tool_called`, `tool_completed` event reaches your loop the instant it happens. Works in Jupyter, VS Code, JupyterLab, WebSocket/SSE packet transports, and plain terminals. Errors in the background worker are captured and re-raised on the consumer thread so nothing gets silently swallowed.
 - **🛡️ Bulletproof Bedrock tool pairing.** AWS Bedrock's Converse API enforces strict 1:1 pairing between `toolUse` blocks in an assistant turn and `toolResult` blocks in the next user turn. The 1.0 runtime guarantees this invariant everywhere: the planner output is injected as a `user`-role context message rather than an orphan `toolResult`; every `response.tool_calls` entry gets **either** a real tool-result **or** a synthetic error tool-result (for hallucinated tool names) so pairing never drifts; each call is stamped with a stable `call_{iteration}_{index}` ID that round-trips through the message metadata. Multi-iteration tool loops on Bedrock Claude, Bedrock gpt-oss, and Anthropic native all work reliably without `modify_params` band-aids.
-- **🔑 Zero-friction provider switching via `.env`.** `build_llm_from_env()` now walks upward from CWD to discover a `.env` file, so the same notebook or script works whether CWD is the repo root, a `notebooks/` subdirectory, or a deeply nested workspace. Switching providers is a one-line `.env` edit (`SHIPIT_LLM_PROVIDER=openai|anthropic|bedrock|gemini|groq|together|ollama`) — no kernel restarts, no code edits, no custom boot scripts. Seven providers supported out of the box with credential validation that raises a helpful error pointing to the exact env var you forgot to set.
+- **🔑 Zero-friction provider switching via `.env`.** `build_llm_from_env()` now walks upward from CWD to discover a `.env` file, so the same notebook or script works whether CWD is the repo root, a `notebooks/` subdirectory, or a deeply nested workspace. Switching providers is a one-line `.env` edit (`SHIPIT_LLM_PROVIDER=openai|anthropic|bedrock|gemini|vertex|litellm|groq|together|ollama`) — no kernel restarts, no code edits, no custom boot scripts. Providers are supported out of the box with credential validation that raises a helpful error pointing to the exact env var you forgot to set.
 - **🌐 In-process Playwright for `open_url`.** The built-in `open_url` tool now uses Playwright's Chromium directly (headless, realistic desktop UA, 1280×800 viewport, `en-US` locale) as its primary fetch path. Handles JS-rendered pages, anti-bot protections, and modern TLS/ALPN without depending on any external scraper service. Stdlib `urllib` is kept as a zero-dep fallback for static pages and environments without Playwright installed. No third-party HTTP libraries (no `httpx`, no `requests`, no `beautifulsoup4`) — just Playwright and the standard library. Errors never raise out of the tool: they come back as a normal `ToolOutput` with a `warnings` list in metadata, so the runtime's tool pairing stays balanced even when a target URL is down.
 - **🪵 Full event table for observability.** 14 distinct event types are emitted over the lifetime of a run: `run_started`, `mcp_attached`, `planning_started`, `planning_completed`, `step_started`, `reasoning_started`, `reasoning_completed`, `tool_called`, `tool_completed`, `tool_retry`, `tool_failed`, `llm_retry`, `interactive_request`, `run_completed` — each with a documented payload and a stable shape. The [Streaming Events](#streaming-events) section below has a complete reference and a 17-step example trace of a real Bedrock run.
 - **🔁 Iteration-cap summarization fallback.** If the model is still calling tools when the loop hits `max_iterations`, the runtime automatically gives it one more turn with `tools=[]` to force a natural-language summary, so consumers never see an empty final answer. The fallback is guarded with try/except so a summarization failure can't mask the rest of the run.
@@ -119,7 +124,13 @@ playwright install
 
 Long-form documentation:
 
-- [docs.md](docs.md)
+- 🌐 **[Full documentation site](https://shipiit.github.io/shipit_agent/)** — MkDocs Material, searchable, versioned
+    - [Quick start](https://shipiit.github.io/shipit_agent/getting-started/quickstart/) · [Installation](https://shipiit.github.io/shipit_agent/getting-started/install/) · [Environment setup](https://shipiit.github.io/shipit_agent/getting-started/environment/)
+    - [Streaming events](https://shipiit.github.io/shipit_agent/guides/streaming/) · [Reasoning & thinking](https://shipiit.github.io/shipit_agent/guides/reasoning/) · [Tool search](https://shipiit.github.io/shipit_agent/guides/tool-search/)
+    - [Custom tools](https://shipiit.github.io/shipit_agent/guides/custom-tools/) · [MCP integration](https://shipiit.github.io/shipit_agent/guides/mcp/) · [Sessions & memory](https://shipiit.github.io/shipit_agent/guides/sessions/)
+    - [Architecture](https://shipiit.github.io/shipit_agent/reference/architecture/) · [Event types reference](https://shipiit.github.io/shipit_agent/reference/events/) · [Model adapters](https://shipiit.github.io/shipit_agent/reference/adapters/)
+- [Changelog](https://shipiit.github.io/shipit_agent/changelog/) — full v1.0 release notes
+- [docs.md](docs.md) — legacy flat-markdown docs (kept for offline browsing)
 - [TOOLS.md](TOOLS.md)
 - [SECURITY.md](SECURITY.md)
 - [LICENSE.md](LICENSE.md)
@@ -199,6 +210,33 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 ```
 
 You can also use `AWS_PROFILE` instead of inline AWS keys if your local AWS CLI profile is already configured. Other providers use their standard SDK environment variables, for example `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, or `TOGETHERAI_API_KEY`.
+
+For Vertex AI with a service-account JSON file:
+
+```env
+SHIPIT_LLM_PROVIDER=vertex
+SHIPIT_VERTEX_MODEL=vertex_ai/gemini-1.5-pro
+SHIPIT_VERTEX_CREDENTIALS_FILE=/absolute/path/to/vertex-service-account.json
+VERTEXAI_PROJECT=your-gcp-project-id
+VERTEXAI_LOCATION=us-central1
+```
+
+This automatically maps `SHIPIT_VERTEX_CREDENTIALS_FILE` to `GOOGLE_APPLICATION_CREDENTIALS` for LiteLLM/Vertex usage.
+
+For a generic LiteLLM proxy or server:
+
+```env
+SHIPIT_LLM_PROVIDER=litellm
+SHIPIT_LITELLM_MODEL=openrouter/openai/gpt-4o-mini
+SHIPIT_LITELLM_API_BASE=http://localhost:4000
+SHIPIT_LITELLM_API_KEY=your-litellm-key
+```
+
+If your LiteLLM route needs a custom provider hint, also set:
+
+```env
+SHIPIT_LITELLM_CUSTOM_PROVIDER=openrouter
+```
 
 For web search, the default is now:
 
@@ -609,6 +647,56 @@ agent = Agent(
 )
 ```
 
+### `tool_search` — let the agent discover its own tools
+
+When an agent has more than a handful of tools, two problems appear:
+
+1. **Token bloat** — every turn ships the full tool catalog to the LLM.
+2. **Tool hallucination** — similar tool names get confused and the model invents ones that don't exist.
+
+`ToolSearchTool` solves both. Give the model a plain-language query and it returns a **ranked shortlist** of the best-matching tools currently registered on the agent, with names, descriptions, usage hints, and relevance scores:
+
+```python
+from shipit_agent import Agent, ToolSearchTool
+from shipit_agent.llms import OpenAIChatLLM
+
+agent = Agent.with_builtins(llm=OpenAIChatLLM(model="gpt-4o-mini"))
+# ToolSearchTool is included in Agent.with_builtins automatically.
+
+result = agent.run(
+    "Use tool_search to find the right tool for fetching a specific URL, "
+    "then call that tool on https://example.com"
+)
+```
+
+The model will first call `tool_search({"query": "fetch a specific URL", "limit": 3})` and receive something like:
+
+```
+Best tools for 'fetch a specific URL' (ranked by relevance):
+1. open_url (score=0.4217) — Fetch a URL and return a clean text excerpt.
+   ↳ when to use: Use this when you need exact content from a specific URL…
+2. playwright_browser (score=0.3104) — Drive a headless browser…
+   ↳ when to use: Use for pages requiring interaction or anti-bot protection.
+3. web_search (score=0.1875) — Search the web with a configurable provider…
+   ↳ when to use: Use when you need fresh information from the internet.
+```
+
+Then call `open_url` directly with the right arguments. No hallucinations, no wasted tokens on 27 irrelevant schemas.
+
+**Scoring algorithm** (pure stdlib, no embeddings, no external API):
+
+```
+score = SequenceMatcher(query, haystack).ratio() + 0.12 × token_hits
+```
+
+where `haystack` concatenates each tool's `name`, `description`, and `prompt_instructions`, and `token_hits` counts how many query words appear literally. Tie-broken by insertion order. Results below `score=0.05` are filtered as noise.
+
+**Configurable knobs:** `max_limit` (hard cap, default 10), `default_limit` (default 5), `token_bonus` (default 0.12). Override at construction time:
+
+```python
+ToolSearchTool(max_limit=15, default_limit=8, token_bonus=0.20)
+```
+
 ## Using Multiple Tools In One Agent
 
 A practical pattern is to combine built-in tools with your own callable tools. The example script does exactly that: it wires `WebSearchTool`, `OpenURLTool`, `WorkspaceFilesTool`, `CodeExecutionTool`, and other built-ins together with local `FunctionTool` helpers like `project_context` and `add_numbers`.
@@ -984,11 +1072,12 @@ Example:
 
 ```python
 from shipit_agent import Agent
-from shipit_agent.llms import BedrockChatLLM, GeminiChatLLM, LiteLLMChatLLM, OpenAIChatLLM
+from shipit_agent.llms import BedrockChatLLM, GeminiChatLLM, LiteLLMChatLLM, OpenAIChatLLM, VertexAIChatLLM
 
 openai_agent = Agent(llm=OpenAIChatLLM(model="gpt-4o-mini"))
 bedrock_agent = Agent(llm=BedrockChatLLM())
 gemini_agent = Agent(llm=GeminiChatLLM())
+vertex_agent = Agent(llm=VertexAIChatLLM(model="vertex_ai/gemini-1.5-pro"))
 generic_agent = Agent(llm=LiteLLMChatLLM(model="groq/llama-3.3-70b-versatile"))
 ```
 

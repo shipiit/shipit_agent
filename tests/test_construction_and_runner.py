@@ -1,5 +1,5 @@
 from shipit_agent import ToolRunner, construct_tool_registry, get_builtin_tools
-from shipit_agent.llms import BedrockChatLLM, GeminiChatLLM, SimpleEchoLLM
+from shipit_agent.llms import BedrockChatLLM, GeminiChatLLM, SimpleEchoLLM, VertexAIChatLLM
 from shipit_agent.models import ToolCall
 from shipit_agent.tools import FunctionTool, ToolContext
 
@@ -41,3 +41,8 @@ def test_bedrock_wrapper_uses_litellm_model_namespace() -> None:
 def test_gemini_wrapper_uses_litellm_model_namespace() -> None:
     llm = GeminiChatLLM()
     assert llm.model.startswith("gemini/")
+
+
+def test_vertex_wrapper_uses_litellm_model_namespace() -> None:
+    llm = VertexAIChatLLM()
+    assert llm.model.startswith("vertex_ai/")

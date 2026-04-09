@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from shipit_agent import (
     Agent,
@@ -20,10 +20,12 @@ from shipit_agent.llms import (
     BedrockChatLLM,
     GeminiChatLLM,
     GroqChatLLM,
+    LiteLLMChatLLM,
     OllamaChatLLM,
     OpenAIChatLLM,
     SimpleEchoLLM,
     TogetherChatLLM,
+    VertexAIChatLLM,
 )
 
 DEFAULT_WORKSPACE = '.shipit_workspace'
@@ -33,6 +35,8 @@ SUPPORTED_PROVIDERS = (
     'openai',
     'anthropic',
     'gemini',
+    'vertex',
+    'litellm',
     'groq',
     'together',
     'ollama',
@@ -132,6 +136,65 @@ def build_llm_from_env(provider: str | None = None):
     if selected == 'gemini':
         _require_any(['GEMINI_API_KEY', 'GOOGLE_API_KEY'], provider='gemini')
         return GeminiChatLLM(model=os.getenv('SHIPIT_GEMINI_MODEL', 'gemini/gemini-1.5-pro'))
+    if selected in {'vertex', 'vertex_ai', 'vertexai'}:
+        _require_any(
+            [
+                'GOOGLE_APPLICATION_CREDENTIALS',
+                'SHIPIT_VERTEX_CREDENTIALS_FILE',
+            ],
+            provider='vertex',
+        )
+        # Service-account JSON file path. VertexAIChatLLM will set
+        # GOOGLE_APPLICATION_CREDENTIALS from this, so google-auth picks it up.
+        credentials_file = (
+            os.getenv('SHIPIT_VERTEX_CREDENTIALS_FILE')
+            or os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        )
+        project_id = (
+            os.getenv('VERTEXAI_PROJECT')
+            or os.getenv('GOOGLE_CLOUD_PROJECT')
+        )
+        location = (
+            os.getenv('VERTEXAI_LOCATION')
+            or os.getenv('VERTEX_LOCATION')
+            or os.getenv('GOOGLE_CLOUD_LOCATION')
+        )
+        _require_any(['VERTEXAI_PROJECT', 'GOOGLE_CLOUD_PROJECT'], provider='vertex')
+        _require_any(['VERTEXAI_LOCATION', 'VERTEX_LOCATION', 'GOOGLE_CLOUD_LOCATION'], provider='vertex')
+        return VertexAIChatLLM(
+            model=os.getenv('SHIPIT_VERTEX_MODEL', 'vertex_ai/gemini-1.5-pro'),
+            service_account_file=credentials_file,
+            project_id=project_id,
+            location=location,
+        )
+    if selected in {'litellm', 'litellm_proxy', 'proxy'}:
+        # Generic LiteLLM adapter — points at either the public LiteLLM SDK
+        # path OR a self-hosted LiteLLM proxy server. When SHIPIT_LITELLM_API_BASE
+        # is set, we assume a proxy and use LiteLLMProxyChatLLM (which defaults
+        # custom_llm_provider="openai" since the proxy always speaks OpenAI).
+        from shipit_agent.llms import LiteLLMProxyChatLLM
+
+        model = _require_any(['SHIPIT_LITELLM_MODEL'], provider='litellm')
+        api_key = os.getenv('SHIPIT_LITELLM_API_KEY')
+        api_base = os.getenv('SHIPIT_LITELLM_API_BASE')
+        custom_provider = os.getenv('SHIPIT_LITELLM_CUSTOM_PROVIDER')
+
+        if api_base:
+            # Proxy mode — use the convenience wrapper with sensible defaults.
+            return LiteLLMProxyChatLLM(
+                model=model,
+                api_base=api_base,
+                api_key=api_key,
+                custom_llm_provider=custom_provider or 'openai',
+            )
+
+        # Direct LiteLLM SDK mode.
+        completion_kwargs: dict[str, Any] = {}
+        if api_key:
+            completion_kwargs['api_key'] = api_key
+        if custom_provider:
+            completion_kwargs['custom_llm_provider'] = custom_provider
+        return LiteLLMChatLLM(model=model, **completion_kwargs)
     if selected == 'groq':
         _require_any(['GROQ_API_KEY'], provider='groq')
         return GroqChatLLM(model=os.getenv('SHIPIT_GROQ_MODEL', 'groq/llama-3.3-70b-versatile'))

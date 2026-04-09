@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-from shipit_agent.llms import LLMResponse, ShipitLLM
+from shipit_agent.llms import LLMResponse, LiteLLMChatLLM, ShipitLLM, VertexAIChatLLM
 from shipit_agent.models import ToolCall
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -43,6 +43,30 @@ def test_example_build_llm_from_env_validates_bedrock(monkeypatch) -> None:
         raise AssertionError('Expected Bedrock environment validation error')
 
 
+def test_example_build_llm_from_env_supports_vertex_json_credentials(monkeypatch) -> None:
+    module = _load_module()
+    monkeypatch.setenv('SHIPIT_LLM_PROVIDER', 'vertex')
+    monkeypatch.setenv('SHIPIT_VERTEX_CREDENTIALS_FILE', '/tmp/vertex-sa.json')
+    monkeypatch.setenv('VERTEXAI_PROJECT', 'demo-project')
+    monkeypatch.setenv('VERTEXAI_LOCATION', 'us-central1')
+    llm = module.build_llm_from_env()
+    assert isinstance(llm, VertexAIChatLLM)
+    assert llm.model == 'vertex_ai/gemini-1.5-pro'
+
+
+def test_example_build_llm_from_env_supports_generic_litellm(monkeypatch) -> None:
+    module = _load_module()
+    monkeypatch.setenv('SHIPIT_LLM_PROVIDER', 'litellm')
+    monkeypatch.setenv('SHIPIT_LITELLM_MODEL', 'openrouter/openai/gpt-4o-mini')
+    monkeypatch.setenv('SHIPIT_LITELLM_API_BASE', 'http://localhost:4000')
+    monkeypatch.setenv('SHIPIT_LITELLM_API_KEY', 'litellm-key')
+    llm = module.build_llm_from_env()
+    assert isinstance(llm, LiteLLMChatLLM)
+    assert llm.model == 'openrouter/openai/gpt-4o-mini'
+    assert llm.completion_kwargs['api_base'] == 'http://localhost:4000'
+    assert llm.completion_kwargs['api_key'] == 'litellm-key'
+
+
 def test_example_build_demo_agent_adds_function_tools(tmp_path) -> None:
     module = _load_module()
     agent = module.build_demo_agent(llm=ShipitLLM(), workspace_root=str(tmp_path))
@@ -77,6 +101,8 @@ def test_env_example_mentions_supported_provider_keys() -> None:
     assert 'AWS_REGION_NAME=us-east-1' in content
     assert 'OPENAI_API_KEY=' in content
     assert 'ANTHROPIC_API_KEY=' in content
+    assert 'SHIPIT_VERTEX_CREDENTIALS_FILE=' in content
+    assert 'SHIPIT_LITELLM_API_BASE=' in content
 
 
 def test_examples_package_exports_demo_builders() -> None:

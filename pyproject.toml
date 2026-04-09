@@ -48,6 +48,8 @@ where = ["."]
 include = ["shipit_agent*"]
 
 [project.urls]
-Homepage = "https://github.com/rahulraj/shipit_agent"
-Repository = "https://github.com/rahulraj/shipit_agent"
-Issues = "https://github.com/rahulraj/shipit_agent/issues"
+Homepage = "https://github.com/shipiit/shipit_agent"
+Repository = "https://github.com/shipiit/shipit_agent"
+Issues = "https://github.com/shipiit/shipit_agent/issues"
+Documentation = "https://shipiit.github.io/shipit_agent/"
+Changelog = "https://github.com/shipiit/shipit_agent/releases"

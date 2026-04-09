@@ -844,16 +844,66 @@ for event in agent.stream("Investigate this problem and use tools if needed."):
 
 Typical events include:
 
-- `run_started`
-- `planning_started`
-- `planning_completed`
-- `step_started`
-- `tool_called`
-- `tool_completed`
-- `tool_retry`
-- `llm_retry`
-- `interactive_request`
-- `run_completed`
+| Event type | When it fires | Key payload fields |
+|---|---|---|
+| `run_started` | Very first event of a run, once per `stream()`/`run()` call. | `prompt` |
+| `mcp_attached` | Once per attached MCP server, right after `run_started`. | `server` |
+| `planning_started` | The router policy decided the prompt is complex enough to invoke the `plan_task` tool. Fires **before** the first LLM call. | `prompt` |
+| `planning_completed` | Planner returned. The plan is injected into the message history as a `user`-role context message so Bedrock tool pairing stays intact. | `output` |
+| `step_started` | Each iteration of the tool loop, right before calling the LLM. | `iteration`, `tool_count` |
+| `reasoning_started` | 🧠 The LLM response contained a thinking/reasoning block (OpenAI o-series, `gpt-oss`, Claude extended thinking, DeepSeek R1…). Fires **once per iteration** when reasoning is present. | `iteration` |
+| `reasoning_completed` | Immediately after `reasoning_started`, carrying the full reasoning text. Use this to render a "Thinking" panel in your UI. | `iteration`, `content` |
+| `tool_called` | The model decided to call a tool. Fires before execution. | `iteration`, `arguments` (`ev.message` is `"Tool called: <name>"`) |
+| `tool_completed` | Tool finished successfully. | `iteration`, `output` |
+| `tool_retry` | Transient tool failure, retry scheduled by `RetryPolicy`. | `iteration`, `attempt`, `error` |
+| `tool_failed` | Tool raised a non-retryable error, **or** the model hallucinated a tool name that isn't registered. In the second case a synthetic error tool-result is still appended so tool_use/tool_result pairing stays balanced (required by Bedrock Converse). | `iteration`, `error` |
+| `llm_retry` | Transient LLM provider error, retry scheduled. | `attempt`, `error` |
+| `interactive_request` | A tool returned `metadata.interactive=True` (e.g. `ask_user`, human review). UI can pause and collect input. | `kind`, `payload` |
+| `run_completed` | Final event, emitted once no more tool calls are requested. | `output` |
+
+### Reasoning / "thinking" steps
+
+When the underlying model surfaces reasoning content (OpenAI o-series via `reasoning_effort`, Anthropic Claude via extended thinking, AWS Bedrock `openai.gpt-oss-120b` via native reasoning, DeepSeek R1, etc.) the runtime automatically extracts it from the provider response and emits a `reasoning_started` + `reasoning_completed` pair before any subsequent `tool_called` events. The LiteLLM adapter handles three shapes:
+
+1. **Flat `reasoning_content`** on the response message (OpenAI / gpt-oss / DeepSeek via LiteLLM).
+2. **Anthropic `thinking_blocks[*].thinking`** (Claude extended thinking).
+3. **`model_dump()` fallback** — any `reasoning_content` / `thinking_blocks` key found in the pydantic dump.
+
+No extra configuration is needed — `LLMResponse.reasoning_content` is populated automatically, and the runtime emits the events whenever it's non-empty. Models that don't expose reasoning simply won't produce these events; no error, no warning.
+
+A typical Bedrock `gpt-oss-120b` run with two tool calls produces:
+
+```
+1.  run_started        → "Agent run started"
+2.  planning_started   → "Planner started"
+3.  planning_completed → "Planner completed"
+4.  step_started       → iteration=1, tool_count=28
+5.  reasoning_started  → 🧠 iteration=1
+6.  reasoning_completed→ 🧠 "The user wants two independent live BTC prices. I'll start with web_search..."
+7.  tool_called        → "Tool called: web_search"
+8.  tool_completed     → "Tool completed: web_search"
+9.  step_started       → iteration=2
+10. reasoning_completed→ 🧠 "Now I'll open both URLs to confirm..."
+11. tool_called        → "Tool called: open_url"
+12. tool_completed     → "Tool completed: open_url"
+13. tool_called        → "Tool called: open_url"
+14. tool_completed     → "Tool completed: open_url"
+15. step_started       → iteration=3
+16. reasoning_completed→ 🧠 "Both sources agree within $40..."
+17. run_completed      → final markdown report
+```
+
+Because `stream()` runs the agent on a background thread and pushes events through a queue, every event is yielded **as it happens** — your UI can render the thinking block, then the tool calls, then the final answer incrementally (see `notebooks/04_agent_streaming_packets.ipynb` for a live example).
+
+### Tool lifecycle & Bedrock tool pairing
+
+AWS Bedrock's Converse API enforces strict 1:1 pairing between `toolUse` blocks in an assistant turn and `toolResult` blocks in the next user turn. The runtime guarantees this invariant:
+
+- Every `response.tool_calls` entry gets **either** a successful tool-result message **or** a synthetic error tool-result (for hallucinated/unregistered tool names) — never a dropped orphan.
+- The planner output is injected as a regular `user`-role context message rather than a `tool`-role message, so it never appears as an unpaired `toolResult`.
+- Each tool call is stamped with a stable `call_{iteration}_{index}` ID that round-trips through `Message.metadata.tool_calls[i].id` ↔ `Message.metadata.tool_call_id` on the result.
+
+This means multi-iteration tool loops work reliably on Bedrock Claude, Bedrock gpt-oss, and Anthropic native — no `modify_params` band-aids required.
 
 ## End-To-End Example
 

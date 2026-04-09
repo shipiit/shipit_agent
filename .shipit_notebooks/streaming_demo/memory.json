@@ -208,5 +208,204 @@
         }
       ]
     }
+  },
+  {
+    "content": "plan_task: Goal: You are an autonomous research agent. Task: find today's Bitcoin (BTC) price in USD from TWO independent live sources, then compare them.\n\nRules \u2014 you MUST follow every rule:\n1. First, think step-by-step about your plan before acting.\n2. Call `web_search` at least once to locate candidate sources.\n3. Call `open_url` on at least TWO different URLs to fetch actual prices.\n4. Do NOT answer from prior knowledge \u2014 only use what the tools return.\n5. Finish with a short markdown report: a table of (source, price, timestamp)    followed by a 1-sentence reconciliation.\nIf tools fail, retry with a different query or URL before giving up.\nPlan:\n1. Clarify the target output and inputs.\n2. Select the right tools and gather evidence.\n3. Execute the task in small verifiable steps.\n4. Verify the result against constraints.\n5. Return the final deliverable and note any residual risks.",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "goal": "You are an autonomous research agent. Task: find today's Bitcoin (BTC) price in USD from TWO independent live sources, then compare them.\n\nRules \u2014 you MUST follow every rule:\n1. First, think step-by-step about your plan before acting.\n2. Call `web_search` at least once to locate candidate sources.\n3. Call `open_url` on at least TWO different URLs to fetch actual prices.\n4. Do NOT answer from prior knowledge \u2014 only use what the tools return.\n5. Finish with a short markdown report: a table of (source, price, timestamp)    followed by a 1-sentence reconciliation.\nIf tools fail, retry with a different query or URL before giving up.",
+      "constraints": []
+    }
+  },
+  {
+    "content": "web_search: [1] Kraken | Buy Bitcoin & Crypto - Quick and Easy Signup\nSelect from crypto bundles focused on blue chips, memecoins, AI, and more. Buy and Sell 500+ Assets. Low Fees, High Liquidity & Excellent Customer Service.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dkraken.com%26ad_provider%3Dbingv7aa%26ad_type%3Dtxad%26click_metadata%3DbH%252D8QuinroRdDyFk34qycO12Z1Os4WsD1Z4FpwqU%252D5BcmCjOTiEy0X3lcwtP3UILHesehMCo3QsCLsSfC1dUdkvZnY1BuB%252DR1LaFREs5j0wXZ8QtoxB_k7WZFB8m45V2mLtlfwgSqAh%252D0Q1%252D3HqFudXikIzsM%252DijGoS8x6RO0ak.Q2_xkFfFZF3Zrmf6h0Gkbw%26rut%3D23022ef783605be4e178b13b1e9b16f9df249531e4b0717ad99cde87009f285e%26u3%3Dhttps%253A%252F%252Fwww.bing.com%252Faclick%253Fld%253De8jwiou0pEg0p2FZBxjoADHDVUCUyrFridAlhB59w%252D26bySJ440t8zCaw7DGKn8MW02nA9vUwcdiZB1lpM13vnjKjG3%252DtARCglpHmJ6WJZH0Adm94rvvaRauyfuEkbNNHbT205w%252DfwzpwjUvnPNL0GmzmnZg7HgAzrXQNBJnnVJNRQ0seLOTl4ZNLBogrvClB8rTYZ9mWrNcEwPFFeRjz2aK_ZYKc%2526u%253DaHR0cHMlM2ElMmYlMmZ3d3cua3Jha2VuLmNvbSUyZmxwJTJmcGxhdGZvcm0lM2Z1dG1fc291cmNlJTNkYmluZyUyNnV0bV9tZWRpdW0lM2RjcGMlMjZ1dG1fY2FtcGFpZ24lM2RicmFuZF9rcmFrZW5fYmxlbmRlZF9ldV9zcmNfYmluZ19ici1teF9hY3FfMjAyNl9xMV9jcnlwdG9rZXl3b3Jkc19wZXJfeCUyNnV0bV9jb250ZW50JTNkMTMyMzgxNDc0NDA0NzYyNiUyNnV0bV90ZXJtJTNkQml0Y29pbiUyNTIwcHJpY2UlMjUyMFVTRCUyNTIwbGl2ZSUyNm1zY2xraWQlM2Q2Y2NiMmE1YTQ5Y2YxMDFmYzIzNDQzOGRlZGIwYTNkYQ%2526rlid%253D6ccb2a5a49cf101fc234438dedb0a3da%26vqd%3D4%2D44497538261547864543145225870967047947%26iurl%3D%257B1%257DIG%253DD5246C2FCCAA452F854272C04236E2BB%2526CID%253D30AC871900966E4D0C99902F01DF6F9B%2526ID%253DDevEx%252C5038.1&rut=46cc8a0ed063ac11e82f6cf4a81393106e551e795b204fad648e0adbecb2235e\n\n[2] Trade Crypto CFDs From Home - Open Free Demo Account\n80% of retail CFD accounts lose money. CFD Service. Buy/Short CFDs on Bitcoin . Bitcoin , Ethereum, Litecoin. Trade Your Favorite!\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dplus500.com%26ad_provider%3Dbingv7aa%26ad_type%3Dtxad%26click_metadata%3DwEDOQcYmRD8R2HV2VdchAmCB7PzD4r8cRWo4crfZB2RC08BmJOyqDmgK783067NqpynQZrjpp5EYrhyfst9qYY17yOogwxgtMrt4J4kyZo8pTyo7D8o_0H52Wcd9AzC7fjORUJmPkrsw7ycfiERkTidywqZ1vwLTGTA_ps7Ud9o._FYYAH5pDLXe1UjKYrzk3w%26rut%3Dc53a1b15a805da20d9c361765723778720101a9888b19250ba86f332cbb8d63e%26u3%3Dhttps%253A%252F%252Fwww.bing.com%252Faclick%253Fld%253De8djo5Pm5ZYhKiXrem1RhVKjVUCUxoig03AfE7mYoxSXZtdc1saxC1WSvJy1d_0jvrRawam_Y5tPetXG1FjO75bqyeX2%252DK9wygp129e1vsSYPHkyqVL4GBPUQr45Uc54IEIGNjBifhI69lLASy%252DxBfkaG_I%252D9AAzq6oeN_lhdRUr4oPU%252DKCVkD9zNNmqr0rEfS4kYNrPW7UEwqNi9GMyzQ7x7bNv8%2526u%253DaHR0cHMlM2ElMmYlMmZ3d3cucGx1czUwMC5jb20lMmZUcmFkaW5nJTJmQ3J5cHRvQ3VycmVuY2llcyUzZmlkJTNkMTQwOCUyNnRhZ3MlM2RiaV9zciUyYjYzODMzMjU0NF9jcGklMmJQb2xhbmRTZWFyY2hDcnlwdG9fY3AlMmIxMjUyMzQ1MDQ3NzYzMjU3X2FnaSUyYkNyeXB0by5CaXRjb2luc1ByaWNlc19hZ24lMmJidGMlMjUyMGt1cnNfa3MlMmJrd2QtNzgyNzE5MDk3NzIwNzclM2Fsb2MtMTUxX3RpZCUyYmJlX210JTJiY19kZSUyYnNfbnQlMmJfZXh0JTJiMTM3NDY2X2xvYyUyYlVVUkwlMjYlZDclOTAlMjZtc2Nsa2lkJTNkNzIwM2QzOTI3N2Y1MWJkYWNjMWViYTQ1ZDM4YTlhMjAlMjZ1dG1fc291cmNlJTNkYmluZyUyNnV0bV9tZWRpdW0lM2RjcGMlMjZ1dG1fY2FtcGFpZ24lM2RQb2xhbmRTZWFyY2hDcnlwdG8lMjZ1dG1fdGVybSUzZGJ0YyUyNTIwa3VycyUyNnV0bV9jb250ZW50JTNkQ3J5cHRvLkJpdGNvaW5zUHJpY2Vz%2526rlid%253D7203d39277f51bdacc1eba45d38a9a20%26vqd%3D4%2D155505419809251077047686888955847989344%26iurl%3D%257B1%257DIG%253DD5246C2FCCAA452F854272C04236E2BB%2526CID%253D30AC871900966E4D0C99902F01DF6F9B%2526ID%253DDevEx%252C5044.1&rut=3939e9b33586683957cbb5e0eb6f6c5c85b50ac5f86496ac85a5a80945831ff9\n\n[3] Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk\nLive Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice%2Fbitcoin&rut=c4018ff5615bbdd8bd05908d7e303270a2c105f4ce9cc3ff01ebd5eec85190e4\n\n[4] Bitcoin Price | BTC to USD Price Index and Live Chart - CoinDesk\nBitcoin news, USD price , real-time ( live ) charts. Learn about BTC value, bitcoin cryptocurrency, crypto trading, and more.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice%2Fbitcoin%3Fos%3Dvbkn42tqho5h1rnbcsportbayar%26ref%3Dapp&rut=22c0132525f8d6c7020f979dff968dde0b92136ec428955cdfd8eb2890c96348\n\n[5] Top Cryptocurrency Prices and Market Cap - CoinDesk\nLeader in cryptocurrency, Bitcoin , Ethereum, XRP, blockchain, DeFi, digital finance and Web 3.0 news with analysis, video and live price updates.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice&rut=9b4bc6bdd5d0d839d0a2292668404facbfb2464566f8793b20b5a57048aa72da\n\n[6] Bitcoin Preis heute, BTC Live-Preis in USD ... - CoinDesk\nLive - Bitcoin -Preisschwankungen aus allen M\u00e4rkten und BTC-Marktkapitalisierung, nutzen Sie unsere Charts und sehen Sie, wann es eine Gelegenheit zum Kaufen oder Verkaufen gibt.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fde%2Fprice%2Fbitcoin&rut=279af24502bcc379d472ac6a53874fd452d45c2bd65611550dfc32618607a7a4\n\n[7] Bitcoin harga hari ini, BTC harga live USD, kapitalisasi pasar, dan ...\nLive Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fid%2Fprice%2Fbitcoin&rut=28e6b87ea593dc899ae70a8f5c7bc0806f1ce2b85d2f061baee56056bd791140\n\n[8] Bitcoin prijs vandaag, BTC live USD-prijs, marktkapitalisatie en ...\nLive Bitcoin -prijsbewegingen van alle markten en BTC-marktkapitalisatie, gebruik onze grafieken en zie wanneer er een kans is om te kopen of verkopen.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fnl%2Fprice%2Fbitcoin&rut=25da742ef6012552e2994459045b376a707aeaf019618e953e8d4d8aa650bb88\n\n[9] Convert BTC to USD: Bitcoin to United States Dollar - CoinDesk\nLeader in cryptocurrency, Bitcoin , Ethereum, XRP, blockchain, DeFi, digital finance and Web 3.0 news with analysis, video and live price updates.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fcalculator%2Fbtc%2Fusd&rut=09e1804f679bd9473500cc597057a14641aaf0f404732ae267bd542a75a98b9f\n\n[10] Bitcoin prijs vandaag, BTC live USD-prijs, marktkapitalisatie en ...\nLive Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fnl%2Fprice%2Fbtc&rut=a99381ddbd556967edb29f5b60c084fbcdd65f55eff81398f5a394635cf05cd7",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "query": "Bitcoin price USD live site:coindesk.com",
+      "results": [
+        {
+          "title": "Kraken | Buy Bitcoin & Crypto - Quick and Easy Signup",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dkraken.com%26ad_provider%3Dbingv7aa%26ad_type%3Dtxad%26click_metadata%3DbH%252D8QuinroRdDyFk34qycO12Z1Os4WsD1Z4FpwqU%252D5BcmCjOTiEy0X3lcwtP3UILHesehMCo3QsCLsSfC1dUdkvZnY1BuB%252DR1LaFREs5j0wXZ8QtoxB_k7WZFB8m45V2mLtlfwgSqAh%252D0Q1%252D3HqFudXikIzsM%252DijGoS8x6RO0ak.Q2_xkFfFZF3Zrmf6h0Gkbw%26rut%3D23022ef783605be4e178b13b1e9b16f9df249531e4b0717ad99cde87009f285e%26u3%3Dhttps%253A%252F%252Fwww.bing.com%252Faclick%253Fld%253De8jwiou0pEg0p2FZBxjoADHDVUCUyrFridAlhB59w%252D26bySJ440t8zCaw7DGKn8MW02nA9vUwcdiZB1lpM13vnjKjG3%252DtARCglpHmJ6WJZH0Adm94rvvaRauyfuEkbNNHbT205w%252DfwzpwjUvnPNL0GmzmnZg7HgAzrXQNBJnnVJNRQ0seLOTl4ZNLBogrvClB8rTYZ9mWrNcEwPFFeRjz2aK_ZYKc%2526u%253DaHR0cHMlM2ElMmYlMmZ3d3cua3Jha2VuLmNvbSUyZmxwJTJmcGxhdGZvcm0lM2Z1dG1fc291cmNlJTNkYmluZyUyNnV0bV9tZWRpdW0lM2RjcGMlMjZ1dG1fY2FtcGFpZ24lM2RicmFuZF9rcmFrZW5fYmxlbmRlZF9ldV9zcmNfYmluZ19ici1teF9hY3FfMjAyNl9xMV9jcnlwdG9rZXl3b3Jkc19wZXJfeCUyNnV0bV9jb250ZW50JTNkMTMyMzgxNDc0NDA0NzYyNiUyNnV0bV90ZXJtJTNkQml0Y29pbiUyNTIwcHJpY2UlMjUyMFVTRCUyNTIwbGl2ZSUyNm1zY2xraWQlM2Q2Y2NiMmE1YTQ5Y2YxMDFmYzIzNDQzOGRlZGIwYTNkYQ%2526rlid%253D6ccb2a5a49cf101fc234438dedb0a3da%26vqd%3D4%2D44497538261547864543145225870967047947%26iurl%3D%257B1%257DIG%253DD5246C2FCCAA452F854272C04236E2BB%2526CID%253D30AC871900966E4D0C99902F01DF6F9B%2526ID%253DDevEx%252C5038.1&rut=46cc8a0ed063ac11e82f6cf4a81393106e551e795b204fad648e0adbecb2235e",
+          "snippet": "Select from crypto bundles focused on blue chips, memecoins, AI, and more. Buy and Sell 500+ Assets. Low Fees, High Liquidity & Excellent Customer Service."
+        },
+        {
+          "title": "Trade Crypto CFDs From Home - Open Free Demo Account",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dplus500.com%26ad_provider%3Dbingv7aa%26ad_type%3Dtxad%26click_metadata%3DwEDOQcYmRD8R2HV2VdchAmCB7PzD4r8cRWo4crfZB2RC08BmJOyqDmgK783067NqpynQZrjpp5EYrhyfst9qYY17yOogwxgtMrt4J4kyZo8pTyo7D8o_0H52Wcd9AzC7fjORUJmPkrsw7ycfiERkTidywqZ1vwLTGTA_ps7Ud9o._FYYAH5pDLXe1UjKYrzk3w%26rut%3Dc53a1b15a805da20d9c361765723778720101a9888b19250ba86f332cbb8d63e%26u3%3Dhttps%253A%252F%252Fwww.bing.com%252Faclick%253Fld%253De8djo5Pm5ZYhKiXrem1RhVKjVUCUxoig03AfE7mYoxSXZtdc1saxC1WSvJy1d_0jvrRawam_Y5tPetXG1FjO75bqyeX2%252DK9wygp129e1vsSYPHkyqVL4GBPUQr45Uc54IEIGNjBifhI69lLASy%252DxBfkaG_I%252D9AAzq6oeN_lhdRUr4oPU%252DKCVkD9zNNmqr0rEfS4kYNrPW7UEwqNi9GMyzQ7x7bNv8%2526u%253DaHR0cHMlM2ElMmYlMmZ3d3cucGx1czUwMC5jb20lMmZUcmFkaW5nJTJmQ3J5cHRvQ3VycmVuY2llcyUzZmlkJTNkMTQwOCUyNnRhZ3MlM2RiaV9zciUyYjYzODMzMjU0NF9jcGklMmJQb2xhbmRTZWFyY2hDcnlwdG9fY3AlMmIxMjUyMzQ1MDQ3NzYzMjU3X2FnaSUyYkNyeXB0by5CaXRjb2luc1ByaWNlc19hZ24lMmJidGMlMjUyMGt1cnNfa3MlMmJrd2QtNzgyNzE5MDk3NzIwNzclM2Fsb2MtMTUxX3RpZCUyYmJlX210JTJiY19kZSUyYnNfbnQlMmJfZXh0JTJiMTM3NDY2X2xvYyUyYlVVUkwlMjYlZDclOTAlMjZtc2Nsa2lkJTNkNzIwM2QzOTI3N2Y1MWJkYWNjMWViYTQ1ZDM4YTlhMjAlMjZ1dG1fc291cmNlJTNkYmluZyUyNnV0bV9tZWRpdW0lM2RjcGMlMjZ1dG1fY2FtcGFpZ24lM2RQb2xhbmRTZWFyY2hDcnlwdG8lMjZ1dG1fdGVybSUzZGJ0YyUyNTIwa3VycyUyNnV0bV9jb250ZW50JTNkQ3J5cHRvLkJpdGNvaW5zUHJpY2Vz%2526rlid%253D7203d39277f51bdacc1eba45d38a9a20%26vqd%3D4%2D155505419809251077047686888955847989344%26iurl%3D%257B1%257DIG%253DD5246C2FCCAA452F854272C04236E2BB%2526CID%253D30AC871900966E4D0C99902F01DF6F9B%2526ID%253DDevEx%252C5044.1&rut=3939e9b33586683957cbb5e0eb6f6c5c85b50ac5f86496ac85a5a80945831ff9",
+          "snippet": "80% of retail CFD accounts lose money. CFD Service. Buy/Short CFDs on Bitcoin . Bitcoin , Ethereum, Litecoin. Trade Your Favorite!"
+        },
+        {
+          "title": "Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice%2Fbitcoin&rut=c4018ff5615bbdd8bd05908d7e303270a2c105f4ce9cc3ff01ebd5eec85190e4",
+          "snippet": "Live Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell."
+        },
+        {
+          "title": "Bitcoin Price | BTC to USD Price Index and Live Chart - CoinDesk",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice%2Fbitcoin%3Fos%3Dvbkn42tqho5h1rnbcsportbayar%26ref%3Dapp&rut=22c0132525f8d6c7020f979dff968dde0b92136ec428955cdfd8eb2890c96348",
+          "snippet": "Bitcoin news, USD price , real-time ( live ) charts. Learn about BTC value, bitcoin cryptocurrency, crypto trading, and more."
+        },
+        {
+          "title": "Top Cryptocurrency Prices and Market Cap - CoinDesk",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice&rut=9b4bc6bdd5d0d839d0a2292668404facbfb2464566f8793b20b5a57048aa72da",
+          "snippet": "Leader in cryptocurrency, Bitcoin , Ethereum, XRP, blockchain, DeFi, digital finance and Web 3.0 news with analysis, video and live price updates."
+        },
+        {
+          "title": "Bitcoin Preis heute, BTC Live-Preis in USD ... - CoinDesk",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fde%2Fprice%2Fbitcoin&rut=279af24502bcc379d472ac6a53874fd452d45c2bd65611550dfc32618607a7a4",
+          "snippet": "Live - Bitcoin -Preisschwankungen aus allen M\u00e4rkten und BTC-Marktkapitalisierung, nutzen Sie unsere Charts und sehen Sie, wann es eine Gelegenheit zum Kaufen oder Verkaufen gibt."
+        },
+        {
+          "title": "Bitcoin harga hari ini, BTC harga live USD, kapitalisasi pasar, dan ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fid%2Fprice%2Fbitcoin&rut=28e6b87ea593dc899ae70a8f5c7bc0806f1ce2b85d2f061baee56056bd791140",
+          "snippet": "Live Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell."
+        },
+        {
+          "title": "Bitcoin prijs vandaag, BTC live USD-prijs, marktkapitalisatie en ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fnl%2Fprice%2Fbitcoin&rut=25da742ef6012552e2994459045b376a707aeaf019618e953e8d4d8aa650bb88",
+          "snippet": "Live Bitcoin -prijsbewegingen van alle markten en BTC-marktkapitalisatie, gebruik onze grafieken en zie wanneer er een kans is om te kopen of verkopen."
+        },
+        {
+          "title": "Convert BTC to USD: Bitcoin to United States Dollar - CoinDesk",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fcalculator%2Fbtc%2Fusd&rut=09e1804f679bd9473500cc597057a14641aaf0f404732ae267bd542a75a98b9f",
+          "snippet": "Leader in cryptocurrency, Bitcoin , Ethereum, XRP, blockchain, DeFi, digital finance and Web 3.0 news with analysis, video and live price updates."
+        },
+        {
+          "title": "Bitcoin prijs vandaag, BTC live USD-prijs, marktkapitalisatie en ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fnl%2Fprice%2Fbtc&rut=a99381ddbd556967edb29f5b60c084fbcdd65f55eff81398f5a394635cf05cd7",
+          "snippet": "Live Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell."
+        }
+      ],
+      "provider": "duckduckgo"
+    }
+  },
+  {
+    "content": "open_url: Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk Search / News Video Prices Research Consensus 2026 Data & Indices Sponsored Search / en BTC Bitcoin $ 71,147.04 0.65 % \u2728 What is BTC? Market Cap . # 1 $ 1,423,905,094,976 Volume (24h) # 2 $ 14,915,915,507 Supply ( Circ. / Total / Max ) 20.01M / 20.01M / 21.00M Overview News Markets Bitcoin BTC BTC $ 71,147.04 0.65 % Overview News Markets Loading chart... Market Cap . # 1 $ 1,423,905,094,976 Volume (24h) # 2 $ 14,915,915,507 Supply ( Circ. / Total / Max ) 20.01M / 20.01M / 21.00M Launch Date 2009-01-03 Block Number 944,338 Block Reward 3.13 Last Block Size 1,600,069 Network H/s 1063918307.97T 2009-01-03 Launch Date 944,338 Block Number 3.13 Block Reward 1,600,069 Last Block Size 1063918307.97T Network H/s Bitcoin Price Converter Bitcoin Information Resources Websites bitcoin.org Whitepaper Block Explorers blockchain.info Hashing Algorithms Supported Standards Industries Research Reports Featured Crypto Exchange Volumes Hit 16-Month Low as Market Volatility Fades Mar 11, 2026 Trading Activity Falls to the Lowest Level Since October 2024 Jan 13, 2026 Join thousands of readers who rely on CoinDesk for data-driven insights on the latest digital asset trends. Sign up By signing up, you will receive emails about CoinDesk products and you agree to our terms & conditions and privacy policy . View all Research Bitcoin Markets About Bitcoin Bitcoin is a decentralized cryptocurrency that uses peer-to-peer technology and a blockchain to record transactions. It was created by Satoshi Nakamoto and the first block was mined on January 3, 2009. Bitcoin transactions are recorded on a blockchain, which is a distributed ledger that can be accessed by anyone to verify transactions. Transactions are verified by miners, who are rewarded with a set amount of Bitcoin and transaction fees. The supply of Bitcoin is limited to 21 million coins and it is divisible to eight decimal places. A wallet is needed to use Bitcoin and it consists of a public key, which is used to send and receive payments, and a private key, which is used to control the wallet. Bitcoin can be used for a variety of purposes, including everyday transactions, as a store of value, or for investment. What is Bitcoin? Bitcoin is a decentralized digital currency that uses cryptography to secure transactions and control the supply of new coins. It operates on a peer-to-peer network, where every transaction is recorded on a public ledger called the blockchain . As the first digital currency to enable direct transfers of value without intermediaries, Bitcoin has pioneered a new approach to money. Today, it functions as both a medium of exchange and a store of value, influencing global finance and inspiring many other digital currencies. Each bitcoin is made up of 100 million satoshis , making it divisible up to eight decimal places. This means that anyone can purchase a fraction of a bitcoin with as little as one U.S. dollar. So, who created Bitcoin? That\u2019s a question that has intrigued many. Bitcoin was created by an unknown person or group using the name Satoshi Nakamoto . In 2008, Satoshi published a whitepaper titled \u201c Bitcoin: A Peer-to-Peer Electronic Cash System \u201d that outlined a method for sending money directly between individuals without relying on central authorities. The network came to life in January 2009 with the mining of the genesis block , marking Bitcoin\u2019s official launch. Despite numerous investigations, Satoshi Nakamoto\u2019s true identity remains a mystery . Then, who manages Bitcoin? How does Bitcoin work? How does Bitcoin mining work? What are Bitcoin Halvings? Why Does Bitcoin Appreciate in Value? Bitcoin (BTC) Price What is Bitcoin\u2019s All-Time High? How to Buy Bitcoin How is Bitcoin Stored? What is Bitcoin\u2019s Energy Consumption? What is a Bitcoin ETF? How to Invest in a Bitcoin ETF About About Us Masthead Careers Blog Investor Relations Contact Contact Us Accessibility Advertise Sitemap System sta",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "url": "https://www.coindesk.com/price/bitcoin",
+      "max_chars": 4000,
+      "fetch_method": "urllib",
+      "status_code": 200,
+      "final_url": "https://www.coindesk.com/price/bitcoin",
+      "title": "Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk",
+      "warnings": [
+        "playwright failed: BrowserType.launch: Executable doesn't exist at /Users/rahulraj/Library/Caches/ms-playwright/chromium_headless_shell-1155/chrome-mac/headless_shell\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n\u2551 Looks like Playwright was just installed or updated.       \u2551\n\u2551 Please run the following command to download new browsers: \u2551\n\u2551                                                            \u2551\n\u2551     playwright install                                     \u2551\n\u2551                                                            \u2551\n\u2551 <3 Playwright Team                                         \u2551\n\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"
+      ]
+    }
+  },
+  {
+    "content": "web_search: No results found.",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "query": "Bitcoin price USD live site:coingecko.com",
+      "results": [],
+      "provider": "duckduckgo"
+    }
+  },
+  {
+    "content": "plan_task: Goal: You are an autonomous research agent. Task: find today's Bitcoin (BTC) price in USD from TWO independent live sources, then compare them.\n\nRules \u2014 you MUST follow every rule:\n1. First, think step-by-step about your plan before acting.\n2. Call `web_search` at least once to locate candidate sources.\n3. Call `open_url` on at least TWO different URLs to fetch actual prices.\n4. Do NOT answer from prior knowledge \u2014 only use what the tools return.\n5. Finish with a short markdown report: a table of (source, price, timestamp)    followed by a 1-sentence reconciliation.\nIf tools fail, retry with a different query or URL before giving up.\nPlan:\n1. Clarify the target output and inputs.\n2. Select the right tools and gather evidence.\n3. Execute the task in small verifiable steps.\n4. Verify the result against constraints.\n5. Return the final deliverable and note any residual risks.",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "goal": "You are an autonomous research agent. Task: find today's Bitcoin (BTC) price in USD from TWO independent live sources, then compare them.\n\nRules \u2014 you MUST follow every rule:\n1. First, think step-by-step about your plan before acting.\n2. Call `web_search` at least once to locate candidate sources.\n3. Call `open_url` on at least TWO different URLs to fetch actual prices.\n4. Do NOT answer from prior knowledge \u2014 only use what the tools return.\n5. Finish with a short markdown report: a table of (source, price, timestamp)    followed by a 1-sentence reconciliation.\nIf tools fail, retry with a different query or URL before giving up.",
+      "constraints": []
+    }
+  },
+  {
+    "content": "web_search: [1] Use USD, EUR & More - Quick and Easy Signup\nBuy and Sell 500+ Assets. Low Fees, High Liquidity & Excellent Customer Service. Select from crypto bundles focused on blue chips, memecoins, AI, and more.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dkraken.com%26ad_provider%3Dbingv7aa%26ad_type%3Dtxad%26click_metadata%3DVHDmXZeKHG7LZcuAFNyB2e7iKN8HecYcXxFtVyO4VPTD0F%252DIzIwpWhi5zoPQYf6BUz8Mk6fkhqi11ayKuRHv5w%252DHBhTsg8uJEYioxC_cAenEgvVkF18CA85%252D6m1rMtdPoX3T2dRd4sKDXeth0_li1YbmsJWv%252DEc5fXfXRfUhrG4.BHOMe6jPy_j1urvuZtHCbg%26rut%3Dc6024807a170dd3b35526729d113581b67ff0f0cf2e7fdf0dea1d91a1651a5d5%26u3%3Dhttps%253A%252F%252Fwww.bing.com%252Faclick%253Fld%253De8LKQIRiO3Ta4nEPSqz4FICjVUCUxKii_K%252DVj_gLpy%252DmmvHNp8HXBedMl0N2TwFUKtBcuIFGIVgvNgseR5WqeG2mYcR4GEsj%252DyIR9um0bVpxnaiISs2ZDf5VODwfojNIe1cEDOmdxM8AqiTEa60Px8M6KiFzSBUo2LTJnFNLXMJO4aoYaR%252DnDYfhzN85H4Hr%252DmgCfe_Zgr7ez7jcv4ZDoDZl7cv_4%2526u%253DaHR0cHMlM2ElMmYlMmZ3d3cua3Jha2VuLmNvbSUyZmxwJTJmcGxhdGZvcm0lM2Z1dG1fc291cmNlJTNkYmluZyUyNnV0bV9tZWRpdW0lM2RjcGMlMjZ1dG1fY2FtcGFpZ24lM2RicmFuZF9rcmFrZW5fYmxlbmRlZF9ldV9zcmNfYmluZ19ici1teF9hY3FfMjAyNl9xMV9jcnlwdG9rZXl3b3Jkc19wZXJfeCUyNnV0bV9jb250ZW50JTNkMTMyMzgxNDc0NDA0NzYyNiUyNnV0bV90ZXJtJTNkQml0Y29pbiUyNTIwcHJpY2UlMjUyMFVTRCUyNTIwbGl2ZSUyNm1zY2xraWQlM2RiODRjYjk4OTg1OTIxNGI3M2VjMmQwNWUyMTQyMGNiZg%2526rlid%253Db84cb989859214b73ec2d05e21420cbf%26vqd%3D4%2D130362681664901107026284443566912372029%26iurl%3D%257B1%257DIG%253D64C6B910749F4FD0B1CD532A8B9961FC%2526CID%253D2FF2620FB0E76F86312C7539B1566E9C%2526ID%253DDevEx%252C5045.1&rut=63a51839dd6633992fb2ae044a02200e5c830e5cb09ae462dfad78c5032d116e\n\n[2] Trade Crypto CFDs From Home - Open Free Demo Account\n80% of retail CFD accounts lose money. CFD Service. Buy/Short CFDs on Bitcoin . Bitcoin , Ethereum, Litecoin. Trade Your Favorite!\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dplus500.com%26ad_provider%3Dbingv7aa%26ad_type%3Dtxad%26click_metadata%3DYG9iFBoWeXWDYLmrK_BI7Mpn6SG9fP3J_g1NfOXi51o25pmmBtF1DYMYD1yhlroGbD6RO2TrNzNSYgFGtIkfGK51dtN8AXgmabcLd62V46zo8IZGcT_xGGXQ9Wr6EQgtYic2KZHXYpPomgh5M20VGXxS02oql03Zqw2FTn0HAL4.760%252DkRQrgoVZOEGPjuGzAw%26rut%3D6bbc3e33613642b67295d90229ac36d9d0df58e3193710e5fa449c7ddd651a7b%26u3%3Dhttps%253A%252F%252Fwww.bing.com%252Faclick%253Fld%253De8PbsfzmjSblPyCaMf1rPetjVUCUza9yb6WufHEYN7woHQU0IAdQ1volCFdOrBV8_dC9k6oVxk%252DdPnDYEfBFfUNvj%252D48thaARoFV64vd%252DpaQ6gesg4hX3hz0PHqZwi3SbXbo4sAkGEzduQCuMA9FOXfr3FQjtuoM%252DV7KY%252DwcHCsP_SUgwoffl0zW4vI5TPScrmrrURHaGNQCgxU%252D2jaMuSPGony0U%2526u%253DaHR0cHMlM2ElMmYlMmZ3d3cucGx1czUwMC5jb20lMmZUcmFkaW5nJTJmQ3J5cHRvQ3VycmVuY2llcyUzZmlkJTNkMTQwOCUyNnRhZ3MlM2RiaV9zciUyYjYzODMzMjU0NF9jcGklMmJQb2xhbmRTZWFyY2hDcnlwdG9fY3AlMmIxMjUyMzQ1MDQ3NzYzMjU3X2FnaSUyYkNyeXB0by5CaXRjb2luc1ByaWNlc19hZ24lMmJiaXRjb2lueSUyNTIwa3Vyc19rcyUyYmt3ZC03ODI3MTkwOTc3MjA3NiUzYWxvYy0xNTFfdGlkJTJiYmVfbXQlMmJjX2RlJTJic19udCUyYl9leHQlMmIxMzc0NjZfbG9jJTJiVVVSTCUyNiVkNyU5MCUyNm1zY2xraWQlM2Q5NWU3NTM3NDViOTExMTc0MjY1YjNhYTNmZjQxMWY5MSUyNnV0bV9zb3VyY2UlM2RiaW5nJTI2dXRtX21lZGl1bSUzZGNwYyUyNnV0bV9jYW1wYWlnbiUzZFBvbGFuZFNlYXJjaENyeXB0byUyNnV0bV90ZXJtJTNkYml0Y29pbnklMjUyMGt1cnMlMjZ1dG1fY29udGVudCUzZENyeXB0by5CaXRjb2luc1ByaWNlcw%2526rlid%253D95e753745b911174265b3aa3ff411f91%26vqd%3D4%2D316303255003166448596229694358153999955%26iurl%3D%257B1%257DIG%253D64C6B910749F4FD0B1CD532A8B9961FC%2526CID%253D2FF2620FB0E76F86312C7539B1566E9C%2526ID%253DDevEx%252C5051.1&rut=83d2246d1161d7e9df17d6846dda5ca37cb84072488756d6abf591c425f44430\n\n[3] Bitcoin BTC (BTC-USD) Live Price, News, Chart & Price History - Yahoo ...\nFind the live Bitcoin USD (BTC- USD ) price , history, news and other vital information to help with your cryptocurrency trading and investing.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2F&rut=6720058ae7a7328f3b0f6532bf93170ef51ae0111a9f59da2b8e653b11a83d29\n\n[4] Bitcoin USD (BTC-USD) Interactive Price Chart - Yahoo Finance\nInteractive Chart for Bitcoin USD (BTC- USD ), analyze all the data with a huge range of indicators.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2Fchart%2F&rut=606966f6bb061e9092944e666fd7a12a55e30023d92ab92497c6ba55e803d6eb\n\n[5] Bitcoin USD Price (BTC-USD) - Yahoo Finance\nDiscover historical prices of Bitcoin USD (BTC- USD ) on Yahoo Finance. View daily, weekly or monthly formats.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2Fhistory%2F&rut=317b8353b2474410a05775d0d0b129c32da192aac2a7b700c5499f443411de90",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "query": "Bitcoin price USD live site:finance.yahoo.com",
+      "results": [
+        {
+          "title": "Use USD, EUR & More - Quick and Easy Signup",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dkraken.com%26ad_provider%3Dbingv7aa%26ad_type%3Dtxad%26click_metadata%3DVHDmXZeKHG7LZcuAFNyB2e7iKN8HecYcXxFtVyO4VPTD0F%252DIzIwpWhi5zoPQYf6BUz8Mk6fkhqi11ayKuRHv5w%252DHBhTsg8uJEYioxC_cAenEgvVkF18CA85%252D6m1rMtdPoX3T2dRd4sKDXeth0_li1YbmsJWv%252DEc5fXfXRfUhrG4.BHOMe6jPy_j1urvuZtHCbg%26rut%3Dc6024807a170dd3b35526729d113581b67ff0f0cf2e7fdf0dea1d91a1651a5d5%26u3%3Dhttps%253A%252F%252Fwww.bing.com%252Faclick%253Fld%253De8LKQIRiO3Ta4nEPSqz4FICjVUCUxKii_K%252DVj_gLpy%252DmmvHNp8HXBedMl0N2TwFUKtBcuIFGIVgvNgseR5WqeG2mYcR4GEsj%252DyIR9um0bVpxnaiISs2ZDf5VODwfojNIe1cEDOmdxM8AqiTEa60Px8M6KiFzSBUo2LTJnFNLXMJO4aoYaR%252DnDYfhzN85H4Hr%252DmgCfe_Zgr7ez7jcv4ZDoDZl7cv_4%2526u%253DaHR0cHMlM2ElMmYlMmZ3d3cua3Jha2VuLmNvbSUyZmxwJTJmcGxhdGZvcm0lM2Z1dG1fc291cmNlJTNkYmluZyUyNnV0bV9tZWRpdW0lM2RjcGMlMjZ1dG1fY2FtcGFpZ24lM2RicmFuZF9rcmFrZW5fYmxlbmRlZF9ldV9zcmNfYmluZ19ici1teF9hY3FfMjAyNl9xMV9jcnlwdG9rZXl3b3Jkc19wZXJfeCUyNnV0bV9jb250ZW50JTNkMTMyMzgxNDc0NDA0NzYyNiUyNnV0bV90ZXJtJTNkQml0Y29pbiUyNTIwcHJpY2UlMjUyMFVTRCUyNTIwbGl2ZSUyNm1zY2xraWQlM2RiODRjYjk4OTg1OTIxNGI3M2VjMmQwNWUyMTQyMGNiZg%2526rlid%253Db84cb989859214b73ec2d05e21420cbf%26vqd%3D4%2D130362681664901107026284443566912372029%26iurl%3D%257B1%257DIG%253D64C6B910749F4FD0B1CD532A8B9961FC%2526CID%253D2FF2620FB0E76F86312C7539B1566E9C%2526ID%253DDevEx%252C5045.1&rut=63a51839dd6633992fb2ae044a02200e5c830e5cb09ae462dfad78c5032d116e",
+          "snippet": "Buy and Sell 500+ Assets. Low Fees, High Liquidity & Excellent Customer Service. Select from crypto bundles focused on blue chips, memecoins, AI, and more."
+        },
+        {
+          "title": "Trade Crypto CFDs From Home - Open Free Demo Account",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fduckduckgo.com%2Fy.js%3Fad_domain%3Dplus500.com%26ad_provider%3Dbingv7aa%26ad_type%3Dtxad%26click_metadata%3DYG9iFBoWeXWDYLmrK_BI7Mpn6SG9fP3J_g1NfOXi51o25pmmBtF1DYMYD1yhlroGbD6RO2TrNzNSYgFGtIkfGK51dtN8AXgmabcLd62V46zo8IZGcT_xGGXQ9Wr6EQgtYic2KZHXYpPomgh5M20VGXxS02oql03Zqw2FTn0HAL4.760%252DkRQrgoVZOEGPjuGzAw%26rut%3D6bbc3e33613642b67295d90229ac36d9d0df58e3193710e5fa449c7ddd651a7b%26u3%3Dhttps%253A%252F%252Fwww.bing.com%252Faclick%253Fld%253De8PbsfzmjSblPyCaMf1rPetjVUCUza9yb6WufHEYN7woHQU0IAdQ1volCFdOrBV8_dC9k6oVxk%252DdPnDYEfBFfUNvj%252D48thaARoFV64vd%252DpaQ6gesg4hX3hz0PHqZwi3SbXbo4sAkGEzduQCuMA9FOXfr3FQjtuoM%252DV7KY%252DwcHCsP_SUgwoffl0zW4vI5TPScrmrrURHaGNQCgxU%252D2jaMuSPGony0U%2526u%253DaHR0cHMlM2ElMmYlMmZ3d3cucGx1czUwMC5jb20lMmZUcmFkaW5nJTJmQ3J5cHRvQ3VycmVuY2llcyUzZmlkJTNkMTQwOCUyNnRhZ3MlM2RiaV9zciUyYjYzODMzMjU0NF9jcGklMmJQb2xhbmRTZWFyY2hDcnlwdG9fY3AlMmIxMjUyMzQ1MDQ3NzYzMjU3X2FnaSUyYkNyeXB0by5CaXRjb2luc1ByaWNlc19hZ24lMmJiaXRjb2lueSUyNTIwa3Vyc19rcyUyYmt3ZC03ODI3MTkwOTc3MjA3NiUzYWxvYy0xNTFfdGlkJTJiYmVfbXQlMmJjX2RlJTJic19udCUyYl9leHQlMmIxMzc0NjZfbG9jJTJiVVVSTCUyNiVkNyU5MCUyNm1zY2xraWQlM2Q5NWU3NTM3NDViOTExMTc0MjY1YjNhYTNmZjQxMWY5MSUyNnV0bV9zb3VyY2UlM2RiaW5nJTI2dXRtX21lZGl1bSUzZGNwYyUyNnV0bV9jYW1wYWlnbiUzZFBvbGFuZFNlYXJjaENyeXB0byUyNnV0bV90ZXJtJTNkYml0Y29pbnklMjUyMGt1cnMlMjZ1dG1fY29udGVudCUzZENyeXB0by5CaXRjb2luc1ByaWNlcw%2526rlid%253D95e753745b911174265b3aa3ff411f91%26vqd%3D4%2D316303255003166448596229694358153999955%26iurl%3D%257B1%257DIG%253D64C6B910749F4FD0B1CD532A8B9961FC%2526CID%253D2FF2620FB0E76F86312C7539B1566E9C%2526ID%253DDevEx%252C5051.1&rut=83d2246d1161d7e9df17d6846dda5ca37cb84072488756d6abf591c425f44430",
+          "snippet": "80% of retail CFD accounts lose money. CFD Service. Buy/Short CFDs on Bitcoin . Bitcoin , Ethereum, Litecoin. Trade Your Favorite!"
+        },
+        {
+          "title": "Bitcoin BTC (BTC-USD) Live Price, News, Chart & Price History - Yahoo ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2F&rut=6720058ae7a7328f3b0f6532bf93170ef51ae0111a9f59da2b8e653b11a83d29",
+          "snippet": "Find the live Bitcoin USD (BTC- USD ) price , history, news and other vital information to help with your cryptocurrency trading and investing."
+        },
+        {
+          "title": "Bitcoin USD (BTC-USD) Interactive Price Chart - Yahoo Finance",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2Fchart%2F&rut=606966f6bb061e9092944e666fd7a12a55e30023d92ab92497c6ba55e803d6eb",
+          "snippet": "Interactive Chart for Bitcoin USD (BTC- USD ), analyze all the data with a huge range of indicators."
+        },
+        {
+          "title": "Bitcoin USD Price (BTC-USD) - Yahoo Finance",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2Fhistory%2F&rut=317b8353b2474410a05775d0d0b129c32da192aac2a7b700c5499f443411de90",
+          "snippet": "Discover historical prices of Bitcoin USD (BTC- USD ) on Yahoo Finance. View daily, weekly or monthly formats."
+        }
+      ],
+      "provider": "duckduckgo"
+    }
+  },
+  {
+    "content": "open_url: Your privacy choices guce guce Your privacy is important to us Yahoo is part of the Yahoo family of brands The sites and apps that we own and operate, including Yahoo and Engadget, and our digital advertising service, Yahoo Advertising. Yahoo family of brands . When you use our sites and apps, we use cookie policy .\"> Cookies Cookies (including similar technologies such as web storage) allow the operators of websites and apps to store and read information from your device. Learn more in our cookie policy . cookies to: provide our sites and apps to you authenticate users, apply security measures, and prevent spam and abuse, and Measurement We count the number of visitors to our pages, the type of device they use (iOS or Android), the browser they use and the duration of their visit to our websites and apps. This data is collected in aggregate and is not tied to specific users. measure your use of our sites and apps Your privacy choices If you click ' Accept all ', we and our partners , including 251 who are part of the IAB Transparency & Consent Framework, will also store and / or access information on a device (in other words, use cookies) and use precise geolocation data and other personal data such as Technical identifiers Technical identifiers are system-generated strings of letters and numbers that can identify your device or you as a user. They include browser cookies, device IDs and your IP address. They may be derived from hashed and / or encrypted email addresses or the statistical matching of other identifiers. technical identifiers and browsing and search data, for analytics, personalised advertising and content, advertising and content measurement, and audience research and services development. If you do not want us and our partners to use cookies and personal data for these additional purposes, click ' Reject all '. If you would like to customise your choices, click ' Manage privacy settings '. You can withdraw your consent or change your choices at any time by clicking on the 'Privacy and Cookie settings' or 'Privacy dashboard' links on our sites and apps. Find out more about how we use your personal data in our Privacy Policy and Cookie Policy . Accept all Reject all Manage privacy settings Go to end",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "url": "https://finance.yahoo.com/quote/BTC-USD",
+      "max_chars": 4000,
+      "fetch_method": "urllib",
+      "status_code": 200,
+      "final_url": "https://consent.yahoo.com/v2/collectConsent?sessionId=3_cc-session_88dbd031-1003-4eb0-96fe-b1b23077f675",
+      "title": "Your privacy choices",
+      "warnings": [
+        "playwright failed: BrowserType.launch: Executable doesn't exist at /Users/rahulraj/Library/Caches/ms-playwright/chromium_headless_shell-1155/chrome-mac/headless_shell\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n\u2551 Looks like Playwright was just installed or updated.       \u2551\n\u2551 Please run the following command to download new browsers: \u2551\n\u2551                                                            \u2551\n\u2551     playwright install                                     \u2551\n\u2551                                                            \u2551\n\u2551 <3 Playwright Team                                         \u2551\n\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"
+      ]
+    }
+  },
+  {
+    "content": "open_url: {\"bitcoin\":{\"usd\":71147}}",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+      "max_chars": 4000,
+      "fetch_method": "urllib",
+      "status_code": 200,
+      "final_url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+      "title": "",
+      "warnings": [
+        "playwright failed: BrowserType.launch: Executable doesn't exist at /Users/rahulraj/Library/Caches/ms-playwright/chromium_headless_shell-1155/chrome-mac/headless_shell\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n\u2551 Looks like Playwright was just installed or updated.       \u2551\n\u2551 Please run the following command to download new browsers: \u2551\n\u2551                                                            \u2551\n\u2551     playwright install                                     \u2551\n\u2551                                                            \u2551\n\u2551 <3 Playwright Team                                         \u2551\n\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"
+      ]
+    }
+  },
+  {
+    "content": "run_code: exit_code: 0\nstdout:\n2026-04-09T13:08:53.436861Z\nstderr:\n/Users/rahulraj/Documents/MYWORK/ai_developer/shipit_agent/.shipit_notebooks/streaming_demo/code_execution/tmp__b49601.py:2: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n  now = datetime.datetime.utcnow().isoformat() + 'Z'",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "language": "python",
+      "supported_languages": [
+        "bash",
+        "javascript",
+        "lua",
+        "perl",
+        "php",
+        "python",
+        "r",
+        "ruby",
+        "sh",
+        "typescript",
+        "zsh"
+      ],
+      "exit_code": 0,
+      "stdout": "2026-04-09T13:08:53.436861Z\n",
+      "stderr": "/Users/rahulraj/Documents/MYWORK/ai_developer/shipit_agent/.shipit_notebooks/streaming_demo/code_execution/tmp__b49601.py:2: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n  now = datetime.datetime.utcnow().isoformat() + 'Z'\n",
+      "script_path": "/Users/rahulraj/Documents/MYWORK/ai_developer/shipit_agent/.shipit_notebooks/streaming_demo/code_execution/tmp__b49601.py",
+      "workspace_root": "/Users/rahulraj/Documents/MYWORK/ai_developer/shipit_agent/.shipit_notebooks/streaming_demo/code_execution"
+    }
   }
 ]

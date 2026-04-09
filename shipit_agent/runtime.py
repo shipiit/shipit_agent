@@ -114,7 +114,19 @@ class AgentRuntime:
             context=context,
         )
         state.tool_results.append(tool_result)
-        state.messages.append(Message(role="tool", name=planner.name, content=tool_result.output))
+        # IMPORTANT: do NOT append this as role="tool". The planner runs before
+        # the first assistant turn, so there is no matching `tool_use` block to
+        # pair with. Bedrock's Converse API rejects unpaired toolResult blocks
+        # with "number of toolResult blocks exceeds number of toolUse blocks of
+        # previous turn". Inject it as a regular user-role context message
+        # instead — no pairing required, and the LLM still sees the plan.
+        state.messages.append(
+            Message(
+                role="user",
+                content=f"[Planner output]\n{tool_result.output}",
+                metadata={"source": "planner", "planner_tool": planner.name},
+            )
+        )
         self.emit(state, "planning_completed", "Planner completed", output=tool_result.output)
 
     def _complete_with_retry(self, *, state: RuntimeState, messages: list[Message], tools: list[dict[str, Any]], base_prompt: str) -> LLMResponse:
@@ -185,6 +197,21 @@ class AgentRuntime:
                 base_prompt=base_prompt,
             )
 
+            if response.reasoning_content:
+                self.emit(
+                    state,
+                    "reasoning_started",
+                    "Model reasoning started",
+                    iteration=iteration,
+                )
+                self.emit(
+                    state,
+                    "reasoning_completed",
+                    "Model reasoning completed",
+                    iteration=iteration,
+                    content=response.reasoning_content,
+                )
+
             if not response.tool_calls:
                 break
 
@@ -217,6 +244,32 @@ class AgentRuntime:
                 )
                 tool = registry.get(tool_call.name)
                 if tool is None:
+                    # Tool hallucinated by the model — we still MUST append a
+                    # tool-result message so the tool_use/tool_result pairing
+                    # stays balanced. Otherwise Bedrock's Converse API rejects
+                    # the next turn with a pairing error.
+                    error_output = (
+                        f"Error: tool '{tool_call.name}' is not registered. "
+                        f"Choose a different tool from the available list."
+                    )
+                    self.emit(
+                        state,
+                        "tool_failed",
+                        f"Tool failed: {tool_call.name}",
+                        error="tool_not_registered",
+                        iteration=iteration,
+                    )
+                    state.messages.append(
+                        Message(
+                            role="tool",
+                            name=tool_call.name,
+                            content=error_output,
+                            metadata={
+                                "tool_call_id": tool_call_records[tool_call_index]["id"],
+                                "error": "tool_not_registered",
+                            },
+                        )
+                    )
                     continue
                 self.emit(state, "tool_called", f"Tool called: {tool_call.name}", arguments=tool_call.arguments, iteration=iteration)
                 attempt = 0
@@ -252,6 +305,33 @@ class AgentRuntime:
                         payload=dict(tool_result.metadata),
                     )
 
+        # If the loop exited because we hit `max_iterations` while the
+        # model was still calling tools, the last response has no prose
+        # content — the caller would see an empty final answer. Give the
+        # model ONE more turn with `tools=[]` so it's forced to write a
+        # natural-language summary of what it learned.
+        hit_iteration_cap = bool(response.tool_calls) and not response.content
+        if hit_iteration_cap:
+            self.emit(
+                state,
+                "step_started",
+                "Final summarization turn (iteration cap reached)",
+                tool_count=0,
+                iteration=self.max_iterations + 1,
+            )
+            try:
+                summary = self._complete_with_retry(
+                    state=state,
+                    messages=list(state.messages),
+                    tools=[],  # force text-only completion
+                    base_prompt=base_prompt,
+                )
+                if summary.content:
+                    response = summary
+            except Exception:
+                # Don't let summarization failures mask the whole run.
+                pass
+
         if response.content:
             state.messages.append(Message(role="assistant", content=response.content, metadata=dict(response.metadata)))
 
@@ -264,7 +344,16 @@ class AgentRuntime:
                 )
             )
         self.session_store.save(SessionRecord(session_id=self.session_id, messages=list(state.messages)))
-        self.emit(state, "run_completed", "Agent run completed", output=response.content)
+        # Expose the final answer as both `output` (legacy) and `content`
+        # (explicit markdown string) so consumers can render it directly.
+        self.emit(
+            state,
+            "run_completed",
+            "Agent run completed",
+            output=response.content,
+            content=response.content,
+            format="markdown",
+        )
         for mcp in self.mcps:
             close = getattr(mcp, "close", None)
             if callable(close):

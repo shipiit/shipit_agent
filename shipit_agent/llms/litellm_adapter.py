@@ -67,11 +67,64 @@ class LiteLLMChatLLM:
                     arguments=json.loads(arguments) if isinstance(arguments, str) else arguments,
                 )
             )
+        reasoning_content = _extract_reasoning(message)
         return LLMResponse(
             content=getattr(message, "content", "") or "",
             tool_calls=tool_calls,
             metadata={"model": self.model, "provider": "litellm"},
+            reasoning_content=reasoning_content,
         )
+
+
+def _extract_reasoning(message: Any) -> str | None:
+    """Pull thinking/reasoning content out of a litellm response message.
+
+    Handles multiple provider shapes:
+    - OpenAI o-series / gpt-oss / DeepSeek R1 → `message.reasoning_content`
+    - Anthropic Claude extended thinking → `message.thinking_blocks[*].thinking`
+    - Bedrock Llama 4 direct → raw `{"type": "reasoning", "content": ...}` dicts
+    - Fallback → inspect `message.model_dump()` for any of the above keys
+    """
+    # 1. Flat reasoning_content attribute (most providers via litellm)
+    reasoning = getattr(message, "reasoning_content", None)
+    if reasoning:
+        return reasoning if isinstance(reasoning, str) else str(reasoning)
+
+    # 2. Anthropic-style thinking blocks
+    thinking_blocks = getattr(message, "thinking_blocks", None)
+    if thinking_blocks:
+        parts: list[str] = []
+        for block in thinking_blocks:
+            if isinstance(block, dict):
+                text = block.get("thinking") or block.get("text") or ""
+            else:
+                text = getattr(block, "thinking", "") or getattr(block, "text", "")
+            if text:
+                parts.append(text)
+        if parts:
+            return "\n".join(parts)
+
+    # 3. Fallback — inspect the pydantic/dict form
+    dump: dict[str, Any] | None = None
+    if hasattr(message, "model_dump"):
+        try:
+            dump = message.model_dump()
+        except Exception:
+            dump = None
+    if dump:
+        if dump.get("reasoning_content"):
+            return str(dump["reasoning_content"])
+        blocks = dump.get("thinking_blocks") or []
+        parts = [
+            b.get("thinking") or b.get("text") or ""
+            for b in blocks
+            if isinstance(b, dict)
+        ]
+        parts = [p for p in parts if p]
+        if parts:
+            return "\n".join(parts)
+
+    return None
 
 
 class BedrockChatLLM(LiteLLMChatLLM):

@@ -39,10 +39,30 @@ SUPPORTED_PROVIDERS = (
 )
 
 
-def load_env_file(path: str | Path = '.env') -> dict[str, str]:
-    env_path = Path(path)
+def _discover_env_file() -> Path | None:
+    """Walk up from CWD looking for a .env file.
+
+    Notebooks run with CWD=notebooks/, scripts with CWD=repo-root. Either way
+    we want to find a .env at the project root so users can set credentials
+    once and switch providers with `SHIPIT_LLM_PROVIDER=openai` etc.
+    """
+    start = Path.cwd().resolve()
+    for candidate in (start, *start.parents):
+        dotenv = candidate / '.env'
+        if dotenv.exists():
+            return dotenv
+    return None
+
+
+def load_env_file(path: str | Path | None = None) -> dict[str, str]:
+    """Load a .env file into os.environ (without overriding existing vars).
+
+    If ``path`` is None, walks upward from CWD to discover one. Returns the
+    map of keys that were loaded so callers can log or inspect them.
+    """
+    env_path = Path(path) if path else _discover_env_file()
     loaded: dict[str, str] = {}
-    if not env_path.exists():
+    if env_path is None or not env_path.exists():
         return loaded
 
     for line in env_path.read_text(encoding='utf-8').splitlines():
@@ -66,6 +86,11 @@ def _require_any(names: Iterable[str], *, provider: str) -> str:
 
 
 def build_llm_from_env(provider: str | None = None):
+    # Auto-load a .env file from CWD or any parent directory. This is what
+    # makes `build_llm_from_env('openai')` work from a notebook whose CWD is
+    # `notebooks/` — without it, OPENAI_API_KEY is never seen and the helper
+    # raises "Missing environment variable for openai".
+    load_env_file()
     selected = (provider or os.getenv('SHIPIT_LLM_PROVIDER', 'bedrock')).strip().lower()
 
     if selected in {'shipit', 'echo'}:

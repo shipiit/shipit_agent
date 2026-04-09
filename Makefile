@@ -26,7 +26,11 @@ PYTHON         ?= $(shell \
 	echo python3)
 PIP            ?= $(PYTHON) -m pip
 PYTEST         ?= $(PYTHON) -m pytest
-VERSION        := $(shell grep -E '^version = ' pyproject.toml | cut -d'"' -f2)
+# Current package version (read from pyproject.toml). Used for display and
+# `make release` which tags the current version as-is. Intentionally named
+# CURRENT_VERSION so it doesn't shadow the user-supplied `VERSION=x.y.z` arg
+# that `make bump` and `make new-release` accept.
+CURRENT_VERSION := $(shell grep -E '^version = ' pyproject.toml | cut -d'"' -f2)
 DIST_DIR       := dist
 DOCS_DIR       := docs
 SITE_DIR       := site
@@ -47,7 +51,7 @@ RESET          := \033[0m
 
 .PHONY: help
 help: ## Show this help message
-	@printf "$(BOLD)shipit-agent$(RESET) $(DIM)v$(VERSION)$(RESET)\n\n"
+	@printf "$(BOLD)shipit-agent$(RESET) $(DIM)v$(CURRENT_VERSION)$(RESET)\n\n"
 	@printf "$(BOLD)Usage:$(RESET)\n  make $(BLUE)<target>$(RESET)\n\n"
 	@printf "$(BOLD)Targets:$(RESET)\n"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(BLUE)%-18s$(RESET) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -201,7 +205,7 @@ clean: ## Remove build artifacts, caches, and site (destructive but local only)
 
 .PHONY: build
 build: clean ## Build sdist + wheel into dist/
-	@printf "$(BLUE)→$(RESET) Building shipit-agent v$(VERSION)...\n"
+	@printf "$(BLUE)→$(RESET) Building shipit-agent v$(CURRENT_VERSION)...\n"
 	$(PYTHON) -m build
 	@printf "$(GREEN)✓$(RESET) Built:\n"
 	@ls -lh $(DIST_DIR)/
@@ -214,14 +218,14 @@ build-check: build ## Build + validate dist with twine check
 
 .PHONY: publish-test
 publish-test: build-check ## Upload to TestPyPI (⚠ needs ~/.pypirc with [testpypi] section)
-	@printf "$(YELLOW)!$(RESET) Uploading v$(VERSION) to TestPyPI...\n"
+	@printf "$(YELLOW)!$(RESET) Uploading v$(CURRENT_VERSION) to TestPyPI...\n"
 	$(PYTHON) -m twine upload --repository testpypi $(DIST_DIR)/*
 	@printf "$(GREEN)✓$(RESET) TestPyPI upload complete\n"
-	@printf "$(DIM)Verify:$(RESET) https://test.pypi.org/project/shipit-agent/$(VERSION)/\n"
+	@printf "$(DIM)Verify:$(RESET) https://test.pypi.org/project/shipit-agent/$(CURRENT_VERSION)/\n"
 
 .PHONY: publish
 publish: build-check ## ⚠ IRREVERSIBLE — Upload to PyPI (needs ~/.pypirc)
-	@printf "$(RED)$(BOLD)! IRREVERSIBLE$(RESET) About to publish v$(VERSION) to PyPI.\n"
+	@printf "$(RED)$(BOLD)! IRREVERSIBLE$(RESET) About to publish v$(CURRENT_VERSION) to PyPI.\n"
 	@printf "Once uploaded, this exact version can never be reused.\n"
 	@read -p "Type 'yes' to continue: " confirm; \
 	if [ "$$confirm" != "yes" ]; then \
@@ -229,16 +233,153 @@ publish: build-check ## ⚠ IRREVERSIBLE — Upload to PyPI (needs ~/.pypirc)
 	fi
 	$(PYTHON) -m twine upload $(DIST_DIR)/*
 	@printf "$(GREEN)$(BOLD)✓ Published!$(RESET)\n"
-	@printf "$(DIM)Live at:$(RESET) https://pypi.org/project/shipit-agent/$(VERSION)/\n"
+	@printf "$(DIM)Live at:$(RESET) https://pypi.org/project/shipit-agent/$(CURRENT_VERSION)/\n"
+
+.PHONY: bump
+bump: ## Bump version across pyproject.toml + CHANGELOGs — usage: make bump VERSION=1.0.2
+	@if [ -z "$(VERSION)" ]; then \
+		printf "$(RED)error:$(RESET) set VERSION=x.y.z\n"; \
+		printf "$(DIM)example:$(RESET) make bump VERSION=1.0.2\n"; exit 1; \
+	fi
+	@$(PYTHON) scripts/bump_version.py $(VERSION)
+
+.PHONY: new-release
+new-release: ## Full release prep: bump version + test + lint + gitleaks + build + twine check. Usage: make new-release VERSION=1.0.2
+	@if [ -z "$(VERSION)" ]; then \
+		printf "$(RED)error:$(RESET) set VERSION=x.y.z\n"; \
+		printf "$(DIM)example:$(RESET) make new-release VERSION=1.0.2\n"; \
+		printf "\nThis command will:\n"; \
+		printf "  1. Bump version in pyproject.toml + CHANGELOG.md + docs/changelog.md\n"; \
+		printf "  2. Run pytest (all tests must pass)\n"; \
+		printf "  3. Run gitleaks (no leaks allowed)\n"; \
+		printf "  4. Build sdist + wheel into dist/\n"; \
+		printf "  5. Validate with twine check\n"; \
+		printf "\n$(YELLOW)It does NOT commit, tag, push, or publish — you do that manually.$(RESET)\n"; \
+		exit 1; \
+	fi
+	@printf "$(BOLD)$(BLUE)━━━ Release prep for v$(VERSION) ━━━$(RESET)\n\n"
+	@printf "$(BOLD)Step 1/5 — Bump version$(RESET)\n"
+	@$(PYTHON) scripts/bump_version.py $(VERSION)
+	@printf "\n$(BOLD)Step 2/5 — Run tests$(RESET)\n"
+	@$(MAKE) --no-print-directory test
+	@printf "\n$(BOLD)Step 3/5 — Scan for secrets$(RESET)\n"
+	@$(MAKE) --no-print-directory gitleaks
+	@printf "\n$(BOLD)Step 4/5 — Build distributions$(RESET)\n"
+	@$(MAKE) --no-print-directory build
+	@printf "\n$(BOLD)Step 5/5 — Validate with twine$(RESET)\n"
+	@$(PYTHON) -m twine check $(DIST_DIR)/*
+	@printf "\n$(GREEN)$(BOLD)✓ Release prep complete for v$(VERSION)$(RESET)\n\n"
+	@printf "$(BOLD)What happens next (run these in order):$(RESET)\n"
+	@printf "  $(DIM)# Review everything first$(RESET)\n"
+	@printf "  git diff\n"
+	@printf "  git status\n"
+	@printf "\n"
+	@printf "  $(DIM)# Edit CHANGELOG.md — fill in real release notes$(RESET)\n"
+	@printf "  \n"
+	@printf "  $(DIM)# Commit everything$(RESET)\n"
+	@printf "  git add -A && git commit -m 'release: v$(VERSION)'\n"
+	@printf "\n"
+	@printf "  $(DIM)# Tag + push$(RESET)\n"
+	@printf "  git tag -a v$(VERSION) -m 'shipit-agent $(VERSION)'\n"
+	@printf "  git push origin main --tags\n"
+	@printf "\n"
+	@printf "  $(DIM)# Publish to PyPI (asks for confirmation)$(RESET)\n"
+	@printf "  make publish\n"
+	@printf "\n"
+	@printf "$(DIM)All of the above are YOUR commands — nothing destructive has been run yet.$(RESET)\n"
+
+.PHONY: ship
+ship: new-release ## Alias for new-release
+	@true
+
+.PHONY: tag
+tag: ## Create + push the git tag for CURRENT_VERSION (uses gh under the hood)
+	@if git rev-parse v$(CURRENT_VERSION) >/dev/null 2>&1; then \
+		printf "$(YELLOW)!$(RESET) tag v$(CURRENT_VERSION) already exists locally\n"; \
+	else \
+		printf "$(BLUE)→$(RESET) Creating tag v$(CURRENT_VERSION)...\n"; \
+		git tag -a v$(CURRENT_VERSION) -m "shipit-agent $(CURRENT_VERSION)"; \
+		printf "$(GREEN)✓$(RESET) Tagged v$(CURRENT_VERSION) locally\n"; \
+	fi
+	@printf "$(BLUE)→$(RESET) Pushing tag to origin...\n"
+	git push origin v$(CURRENT_VERSION)
+	@printf "$(GREEN)✓$(RESET) Tag pushed: https://github.com/shipiit/shipit_agent/releases/tag/v$(CURRENT_VERSION)\n"
+
+.PHONY: changelog-show
+changelog-show: ## Print the CHANGELOG section for CURRENT_VERSION
+	@$(PYTHON) scripts/extract_changelog_section.py $(CURRENT_VERSION)
+
+.PHONY: github-release
+github-release: build-check ## Create a GitHub Release for CURRENT_VERSION (notes from CHANGELOG, attaches dist/*)
+	@if ! command -v gh >/dev/null 2>&1; then \
+		printf "$(RED)error:$(RESET) GitHub CLI (gh) is not installed.\n"; \
+		printf "$(DIM)install:$(RESET) brew install gh\n"; \
+		printf "$(DIM)login:$(RESET)   gh auth login\n"; \
+		exit 1; \
+	fi
+	@if ! gh auth status >/dev/null 2>&1; then \
+		printf "$(RED)error:$(RESET) gh CLI is not logged in. Run: gh auth login\n"; \
+		exit 1; \
+	fi
+	@if ! git rev-parse v$(CURRENT_VERSION) >/dev/null 2>&1; then \
+		printf "$(RED)error:$(RESET) tag v$(CURRENT_VERSION) does not exist locally.\n"; \
+		printf "$(DIM)create it:$(RESET) make tag\n"; \
+		exit 1; \
+	fi
+	@printf "$(BLUE)→$(RESET) Extracting release notes for v$(CURRENT_VERSION) from CHANGELOG.md...\n"
+	@$(PYTHON) scripts/extract_changelog_section.py $(CURRENT_VERSION) > /tmp/_shipit_release_notes.md
+	@printf "$(DIM)Notes preview (first 10 lines):$(RESET)\n"
+	@head -10 /tmp/_shipit_release_notes.md | sed 's/^/    /'
+	@printf "$(DIM)...$(RESET)\n\n"
+	@if gh release view v$(CURRENT_VERSION) >/dev/null 2>&1; then \
+		printf "$(YELLOW)!$(RESET) Release v$(CURRENT_VERSION) already exists on GitHub. Updating...\n"; \
+		gh release edit v$(CURRENT_VERSION) \
+			--title "v$(CURRENT_VERSION)" \
+			--notes-file /tmp/_shipit_release_notes.md \
+			--latest; \
+		gh release upload v$(CURRENT_VERSION) $(DIST_DIR)/* --clobber; \
+	else \
+		printf "$(BLUE)→$(RESET) Creating GitHub Release v$(CURRENT_VERSION)...\n"; \
+		gh release create v$(CURRENT_VERSION) \
+			--title "v$(CURRENT_VERSION)" \
+			--notes-file /tmp/_shipit_release_notes.md \
+			--latest \
+			$(DIST_DIR)/*; \
+	fi
+	@rm -f /tmp/_shipit_release_notes.md
+	@printf "\n$(GREEN)$(BOLD)✓ GitHub Release published$(RESET)\n"
+	@printf "$(DIM)View at:$(RESET) https://github.com/shipiit/shipit_agent/releases/tag/v$(CURRENT_VERSION)\n"
+
+.PHONY: ship-it
+ship-it: ## ⚠ FULL RELEASE: tag + push + publish to PyPI + GitHub Release. CURRENT_VERSION must be ready.
+	@printf "$(BOLD)$(BLUE)━━━ Full release of v$(CURRENT_VERSION) ━━━$(RESET)\n\n"
+	@printf "This will run, $(BOLD)IN ORDER$(RESET):\n"
+	@printf "  1. $(BLUE)make check$(RESET)            (lint + tests + gitleaks)\n"
+	@printf "  2. $(BLUE)make build-check$(RESET)      (build sdist + wheel + twine check)\n"
+	@printf "  3. $(BLUE)make tag$(RESET)              (create + push git tag)\n"
+	@printf "  4. $(BLUE)make publish$(RESET)          ($(RED)IRREVERSIBLE$(RESET) — uploads to PyPI)\n"
+	@printf "  5. $(BLUE)make github-release$(RESET)   (creates GitHub Release with notes + dist artifacts)\n\n"
+	@read -p "Type 'ship it' to proceed: " confirm; \
+	if [ "$$confirm" != "ship it" ]; then \
+		printf "$(YELLOW)Aborted.$(RESET)\n"; exit 1; \
+	fi
+	@$(MAKE) --no-print-directory check
+	@$(MAKE) --no-print-directory build-check
+	@$(MAKE) --no-print-directory tag
+	@$(MAKE) --no-print-directory publish
+	@$(MAKE) --no-print-directory github-release
+	@printf "\n$(GREEN)$(BOLD)🚀 Released v$(CURRENT_VERSION)!$(RESET)\n"
+	@printf "$(DIM)PyPI:$(RESET)   https://pypi.org/project/shipit-agent/$(CURRENT_VERSION)/\n"
+	@printf "$(DIM)GitHub:$(RESET) https://github.com/shipiit/shipit_agent/releases/tag/v$(CURRENT_VERSION)\n"
 
 .PHONY: release
-release: check build-check ## Cut a release (check + build + tag). Push manually.
-	@printf "$(BLUE)→$(RESET) Tagging v$(VERSION)...\n"
-	@if git rev-parse v$(VERSION) >/dev/null 2>&1; then \
-		printf "$(RED)error:$(RESET) tag v$(VERSION) already exists. Bump version in pyproject.toml.\n"; exit 1; \
+release: check build-check ## Cut a release from CURRENT version (check + build + tag). Use new-release to bump first.
+	@printf "$(BLUE)→$(RESET) Tagging v$(CURRENT_VERSION)...\n"
+	@if git rev-parse v$(CURRENT_VERSION) >/dev/null 2>&1; then \
+		printf "$(RED)error:$(RESET) tag v$(CURRENT_VERSION) already exists. Use 'make new-release VERSION=x.y.z' to bump first.\n"; exit 1; \
 	fi
-	git tag -a v$(VERSION) -m "shipit-agent $(VERSION)"
-	@printf "$(GREEN)✓$(RESET) Tagged v$(VERSION) locally.\n"
+	git tag -a v$(CURRENT_VERSION) -m "shipit-agent $(CURRENT_VERSION)"
+	@printf "$(GREEN)✓$(RESET) Tagged v$(CURRENT_VERSION) locally.\n"
 	@printf "\n$(BOLD)Next steps:$(RESET)\n"
 	@printf "  1. $(BLUE)git push origin main --tags$(RESET)   # triggers release.yml workflow\n"
 	@printf "  2. $(BLUE)make publish$(RESET)                  # or let CI do it via OIDC\n"
@@ -265,7 +406,7 @@ example: ## Run the multi-tool agent example
 doctor: ## Show environment diagnostics
 	@printf "$(BOLD)Python version:$(RESET)   "; $(PYTHON) --version
 	@printf "$(BOLD)Pip version:$(RESET)      "; $(PIP) --version
-	@printf "$(BOLD)Package version:$(RESET)  $(VERSION)\n"
+	@printf "$(BOLD)Package version:$(RESET)  $(CURRENT_VERSION)\n"
 	@printf "$(BOLD)Working directory:$(RESET) $$(pwd)\n"
 	@printf "$(BOLD)Git branch:$(RESET)       $$(git branch --show-current 2>/dev/null || echo 'not a git repo')\n"
 	@printf "$(BOLD)Git status:$(RESET)\n"
@@ -275,4 +416,4 @@ doctor: ## Show environment diagnostics
 
 .PHONY: version
 version: ## Print the current package version
-	@echo $(VERSION)
+	@echo $(CURRENT_VERSION)

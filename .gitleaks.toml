@@ -1,0 +1,30 @@
+# gitleaks config for shipit-agent
+#
+# Extends the default gitleaks rule set with shipit-specific allowlists.
+# See: https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "shipit-agent allowlist"
+
+# Allow example tokens and documentation
+paths = [
+    '''\.env\.example$''',
+    '''docs/getting-started/environment\.md$''',
+    '''notebooks/.*\.ipynb$''',   # notebooks may contain stub OPENAI_API_KEY=sk-... in docstrings
+    '''tests/.*''',
+]
+
+# Allow obvious placeholders used in docs and examples
+regexes = [
+    '''sk-\.\.\.''',
+    '''sk-ant-\.\.\.''',
+    '''AKIA[A-Z0-9]{0,4}\.\.\.''',
+    '''REPLACE_ME[_A-Z]*''',
+    '''PASTE[_A-Z]*''',
+    '''<REDACTED>''',
+    '''your[_-]?api[_-]?key[_-]?here''',
+    '''example[_-]?token''',
+]

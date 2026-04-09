@@ -1,0 +1,126 @@
+name: "🐛 Bug report"
+description: Report a bug, crash, or unexpected behavior in shipit-agent.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The more specific you are, the faster we can fix it.
+
+  - type: input
+    id: version
+    attributes:
+      label: shipit-agent version
+      description: "Output of `python -c 'import shipit_agent; print(shipit_agent.__version__)'`"
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: "Output of `python --version`"
+      placeholder: "Python 3.11.9"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - WSL
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM provider (if relevant)
+      options:
+        - OpenAI
+        - Anthropic
+        - AWS Bedrock
+        - Google Gemini
+        - Google Vertex AI
+        - Groq
+        - Together AI
+        - Ollama
+        - LiteLLM (direct or proxy)
+        - Not applicable / multiple
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear, concise description of the bug.
+      placeholder: "When I call `agent.stream(...)` with a prompt that triggers the planner, the first `step_started` event never fires…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: "The `step_started` event should fire before any tool is called…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimum reproduction
+      description: |
+        The **smallest** code snippet that triggers the bug. Please include imports and a runnable `main()`.
+      render: python
+      placeholder: |
+        from shipit_agent import Agent
+        from shipit_agent.llms import SimpleEchoLLM
+
+        agent = Agent.with_builtins(llm=SimpleEchoLLM())
+        for event in agent.stream("Plan a task"):
+            print(event.type, event.message)
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Full stack trace / error output
+      description: If there's an exception, paste the **full** traceback. Don't paraphrase.
+      render: shell
+      placeholder: |
+        Traceback (most recent call last):
+          File "example.py", line 5, in <module>
+            ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Additional environment details
+      description: |
+        Anything else that might matter — running in Docker? Behind a corporate proxy? Using a specific LiteLLM proxy? MCP servers attached?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched [existing issues](https://github.com/shipiit/shipit_agent/issues) for duplicates.
+          required: true
+        - label: My report does **not** contain API keys, tokens, or other secrets.
+          required: true
+        - label: I am using the latest version of shipit-agent (`pip install -U shipit-agent`).
+          required: false

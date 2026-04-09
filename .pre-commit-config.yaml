@@ -1,0 +1,44 @@
+# Pre-commit hooks for shipit-agent.
+#
+# Install:
+#     pip install pre-commit
+#     pre-commit install
+#
+# Run manually on all files:
+#     pre-commit run --all-files
+#
+# Update hook versions:
+#     pre-commit autoupdate
+
+repos:
+  # Standard hygiene — whitespace, end-of-file, merge conflicts, YAML/TOML validation
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.ipynb$
+      - id: end-of-file-fixer
+        exclude: \.ipynb$
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: detect-private-key
+
+  # Secret scanning — catch API tokens, keys, .env contents
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # Python-specific — catch common bugs and enforce style
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+      - id: ruff-format

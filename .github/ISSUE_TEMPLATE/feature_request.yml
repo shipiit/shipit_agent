@@ -1,0 +1,88 @@
+name: "✨ Feature request"
+description: Propose a new feature, API, or integration.
+title: "[feat] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Before implementing, please describe the problem and your proposed approach so we can agree on direction.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the user-facing problem, not the solution. Who hits this? When? What's the workaround today?
+      placeholder: "I'm building an agent that needs to talk to an internal LiteLLM proxy, but shipit-agent currently…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: A rough sketch of the API or behavior change. Code snippets welcome.
+      render: python
+      placeholder: |
+        # New adapter
+        llm = LiteLLMProxyChatLLM(
+            model="gpt-4o-mini",
+            api_base="https://litellm.internal",
+            api_key="sk-proxy",
+        )
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you think about? Why are they worse?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: What area does this affect?
+      multiple: true
+      options:
+        - Runtime (agent loop, streaming, policies)
+        - LLM adapters
+        - Built-in tools
+        - MCP integration
+        - Session / memory / trace stores
+        - CLI / examples
+        - Documentation
+        - CI / release automation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: core_or_userland
+    attributes:
+      label: Why should this live in shipit-agent core rather than userland code?
+      description: Help us decide whether this belongs in the library or as an example / recipe in your own code.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Would you be willing to contribute?
+      options:
+        - label: I'd be willing to open a PR if the approach is agreed on.
+          required: false
+        - label: I need guidance but could contribute with pairing / review.
+          required: false
+        - label: I'm reporting this but can't implement it myself.
+          required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched [existing issues](https://github.com/shipiit/shipit_agent/issues) for duplicates.
+          required: true

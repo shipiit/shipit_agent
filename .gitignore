@@ -1,0 +1,52 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Test, type-check, and coverage artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Notebook and editor artifacts
+.ipynb_checkpoints/
+.DS_Store
+.idea/
+.vscode/
+
+# Local SHIPIT workspaces and runtime state
+.shipit_workspace/
+.shipit_notebook_workspace/
+.shipit_notebooks/
+memory.json
+sessions/
+traces/
+credentials.json
+connector_creds.json
+
+# Local logs and temp files
+*.log
+tmp/
+temp/

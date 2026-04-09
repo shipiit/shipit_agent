@@ -1,0 +1,12 @@
+# Base local development setup for the repository.
+# This keeps the default path light and does not require Playwright.
+-e .[dev,litellm]
+
+# Optional provider SDKs:
+# -e .[openai]
+# -e .[anthropic]
+#
+# Optional browser support:
+# -e .[playwright]
+# After installing the Playwright extra, also run:
+# playwright install

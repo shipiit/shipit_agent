@@ -1,0 +1,28 @@
+[
+  {
+    "content": "project_context: This workspace uses SHIPIT Agent for tool-using workflows. Prefer grounded answers, explain tradeoffs clearly, and use tools before guessing.",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {}
+  },
+  {
+    "content": "workspace_files: memory.json\nsessions\ntraces",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "items": [
+        "memory.json",
+        "sessions",
+        "traces"
+      ]
+    }
+  },
+  {
+    "content": "workspace_files: []",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "path": "/Users/rahulraj/Documents/MYWORK/ai_developer/shipit_agent/.shipit_notebooks/multi_tools/memory.json"
+    }
+  }
+]

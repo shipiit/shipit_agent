@@ -1,0 +1,212 @@
+[
+  {
+    "content": "web_search: [1] Bitcoin price today, BTC to USD live price, marketcap and chart ...\nThe live Bitcoin price today is $68,153.75 USD with a 24-hour trading volume of $34,210,076,040.38 USD. We update our BTC to USD price in real-time.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcoinmarketcap.com%2Fcurrencies%2Fbitcoin%2F&rut=028fbfb088be81e0ade0df0ae64fab30f0f58a30c9e96e3f968e2a3ca0f8e21c\n\n[2] Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk\nLive Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice%2Fbitcoin&rut=c4018ff5615bbdd8bd05908d7e303270a2c105f4ce9cc3ff01ebd5eec85190e4\n\n[3] Bitcoin USD Price (BTC-USD) - Yahoo Finance\nFind the live Bitcoin USD (BTC-USD) price , history, news and other vital information to help with your cryptocurrency trading and investing.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2F&rut=6720058ae7a7328f3b0f6532bf93170ef51ae0111a9f59da2b8e653b11a83d29\n\n[4] Bitcoin Price: BTC/USD Live Price Chart, Market Cap & News Today ...\nTrack the latest Bitcoin price , market cap, trading volume, news and more with CoinGecko's live BTC/USD price chart and popular cryptocurrency price tracker.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coingecko.com%2Fen%2Fcoins%2Fbitcoin&rut=e0181026046fa9a4f23ff64b45417657ec8a51d3534ec2c3d1645c2ec922409a\n\n[5] Bitcoin (BTC) Price, Real-time Quote & News - Google Finance\nGet the latest Bitcoin (BTC / USD) real-time quote, historical performance, charts, and other cryptocurrency information to help you make more informed trading and investment decisions.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.google.com%2Ffinance%2Fquote%2FBTC%2Dusd&rut=c8b43cd4e7573fd1a2f755c3ac97e54b41fe92e51f9b6313a229ea4300ce624a",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "query": "current Bitcoin price",
+      "results": [
+        {
+          "title": "Bitcoin price today, BTC to USD live price, marketcap and chart ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fcoinmarketcap.com%2Fcurrencies%2Fbitcoin%2F&rut=028fbfb088be81e0ade0df0ae64fab30f0f58a30c9e96e3f968e2a3ca0f8e21c",
+          "snippet": "The live Bitcoin price today is $68,153.75 USD with a 24-hour trading volume of $34,210,076,040.38 USD. We update our BTC to USD price in real-time."
+        },
+        {
+          "title": "Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice%2Fbitcoin&rut=c4018ff5615bbdd8bd05908d7e303270a2c105f4ce9cc3ff01ebd5eec85190e4",
+          "snippet": "Live Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell."
+        },
+        {
+          "title": "Bitcoin USD Price (BTC-USD) - Yahoo Finance",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2F&rut=6720058ae7a7328f3b0f6532bf93170ef51ae0111a9f59da2b8e653b11a83d29",
+          "snippet": "Find the live Bitcoin USD (BTC-USD) price , history, news and other vital information to help with your cryptocurrency trading and investing."
+        },
+        {
+          "title": "Bitcoin Price: BTC/USD Live Price Chart, Market Cap & News Today ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coingecko.com%2Fen%2Fcoins%2Fbitcoin&rut=e0181026046fa9a4f23ff64b45417657ec8a51d3534ec2c3d1645c2ec922409a",
+          "snippet": "Track the latest Bitcoin price , market cap, trading volume, news and more with CoinGecko's live BTC/USD price chart and popular cryptocurrency price tracker."
+        },
+        {
+          "title": "Bitcoin (BTC) Price, Real-time Quote & News - Google Finance",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.google.com%2Ffinance%2Fquote%2FBTC%2Dusd&rut=c8b43cd4e7573fd1a2f755c3ac97e54b41fe92e51f9b6313a229ea4300ce624a",
+          "snippet": "Get the latest Bitcoin (BTC / USD) real-time quote, historical performance, charts, and other cryptocurrency information to help you make more informed trading and investment decisions."
+        }
+      ],
+      "provider": "duckduckgo"
+    }
+  },
+  {
+    "content": "open_url: Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk (function(){var done=false;function load(){if(done)return;done=true;var s=document.createElement('script');s.id='pushly-tag';s.setAttribute('data-ot-ignore','');s.src='https://cdn.p-n.io/pushly-sdk.min.js?domain_key=0J6V5oFMzO5abZPvNe1D98PyA7FXZepx0dJv';s.async=true;s.onload=function(){window.PushlySDK=window.PushlySDK||[];function pushly(){window.PushlySDK.push(Array.prototype.slice.call(arguments));}pushly('load',{domainKey:'0J6V5oFMzO5abZPvNe1D98PyA7FXZepx0dJv',sw:'/vendor/pushly/pushly-sdk-worker.js'});};document.head.appendChild(s);}function setup(){if(!('IntersectionObserver' in window))return;var el=document.createElement('div');el.style.cssText='position:absolute;top:110vh;width:1px;height:1px;pointer-events:none;';document.body.appendChild(el);new IntersectionObserver(function(e,o){if(e[0].isIntersecting){o.disconnect();el.remove();load();}}).observe(el);}if(document.body){setup();}else{document.addEventListener('DOMContentLoaded',setup,{once:true});}})(); (function(){var done=false;function load(){if(done)return;done=true;var s=document.createElement('script');s.id='hs-script-loader';s.src='//js-eu1.hs-scripts.com/27197889.js?businessUnitId=17686039';s.async=true;document.head.appendChild(s);}function setup(){if(!('IntersectionObserver' in window))return;var el=document.createElement('div');el.style.cssText='position:absolute;top:110vh;width:1px;height:1px;pointer-events:none;';document.body.appendChild(el);new IntersectionObserver(function(e,o){if(e[0].isIntersecting){o.disconnect();el.remove();load();}}).observe(el);}if(document.body){setup();}else{document.addEventListener('DOMContentLoaded',setup,{once:true});}})(); Search / News Video Prices Research Consensus 2026 Data & Indices Sponsored Search / en {\"@context\":\"http://schema.org\",\"@type\":[\"WebPage\",\"FinancialProduct\"],\"url\":\"https://www.coindesk.com/price/bitcoin/\",\"name\":\"Bitcoin\",\"image\":\"https://resources.cryptocompare.com/asset-management/1/1756822117897.png\",\"logo\":\"https://resources.cryptocompare.com/asset-management/1/1756822117897.png\",\"additionalProperty\":[{\"@type\":\"PropertyValue\",\"name\":\"Ticker Symbol\",\"value\":\"BTC\"},{\"@type\":\"PropertyValue\",\"name\":\"Price Change (24 hours)\",\"value\":0.0423185037141842,\"unitText\":\"%\"},{\"@type\":\"PropertyValue\",\"name\":\"Volume-to-Market-Cap Ratio\",\"value\":\"0.00000\",\"unitText\":\"ratio\"},{\"@type\":\"PropertyValue\",\"name\":\"Price\",\"value\":\"71119.16\",\"unitText\":\"$\"}]} {\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"CoinDesk\",\"item\":\"https://www.coindesk.com\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Prices\",\"item\":\"https://www.coindesk.com/price\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Bitcoin\",\"item\":\"https://www.coindesk.com/price/bitcoin\"}]} {\"@context\":\"https://schema.org\",\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"What is Bitcoin?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Bitcoin is a decentralized cryptocurrency that uses peer-to-peer technology and a blockchain to record transactions. It was created by Satoshi Nakamoto and the first block was mined on January 3, 2009. Bitcoin transactions are recorded on a blockchain, which is a distributed ledger that can be accessed by anyone to verify transactions. Transactions are verified by miners, who are rewarded with a set amount of Bitcoin and transaction fees. The supply of Bitcoin is limited to 21 million coins and it is divisible to eight decimal places. A wallet is needed to use Bitcoin and it consists of a public key, which is used to send and receive payments, and a private key, which is used to control the wallet. Bitcoin can be used for a variety of purposes, including everyday transactions, as a store of value, or for investment.\"}},{\"@type\":\"Question\",\"name\":\"Who created Bitcoin?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Bitcoin was created by its founding team and developers. For detailed information ab",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "url": "https://www.coindesk.com/price/bitcoin",
+      "max_chars": 4000
+    }
+  },
+  {
+    "content": "ask_user: {\"kind\": \"ask_user\", \"question\": \"What specific information would you like me to look up or retrieve? (e.g., price of a cryptocurrency, weather, news headline, etc.)\", \"context\": \"\", \"options\": [{\"label\": \"Current Bitcoin price (USD)\"}, {\"label\": \"Current price of another asset (e.g., Ethereum)\"}, {\"label\": \"Weather for a city\"}, {\"label\": \"Latest news headline on a topic\"}, {\"label\": \"Other (please specify)\"}]}",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "interactive": true,
+      "kind": "ask_user",
+      "question": "What specific information would you like me to look up or retrieve? (e.g., price of a cryptocurrency, weather, news headline, etc.)",
+      "context": "",
+      "options": [
+        {
+          "label": "Current Bitcoin price (USD)"
+        },
+        {
+          "label": "Current price of another asset (e.g., Ethereum)"
+        },
+        {
+          "label": "Weather for a city"
+        },
+        {
+          "label": "Latest news headline on a topic"
+        },
+        {
+          "label": "Other (please specify)"
+        }
+      ]
+    }
+  },
+  {
+    "content": "web_search: [1] Bitcoin price today, BTC to USD live price, marketcap and chart ...\nThe live Bitcoin price today is $68,153.75 USD with a 24-hour trading volume of $34,210,076,040.38 USD . We update our BTC to USD price in real-time.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcoinmarketcap.com%2Fcurrencies%2Fbitcoin%2F&rut=028fbfb088be81e0ade0df0ae64fab30f0f58a30c9e96e3f968e2a3ca0f8e21c\n\n[2] Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk\nLive Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice%2Fbitcoin&rut=c4018ff5615bbdd8bd05908d7e303270a2c105f4ce9cc3ff01ebd5eec85190e4\n\n[3] Bitcoin BTC (BTC-USD) Live Price, News, Chart & Price History - Yahoo ...\nFind the live Bitcoin USD (BTC- USD ) price , history, news and other vital information to help with your cryptocurrency trading and investing.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2F&rut=6720058ae7a7328f3b0f6532bf93170ef51ae0111a9f59da2b8e653b11a83d29\n\n[4] BTC USD \u2014 Bitcoin Price and Chart \u2014 TradingView\nWatch live Bitcoin to Dollar chart, follow BTCUSD prices in real-time and get bitcoin price history. Check the Bitcoin technical analysis and forecasts.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.tradingview.com%2Fsymbols%2FBTCUSD%2F&rut=85a5a6654801bfba9691850170de73079c0d18b95c934e87216e6f26fd673077\n\n[5] Live Bitcoin Price & Chart | Bitbo\nView live price action, monitor on-chain data, and track key economic indicators - all for free.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fbitbo.io%2F&rut=4efe8edf90856ac5caa89300ce2d613fbcbfb05abedf8f67cc899aeffbc4cd03",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "query": "Bitcoin price USD live",
+      "results": [
+        {
+          "title": "Bitcoin price today, BTC to USD live price, marketcap and chart ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fcoinmarketcap.com%2Fcurrencies%2Fbitcoin%2F&rut=028fbfb088be81e0ade0df0ae64fab30f0f58a30c9e96e3f968e2a3ca0f8e21c",
+          "snippet": "The live Bitcoin price today is $68,153.75 USD with a 24-hour trading volume of $34,210,076,040.38 USD . We update our BTC to USD price in real-time."
+        },
+        {
+          "title": "Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coindesk.com%2Fprice%2Fbitcoin&rut=c4018ff5615bbdd8bd05908d7e303270a2c105f4ce9cc3ff01ebd5eec85190e4",
+          "snippet": "Live Bitcoin price movements from all markets and BTC market cap, use our charts and see when there is an opportunity to buy or sell."
+        },
+        {
+          "title": "Bitcoin BTC (BTC-USD) Live Price, News, Chart & Price History - Yahoo ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2F&rut=6720058ae7a7328f3b0f6532bf93170ef51ae0111a9f59da2b8e653b11a83d29",
+          "snippet": "Find the live Bitcoin USD (BTC- USD ) price , history, news and other vital information to help with your cryptocurrency trading and investing."
+        },
+        {
+          "title": "BTC USD \u2014 Bitcoin Price and Chart \u2014 TradingView",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.tradingview.com%2Fsymbols%2FBTCUSD%2F&rut=85a5a6654801bfba9691850170de73079c0d18b95c934e87216e6f26fd673077",
+          "snippet": "Watch live Bitcoin to Dollar chart, follow BTCUSD prices in real-time and get bitcoin price history. Check the Bitcoin technical analysis and forecasts."
+        },
+        {
+          "title": "Live Bitcoin Price & Chart | Bitbo",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fbitbo.io%2F&rut=4efe8edf90856ac5caa89300ce2d613fbcbfb05abedf8f67cc899aeffbc4cd03",
+          "snippet": "View live price action, monitor on-chain data, and track key economic indicators - all for free."
+        }
+      ],
+      "provider": "duckduckgo"
+    }
+  },
+  {
+    "content": "open_url: Bitcoin price today, BTC to USD live price, marketcap and chart | CoinDesk (function(){var done=false;function load(){if(done)return;done=true;var s=document.createElement('script');s.id='pushly-tag';s.setAttribute('data-ot-ignore','');s.src='https://cdn.p-n.io/pushly-sdk.min.js?domain_key=0J6V5oFMzO5abZPvNe1D98PyA7FXZepx0dJv';s.async=true;s.onload=function(){window.PushlySDK=window.PushlySDK||[];function pushly(){window.PushlySDK.push(Array.prototype.slice.call(arguments));}pushly('load',{domainKey:'0J6V5oFMzO5abZPvNe1D98PyA7FXZepx0dJv',sw:'/vendor/pushly/pushly-sdk-worker.js'});};document.head.appendChild(s);}function setup(){if(!('IntersectionObserver' in window))return;var el=document.createElement('div');el.style.cssText='position:absolute;top:110vh;width:1px;height:1px;pointer-events:none;';document.body.appendChild(el);new IntersectionObserver(function(e,o){if(e[0].isIntersecting){o.disconnect();el.remove();load();}}).observe(el);}if(document.body){setup();}else{document.addEventListener('DOMContentLoaded',setup,{once:true});}})(); (function(){var done=false;function load(){if(done)return;done=true;var s=document.createElement('script');s.id='hs-script-loader';s.src='//js-eu1.hs-scripts.com/27197889.js?businessUnitId=17686039';s.async=true;document.head.appendChild(s);}function setup(){if(!('IntersectionObserver' in window))return;var el=document.createElement('div');el.style.cssText='position:absolute;top:110vh;width:1px;height:1px;pointer-events:none;';document.body.appendChild(el);new IntersectionObserver(function(e,o){if(e[0].isIntersecting){o.disconnect();el.remove();load();}}).observe(el);}if(document.body){setup();}else{document.addEventListener('DOMContentLoaded',setup,{once:true});}})(); Search / News Video Prices Research Consensus 2026 Data & Indices Sponsored Search / en {\"@context\":\"http://schema.org\",\"@type\":[\"WebPage\",\"FinancialProduct\"],\"url\":\"https://www.coindesk.com/price/bitcoin/\",\"name\":\"Bitcoin\",\"image\":\"https://resources.cryptocompare.com/asset-management/1/1756822117897.png\",\"logo\":\"https://resources.cryptocompare.com/asset-management/1/1756822117897.png\",\"additionalProperty\":[{\"@type\":\"PropertyValue\",\"name\":\"Ticker Symbol\",\"value\":\"BTC\"},{\"@type\":\"PropertyValue\",\"name\":\"Price Change (24 hours)\",\"value\":0.180054869822768,\"unitText\":\"%\"},{\"@type\":\"PropertyValue\",\"name\":\"Volume-to-Market-Cap Ratio\",\"value\":\"0.00000\",\"unitText\":\"ratio\"},{\"@type\":\"PropertyValue\",\"name\":\"Price\",\"value\":\"71217.07\",\"unitText\":\"$\"}]} {\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"CoinDesk\",\"item\":\"https://www.coindesk.com\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Prices\",\"item\":\"https://www.coindesk.com/price\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Bitcoin\",\"item\":\"https://www.coindesk.com/price/bitcoin\"}]} {\"@context\":\"https://schema.org\",\"@type\":\"FAQPage\",\"mainEntity\":[{\"@type\":\"Question\",\"name\":\"What is Bitcoin?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Bitcoin is a decentralized cryptocurrency that uses peer-to-peer technology and a blockchain to record transactions. It was created by Satoshi Nakamoto and the first block was mined on January 3, 2009. Bitcoin transactions are recorded on a blockchain, which is a distributed ledger that can be accessed by anyone to verify transactions. Transactions are verified by miners, who are rewarded with a set amount of Bitcoin and transaction fees. The supply of Bitcoin is limited to 21 million coins and it is divisible to eight decimal places. A wallet is needed to use Bitcoin and it consists of a public key, which is used to send and receive payments, and a private key, which is used to control the wallet. Bitcoin can be used for a variety of purposes, including everyday transactions, as a store of value, or for investment.\"}},{\"@type\":\"Question\",\"name\":\"Who created Bitcoin?\",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":\"Bitcoin was created by its founding team and developers. For detailed information abo",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "url": "https://www.coindesk.com/price/bitcoin",
+      "max_chars": 4000
+    }
+  },
+  {
+    "content": "ask_user: {\"kind\": \"ask_user\", \"question\": \"What specific information would you like me to retrieve?\", \"context\": \"\", \"options\": [{\"label\": \"Current Bitcoin price (USD)\"}, {\"label\": \"Current price of another cryptocurrency (e.g., Ethereum)\"}, {\"label\": \"Weather for a city\"}, {\"label\": \"Latest news headline on a topic\"}, {\"label\": \"Other (please specify)\"}]}",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "interactive": true,
+      "kind": "ask_user",
+      "question": "What specific information would you like me to retrieve?",
+      "context": "",
+      "options": [
+        {
+          "label": "Current Bitcoin price (USD)"
+        },
+        {
+          "label": "Current price of another cryptocurrency (e.g., Ethereum)"
+        },
+        {
+          "label": "Weather for a city"
+        },
+        {
+          "label": "Latest news headline on a topic"
+        },
+        {
+          "label": "Other (please specify)"
+        }
+      ]
+    }
+  },
+  {
+    "content": "web_search: [1] BTC to USD: Bitcoin Price in US Dollar | CoinGecko\nCalculate Bitcoin's price in US Dollar by inputting your desired amount on CoinGecko's BTC to USD converter. Track its historical price movements on the BTC to USD chart, and explore more crypto prices in USD .\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coingecko.com%2Fen%2Fcoins%2Fbitcoin%2Fusd&rut=5d9a599831c7c936b7da6cd584f73035ee8e0e5db8a056cfbeccf91a3ffa83bb\n\n[2] Bitcoin price today, BTC to USD live price, marketcap and chart ...\nThe live Bitcoin price today is $68,153.75 USD with a 24-hour trading volume of $34,210,076,040.38 USD . We update our BTC to USD price in real-time.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcoinmarketcap.com%2Fcurrencies%2Fbitcoin%2F&rut=028fbfb088be81e0ade0df0ae64fab30f0f58a30c9e96e3f968e2a3ca0f8e21c\n\n[3] Bitcoin USD Price (BTC-USD) - Yahoo Finance\nFind the live Bitcoin USD (BTC- USD ) price , history, news and other vital information to help with your cryptocurrency trading and investing.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2F&rut=6720058ae7a7328f3b0f6532bf93170ef51ae0111a9f59da2b8e653b11a83d29\n\n[4] Bitcoin Price in USD | Real Time Bitcoin Chart | KITCO CRYPTO\nThe Kitco Bitcoin price index provides the latest Bitcoin price in US Dollars using an average from the world's leading exchanges.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.kitco.com%2Fprice%2Fcrypto%2Fbitcoin&rut=323b26ebe24a623a6eaaa4e22d934b66224b98118663c50377d80834dbce8d85\n\n[5] Bitcoin (BTC) Price, Real-time Quote & News - Google Finance\nGet the latest Bitcoin (BTC / USD ) real-time quote, historical performance, charts, and other cryptocurrency information to help you make more informed trading and investment decisions.\nURL: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.google.com%2Ffinance%2Fquote%2FBTC%2Dusd&rut=c8b43cd4e7573fd1a2f755c3ac97e54b41fe92e51f9b6313a229ea4300ce624a",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "query": "CoinGecko Bitcoin price USD",
+      "results": [
+        {
+          "title": "BTC to USD: Bitcoin Price in US Dollar | CoinGecko",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.coingecko.com%2Fen%2Fcoins%2Fbitcoin%2Fusd&rut=5d9a599831c7c936b7da6cd584f73035ee8e0e5db8a056cfbeccf91a3ffa83bb",
+          "snippet": "Calculate Bitcoin's price in US Dollar by inputting your desired amount on CoinGecko's BTC to USD converter. Track its historical price movements on the BTC to USD chart, and explore more crypto prices in USD ."
+        },
+        {
+          "title": "Bitcoin price today, BTC to USD live price, marketcap and chart ...",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fcoinmarketcap.com%2Fcurrencies%2Fbitcoin%2F&rut=028fbfb088be81e0ade0df0ae64fab30f0f58a30c9e96e3f968e2a3ca0f8e21c",
+          "snippet": "The live Bitcoin price today is $68,153.75 USD with a 24-hour trading volume of $34,210,076,040.38 USD . We update our BTC to USD price in real-time."
+        },
+        {
+          "title": "Bitcoin USD Price (BTC-USD) - Yahoo Finance",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBTC%2DUSD%2F&rut=6720058ae7a7328f3b0f6532bf93170ef51ae0111a9f59da2b8e653b11a83d29",
+          "snippet": "Find the live Bitcoin USD (BTC- USD ) price , history, news and other vital information to help with your cryptocurrency trading and investing."
+        },
+        {
+          "title": "Bitcoin Price in USD | Real Time Bitcoin Chart | KITCO CRYPTO",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.kitco.com%2Fprice%2Fcrypto%2Fbitcoin&rut=323b26ebe24a623a6eaaa4e22d934b66224b98118663c50377d80834dbce8d85",
+          "snippet": "The Kitco Bitcoin price index provides the latest Bitcoin price in US Dollars using an average from the world's leading exchanges."
+        },
+        {
+          "title": "Bitcoin (BTC) Price, Real-time Quote & News - Google Finance",
+          "url": "//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.google.com%2Ffinance%2Fquote%2FBTC%2Dusd&rut=c8b43cd4e7573fd1a2f755c3ac97e54b41fe92e51f9b6313a229ea4300ce624a",
+          "snippet": "Get the latest Bitcoin (BTC / USD ) real-time quote, historical performance, charts, and other cryptocurrency information to help you make more informed trading and investment decisions."
+        }
+      ],
+      "provider": "duckduckgo"
+    }
+  },
+  {
+    "content": "ask_user: {\"kind\": \"ask_user\", \"question\": \"What specific information would you like me to fetch for you? (e.g., a cryptocurrency price, weather for a city, a recent news headline, etc.)\", \"context\": \"\", \"options\": [{\"label\": \"Current Bitcoin price (USD)\"}, {\"label\": \"Current price of another cryptocurrency (e.g., Ethereum)\"}, {\"label\": \"Weather for a specific city\"}, {\"label\": \"Latest news headline on a topic\"}, {\"label\": \"Other (please specify)\"}]}",
+    "category": "tool_result",
+    "score": 1.0,
+    "metadata": {
+      "interactive": true,
+      "kind": "ask_user",
+      "question": "What specific information would you like me to fetch for you? (e.g., a cryptocurrency price, weather for a city, a recent news headline, etc.)",
+      "context": "",
+      "options": [
+        {
+          "label": "Current Bitcoin price (USD)"
+        },
+        {
+          "label": "Current price of another cryptocurrency (e.g., Ethereum)"
+        },
+        {
+          "label": "Weather for a specific city"
+        },
+        {
+          "label": "Latest news headline on a topic"
+        },
+        {
+          "label": "Other (please specify)"
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,10 @@
+include README.md
+include LICENSE.md
+include SECURITY.md
+include TOOLS.md
+include docs.md
+include .env.example
+include requirements.txt
+include shipit-icon.svg
+recursive-include examples *.py
+recursive-include notebooks *.ipynb

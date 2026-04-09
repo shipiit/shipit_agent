@@ -1,0 +1,139 @@
+{
+  "trace_id": "notebook-chat-trace",
+  "metadata": {
+    "session_id": "notebook-chat",
+    "agent_name": "shipit-demo",
+    "agent_description": "Runnable multi-tool demo agent with memory, sessions, traces, and provider selection."
+  },
+  "events": [
+    {
+      "type": "run_started",
+      "message": "Agent run started",
+      "payload": {
+        "prompt": "Summarize this project as if this were a product chat session."
+      }
+    },
+    {
+      "type": "step_started",
+      "message": "LLM completion started",
+      "payload": {
+        "tool_count": 28,
+        "iteration": 1
+      }
+    },
+    {
+      "type": "tool_called",
+      "message": "Tool called: ask_user",
+      "payload": {
+        "arguments": {
+          "question": "Could you please provide the project description or details you'd like summarized? This will help me create an accurate product-chat style summary."
+        },
+        "iteration": 1
+      }
+    },
+    {
+      "type": "tool_completed",
+      "message": "Tool completed: ask_user",
+      "payload": {
+        "output": "{\"kind\": \"ask_user\", \"question\": \"Could you please provide the project description or details you'd like summarized? This will help me create an accurate product-chat style summary.\", \"context\": \"\", \"options\": []}",
+        "iteration": 1
+      }
+    },
+    {
+      "type": "interactive_request",
+      "message": "Interactive request from ask_user",
+      "payload": {
+        "kind": "ask_user",
+        "payload": {
+          "interactive": true,
+          "kind": "ask_user",
+          "question": "Could you please provide the project description or details you'd like summarized? This will help me create an accurate product-chat style summary.",
+          "context": "",
+          "options": []
+        }
+      }
+    },
+    {
+      "type": "step_started",
+      "message": "LLM completion started",
+      "payload": {
+        "tool_count": 28,
+        "iteration": 2
+      }
+    },
+    {
+      "type": "run_completed",
+      "message": "Agent run completed",
+      "payload": {
+        "output": "Sure thing! Could you share the project description or the key details you\u2019d like summarized? That\u2019ll help me craft a concise product\u2011chat style overview for you."
+      }
+    },
+    {
+      "type": "run_started",
+      "message": "Agent run started",
+      "payload": {
+        "prompt": "Plan the work and show packet-style updates."
+      }
+    },
+    {
+      "type": "planning_started",
+      "message": "Planner started",
+      "payload": {
+        "prompt": "Plan the work and show packet-style updates."
+      }
+    },
+    {
+      "type": "planning_completed",
+      "message": "Planner completed",
+      "payload": {
+        "output": "Goal: Plan the work and show packet-style updates.\nPlan:\n1. Clarify the target output and inputs.\n2. Select the right tools and gather evidence.\n3. Execute the task in small verifiable steps.\n4. Verify the result against constraints.\n5. Return the final deliverable and note any residual risks."
+      }
+    },
+    {
+      "type": "step_started",
+      "message": "LLM completion started",
+      "payload": {
+        "tool_count": 28,
+        "iteration": 1
+      }
+    },
+    {
+      "type": "llm_retry",
+      "message": "Retrying LLM completion",
+      "payload": {
+        "attempt": 1,
+        "error": "litellm.BadRequestError: BedrockException - {\"message\":\"The number of toolResult blocks at messages.6.content exceeds the number of toolUse blocks of previous turn.\"}"
+      }
+    },
+    {
+      "type": "llm_retry",
+      "message": "Retrying LLM completion",
+      "payload": {
+        "attempt": 2,
+        "error": "litellm.BadRequestError: BedrockException - {\"message\":\"The number of toolResult blocks at messages.6.content exceeds the number of toolUse blocks of previous turn.\"}"
+      }
+    },
+    {
+      "type": "run_started",
+      "message": "Agent run started",
+      "payload": {
+        "prompt": "Explain the runtime in SSE packet form."
+      }
+    },
+    {
+      "type": "step_started",
+      "message": "LLM completion started",
+      "payload": {
+        "tool_count": 28,
+        "iteration": 1
+      }
+    },
+    {
+      "type": "run_completed",
+      "message": "Agent run completed",
+      "payload": {
+        "output": "```\nevent: intro\ndata: {\"title\":\"Shipit Runtime Overview\",\"summary\":\"A general\u2011purpose agent runtime that orchestrates tool usage, planning, and execution to solve user tasks end\u2011to\u2011end.\"}\n\nevent: core_behavior\ndata: {\"principles\":[\"Accurate\",\"Direct\",\"Execution\u2011oriented\"],\"actions\":[\"Solve tasks completely\",\"Prefer fresh data via tools\",\"Use smallest correct tool\",\"Plan for complex tasks\",\"Verify important results\"]}\n\nevent: tool_behavior\ndata: {\"process\":\"Read tool description \u2192 Choose minimal appropriate tool \u2192 Execute \u2192 Adjust on failure\",\"fallbacks\":[\"If tool fails, try alternative or ask user\"],\"tool_selection\":\"Based on task intent and capability\"}\n\nevent: quality_bar\ndata: {\"guidelines\":[\"Clear and complete output\",\"Highlight uncertainties\",\"Avoid repeated failures\",\"Surface residual uncertainty\"],\"verification\":\"Use verify_output or human_review when needed\"}\n\nevent: available_tools\ndata: {\"tools\":[\n  {\"name\":\"web_search\",\"purpose\":\"Fetch fresh web results\"},\n  {\"name\":\"open_url\",\"purpose\":\"Fetch specific URL content\"},\n  {\"name\":\"playwright_browse\",\"purpose\":\"Render JS\u2011heavy pages\"},\n  {\"name\":\"ask_user\",\"purpose\":\"Clarify ambiguous intent\"},\n  {\"name\":\"human_review\",\"purpose\":\"Approve consequential actions\"},\n  {\"name\":\"memory\",\"purpose\":\"Store/retrieve persistent facts\"},\n  {\"name\":\"plan_task\",\"purpose\":\"Create step\u2011by\u2011step execution plans\"},\n  {\"name\":\"decompose_problem\",\"purpose\":\"Break large problems into workstreams\"},\n  {\"name\":\"synthesize_evidence\",\"purpose\":\"Combine observations into facts\"},\n  {\"name\":\"decision_matrix\",\"purpose\":\"Compare options against criteria\"},\n  {\"name\":\"build_prompt\",\"purpose\":\"Craft system prompts\"},\n  {\"name\":\"verify_output\",\"purpose\":\"Check content against criteria\"},\n  {\"name\":\"tool_search\",\"purpose\":\"Find right tool for a given need\"},\n  {\"name\":\"build_artifact\",\"purpose\":\"Generate interactive visual artifacts\"},\n  {\"name\":\"workspace_files\",\"purpose\":\"Read/write files in /tmp\"},\n  {\"name\":\"run_code\",\"purpose\":\"Execute Python/Shell code\"},\n  {\"name\":\"gmail_search\",\"purpose\":\"Interact with Gmail\"},\n  {\"name\":\"google_calendar\",\"purpose\":\"Inspect calendar events\"},\n  {\"name\":\"google_drive\",\"purpose\":\"Search Drive files\"},\n  {\"name\":\"slack\",\"purpose\":\"Search/post Slack messages\"},\n  {\"name\":\"linear\",\"purpose\":\"Manage Linear issues\"},\n  {\"name\":\"jira\",\"purpose\":\"Manage Jira issues\"},\n  {\"name\":\"notion\",\"purpose\":\"Search/create Notion pages\"},\n  {\"name\":\"confluence\",\"purpose\":\"Search/create Confluence pages\"},\n  {\"name\":\"custom_api\",\"purpose\":\"Call configured HTTP APIs\"},\n  {\"name\":\"sub_agent\",\"purpose\":\"Delegate focused sub\u2011tasks\"},\n  {\"name\":\"project_context\",\"purpose\":\"Get local project context\"},\n  {\"name\":\"add_numbers\",\"purpose\":\"Add two integers deterministically\"}\n]}\n\nevent: usage_guidelines\ndata: {\"when_to_use_tools\":\"When freshness, accuracy, or efficiency improves\",\"when_to_plan\":\"Complex or ambiguous tasks\",\"when_to_ask_user\":\"Ambiguity that materially changes outcome\",\"when_to_human_review\":\"Create/update/delete or publish actions\"}\n\nevent: execution_flow_example\ndata: {\"steps\":[\n  {\"step\":1,\"action\":\"Parse user request\"},\n  {\"step\":2,\"action\":\"Check memory for existing facts\"},\n  {\"step\":3,\"action\":\"If ambiguous \u2192 ask_user\"},\n  {\"step\":4,\"action\":\"If complex \u2192 plan_task\"},\n  {\"step\":5,\"action\":\"Select appropriate tool(s) via tool_search\"},\n  {\"step\":6,\"action\":\"Execute tool(s)\"},\n  {\"step\":7,\"action\":\"Synthesize results via synthesize_evidence\"},\n  {\"step\":8,\"action\":\"Verify output with verify_output\"},\n  {\"step\":9,\"action\":\"If required, present human_review\"},\n  {\"step\":10,\"action\":\"Return final response\"}\n]}\n\nevent: end\ndata: {\"message\":\"Runtime description delivered as SSE packets.\"}\n```"
+      }
+    }
+  ]
+}

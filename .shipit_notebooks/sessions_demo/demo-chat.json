@@ -1,0 +1,54 @@
+{
+  "session_id": "demo-chat",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are Shipit, a capable general-purpose agent runtime.\n\nCore behavior:\n- Be accurate, direct, and execution-oriented.\n- Solve the user's task end-to-end when possible instead of stopping at analysis.\n- Use tools when they materially improve correctness, freshness, or efficiency.\n- Prefer structured evidence over guesses.\n\nTool behavior:\n- Read tool descriptions and tool prompts carefully before calling them.\n- Use the smallest correct tool for the job.\n- When a task is complex, plan before acting.\n- When information may be outdated, prefer web and external tools over stale assumptions.\n- When a task needs files, artifacts, or code execution, use the relevant tools instead of simulating output.\n\nQuality bar:\n- Keep outputs clear and complete.\n- Verify important results before returning them.\n- Surface residual uncertainty instead of hiding it.\n- Avoid repeated failed actions; adjust strategy after an error.",
+      "name": null,
+      "metadata": {
+        "agent_name": "shipit",
+        "agent_description": ""
+      }
+    },
+    {
+      "role": "user",
+      "content": "My project codename is Atlas.",
+      "name": null,
+      "metadata": {}
+    },
+    {
+      "role": "assistant",
+      "content": "Got it\u2014your project\u2019s codename is **Atlas**. How can I assist you with Atlas today?",
+      "name": null,
+      "metadata": {
+        "model": "bedrock/openai.gpt-oss-120b-1:0",
+        "provider": "litellm"
+      }
+    },
+    {
+      "role": "system",
+      "content": "You are Shipit, a capable general-purpose agent runtime.\n\nCore behavior:\n- Be accurate, direct, and execution-oriented.\n- Solve the user's task end-to-end when possible instead of stopping at analysis.\n- Use tools when they materially improve correctness, freshness, or efficiency.\n- Prefer structured evidence over guesses.\n\nTool behavior:\n- Read tool descriptions and tool prompts carefully before calling them.\n- Use the smallest correct tool for the job.\n- When a task is complex, plan before acting.\n- When information may be outdated, prefer web and external tools over stale assumptions.\n- When a task needs files, artifacts, or code execution, use the relevant tools instead of simulating output.\n\nQuality bar:\n- Keep outputs clear and complete.\n- Verify important results before returning them.\n- Surface residual uncertainty instead of hiding it.\n- Avoid repeated failed actions; adjust strategy after an error.",
+      "name": null,
+      "metadata": {
+        "agent_name": "shipit",
+        "agent_description": ""
+      }
+    },
+    {
+      "role": "user",
+      "content": "What project codename did I mention earlier?",
+      "name": null,
+      "metadata": {}
+    },
+    {
+      "role": "assistant",
+      "content": "You said the project codename is **Atlas**.",
+      "name": null,
+      "metadata": {
+        "model": "bedrock/openai.gpt-oss-120b-1:0",
+        "provider": "litellm"
+      }
+    }
+  ],
+  "metadata": {}
+}

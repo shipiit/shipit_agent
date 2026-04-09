@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shipit-agent"
+version = "0.1.0"
+description = "A clean, powerful agent runtime with tools, MCP support, profiles, and streaming events."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Rahul Raj" }
+]
+dependencies = []
+keywords = ["agent", "llm", "mcp", "tools", "automation", "ai"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+openai = ["openai>=1.30.0"]
+anthropic = ["anthropic>=0.34.0"]
+litellm = ["litellm>=1.42.0"]
+playwright = ["playwright>=1.45.0"]
+all = [
+  "openai>=1.30.0",
+  "anthropic>=0.34.0",
+  "litellm>=1.42.0",
+  "playwright>=1.45.0",
+]
+
+[project.scripts]
+shipit = "shipit_agent.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shipit_agent*"]
+
+[project.urls]
+Homepage = "https://github.com/rahulraj/shipit_agent"
+Repository = "https://github.com/rahulraj/shipit_agent"
+Issues = "https://github.com/rahulraj/shipit_agent/issues"

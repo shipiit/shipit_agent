@@ -1,0 +1,432 @@
+/*
+ * shipit-agent — custom MkDocs Material styles
+ *
+ * Modern, indie-product aesthetic. Builds on the Material defaults rather
+ * than fighting them, so future Material updates won't break things.
+ *
+ * Sections:
+ *   1. Custom color tokens
+ *   2. Typography refinements
+ *   3. Hero / landing page
+ *   4. Cards (the .grid.cards markdown extension)
+ *   5. Code blocks
+ *   6. Tables
+ *   7. Admonitions
+ *   8. Header / nav refinements
+ *   9. Footer
+ */
+
+/* ─────────────────────────────────────────────────────────── */
+/* 1. Custom color tokens                                      */
+/* ─────────────────────────────────────────────────────────── */
+
+:root {
+  /* Brand colors — electric cyan + deep indigo */
+  --shipit-cyan: #06b6d4;
+  --shipit-cyan-glow: #22d3ee;
+  --shipit-indigo: #6366f1;
+  --shipit-indigo-deep: #4338ca;
+  --shipit-violet: #8b5cf6;
+
+  /* Gradients */
+  --shipit-gradient-primary: linear-gradient(135deg, var(--shipit-indigo) 0%, var(--shipit-cyan) 100%);
+  --shipit-gradient-cool: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+  --shipit-gradient-mesh: radial-gradient(at 20% 20%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                          radial-gradient(at 80% 80%, rgba(6, 182, 212, 0.12) 0px, transparent 50%),
+                          radial-gradient(at 40% 90%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
+
+  /* Shadows */
+  --shipit-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shipit-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shipit-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  --shipit-shadow-glow: 0 0 24px rgba(6, 182, 212, 0.25);
+}
+
+/* Light mode overrides */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #4338ca;
+  --md-primary-fg-color--light: #6366f1;
+  --md-primary-fg-color--dark: #312e81;
+  --md-accent-fg-color: #06b6d4;
+  --md-typeset-a-color: #4338ca;
+}
+
+/* Dark mode overrides — deeper background, neon accent */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0f172a;
+  --md-primary-fg-color--light: #1e293b;
+  --md-primary-fg-color--dark: #020617;
+  --md-accent-fg-color: #22d3ee;
+  --md-default-bg-color: #0a0e1a;
+  --md-default-bg-color--light: #0f1421;
+  --md-typeset-a-color: #22d3ee;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 2. Typography refinements                                   */
+/* ─────────────────────────────────────────────────────────── */
+
+.md-typeset {
+  font-feature-settings: "ss01", "ss02", "cv11";
+  letter-spacing: -0.005em;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.md-typeset h1 {
+  font-size: 2.5rem;
+  background: var(--shipit-gradient-cool);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5em;
+}
+
+.md-typeset h2 {
+  font-size: 1.75rem;
+  margin-top: 2em;
+  padding-top: 0.5em;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset h2:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 1em;
+}
+
+.md-typeset h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 3. Hero / landing page                                      */
+/* ─────────────────────────────────────────────────────────── */
+
+/* Add a subtle gradient mesh background to the landing page only */
+[data-md-color-scheme="slate"] .md-main__inner {
+  background: var(--shipit-gradient-mesh);
+}
+
+/* Big eye-catching first heading on the landing page */
+.md-typeset .md-content__inner > h1:first-child {
+  font-size: 3.5rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin-bottom: 0.25em;
+  line-height: 1;
+}
+
+/* Subtle hover lift on the next-step links list */
+.md-typeset .md-content__inner > p > strong {
+  font-weight: 700;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 4. Cards (.grid.cards markdown extension)                   */
+/* ─────────────────────────────────────────────────────────── */
+
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 16px;
+  padding: 1.5rem;
+  background: var(--md-default-bg-color);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shipit-shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Glow line on top of each card */
+.md-typeset .grid.cards > ul > li::before,
+.md-typeset .grid > .card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--shipit-gradient-primary);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid > .card:hover {
+  transform: translateY(-4px);
+  border-color: var(--shipit-cyan);
+  box-shadow: var(--shipit-shadow-lg), var(--shipit-shadow-glow);
+}
+
+.md-typeset .grid.cards > ul > li:hover::before,
+.md-typeset .grid > .card:hover::before {
+  opacity: 1;
+}
+
+/* Dark mode — frosted glass effect on cards */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="slate"] .md-typeset .grid > .card {
+  background: rgba(15, 20, 33, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover,
+[data-md-color-scheme="slate"] .md-typeset .grid > .card:hover {
+  background: rgba(20, 26, 42, 0.8);
+  border-color: var(--shipit-cyan);
+}
+
+/* Card icons get an accent color */
+.md-typeset .grid.cards > ul > li .twemoji,
+.md-typeset .grid > .card .twemoji {
+  color: var(--shipit-cyan);
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 5. Code blocks                                              */
+/* ─────────────────────────────────────────────────────────── */
+
+.md-typeset code {
+  font-feature-settings: "calt", "ss01", "ss02";
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--shipit-indigo);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+[data-md-color-scheme="slate"] .md-typeset code {
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--shipit-cyan-glow);
+  border-color: rgba(34, 211, 238, 0.2);
+}
+
+/* Code blocks (multi-line) get a more polished frame */
+.md-typeset pre > code {
+  border-radius: 12px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  background: var(--md-code-bg-color);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+[data-md-color-scheme="slate"] .md-typeset pre > code {
+  background: #0a0e1a;
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Inline code inside headings stays neutral */
+.md-typeset h1 code,
+.md-typeset h2 code,
+.md-typeset h3 code {
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+  -webkit-text-fill-color: inherit;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 6. Tables                                                   */
+/* ─────────────────────────────────────────────────────────── */
+
+.md-typeset table:not([class]) {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shipit-shadow-md);
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--shipit-gradient-primary);
+  color: white;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  text-transform: none;
+  padding: 0.85rem 1rem;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+.md-typeset table:not([class]) tr:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) tr:hover {
+  background: rgba(34, 211, 238, 0.05);
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 7. Admonitions                                              */
+/* ─────────────────────────────────────────────────────────── */
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 12px;
+  border-width: 0;
+  border-left-width: 4px;
+  box-shadow: var(--shipit-shadow-sm);
+  font-size: 0.825rem;
+}
+
+.md-typeset .admonition-title,
+.md-typeset summary {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Tip/note get the cyan accent */
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-left-color: var(--shipit-cyan);
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 8. Header / nav refinements                                 */
+/* ─────────────────────────────────────────────────────────── */
+
+.md-header {
+  box-shadow: var(--shipit-shadow-md);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-md-color-scheme="slate"] .md-header {
+  background: rgba(10, 14, 26, 0.85);
+}
+
+/* Search bar — pill shape, subtle glow on focus */
+.md-search__form {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: all 0.2s ease;
+}
+
+.md-search__form:hover,
+.md-search__form:focus-within {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 0 2px var(--shipit-cyan);
+}
+
+/* Active nav link gets the accent */
+.md-nav__link--active {
+  color: var(--shipit-cyan) !important;
+  font-weight: 600;
+}
+
+/* Tabs row at the top — bolder active indicator */
+.md-tabs__link {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.md-tabs__link--active {
+  opacity: 1;
+  font-weight: 700;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 9. Footer                                                   */
+/* ─────────────────────────────────────────────────────────── */
+
+.md-footer {
+  background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.04) 100%);
+}
+
+[data-md-color-scheme="slate"] .md-footer {
+  background: linear-gradient(180deg, transparent 0%, rgba(34, 211, 238, 0.04) 100%);
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 10. Misc polish                                             */
+/* ─────────────────────────────────────────────────────────── */
+
+/* Buttons (anchor tags styled as buttons via .md-button class) */
+.md-typeset .md-button {
+  border-radius: 999px;
+  padding: 0.5rem 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: all 0.2s ease;
+  box-shadow: var(--shipit-shadow-sm);
+}
+
+.md-typeset .md-button--primary {
+  background: var(--shipit-gradient-primary);
+  border: none;
+  color: white;
+}
+
+.md-typeset .md-button--primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shipit-shadow-lg), var(--shipit-shadow-glow);
+}
+
+/* Horizontal rules become more elegant */
+.md-typeset hr {
+  border: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--md-default-fg-color--lightest), transparent);
+  margin: 3rem 0;
+}
+
+/* Blockquotes get a subtle gradient bar */
+.md-typeset blockquote {
+  border-left: 4px solid;
+  border-image: var(--shipit-gradient-primary) 1;
+  background: rgba(99, 102, 241, 0.03);
+  border-radius: 0 8px 8px 0;
+  padding: 0.75rem 1rem;
+  font-style: normal;
+  color: var(--md-default-fg-color--light);
+}
+
+[data-md-color-scheme="slate"] .md-typeset blockquote {
+  background: rgba(34, 211, 238, 0.04);
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Better scrollbars in dark mode */
+[data-md-color-scheme="slate"] ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-track {
+  background: #0a0e1a;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.2);
+  border-radius: 6px;
+  border: 2px solid #0a0e1a;
+}
+
+[data-md-color-scheme="slate"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 211, 238, 0.4);
+}
+
+/* Selection color */
+::selection {
+  background: rgba(6, 182, 212, 0.3);
+  color: inherit;
+}

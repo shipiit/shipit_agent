@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{#
+  shipit-agent — MkDocs Material theme override.
+  Adds preconnects to Google Fonts (so Manrope and JetBrains Mono load fast),
+  injects extra OpenGraph + Twitter card meta tags so social cards render
+  cleanly on shared links, and lets us extend specific blocks without
+  rewriting the whole template.
+#}
+
+{% block extrahead %}
+  {{ super() }}
+
+  <!-- Font preconnect — speeds up Manrope/JetBrains Mono load -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <!-- Theme color matches the dark navy palette -->
+  <meta name="theme-color" content="#0a0e1a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#4338ca" media="(prefers-color-scheme: light)">
+
+  <!-- Twitter card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@shipit_agent">
+
+  <!-- OpenGraph (mkdocs-material's social plugin handles per-page images) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SHIPIT Agent">
+{% endblock %}

@@ -34,10 +34,22 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install MkDocs Material + plugins
+      - name: Install Cairo + ImageMagick (required for social cards plugin)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2-dev \
+            libfreetype6-dev \
+            libffi-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libz-dev \
+            pngquant
+
+      - name: Install MkDocs Material + plugins (with imaging extras)
         run: |
           pip install \
-            mkdocs-material>=9.5.0 \
+            'mkdocs-material[imaging]>=9.5.0' \
             mkdocs-git-revision-date-localized-plugin>=1.2.0 \
             pymdown-extensions>=10.0
 

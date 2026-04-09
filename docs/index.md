@@ -129,3 +129,58 @@ run_completed         Agent run completed
 - [**Reasoning and thinking steps**](guides/reasoning.md) — render a live "Thinking" panel in your UI
 - [**Create a custom tool**](guides/custom-tools.md) — build a new tool from scratch
 - [**MCP integration**](guides/mcp.md) — attach remote MCP servers to extend capabilities
+
+---
+
+## Try it now — runnable examples
+
+The repo ships with **7 numbered, copy-pasteable examples** covering every major feature. Pick one and run it in 30 seconds.
+
+| # | What | Run |
+|---|---|---|
+| **1** | Hello, agent. The shortest possible runnable example | `python examples/01_hello_agent.py` |
+| **2** | Live streaming with colored reasoning events | `python examples/02_streaming_with_reasoning.py` |
+| **3** | Same agent, 5 different LLM providers back-to-back | `python examples/03_provider_swap.py` |
+| **4** | End-to-end research workflow with web search + URL fetching | `python examples/04_research_agent.py "your question"` |
+| **5** | Custom tools — function-style and class-style | `python examples/05_custom_tool.py` |
+| **6** | Persistent chat session with file-backed memory | `python examples/06_chat_session.py` |
+| **7** | Semantic tool discovery with `tool_search` | `python examples/07_tool_search.py` |
+
+[See the full examples README →](https://github.com/shipiit/shipit_agent/tree/main/examples/)
+
+---
+
+## Provider compatibility matrix
+
+| Provider | Reasoning blocks | Tool calling | Streaming | Bedrock pairing | Built-in tools |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **OpenAI** (`o1`, `o3`, `o4`, `gpt-5`) | ✅ Native | ✅ | ✅ | n/a | ✅ |
+| **OpenAI** (`gpt-4o`, `gpt-4o-mini`) | ❌ | ✅ | ✅ | n/a | ✅ |
+| **Anthropic** (`claude-opus-4`, `claude-3.7`) | ✅ Native (with `thinking_budget_tokens`) | ✅ | ✅ | n/a | ✅ |
+| **AWS Bedrock** (`gpt-oss-120b`) | ✅ Via LiteLLM | ✅ | ✅ | ✅ Bulletproof | ✅ |
+| **AWS Bedrock** (`anthropic.claude-*`) | ✅ Via LiteLLM | ✅ | ✅ | ✅ Bulletproof | ✅ |
+| **Google Gemini** (`gemini-1.5-pro`) | ❌ | ✅ | ✅ | n/a | ✅ |
+| **Google Vertex AI** | ❌ | ✅ | ✅ | n/a | ✅ |
+| **Groq** (`llama-3.3-70b`) | ❌ | ✅ | ✅ | n/a | ✅ |
+| **Together AI** | ❌ | ✅ | ✅ | n/a | ✅ |
+| **Ollama** (local) | ❌ | ✅ | ✅ | n/a | ✅ |
+| **DeepSeek R1** (via LiteLLM proxy) | ✅ Native | ✅ | ✅ | n/a | ✅ |
+| **LiteLLM Proxy** (self-hosted gateway) | ✅ Pass-through | ✅ | ✅ | n/a | ✅ |
+
+> **Tip:** if you want a "Thinking" panel UI without paying for o1/Claude, AWS Bedrock's `openai.gpt-oss-120b-1:0` is the cheapest reasoning-capable model in the matrix and ships with `Agent.with_builtins(llm=BedrockChatLLM())` out of the box.
+
+---
+
+## What you get vs. what you don't
+
+| ✅ shipit-agent does | ❌ shipit-agent does NOT do |
+|---|---|
+| Run agents with tools, MCP, memory, sessions | Train models or fine-tune |
+| Stream events incrementally as they happen | Provide a hosted control plane |
+| Extract reasoning blocks from any provider | Replace LangChain / LangGraph / CrewAI wholesale |
+| Guarantee Bedrock tool-pairing correctness | Manage your cloud infrastructure |
+| Support 9 LLM providers via one API | Lock you into a specific vendor |
+| Ship with 28+ built-in tools | Force you to use any of them |
+| Stay out of your way (small, focused runtime) | Hide the agent loop behind abstractions |
+
+This is a **library**, not a framework. The runtime is small enough to read in one sitting (`shipit_agent/runtime.py` is under 400 lines). Bring your own LLM, tools, and storage; the runtime composes them and gets out of the way.

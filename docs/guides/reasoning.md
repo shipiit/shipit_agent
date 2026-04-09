@@ -57,6 +57,12 @@ The adapter translates this to `thinking={"type": "enabled", "budget_tokens": 20
 
 ## Rendering a "Thinking" panel
 
+![Live reasoning events streaming in a notebook](../assets/reasoning-thinking-panel.png){ loading=lazy }
+
+> *Above: real `reasoning_completed` events from `bedrock/openai.gpt-oss-120b-1:0`
+> rendering live in a Jupyter notebook. Each event arrives the instant the model
+> emits it — no buffering.*
+
 ```python
 for event in agent.stream(prompt):
     if event.type == "reasoning_started":
@@ -66,6 +72,16 @@ for event in agent.stream(prompt):
     elif event.type == "tool_called":
         print(f"▶ Calling {event.message}")
 ```
+
+### Full event sequence with reasoning interleaved
+
+A typical research-task run with reasoning + 3 tool calls produces this stream:
+
+![Full event stream showing reasoning between tool calls](../assets/reasoning-full-stream.png){ loading=lazy }
+
+> *Above: 17-step event stream from `notebooks/04_agent_streaming_packets.ipynb`.
+> Notice how `reasoning_completed` fires before each `tool_called` — that's the
+> model "thinking out loud" before deciding which tool to invoke.*
 
 ## Caveats
 

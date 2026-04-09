@@ -12,25 +12,28 @@ copyright: Copyright &copy; 2026 SHIPIT Agent contributors
 theme:
   name: material
   language: en
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  custom_dir: docs/overrides
   palette:
-    # Light mode
+    # Light mode — clean, high-contrast, indigo accents
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: deep purple
-      accent: deep orange
+      primary: indigo
+      accent: cyan
       toggle:
-        icon: material/brightness-7
+        icon: material/weather-sunny
         name: Switch to dark mode
-    # Dark mode
+    # Dark mode — deep navy with electric cyan accents
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: deep purple
-      accent: deep orange
+      primary: black
+      accent: cyan
       toggle:
-        icon: material/brightness-4
+        icon: material/weather-night
         name: Switch to light mode
   font:
-    text: Inter
+    text: Manrope
     code: JetBrains Mono
   features:
     - navigation.tabs
@@ -96,6 +99,22 @@ plugins:
       enable_creation_date: true
       type: date
       fallback_to_build_date: true
+  # Auto-generate OpenGraph preview cards for every page so links shared
+  # on Twitter/X, Slack, LinkedIn, and Discord render with a branded image
+  # showing the page title + site name. Requires the imaging extras:
+  #     pip install 'mkdocs-material[imaging]'
+  # plus Cairo system libraries (macOS: brew install cairo freetype libffi).
+  # The plugin auto-disables itself if dependencies are missing, so it
+  # never breaks the build.
+  - social:
+      cards: !ENV [MKDOCS_SOCIAL_CARDS, true]
+      cards_layout_options:
+        background_color: "#1a1a2e"
+        color: "#ffffff"
+        font_family: Inter
+
+extra_css:
+  - stylesheets/extra.css
 
 extra:
   social:
@@ -103,6 +122,9 @@ extra:
       link: https://github.com/shipiit/shipit_agent
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/shipit-agent/
+
+not_in_nav: |
+  /guides/prebuilt-tools.md
 
 nav:
   - Home: index.md
@@ -114,14 +136,21 @@ nav:
       - Streaming Events: guides/streaming.md
       - Reasoning & Thinking Steps: guides/reasoning.md
       - Tool Search & Discovery: guides/tool-search.md
-      - Prebuilt Tools: guides/prebuilt-tools.md
       - Creating Custom Tools: guides/custom-tools.md
       - MCP Integration: guides/mcp.md
       - Sessions & Memory: guides/sessions.md
+  - Tools:
+      - Catalog Overview: tools/index.md
+      - Core Tools: tools/core-tools.md
+      - Reasoning Helpers: tools/reasoning-helpers.md
+      - Code & Files: tools/code-and-files.md
+      - Connectors: tools/connectors.md
   - Reference:
       - Architecture: reference/architecture.md
       - Event Types: reference/events.md
       - Model Adapters: reference/adapters.md
       - Tools Manifest: reference/tools.md
+  - FAQ: faq.md
+  - Glossary: glossary.md
   - Security: security.md
   - Changelog: changelog.md

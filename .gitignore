@@ -31,6 +31,9 @@ site/
 .eggs/
 pip-wheel-metadata/
 
+# MkDocs build cache (social cards, search index)
+.cache/
+
 # Notebook and editor artifacts
 .ipynb_checkpoints/
 .DS_Store
@@ -39,6 +42,7 @@ pip-wheel-metadata/
 
 # Local SHIPIT workspaces and runtime state
 .shipit_workspace/
+.shipit_checkpoints/
 .shipit_notebook_workspace/
 .shipit_notebooks/
 memory.json
@@ -51,3 +55,6 @@ connector_creds.json
 *.log
 tmp/
 temp/
+
+ANNOUNCEMENT_1.0.2.md
+ANNOUNCE.md

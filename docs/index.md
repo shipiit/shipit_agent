@@ -1,14 +1,12 @@
 ---
 title: SHIPIT Agent
 description: A clean, powerful Python agent library with tools, MCP, streaming events, reasoning capture, and runtime policies.
-hide:
-  - navigation
 ---
 
 # SHIPIT Agent
 
-!!! tip "v1.0 is out"
-    First stable release. Ships with **live reasoning events**, **truly incremental streaming**, **Bedrock tool-pairing guarantees**, **zero-friction provider switching**, and **in-process Playwright** for URL fetching. See the [changelog](changelog.md).
+!!! tip "v1.0.2 — Power features"
+    New in 1.0.2: **parallel tool execution**, **async runtime**, **hooks & middleware**, **graceful error recovery**, **context window management**, **mid-run re-planning**, and **structured output**. See the [changelog](changelog.md).
 
 **SHIPIT Agent** is a standalone Python agent library focused on a clean runtime:
 
@@ -118,6 +116,38 @@ run_completed         Agent run completed
 
     [:octicons-arrow-right-24: Prebuilt tools](guides/prebuilt-tools.md)
 
+-   :material-run-fast: **Parallel tool execution**
+
+    ---
+
+    When the LLM returns multiple tool calls, run them concurrently with `parallel_tool_execution=True`. Results stay in order. Typically 2-3x faster for multi-tool turns.
+
+    [:octicons-arrow-right-24: Parallel execution guide](guides/parallel-execution.md)
+
+-   :material-hook: **Hooks & middleware**
+
+    ---
+
+    `AgentHooks` with `@on_before_llm`, `@on_after_llm`, `@on_before_tool`, `@on_after_tool` for cost tracking, rate limiting, content filtering, and guardrails. No subclassing.
+
+    [:octicons-arrow-right-24: Hooks guide](guides/hooks.md)
+
+-   :material-async: **Async runtime**
+
+    ---
+
+    `AsyncAgentRuntime` with `async run()` and `async stream()` for FastAPI, Starlette, and modern async Python. Same features as the sync runtime.
+
+    [:octicons-arrow-right-24: Async guide](guides/async-runtime.md)
+
+-   :material-shield-half-full: **Graceful error recovery**
+
+    ---
+
+    Tool failures produce error messages instead of crashing the run. The LLM sees the error and can try a different approach. Safer retry defaults prevent retrying on bugs.
+
+    [:octicons-arrow-right-24: Error recovery guide](guides/error-recovery.md)
+
 </div>
 
 ---
@@ -129,6 +159,11 @@ run_completed         Agent run completed
 - [**Reasoning and thinking steps**](guides/reasoning.md) — render a live "Thinking" panel in your UI
 - [**Create a custom tool**](guides/custom-tools.md) — build a new tool from scratch
 - [**MCP integration**](guides/mcp.md) — attach remote MCP servers to extend capabilities
+- [**Parallel tool execution**](guides/parallel-execution.md) — speed up multi-tool turns
+- [**Hooks & middleware**](guides/hooks.md) — add cost tracking, logging, and guardrails
+- [**Async runtime**](guides/async-runtime.md) — use with FastAPI and async Python
+- [**Context window management**](guides/context-management.md) — track tokens and manage context limits
+- [**Error recovery**](guides/error-recovery.md) — graceful failure handling and retry policies
 
 ---
 

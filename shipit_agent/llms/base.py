@@ -12,6 +12,7 @@ class LLMResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     reasoning_content: str | None = None
+    usage: dict[str, int] = field(default_factory=dict)
 
 
 class LLM(Protocol):

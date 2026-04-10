@@ -4,7 +4,15 @@ try:
 except Exception:
     __version__ = "0.0.0+unknown"
 
+from .async_runtime import AsyncAgentRuntime
+from .deep import AdaptiveAgent, AgentBenchmark, AgentMessage, BenchmarkReport, Channel, Checkpoint, Goal, GoalAgent, GoalResult, PersistentAgent, ReflectionResult, ReflectiveAgent, Supervisor, SupervisorResult, TestCase, Worker
 from .exceptions import DuplicateToolError, ShipitAgentError
+from .hooks import AgentHooks
+from .memory import AgentMemory, ConversationMemory, Entity, EntityMemory, InMemoryVectorStore, SearchResult, SemanticMemory, VectorStore
+from .parsers import JSONParser, MarkdownParser, MarkdownResult, OutputParser, ParseError, PydanticParser, RegexParser
+from .pipeline import Pipeline, Step, parallel, step
+from .structured import build_schema_prompt, is_pydantic_model, parse_structured_output, schema_to_response_format
+from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
 from .agent import Agent
 from .builtins import get_builtin_tools
 from .chat_session import AgentChatSession
@@ -62,8 +70,53 @@ from .tools import (
 )
 
 __all__ = [
+    "AdaptiveAgent",
     "Agent",
+    "AgentBenchmark",
     "AgentChatSession",
+    "AgentHooks",
+    "AgentMemory",
+    "AgentMessage",
+    "AgentTeam",
+    "AsyncAgentRuntime",
+    "BenchmarkReport",
+    "Channel",
+    "Checkpoint",
+    "ConversationMemory",
+    "Entity",
+    "EntityMemory",
+    "Goal",
+    "GoalAgent",
+    "GoalResult",
+    "InMemoryVectorStore",
+    "JSONParser",
+    "MarkdownParser",
+    "MarkdownResult",
+    "OutputParser",
+    "ParseError",
+    "PersistentAgent",
+    "Pipeline",
+    "PydanticParser",
+    "ReflectionResult",
+    "ReflectiveAgent",
+    "RegexParser",
+    "SearchResult",
+    "SemanticMemory",
+    "Step",
+    "Supervisor",
+    "SupervisorResult",
+    "TeamAgent",
+    "TeamResult",
+    "TeamRound",
+    "TestCase",
+    "VectorStore",
+    "Worker",
+    "build_schema_prompt",
+    "is_pydantic_model",
+    "parallel",
+    "parse_structured_output",
+    "schema_to_response_format",
+    "step",
     "event_packet",
     "AgentEvent",
     "ReasoningResult",

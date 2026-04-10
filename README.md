@@ -51,6 +51,105 @@
   <img src="https://img.shields.io/badge/Custom%20API-supported-gray?style=flat-square" alt="Custom" />
 </p>
 
+## 🚀 What's new in 1.0.2
+
+**SHIPIT Agent 1.0.2** is a major feature release — deep agents, structured output, pipelines, agent teams, advanced memory, and output parsers. Everything LangChain has, plus features it doesn't. **285 tests. 12 examples. 8 notebooks.**
+
+### Deep Agents — Beyond LangChain
+
+```python
+from shipit_agent.deep import GoalAgent, Goal, ReflectiveAgent, Supervisor, Worker
+
+# GoalAgent — autonomous goal decomposition with streaming
+agent = GoalAgent.with_builtins(llm=llm, goal=Goal(
+    objective="Build a comparison of Python web frameworks",
+    success_criteria=["Covers Django, Flask, FastAPI", "Includes benchmarks"],
+))
+for event in agent.stream():
+    print(f"[{event.type}] {event.message}")
+    if event.payload.get("output"):
+        print(event.payload["output"][:200])
+
+# ReflectiveAgent — self-improving with quality scores
+agent = ReflectiveAgent.with_builtins(llm=llm, quality_threshold=0.8)
+result = agent.run("Explain the CAP theorem")
+print(f"Quality: {result.final_quality}, Revisions: {len(result.revisions)}")
+
+# Supervisor — hierarchical multi-agent management
+supervisor = Supervisor.with_builtins(llm=llm, worker_configs=[
+    {"name": "analyst", "prompt": "You analyze data."},
+    {"name": "writer", "prompt": "You write reports."},
+])
+for event in supervisor.stream("Analyze AI trends and write a summary"):
+    print(f"[{event.payload.get('worker', 'supervisor')}] {event.message}")
+```
+
+### Structured Output — One Parameter
+
+```python
+from pydantic import BaseModel
+
+class Analysis(BaseModel):
+    sentiment: str
+    confidence: float
+    topics: list[str]
+
+result = agent.run("Analyze this review", output_schema=Analysis)
+result.parsed.sentiment   # "positive"
+result.parsed.confidence  # 0.95
+```
+
+### Pipeline Composition
+
+```python
+from shipit_agent import Pipeline, step, parallel
+
+pipe = Pipeline(
+    parallel(
+        step("research", agent=researcher, prompt="Research {topic}"),
+        step("trends", agent=analyst, prompt="Trends in {topic}"),
+    ),
+    step("write", agent=writer, prompt="Article using:\n{research.output}\n{trends.output}"),
+)
+for event in pipe.stream(topic="AI agents"):
+    print(f"[{event.payload.get('step', '')}] {event.message}")
+```
+
+### Agent Teams + Channels + Memory + Benchmark
+
+```python
+# Agent team with LLM-routed coordination
+team = AgentTeam(coordinator=llm, agents=[researcher, writer, reviewer])
+for event in team.stream("Write a guide about async Python"):
+    print(f"[{event.payload.get('agent')}] {event.message}")
+
+# Typed agent communication
+channel = Channel(name="pipeline")
+channel.send(AgentMessage(from_agent="a", to_agent="b", type="data", data={...}))
+
+# Advanced memory (conversation + semantic + entity)
+memory = AgentMemory.default(llm=llm, embedding_fn=my_embed)
+
+# Systematic agent testing
+report = AgentBenchmark(name="eval", cases=[
+    TestCase(input="What is Docker?", expected_contains=["container"]),
+]).run(agent)
+print(report.summary())
+```
+
+### Also in 1.0.2
+
+- **Parallel tool execution** — `parallel_tool_execution=True`
+- **Graceful tool failure** — errors become messages, not crashes
+- **Context window management** — token tracking + auto-compaction
+- **Hooks & middleware** — `@hooks.on_before_llm`, `@hooks.on_after_tool`
+- **Async runtime** — `AsyncAgentRuntime` for FastAPI
+- **Mid-run re-planning** — `replan_interval=N`
+- **Transient error auto-retry** — 429/500/503 retried automatically
+- **Output parsers** — JSON, Pydantic, Regex, Markdown
+
+---
+
 ## 🚀 What's new in 1.0
 
 **SHIPIT Agent 1.0** is the first stable release. It ships a production-ready agent runtime built around three ideas: **every step is observable**, **every provider is interchangeable**, and **the runtime stays out of your way**. The headline features:

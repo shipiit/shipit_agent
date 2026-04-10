@@ -22,6 +22,10 @@ class AgentProfile:
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
     trace_store: TraceStore | None = None
+    parallel_tool_execution: bool = False
+    hooks: Any = None
+    context_window_tokens: int = 0
+    replan_interval: int = 0
 
 
 class AgentProfileBuilder:
@@ -36,6 +40,10 @@ class AgentProfileBuilder:
         self._retry_policy = RetryPolicy()
         self._router_policy = RouterPolicy()
         self._trace_store: TraceStore | None = None
+        self._parallel_tool_execution = False
+        self._hooks: Any = None
+        self._context_window_tokens = 0
+        self._replan_interval = 0
 
     def prompt(self, value: str) -> "AgentProfileBuilder":
         self._prompt = value
@@ -81,6 +89,22 @@ class AgentProfileBuilder:
         self._trace_store = value
         return self
 
+    def parallel_tool_execution(self, value: bool = True) -> "AgentProfileBuilder":
+        self._parallel_tool_execution = value
+        return self
+
+    def hooks(self, value: Any) -> "AgentProfileBuilder":
+        self._hooks = value
+        return self
+
+    def context_window_tokens(self, value: int) -> "AgentProfileBuilder":
+        self._context_window_tokens = value
+        return self
+
+    def replan_interval(self, value: int) -> "AgentProfileBuilder":
+        self._replan_interval = value
+        return self
+
     def build_profile(self) -> AgentProfile:
         return AgentProfile(
             name=self._name,
@@ -93,6 +117,10 @@ class AgentProfileBuilder:
             retry_policy=self._retry_policy,
             router_policy=self._router_policy,
             trace_store=self._trace_store,
+            parallel_tool_execution=self._parallel_tool_execution,
+            hooks=self._hooks,
+            context_window_tokens=self._context_window_tokens,
+            replan_interval=self._replan_interval,
         )
 
     def build(self, *, llm: Any) -> "Agent":
@@ -111,4 +139,8 @@ class AgentProfileBuilder:
             retry_policy=profile.retry_policy,
             router_policy=profile.router_policy,
             trace_store=profile.trace_store,
+            parallel_tool_execution=profile.parallel_tool_execution,
+            hooks=profile.hooks,
+            context_window_tokens=profile.context_window_tokens,
+            replan_interval=profile.replan_interval,
         )

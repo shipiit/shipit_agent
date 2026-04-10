@@ -32,7 +32,7 @@ def test_runtime_retries_llm_failures() -> None:
 
     agent = Agent(
         llm=FlakyLLM(),
-        retry_policy=RetryPolicy(max_llm_retries=1),
+        retry_policy=RetryPolicy(max_llm_retries=1, retry_on_exceptions=(RuntimeError,)),
     )
     result = agent.run("hello")
     assert result.output == "recovered"

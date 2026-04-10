@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 class RetryPolicy:
     max_llm_retries: int = 2
     max_tool_retries: int = 1
-    retry_on_exceptions: tuple[type[Exception], ...] = field(default_factory=lambda: (Exception,))
+    retry_on_exceptions: tuple[type[Exception], ...] = field(
+        default_factory=lambda: (ConnectionError, TimeoutError, OSError)
+    )
 
 
 @dataclass(slots=True)

@@ -33,7 +33,7 @@ def test_memory_store_collects_tool_outputs() -> None:
             }
 
         def run(self, context, **kwargs):
-            return type("Output", (), {"text": "stored value", "metadata": {}})()
+            return type("Output", (), {"text": "stored value", "metadata": {"persist": True}})()
 
     agent = Agent(llm=ToolCallingLLM(), prompt="Prompt", tools=[EchoTool()], memory_store=memory)
     agent.run("store")

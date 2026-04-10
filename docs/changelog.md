@@ -1,5 +1,54 @@
 # Changelog
 
+## v1.0.2 — 2026-04-10
+
+Major feature release. Deep agents, structured output, pipelines, agent teams, advanced memory, output parsers, and runtime power features. **285 tests. 12 examples. 8 notebooks. 13 new doc pages.**
+
+### Deep Agents
+
+- **GoalAgent** — Autonomous goal decomposition with success criteria, streaming, and `.with_builtins()`. [Guide](guides/deep-agents.md)
+- **ReflectiveAgent** — Self-evaluation with quality scores and revision loop. [Guide](guides/deep-agents.md)
+- **Supervisor / Worker** — Hierarchical delegation with quality review. [Guide](guides/deep-agents.md)
+- **AdaptiveAgent** — Runtime tool creation from Python code. [Guide](guides/deep-agents.md)
+- **PersistentAgent** — Checkpoint and resume across sessions. [Guide](guides/deep-agents.md)
+- **Channel / AgentMessage** — Typed agent-to-agent communication. [Guide](guides/deep-agents.md)
+- **AgentBenchmark** — Systematic agent testing framework. [Guide](guides/deep-agents.md)
+- **Deep Agents API Reference** — Full constructor, method, and return type docs. [Reference](reference/deep-agents-api.md)
+
+### Structured Output & Parsers
+
+- **`output_schema` on Agent.run()** — Pydantic models + JSON schemas. [Guide](guides/parsers-and-structured-output.md)
+- **JSONParser, PydanticParser, RegexParser, MarkdownParser**. [Guide](guides/parsers-and-structured-output.md)
+
+### Composition
+
+- **Pipeline** — Sequential, parallel, conditional, function steps, streaming. [Guide](guides/pipelines-and-teams.md)
+- **AgentTeam** — LLM-routed multi-agent coordination with streaming. [Guide](guides/pipelines-and-teams.md)
+
+### Advanced Memory
+
+- **ConversationMemory** — buffer/window/summary/token strategies. [Guide](guides/advanced-memory.md)
+- **SemanticMemory** — Embedding-based vector search. [Guide](guides/advanced-memory.md)
+- **EntityMemory** — Track people, projects, concepts. [Guide](guides/advanced-memory.md)
+- **AgentMemory** — Unified interface with `.default()`. [Guide](guides/advanced-memory.md)
+
+### Runtime Power Features
+
+- **Parallel tool execution**. [Guide](guides/parallel-execution.md)
+- **Graceful tool failure**. [Guide](guides/error-recovery.md)
+- **Context window management**. [Guide](guides/context-management.md)
+- **Hooks & middleware**. [Guide](guides/hooks.md)
+- **Mid-run re-planning**. [Guide](guides/replanning.md)
+- **Async runtime**. [Guide](guides/async-runtime.md)
+- **Transient error auto-retry** (429/500/503).
+
+### Changed
+
+- **Selective memory storage** (**breaking**) — Only `persist=True` tool results stored.
+- **Safer retry defaults** — `(ConnectionError, TimeoutError, OSError)` instead of `(Exception,)`.
+
+---
+
 ## v1.0.1 — 2026-04-09
 
 Maintenance release. Bug fix in the tool runner plus repo hygiene, contributor experience, and CI hardening. **Strongly recommended upgrade** from 1.0.0 if you use Bedrock `gpt-oss-120b`.

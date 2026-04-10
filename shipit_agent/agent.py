@@ -35,6 +35,10 @@ class Agent:
     max_iterations: int = 4
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
+    parallel_tool_execution: bool = False
+    hooks: Any = None
+    context_window_tokens: int = 0
+    replan_interval: int = 0
 
     @classmethod
     def with_builtins(
@@ -70,7 +74,16 @@ class Agent:
             **kwargs,
         )
 
-    def run(self, user_prompt: str) -> AgentResult:
+    def run(self, user_prompt: str, *, output_schema: Any = None) -> AgentResult:
+        # Append schema instructions to the USER prompt (not system prompt)
+        # so the model can still use tools normally and only formats the
+        # final answer as JSON. Bedrock returns empty content when schema
+        # instructions pollute the system prompt.
+        effective_user_prompt = user_prompt
+        if output_schema:
+            from shipit_agent.structured import build_schema_prompt
+            effective_user_prompt = user_prompt + build_schema_prompt(output_schema)
+
         runtime = AgentRuntime(
             llm=self.llm,
             prompt=self.prompt,
@@ -91,14 +104,28 @@ class Agent:
             retry_policy=self.retry_policy,
             router_policy=self.router_policy,
             credential_store=self.credential_store,
+            parallel_tool_execution=self.parallel_tool_execution,
+            hooks=self.hooks,
+            context_window_tokens=self.context_window_tokens,
+            replan_interval=self.replan_interval,
         )
-        state, response = runtime.run(user_prompt)
+        state, response = runtime.run(effective_user_prompt)
+
+        parsed = None
+        if output_schema and response.content:
+            try:
+                from shipit_agent.structured import parse_structured_output
+                parsed = parse_structured_output(response.content, output_schema)
+            except Exception:
+                parsed = None
+
         return AgentResult(
             output=response.content,
             messages=state.messages,
             events=state.events,
             tool_results=state.tool_results,
             metadata=dict(response.metadata),
+            parsed=parsed,
         )
 
     def stream(self, user_prompt: str):
@@ -122,6 +149,10 @@ class Agent:
             retry_policy=self.retry_policy,
             router_policy=self.router_policy,
             credential_store=self.credential_store,
+            parallel_tool_execution=self.parallel_tool_execution,
+            hooks=self.hooks,
+            context_window_tokens=self.context_window_tokens,
+            replan_interval=self.replan_interval,
         )
         for event in runtime.stream(user_prompt):
             yield event

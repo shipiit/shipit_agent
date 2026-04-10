@@ -16,24 +16,24 @@ theme:
   favicon: assets/logo.svg
   custom_dir: docs/overrides
   palette:
-    # Light mode — clean, high-contrast, indigo accents
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: indigo
-      accent: cyan
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to dark mode
-    # Dark mode — deep navy with electric cyan accents
+    # Dark mode first — matches Anthropic docs aesthetic
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: black
-      accent: cyan
+      accent: deep orange
       toggle:
         icon: material/weather-night
         name: Switch to light mode
+    # Light mode — clean white header like Anthropic
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
   font:
-    text: Manrope
+    text: Inter
     code: JetBrains Mono
   features:
     - navigation.tabs
@@ -44,7 +44,6 @@ theme:
     - navigation.indexes
     - navigation.footer
     - toc.follow
-    - toc.integrate
     - search.suggest
     - search.highlight
     - search.share
@@ -127,30 +126,49 @@ not_in_nav: |
   /guides/prebuilt-tools.md
 
 nav:
-  - Home: index.md
-  - Getting Started:
+  - Getting started:
+      - Overview: index.md
       - Installation: getting-started/install.md
       - Quick Start: getting-started/quickstart.md
       - Environment Setup: getting-started/environment.md
-  - Guides:
+      - Changelog: changelog.md
+  - Build with SHIPIT:
+      # Core concepts
       - Streaming Events: guides/streaming.md
-      - Reasoning & Thinking Steps: guides/reasoning.md
-      - Tool Search & Discovery: guides/tool-search.md
+      - Reasoning & Thinking: guides/reasoning.md
       - Creating Custom Tools: guides/custom-tools.md
+      - Tool Search: guides/tool-search.md
       - MCP Integration: guides/mcp.md
       - Sessions & Memory: guides/sessions.md
+      # Power features
+      - Parallel Execution: guides/parallel-execution.md
+      - Hooks & Middleware: guides/hooks.md
+      - Async Runtime: guides/async-runtime.md
+      - Context Management: guides/context-management.md
+      - Error Recovery: guides/error-recovery.md
+      - Re-Planning: guides/replanning.md
+      - Structured Output: guides/structured-output.md
+  - Deep Agents:
+      # Composition
+      - Parsers & Structured Output: guides/parsers-and-structured-output.md
+      - Pipelines & Teams: guides/pipelines-and-teams.md
+      # Advanced memory
+      - Advanced Memory: guides/advanced-memory.md
+      # Deep agents
+      - Goal, Reflective & Adaptive Agents: guides/deep-agents.md
+  - Reference:
+      - Architecture: reference/architecture.md
+      - Event Types: reference/events.md
+      - Model Adapters: reference/adapters.md
+      - Deep Agents API: reference/deep-agents-api.md
+      - Tools Manifest: reference/tools.md
   - Tools:
       - Catalog Overview: tools/index.md
       - Core Tools: tools/core-tools.md
       - Reasoning Helpers: tools/reasoning-helpers.md
       - Code & Files: tools/code-and-files.md
       - Connectors: tools/connectors.md
-  - Reference:
-      - Architecture: reference/architecture.md
-      - Event Types: reference/events.md
-      - Model Adapters: reference/adapters.md
-      - Tools Manifest: reference/tools.md
-  - FAQ: faq.md
-  - Glossary: glossary.md
-  - Security: security.md
-  - Changelog: changelog.md
+  - Resources:
+      - FAQ: faq.md
+      - Glossary: glossary.md
+      - Security: security.md

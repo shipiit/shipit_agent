@@ -16,6 +16,7 @@ class ShipitLLM:
         tools: list[dict] | None = None,
         system_prompt: str | None = None,
         metadata: dict | None = None,
+        response_format: dict | None = None,
     ) -> LLMResponse:
         last_user_message = next(
             (message.content for message in reversed(messages) if message.role == "user"),

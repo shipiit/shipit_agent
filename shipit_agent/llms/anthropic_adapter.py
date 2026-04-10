@@ -76,6 +76,7 @@ class AnthropicChatLLM:
         tools: list[dict[str, Any]] | None = None,
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         try:
             import anthropic
@@ -110,7 +111,14 @@ class AnthropicChatLLM:
                 "budget_tokens": self.thinking_budget_tokens,
             }
 
-        response = client.messages.create(**kwargs)
+        try:
+            response = client.messages.create(**kwargs)
+        except Exception as exc:
+            exc_name = type(exc).__name__
+            status = getattr(exc, "status_code", None)
+            if status in (429, 500, 502, 503, 529) or "ServiceUnavailable" in exc_name or "RateLimitError" in exc_name or "InternalServerError" in exc_name or "OverloadedError" in exc_name:
+                raise ConnectionError(f"{exc_name}: {exc}") from exc
+            raise
 
         text_parts: list[str] = []
         thinking_parts: list[str] = []
@@ -127,6 +135,14 @@ class AnthropicChatLLM:
                     arguments=dict(getattr(block, "input", {}) or {}),
                 ))
 
+        usage: dict[str, int] = {}
+        if hasattr(response, "usage") and response.usage:
+            usage = {
+                "prompt_tokens": getattr(response.usage, "input_tokens", 0) or 0,
+                "completion_tokens": getattr(response.usage, "output_tokens", 0) or 0,
+            }
+            usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
+
         return LLMResponse(
             content="".join(text_parts),
             tool_calls=tool_calls,
@@ -136,4 +152,5 @@ class AnthropicChatLLM:
                 **({"thinking_budget_tokens": self.thinking_budget_tokens} if self.thinking_budget_tokens else {}),
             },
             reasoning_content=("\n".join(thinking_parts) if thinking_parts else None),
+            usage=usage,
         )

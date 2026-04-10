@@ -89,7 +89,7 @@ def test_agent_retries_flaky_tool() -> None:
     agent = Agent(
         llm=StableLLM(),
         tools=[FunctionTool.from_callable(flaky, name="flaky")],
-        retry_policy=RetryPolicy(max_tool_retries=1),
+        retry_policy=RetryPolicy(max_tool_retries=1, retry_on_exceptions=(RuntimeError,)),
     )
     result = agent.run("run flaky tool")
     assert result.tool_results[-1].output == "ok"

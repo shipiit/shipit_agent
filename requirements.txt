@@ -1,12 +1,20 @@
-# Base local development setup for the repository.
-# This keeps the default path light and does not require Playwright.
--e .[dev,litellm]
+# Full development setup — installs everything.
+# Run: pip install -r requirements.txt
+-e .[dev,all]
 
-# Optional provider SDKs:
-# -e .[openai]
-# -e .[anthropic]
-#
-# Optional browser support:
-# -e .[playwright]
-# After installing the Playwright extra, also run:
+# Core dependencies (auto-installed via pyproject.toml):
+#   pydantic>=2.0.0          — structured output, parsers, data models
+
+# Provider SDKs (installed via [all] extra):
+#   openai>=1.30.0           — OpenAI GPT-4o, o1, o3, o4, gpt-5
+#   anthropic>=0.34.0        — Anthropic Claude Opus, Sonnet, Haiku
+#   litellm>=1.42.0          — Bedrock, Gemini, Groq, Together, Ollama, Vertex AI
+#   playwright>=1.45.0       — Browser automation for open_url & web_search
+
+# Dev tools (installed via [dev] extra):
+#   pytest>=8.0.0
+#   mkdocs-material>=9.5.0
+#   mkdocs-git-revision-date-localized-plugin>=1.2.0
+
+# After installing, also run for browser support:
 # playwright install

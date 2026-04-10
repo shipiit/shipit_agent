@@ -55,6 +55,7 @@ class OpenAIChatLLM:
         tools: list[dict[str, Any]] | None = None,
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         try:
             from openai import OpenAI
@@ -76,8 +77,17 @@ class OpenAIChatLLM:
         # rejects the parameter otherwise.
         if self.tool_choice and tools:
             kwargs["tool_choice"] = self.tool_choice
+        if response_format:
+            kwargs["response_format"] = response_format
 
-        response = client.chat.completions.create(**kwargs)
+        try:
+            response = client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            exc_name = type(exc).__name__
+            status = getattr(exc, "status_code", None)
+            if status in (429, 500, 502, 503, 529) or "ServiceUnavailable" in exc_name or "RateLimitError" in exc_name or "InternalServerError" in exc_name:
+                raise ConnectionError(f"{exc_name}: {exc}") from exc
+            raise
         choice = response.choices[0].message
 
         tool_calls = []
@@ -92,6 +102,14 @@ class OpenAIChatLLM:
 
         reasoning_content = _extract_reasoning(choice)
 
+        usage: dict[str, int] = {}
+        if response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens or 0,
+                "completion_tokens": response.usage.completion_tokens or 0,
+                "total_tokens": response.usage.total_tokens or 0,
+            }
+
         return LLMResponse(
             content=choice.content or "",
             tool_calls=tool_calls,
@@ -101,4 +119,5 @@ class OpenAIChatLLM:
                 **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}),
             },
             reasoning_content=reasoning_content,
+            usage=usage,
         )

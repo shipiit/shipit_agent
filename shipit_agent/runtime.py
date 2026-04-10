@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 from uuid import uuid4
@@ -46,6 +47,10 @@ class AgentRuntime:
         credential_store: CredentialStore | None = None,
         trace_store: TraceStore | None = None,
         trace_id: str | None = None,
+        parallel_tool_execution: bool = False,
+        hooks: Any | None = None,
+        context_window_tokens: int = 0,
+        replan_interval: int = 0,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -62,6 +67,11 @@ class AgentRuntime:
         self.credential_store = credential_store
         self.trace_store = trace_store or InMemoryTraceStore()
         self.trace_id = trace_id or self.session_id
+        self.parallel_tool_execution = parallel_tool_execution
+        self.hooks = hooks
+        self.context_window_tokens = context_window_tokens
+        self.replan_interval = replan_interval
+        self._total_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
 
     def registry(self) -> ToolRegistry:
@@ -129,6 +139,223 @@ class AgentRuntime:
         )
         self.emit(state, "planning_completed", "Planner completed", output=tool_result.output)
 
+    def _execute_single_tool(
+        self,
+        *,
+        state: RuntimeState,
+        registry: ToolRegistry,
+        tool_runner: ToolRunner,
+        tool_call: Any,
+        tool_call_record: dict[str, Any],
+        context: ToolContext,
+        iteration: int,
+    ) -> tuple[ToolResult | None, Message]:
+        """Execute a single tool call and return (tool_result, message).
+
+        Returns (None, error_message) for hallucinated tools.
+        """
+        tool = registry.get(tool_call.name)
+        if tool is None:
+            error_output = (
+                f"Error: tool '{tool_call.name}' is not registered. "
+                f"Choose a different tool from the available list."
+            )
+            self.emit(
+                state,
+                "tool_failed",
+                f"Tool failed: {tool_call.name}",
+                error="tool_not_registered",
+                iteration=iteration,
+            )
+            msg = Message(
+                role="tool",
+                name=tool_call.name,
+                content=error_output,
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "error": "tool_not_registered",
+                },
+            )
+            return None, msg
+
+        if self.hooks:
+            self.hooks.run_before_tool(tool_call.name, tool_call.arguments)
+
+        self.emit(state, "tool_called", f"Tool called: {tool_call.name}", arguments=tool_call.arguments, iteration=iteration)
+        attempt = 0
+        while True:
+            try:
+                tool_result = tool_runner.run_tool_call(tool_call, context)
+                break
+            except self.retry_policy.retry_on_exceptions as exc:
+                if attempt >= self.retry_policy.max_tool_retries:
+                    self.emit(state, "tool_failed", f"Tool failed: {tool_call.name}", error=str(exc), iteration=iteration)
+                    error_output = f"Error running tool '{tool_call.name}': {exc}"
+                    tool_result = ToolResult(
+                        name=tool_call.name,
+                        output=error_output,
+                        metadata={"error": str(exc)},
+                    )
+                    break
+                attempt += 1
+                self.emit(state, "tool_retry", f"Retrying tool: {tool_call.name}", attempt=attempt, error=str(exc), iteration=iteration)
+
+        if self.hooks:
+            self.hooks.run_after_tool(tool_call.name, tool_result)
+
+        msg = Message(
+            role="tool",
+            name=tool_call.name,
+            content=tool_result.output,
+            metadata={
+                **dict(tool_result.metadata),
+                "tool_call_id": tool_call_record["id"],
+            },
+        )
+        self.emit(state, "tool_completed", f"Tool completed: {tool_call.name}", output=tool_result.output, iteration=iteration)
+        if tool_result.metadata.get("interactive"):
+            self.emit(
+                state,
+                "interactive_request",
+                f"Interactive request from {tool_call.name}",
+                kind=tool_result.metadata.get("kind"),
+                payload=dict(tool_result.metadata),
+            )
+        return tool_result, msg
+
+    def _execute_tool_calls(
+        self,
+        *,
+        state: RuntimeState,
+        registry: ToolRegistry,
+        tool_runner: ToolRunner,
+        tool_calls: list[Any],
+        tool_call_records: list[dict[str, Any]],
+        user_prompt: str,
+        base_prompt: str,
+        shared_state: dict[str, Any],
+        iteration: int,
+    ) -> list[ToolResult]:
+        """Execute tool calls — in parallel if enabled, otherwise sequentially."""
+        results: list[ToolResult] = []
+
+        def _make_context() -> ToolContext:
+            return ToolContext(
+                prompt=user_prompt,
+                system_prompt=base_prompt,
+                metadata=dict(self.metadata),
+                state=shared_state,
+                session_id=self.session_id,
+            )
+
+        if self.parallel_tool_execution and len(tool_calls) > 1:
+            # Run all tool calls concurrently, then append results in
+            # original order so the message sequence stays deterministic.
+            futures_map: dict[Any, int] = {}
+            with ThreadPoolExecutor(max_workers=len(tool_calls)) as pool:
+                for idx, tc in enumerate(tool_calls):
+                    future = pool.submit(
+                        self._execute_single_tool,
+                        state=state,
+                        registry=registry,
+                        tool_runner=tool_runner,
+                        tool_call=tc,
+                        tool_call_record=tool_call_records[idx],
+                        context=_make_context(),
+                        iteration=iteration,
+                    )
+                    futures_map[future] = idx
+
+                ordered: dict[int, tuple[ToolResult | None, Message]] = {}
+                for future in as_completed(futures_map):
+                    idx = futures_map[future]
+                    ordered[idx] = future.result()
+
+            for idx in range(len(tool_calls)):
+                tool_result, msg = ordered[idx]
+                if tool_result is not None:
+                    state.tool_results.append(tool_result)
+                    results.append(tool_result)
+                state.messages.append(msg)
+        else:
+            # Sequential execution (default)
+            for idx, tc in enumerate(tool_calls):
+                tool_result, msg = self._execute_single_tool(
+                    state=state,
+                    registry=registry,
+                    tool_runner=tool_runner,
+                    tool_call=tc,
+                    tool_call_record=tool_call_records[idx],
+                    context=_make_context(),
+                    iteration=iteration,
+                )
+                if tool_result is not None:
+                    state.tool_results.append(tool_result)
+                    results.append(tool_result)
+                state.messages.append(msg)
+
+        return results
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """Rough token estimate: ~4 chars per token for English text."""
+        return len(text) // 4 if text else 0
+
+    def _compact_messages(self, messages: list[Message]) -> list[Message]:
+        """Summarize older tool results to free context space.
+
+        Keeps system messages, the most recent user message, and the last
+        2 assistant+tool exchanges intact. Older tool results get condensed
+        into a single summary message.
+        """
+        if not self.context_window_tokens:
+            return messages
+
+        total_chars = sum(len(m.content or "") for m in messages)
+        estimated_tokens = self._estimate_tokens("x" * total_chars)
+        threshold = int(self.context_window_tokens * 0.75)
+
+        if estimated_tokens < threshold:
+            return messages
+
+        # Separate system/user messages from tool exchanges
+        keep_head: list[Message] = []
+        exchanges: list[Message] = []
+        for m in messages:
+            if m.role in ("system",):
+                keep_head.append(m)
+            else:
+                exchanges.append(m)
+
+        if len(exchanges) <= 4:
+            return messages
+
+        # Compact older exchanges, keep last 4 messages intact
+        old = exchanges[:-4]
+        recent = exchanges[-4:]
+
+        summaries: list[str] = []
+        for m in old:
+            if m.role == "tool":
+                text = m.content[:200] if m.content else ""
+                summaries.append(f"[{m.name}]: {text}")
+
+        if summaries:
+            summary_text = "Previous tool results (condensed):\n" + "\n".join(summaries)
+            compact_msg = Message(
+                role="user",
+                content=summary_text,
+                metadata={"compacted": True},
+            )
+            return keep_head + [compact_msg] + recent
+
+        return messages
+
+    def _track_usage(self, response: LLMResponse) -> None:
+        """Accumulate token usage across iterations."""
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            self._total_usage[key] += response.usage.get(key, 0)
+
     def _complete_with_retry(self, *, state: RuntimeState, messages: list[Message], tools: list[dict[str, Any]], base_prompt: str) -> LLMResponse:
         attempt = 0
         while True:
@@ -189,13 +416,23 @@ class AgentRuntime:
 
         response = LLMResponse(content="")
         for iteration in range(1, self.max_iterations + 1):
+            if self.hooks:
+                self.hooks.run_before_llm(list(state.messages), tool_schemas)
+
+            # Compact messages if approaching context window limit
+            compacted_messages = self._compact_messages(list(state.messages))
+
             self.emit(state, "step_started", "LLM completion started", tool_count=len(tool_schemas), iteration=iteration)
             response = self._complete_with_retry(
                 state=state,
-                messages=list(state.messages),
+                messages=compacted_messages,
                 tools=tool_schemas,
                 base_prompt=base_prompt,
             )
+            self._track_usage(response)
+
+            if self.hooks:
+                self.hooks.run_after_llm(response)
 
             if response.reasoning_content:
                 self.emit(
@@ -234,76 +471,34 @@ class AgentRuntime:
                 )
             )
 
-            for tool_call_index, tool_call in enumerate(response.tool_calls):
-                context = ToolContext(
-                    prompt=user_prompt,
-                    system_prompt=base_prompt,
-                    metadata=dict(self.metadata),
-                    state=shared_state,
-                    session_id=self.session_id,
+            tool_results_ordered = self._execute_tool_calls(
+                state=state,
+                registry=registry,
+                tool_runner=tool_runner,
+                tool_calls=response.tool_calls,
+                tool_call_records=tool_call_records,
+                user_prompt=user_prompt,
+                base_prompt=base_prompt,
+                shared_state=shared_state,
+                iteration=iteration,
+            )
+
+            # Mid-run re-planning: if replan_interval is set and we've
+            # completed that many iterations, run the planner again to
+            # re-evaluate progress and correct drift.
+            if (
+                self.replan_interval > 0
+                and iteration % self.replan_interval == 0
+                and iteration < self.max_iterations
+            ):
+                self._run_planner_if_needed(
+                    state=state,
+                    registry=registry,
+                    user_prompt=user_prompt,
+                    base_prompt=base_prompt,
+                    shared_state=shared_state,
+                    tool_runner=tool_runner,
                 )
-                tool = registry.get(tool_call.name)
-                if tool is None:
-                    # Tool hallucinated by the model — we still MUST append a
-                    # tool-result message so the tool_use/tool_result pairing
-                    # stays balanced. Otherwise Bedrock's Converse API rejects
-                    # the next turn with a pairing error.
-                    error_output = (
-                        f"Error: tool '{tool_call.name}' is not registered. "
-                        f"Choose a different tool from the available list."
-                    )
-                    self.emit(
-                        state,
-                        "tool_failed",
-                        f"Tool failed: {tool_call.name}",
-                        error="tool_not_registered",
-                        iteration=iteration,
-                    )
-                    state.messages.append(
-                        Message(
-                            role="tool",
-                            name=tool_call.name,
-                            content=error_output,
-                            metadata={
-                                "tool_call_id": tool_call_records[tool_call_index]["id"],
-                                "error": "tool_not_registered",
-                            },
-                        )
-                    )
-                    continue
-                self.emit(state, "tool_called", f"Tool called: {tool_call.name}", arguments=tool_call.arguments, iteration=iteration)
-                attempt = 0
-                while True:
-                    try:
-                        tool_result = tool_runner.run_tool_call(tool_call, context)
-                        break
-                    except self.retry_policy.retry_on_exceptions as exc:
-                        if attempt >= self.retry_policy.max_tool_retries:
-                            self.emit(state, "tool_failed", f"Tool failed: {tool_call.name}", error=str(exc), iteration=iteration)
-                            raise
-                        attempt += 1
-                        self.emit(state, "tool_retry", f"Retrying tool: {tool_call.name}", attempt=attempt, error=str(exc), iteration=iteration)
-                state.tool_results.append(tool_result)
-                state.messages.append(
-                    Message(
-                        role="tool",
-                        name=tool_call.name,
-                        content=tool_result.output,
-                        metadata={
-                            **dict(tool_result.metadata),
-                            "tool_call_id": tool_call_records[tool_call_index]["id"],
-                        },
-                    )
-                )
-                self.emit(state, "tool_completed", f"Tool completed: {tool_call.name}", output=tool_result.output, iteration=iteration)
-                if tool_result.metadata.get("interactive"):
-                    self.emit(
-                        state,
-                        "interactive_request",
-                        f"Interactive request from {tool_call.name}",
-                        kind=tool_result.metadata.get("kind"),
-                        payload=dict(tool_result.metadata),
-                    )
 
         # If the loop exited because we hit `max_iterations` while the
         # model was still calling tools, the last response has no prose
@@ -336,6 +531,12 @@ class AgentRuntime:
             state.messages.append(Message(role="assistant", content=response.content, metadata=dict(response.metadata)))
 
         for tool_result in state.tool_results:
+            # Only persist tool results that opt-in via persist=True metadata.
+            # This prevents memory pollution from noisy tool outputs (e.g.
+            # web search results). Tools that produce important facts should
+            # set metadata={"persist": True} in their ToolOutput.
+            if not tool_result.metadata.get("persist", False):
+                continue
             self.memory_store.add(
                 MemoryFact(
                     content=f"{tool_result.name}: {tool_result.output}",
@@ -353,6 +554,7 @@ class AgentRuntime:
             output=response.content,
             content=response.content,
             format="markdown",
+            usage=dict(self._total_usage),
         )
         for mcp in self.mcps:
             close = getattr(mcp, "close", None)

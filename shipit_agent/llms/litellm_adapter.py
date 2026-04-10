@@ -44,6 +44,7 @@ class LiteLLMChatLLM:
         tools: list[dict[str, Any]] | None = None,
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         try:
             from litellm import completion
@@ -51,12 +52,24 @@ class LiteLLMChatLLM:
             raise RuntimeError("Install `litellm` to use LiteLLMChatLLM.") from exc
 
         payload_messages = [_serialize_message(m) for m in messages]
-        response = completion(
-            model=self.model,
-            messages=payload_messages,
-            tools=tools or None,
-            **self.completion_kwargs,
-        )
+        extra_kwargs = dict(self.completion_kwargs)
+        if response_format:
+            extra_kwargs["response_format"] = response_format
+        try:
+            response = completion(
+                model=self.model,
+                messages=payload_messages,
+                tools=tools or None,
+                **extra_kwargs,
+            )
+        except Exception as exc:
+            # Re-raise transient provider errors (503, 429, 500) as
+            # ConnectionError so the runtime's RetryPolicy can catch them.
+            exc_name = type(exc).__name__
+            status = getattr(exc, "status_code", None)
+            if status in (429, 500, 502, 503, 529) or "ServiceUnavailable" in exc_name or "RateLimitError" in exc_name or "InternalServerError" in exc_name:
+                raise ConnectionError(f"{exc_name}: {exc}") from exc
+            raise
         message = response.choices[0].message
         tool_calls = []
         for call in getattr(message, "tool_calls", []) or []:
@@ -68,11 +81,22 @@ class LiteLLMChatLLM:
                 )
             )
         reasoning_content = _extract_reasoning(message)
+
+        usage: dict[str, int] = {}
+        if hasattr(response, "usage") and response.usage:
+            u = response.usage
+            usage = {
+                "prompt_tokens": getattr(u, "prompt_tokens", 0) or 0,
+                "completion_tokens": getattr(u, "completion_tokens", 0) or 0,
+                "total_tokens": getattr(u, "total_tokens", 0) or 0,
+            }
+
         return LLMResponse(
             content=getattr(message, "content", "") or "",
             tool_calls=tool_calls,
             metadata={"model": self.model, "provider": "litellm"},
             reasoning_content=reasoning_content,
+            usage=usage,
         )
 
 

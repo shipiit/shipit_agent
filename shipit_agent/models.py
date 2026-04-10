@@ -86,6 +86,7 @@ class AgentResult:
     events: list[AgentEvent]
     tool_results: list[ToolResult] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    parsed: Any = None
 
     @property
     def steps(self) -> list[AgentEvent]:

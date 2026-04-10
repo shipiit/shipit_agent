@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shipit-agent"
-version = "1.0.1"
+version = "1.0.2"
 description = "A clean, powerful agent runtime with tools, MCP support, profiles, and streaming events."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,7 +12,9 @@ license = { text = "MIT" }
 authors = [
   { name = "Rahul Raj" }
 ]
-dependencies = []
+dependencies = [
+  "pydantic>=2.0.0",
+]
 keywords = ["agent", "llm", "mcp", "tools", "automation", "ai"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
@@ -25,12 +27,17 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0.0"]
+dev = [
+  "pytest>=8.0.0",
+  "mkdocs-material>=9.5.0",
+  "mkdocs-git-revision-date-localized-plugin>=1.2.0",
+]
 openai = ["openai>=1.30.0"]
 anthropic = ["anthropic>=0.34.0"]
 litellm = ["litellm>=1.42.0"]
 playwright = ["playwright>=1.45.0"]
 all = [
+  "pydantic>=2.0.0",
   "openai>=1.30.0",
   "anthropic>=0.34.0",
   "litellm>=1.42.0",

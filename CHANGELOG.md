@@ -5,9 +5,101 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.2] — 2026-04-10
 
-Nothing yet.
+Major feature release. Adds deep agents, structured output, pipelines, agent
+teams, advanced memory, output parsers, and nine runtime power features.
+**285 tests. 12 runnable examples. 8 notebooks. 13 new doc pages.**
+
+### Deep Agents — Beyond LangChain
+
+- **`GoalAgent`** — Autonomous goal decomposition with success criteria
+  tracking, self-evaluation, and streaming. Supports `.with_builtins()` for
+  full tool access and `.stream()` for real-time events with output content.
+
+- **`ReflectiveAgent`** — Self-evaluation and revision loop. Produces output,
+  reflects critically (with quality score 0-1), and revises until threshold
+  met. Streaming shows each reflection's quality and feedback.
+
+- **`Supervisor` / `Worker`** — Hierarchical agent management. Supervisor
+  plans, delegates to workers, reviews quality, sends work back for revision.
+  `Supervisor.with_builtins()` creates workers with all tools automatically.
+
+- **`AdaptiveAgent`** — Creates new tools at runtime from Python code.
+  Auto-dedents code strings so notebook indentation works. Created tools are
+  immediately available for agent runs.
+
+- **`PersistentAgent`** — Checkpoint and resume across sessions. Saves
+  progress periodically so long-running tasks survive interruptions.
+
+- **`Channel` / `AgentMessage`** — Typed agent-to-agent communication with
+  FIFO queues, acknowledgment, and history tracking.
+
+- **`AgentBenchmark` / `TestCase`** — Systematic agent testing framework.
+  Define expected output content, tool usage, and negative checks. Generates
+  pass/fail reports with detailed failure reasons.
+
+- **Memory for deep agents** — All deep agents accept `memory` parameter
+  for conversation history across runs.
+
+### Structured Output & Parsers
+
+- **`output_schema` on `Agent.run()`** — Pass a Pydantic model or JSON schema
+  dict. Returns typed, validated `result.parsed` instance. Schema instructions
+  appended to user prompt (not system prompt) for Bedrock compatibility.
+
+- **`JSONParser`** — Handles code fences, surrounding prose, schema validation.
+
+- **`PydanticParser`** — Parse LLM output into Pydantic model instances.
+
+- **`RegexParser`** — Extract structured data with named regex groups.
+
+- **`MarkdownParser`** — Extract code blocks, headings, and lists.
+
+### Composition
+
+- **`Pipeline`** — Deterministic composition with `Pipeline.sequential()`,
+  `parallel()`, conditional routing, function steps, and `{key}` template
+  references. Supports `.stream()` for real-time step events.
+
+- **`AgentTeam`** — Dynamic LLM-routed multi-agent coordination with
+  `TeamAgent.with_builtins()`. Coordinator decides who works. Supports
+  `.stream()` with full output content and worker tagging.
+
+### Runtime Power Features
+
+- **Parallel tool execution** — `parallel_tool_execution=True` runs concurrent
+  tool calls via `ThreadPoolExecutor`.
+
+- **Graceful tool failure** — Tool exceptions produce error messages instead
+  of crashing. LLM can recover and try different approaches.
+
+- **Context window management** — Token usage tracking across iterations.
+  `context_window_tokens` enables automatic message compaction.
+
+- **Hooks / middleware** — `AgentHooks` with `@on_before_llm`, `@on_after_llm`,
+  `@on_before_tool`, `@on_after_tool` callbacks.
+
+- **Mid-run re-planning** — `replan_interval=N` re-runs planner every N
+  iterations.
+
+- **Async runtime** — `AsyncAgentRuntime` with `async run()` and
+  `async stream()` for FastAPI/Starlette.
+
+- **Transient error auto-retry** — LLM adapters catch 429/500/502/503
+  errors and re-raise as `ConnectionError` for automatic retry.
+
+- **Advanced memory** — `ConversationMemory` (buffer/window/summary/token),
+  `SemanticMemory` (embedding-based vector search), `EntityMemory` (track
+  people/projects/concepts), `AgentMemory` (unified interface).
+
+### Changed
+
+- **Selective memory storage** (**breaking**) — Only tool results with
+  `metadata={"persist": True}` are stored in memory.
+
+- **Safer retry defaults** — `RetryPolicy.retry_on_exceptions` defaults to
+  `(ConnectionError, TimeoutError, OSError)` instead of `(Exception,)`.
 
 ---
 

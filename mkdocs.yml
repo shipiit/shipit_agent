@@ -148,14 +148,22 @@ nav:
       - Error Recovery: guides/error-recovery.md
       - Re-Planning: guides/replanning.md
       - Structured Output: guides/structured-output.md
-  - Deep Agents:
-      # Composition
+  - Composition:
       - Parsers & Structured Output: guides/parsers-and-structured-output.md
       - Pipelines & Teams: guides/pipelines-and-teams.md
-      # Advanced memory
+  - Deep Agents:
+      - Overview: deep-agents/index.md
+      - GoalAgent: deep-agents/goal-agent.md
+      - ReflectiveAgent: deep-agents/reflective-agent.md
+      - Supervisor & Workers: deep-agents/supervisor.md
+      - AdaptiveAgent: deep-agents/adaptive-agent.md
+      - PersistentAgent: deep-agents/persistent-agent.md
+      - Channels: deep-agents/channels.md
+      - Benchmarking: deep-agents/benchmarking.md
+      - All Examples: guides/deep-agents.md
+      - API Reference: reference/deep-agents-api.md
+  - Memory:
       - Advanced Memory: guides/advanced-memory.md
-      # Deep agents
-      - Goal, Reflective & Adaptive Agents: guides/deep-agents.md
   - Reference:
       - Architecture: reference/architecture.md
       - Event Types: reference/events.md

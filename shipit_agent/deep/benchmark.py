@@ -120,11 +120,30 @@ class AgentBenchmark:
         self.name = name
         self.cases = cases
 
-    def run(self, agent: Any) -> BenchmarkReport:
+    def run(self, agent: Any, *, retry: int = 3, delay: float = 1.0) -> BenchmarkReport:
+        """Run all test cases against the agent.
+
+        Args:
+            agent: The agent to test.
+            retry: Number of retries per test case on transient errors.
+            delay: Seconds to wait between test cases (helps with rate limits).
+        """
+        import time
         report = BenchmarkReport(name=self.name)
 
-        for case in self.cases:
-            result = agent.run(case.input)
+        for case_idx, case in enumerate(self.cases):
+            # Retry on transient errors
+            result = None
+            for attempt in range(retry + 1):
+                try:
+                    result = agent.run(case.input)
+                    break
+                except (ConnectionError, TimeoutError, OSError) as exc:
+                    if attempt >= retry:
+                        result = type("FailedResult", (), {"output": f"Error: {exc}", "tool_results": [], "events": []})()
+                        break
+                    time.sleep(delay * (attempt + 1))
+
             failures: list[str] = []
 
             # Check expected content
@@ -152,5 +171,9 @@ class AgentBenchmark:
                 failures=failures,
             )
             report.results.append(test_result)
+
+            # Delay between cases to avoid rate limiting
+            if delay and case_idx < len(self.cases) - 1:
+                time.sleep(delay)
 
         return report

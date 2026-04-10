@@ -10,7 +10,7 @@ Use `.with_builtins()` on any deep agent for instant access to all capabilities.
     - `python examples/09_pipeline.py` — sequential, parallel, conditional
     - `python examples/10_agent_team.py` — multi-agent team with streaming
     - `python examples/12_advanced_memory.py` — all memory types
-    - Notebooks: `notebooks/14_deep_agents.ipynb`, `notebooks/16_deep_agents_streaming.ipynb`, `notebooks/17_deep_agents_real_world.ipynb`
+    - Notebooks: `notebooks/14_deep_agents.ipynb`, `notebooks/16_deep_agents_streaming.ipynb`, `notebooks/17_deep_agents_real_world.ipynb`, `notebooks/18_deep_agents_with_memory.ipynb`
 
 ---
 
@@ -562,3 +562,116 @@ benchmark = AgentBenchmark(name="quality-check", cases=[
 ])
 report = benchmark.run(agent)
 ```
+
+---
+
+## Deep Agents with Memory
+
+All deep agents accept a `memory` parameter. Pass an `AgentMemory` instance to give agents persistent conversation history, semantic knowledge, and entity tracking across multiple runs.
+
+### GoalAgent with memory — remembers previous goals
+
+```python
+from shipit_agent import AgentMemory, ConversationMemory, SemanticMemory, EntityMemory, Entity, InMemoryVectorStore
+
+# Create shared memory
+memory = AgentMemory(
+    conversation=ConversationMemory(strategy="buffer"),
+    knowledge=SemanticMemory(vector_store=InMemoryVectorStore(), embedding_fn=embed),
+    entities=EntityMemory(),
+)
+
+# Run 1: Research frameworks
+agent1 = GoalAgent(
+    llm=llm,
+    memory=memory,
+    goal=Goal(objective="List top 3 Python web frameworks", success_criteria=["Names Django, Flask, FastAPI"]),
+)
+result1 = agent1.run()
+
+# Store findings in memory
+memory.add_fact(f"Previous research: {result1.output[:500]}")
+memory.add_entity(Entity(name="Django", entity_type="framework", context="Python web framework"))
+memory.add_entity(Entity(name="FastAPI", entity_type="framework", context="Modern async framework"))
+
+# Run 2: Agent remembers Run 1!
+agent2 = GoalAgent(
+    llm=llm,
+    memory=memory,   # same memory — agent sees previous conversation
+    goal=Goal(objective="Compare the performance of the frameworks you found earlier", success_criteria=["References Django, Flask, FastAPI"]),
+)
+result2 = agent2.run()
+# Agent has context from Run 1 and can reference previous findings
+```
+
+### ReflectiveAgent with memory — learns from reflections
+
+```python
+memory = AgentMemory.default(llm=llm, embedding_fn=embed)
+
+reflective = ReflectiveAgent(
+    llm=llm,
+    memory=memory,
+    reflection_prompt="Check accuracy and completeness.",
+    quality_threshold=0.8,
+)
+
+# Run 1: Explain REST
+result1 = reflective.run("Explain what a REST API is")
+memory.add_fact(f"REST explanation quality: {result1.final_quality:.2f}")
+
+# Run 2: Compare with GraphQL — agent remembers the REST explanation
+result2 = reflective.run("Now explain GraphQL and compare it to REST")
+# Agent has full REST context from memory
+```
+
+### Supervisor with shared memory — workers share knowledge
+
+```python
+# Pre-load business data
+team_memory = AgentMemory.default(embedding_fn=embed)
+team_memory.add_fact("Q4 2025 revenue: $2.4M, up 15% YoY")
+team_memory.add_fact("Customer satisfaction: 92%")
+team_memory.add_entity(Entity(name="Product Atlas", entity_type="product", context="Main SaaS platform"))
+
+# Workers share memory via history
+analyst = Worker(
+    name="analyst",
+    agent=Agent(llm=llm, prompt="You are a data analyst.", history=team_memory.get_conversation_messages()),
+)
+writer = Worker(
+    name="writer",
+    agent=Agent(llm=llm, prompt="You write reports.", history=team_memory.get_conversation_messages()),
+)
+
+supervisor = Supervisor(llm=llm, workers=[analyst, writer])
+result = supervisor.run("Write a Q4 executive summary using the data we have")
+```
+
+### How memory flows through deep agents
+
+```
+AgentMemory
+├── ConversationMemory
+│   └── Messages from all previous runs are injected as agent history
+├── SemanticMemory
+│   └── Facts stored/searched by embedding similarity
+└── EntityMemory
+    └── People, projects, concepts tracked across sessions
+
+GoalAgent(memory=memory)
+  └── _build_agent() injects memory.get_conversation_messages() as history
+  └── _save_to_memory() stores each step's output
+  └── Result: agent sees full conversation context from prior runs
+
+ReflectiveAgent(memory=memory)
+  └── Same pattern — history injected, outputs saved
+  └── Store reflection feedback as facts for future runs
+
+Supervisor(workers=[...])
+  └── Each worker gets history= from shared memory
+  └── Workers can access pre-loaded facts and entities
+```
+
+!!! tip "Notebook"
+    See `notebooks/18_deep_agents_with_memory.ipynb` for full runnable examples with Bedrock.

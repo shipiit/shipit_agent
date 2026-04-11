@@ -47,7 +47,11 @@ class EntityMemory:
         if existing:
             # Merge context
             if entity.context and entity.context not in existing.context:
-                existing.context = f"{existing.context}; {entity.context}" if existing.context else entity.context
+                existing.context = (
+                    f"{existing.context}; {entity.context}"
+                    if existing.context
+                    else entity.context
+                )
             existing.metadata.update(entity.metadata)
             if entity.entity_type != "unknown":
                 existing.entity_type = entity.entity_type
@@ -62,7 +66,8 @@ class EntityMemory:
         """Search entities by keyword in name or context."""
         query_lower = query.lower()
         return [
-            e for e in self._entities.values()
+            e
+            for e in self._entities.values()
             if query_lower in e.name.lower() or query_lower in e.context.lower()
         ]
 

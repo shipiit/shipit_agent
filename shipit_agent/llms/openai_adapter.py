@@ -12,11 +12,11 @@ from shipit_agent.llms.litellm_adapter import _extract_reasoning, _serialize_mes
 # Models that natively produce reasoning / thinking content.
 # Used to auto-pass `reasoning_effort` when the caller doesn't.
 _REASONING_MODEL_PATTERNS = [
-    re.compile(r"^o1(-|$)"),          # o1, o1-mini, o1-preview
-    re.compile(r"^o3(-|$)"),          # o3, o3-mini
-    re.compile(r"^o4(-|$)"),          # o4, o4-mini
-    re.compile(r"^gpt-5"),            # gpt-5 family
-    re.compile(r"^deepseek-r1"),      # DeepSeek R1 via OpenAI-compatible endpoints
+    re.compile(r"^o1(-|$)"),  # o1, o1-mini, o1-preview
+    re.compile(r"^o3(-|$)"),  # o3, o3-mini
+    re.compile(r"^o4(-|$)"),  # o4, o4-mini
+    re.compile(r"^gpt-5"),  # gpt-5 family
+    re.compile(r"^deepseek-r1"),  # DeepSeek R1 via OpenAI-compatible endpoints
 ]
 
 
@@ -85,7 +85,12 @@ class OpenAIChatLLM:
         except Exception as exc:
             exc_name = type(exc).__name__
             status = getattr(exc, "status_code", None)
-            if status in (429, 500, 502, 503, 529) or "ServiceUnavailable" in exc_name or "RateLimitError" in exc_name or "InternalServerError" in exc_name:
+            if (
+                status in (429, 500, 502, 503, 529)
+                or "ServiceUnavailable" in exc_name
+                or "RateLimitError" in exc_name
+                or "InternalServerError" in exc_name
+            ):
                 raise ConnectionError(f"{exc_name}: {exc}") from exc
             raise
         choice = response.choices[0].message
@@ -96,7 +101,9 @@ class OpenAIChatLLM:
             tool_calls.append(
                 ToolCall(
                     name=call.function.name,
-                    arguments=json.loads(arguments) if isinstance(arguments, str) else arguments,
+                    arguments=json.loads(arguments)
+                    if isinstance(arguments, str)
+                    else arguments,
                 )
             )
 
@@ -116,7 +123,11 @@ class OpenAIChatLLM:
             metadata={
                 "model": self.model,
                 "provider": "openai",
-                **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}),
+                **(
+                    {"reasoning_effort": self.reasoning_effort}
+                    if self.reasoning_effort
+                    else {}
+                ),
             },
             reasoning_content=reasoning_content,
             usage=usage,

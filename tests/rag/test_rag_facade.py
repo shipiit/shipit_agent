@@ -50,7 +50,9 @@ def test_reindex_replaces_old_chunks():
     assert ctx.results
     assert "rewritten" in ctx.results[0].chunk.text.lower()
     ctx_old = rag.search("original", top_k=1)
-    assert not ctx_old.results or "original" not in ctx_old.results[0].chunk.text.lower()
+    assert (
+        not ctx_old.results or "original" not in ctx_old.results[0].chunk.text.lower()
+    )
 
 
 def test_list_sources():

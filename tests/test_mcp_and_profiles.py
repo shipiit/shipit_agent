@@ -43,7 +43,11 @@ def test_remote_mcp_server_discovers_tools() -> None:
                         {
                             "name": "remote_lookup",
                             "description": "Lookup from remote MCP",
-                            "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {"query": {"type": "string"}},
+                                "required": ["query"],
+                            },
                         }
                     ]
                 }
@@ -55,5 +59,18 @@ def test_remote_mcp_server_discovers_tools() -> None:
     registry = ToolRegistry.build(mcps=[server])
     tool = registry.get("remote_lookup")
     assert tool is not None
-    result = tool.run(context=type("Ctx", (), {"state": {}, "prompt": "p", "system_prompt": "s", "metadata": {}, "session_id": None})(), query="x")
+    result = tool.run(
+        context=type(
+            "Ctx",
+            (),
+            {
+                "state": {},
+                "prompt": "p",
+                "system_prompt": "s",
+                "metadata": {},
+                "session_id": None,
+            },
+        )(),
+        query="x",
+    )
     assert "remote-ok" in result.text

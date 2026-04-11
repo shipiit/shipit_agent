@@ -1,24 +1,30 @@
 """Full-proof tests for deep agent streaming, MCP support, with_builtins,
 template resolution, and all deep agent features.
 """
+
 from __future__ import annotations
 
 import tempfile
-from typing import Any
 
-from shipit_agent import Agent, FunctionTool, AgentTeam, TeamAgent, Pipeline, step, parallel
+from shipit_agent import Agent, TeamAgent, Pipeline, step, parallel
 from shipit_agent.deep import (
-    GoalAgent, Goal, GoalResult,
-    ReflectiveAgent, ReflectionResult,
+    GoalAgent,
+    Goal,
+    GoalResult,
+    ReflectiveAgent,
+    ReflectionResult,
     AdaptiveAgent,
-    Supervisor, Worker, SupervisorResult,
-    PersistentAgent, Checkpoint,
-    Channel, AgentMessage,
-    AgentBenchmark, TestCase, BenchmarkReport,
+    Supervisor,
+    Worker,
+    SupervisorResult,
+    PersistentAgent,
+    Checkpoint,
+    Channel,
+    AgentMessage,
+    AgentBenchmark,
+    TestCase,
 )
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
-from shipit_agent.models import Message
-from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.pipeline.step import Step, StepResult
 
 
@@ -26,10 +32,20 @@ from shipit_agent.pipeline.step import Step, StepResult
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class JSONReplyLLM:
     def __init__(self, json_text: str):
         self._json = json_text
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         return LLMResponse(content=self._json)
 
 
@@ -37,7 +53,16 @@ class SequenceLLM:
     def __init__(self, responses: list[str]):
         self._responses = list(responses)
         self._index = 0
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         text = self._responses[min(self._index, len(self._responses) - 1)]
         self._index += 1
         return LLMResponse(content=text)
@@ -47,22 +72,31 @@ class SequenceLLM:
 # GOAL AGENT STREAMING
 # ===========================================================================
 
+
 class TestGoalAgentStreaming:
     def test_stream_emits_run_started(self):
-        llm = SequenceLLM([
-            '{"subtasks": ["do it"]}', "done",
-            '{"criteria_met": [true], "all_done": true}',
-        ])
-        agent = GoalAgent(llm=llm, goal=Goal(objective="Test", success_criteria=["done"]))
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["do it"]}',
+                "done",
+                '{"criteria_met": [true], "all_done": true}',
+            ]
+        )
+        agent = GoalAgent(
+            llm=llm, goal=Goal(objective="Test", success_criteria=["done"])
+        )
         events = list(agent.stream())
         assert events[0].type == "run_started"
         assert "Test" in events[0].payload["objective"]
 
     def test_stream_emits_planning_events(self):
-        llm = SequenceLLM([
-            '{"subtasks": ["step1", "step2"]}', "output1",
-            '{"criteria_met": [true], "all_done": true}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["step1", "step2"]}',
+                "output1",
+                '{"criteria_met": [true], "all_done": true}',
+            ]
+        )
         agent = GoalAgent(llm=llm, goal=Goal(objective="Plan", success_criteria=["ok"]))
         events = list(agent.stream())
         types = [e.type for e in events]
@@ -70,30 +104,43 @@ class TestGoalAgentStreaming:
         assert "planning_completed" in types
 
     def test_stream_emits_step_events(self):
-        llm = SequenceLLM([
-            '{"subtasks": ["task1"]}', "result",
-            '{"criteria_met": [true], "all_done": true}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["task1"]}',
+                "result",
+                '{"criteria_met": [true], "all_done": true}',
+            ]
+        )
         agent = GoalAgent(llm=llm, goal=Goal(objective="Steps", success_criteria=["x"]))
         events = list(agent.stream())
         step_events = [e for e in events if e.type == "step_started"]
         assert len(step_events) >= 1
 
     def test_stream_emits_run_completed(self):
-        llm = SequenceLLM([
-            '{"subtasks": ["x"]}', "done",
-            '{"criteria_met": [true], "all_done": true}',
-        ])
-        agent = GoalAgent(llm=llm, goal=Goal(objective="Complete", success_criteria=["y"]))
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["x"]}',
+                "done",
+                '{"criteria_met": [true], "all_done": true}',
+            ]
+        )
+        agent = GoalAgent(
+            llm=llm, goal=Goal(objective="Complete", success_criteria=["y"])
+        )
         events = list(agent.stream())
         assert events[-1].type == "run_completed"
 
     def test_stream_payload_contains_subtasks(self):
-        llm = SequenceLLM([
-            '{"subtasks": ["a", "b", "c"]}', "done",
-            '{"criteria_met": [true], "all_done": true}',
-        ])
-        agent = GoalAgent(llm=llm, goal=Goal(objective="Multi", success_criteria=["ok"]))
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["a", "b", "c"]}',
+                "done",
+                '{"criteria_met": [true], "all_done": true}',
+            ]
+        )
+        agent = GoalAgent(
+            llm=llm, goal=Goal(objective="Multi", success_criteria=["ok"])
+        )
         events = list(agent.stream())
         planning = next(e for e in events if e.type == "planning_completed")
         assert planning.payload["subtasks"] == ["a", "b", "c"]
@@ -103,21 +150,26 @@ class TestGoalAgentStreaming:
 # REFLECTIVE AGENT STREAMING
 # ===========================================================================
 
+
 class TestReflectiveAgentStreaming:
     def test_stream_emits_run_started(self):
-        llm = SequenceLLM([
-            "Initial output",
-            '{"feedback": "good", "quality_score": 0.95, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Initial output",
+                '{"feedback": "good", "quality_score": 0.95, "revision_needed": false}',
+            ]
+        )
         agent = ReflectiveAgent(llm=llm, quality_threshold=0.8)
         events = list(agent.stream("test"))
         assert events[0].type == "run_started"
 
     def test_stream_emits_reasoning_events(self):
-        llm = SequenceLLM([
-            "Draft",
-            '{"feedback": "ok", "quality_score": 0.9, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Draft",
+                '{"feedback": "ok", "quality_score": 0.9, "revision_needed": false}',
+            ]
+        )
         agent = ReflectiveAgent(llm=llm, quality_threshold=0.8)
         events = list(agent.stream("test"))
         types = [e.type for e in events]
@@ -125,32 +177,38 @@ class TestReflectiveAgentStreaming:
         assert "reasoning_completed" in types
 
     def test_stream_shows_quality_in_payload(self):
-        llm = SequenceLLM([
-            "Draft",
-            '{"feedback": "excellent", "quality_score": 0.92, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Draft",
+                '{"feedback": "excellent", "quality_score": 0.92, "revision_needed": false}',
+            ]
+        )
         agent = ReflectiveAgent(llm=llm, quality_threshold=0.8)
         events = list(agent.stream("test"))
         reasoning = next(e for e in events if e.type == "reasoning_completed")
         assert reasoning.payload["quality"] == 0.92
 
     def test_stream_with_revision(self):
-        llm = SequenceLLM([
-            "Draft v1",
-            '{"feedback": "needs work", "quality_score": 0.4, "revision_needed": true}',
-            "Draft v2 improved",
-            '{"feedback": "great", "quality_score": 0.9, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Draft v1",
+                '{"feedback": "needs work", "quality_score": 0.4, "revision_needed": true}',
+                "Draft v2 improved",
+                '{"feedback": "great", "quality_score": 0.9, "revision_needed": false}',
+            ]
+        )
         agent = ReflectiveAgent(llm=llm, quality_threshold=0.8, max_reflections=3)
         events = list(agent.stream("test"))
         reasoning_events = [e for e in events if e.type == "reasoning_completed"]
         assert len(reasoning_events) == 2
 
     def test_stream_emits_run_completed(self):
-        llm = SequenceLLM([
-            "Output",
-            '{"feedback": "ok", "quality_score": 0.9, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Output",
+                '{"feedback": "ok", "quality_score": 0.9, "revision_needed": false}',
+            ]
+        )
         agent = ReflectiveAgent(llm=llm)
         events = list(agent.stream("test"))
         assert events[-1].type == "run_completed"
@@ -160,47 +218,64 @@ class TestReflectiveAgentStreaming:
 # SUPERVISOR STREAMING
 # ===========================================================================
 
+
 class TestSupervisorStreaming:
     def test_stream_emits_run_started(self):
         llm = JSONReplyLLM('{"action": "done", "final_answer": "done"}')
-        supervisor = Supervisor(llm=llm, workers=[Worker(name="w", agent=Agent(llm=SimpleEchoLLM()))])
+        supervisor = Supervisor(
+            llm=llm, workers=[Worker(name="w", agent=Agent(llm=SimpleEchoLLM()))]
+        )
         events = list(supervisor.stream("task"))
         assert events[0].type == "run_started"
         assert "task" in events[0].payload["task"]
 
     def test_stream_shows_delegation(self):
-        llm = SequenceLLM([
-            '{"action": "delegate", "worker": "w", "task": "do work"}',
-            '{"action": "done", "final_answer": "all done"}',
-        ])
-        supervisor = Supervisor(llm=llm, workers=[Worker(name="w", agent=Agent(llm=SimpleEchoLLM()))])
+        llm = SequenceLLM(
+            [
+                '{"action": "delegate", "worker": "w", "task": "do work"}',
+                '{"action": "done", "final_answer": "all done"}',
+            ]
+        )
+        supervisor = Supervisor(
+            llm=llm, workers=[Worker(name="w", agent=Agent(llm=SimpleEchoLLM()))]
+        )
         events = list(supervisor.stream("task"))
         tool_called = [e for e in events if e.type == "tool_called"]
         assert len(tool_called) >= 1
         assert tool_called[0].payload.get("worker") == "w"
 
     def test_stream_tags_worker_in_events(self):
-        llm = SequenceLLM([
-            '{"action": "delegate", "worker": "analyst", "task": "analyze"}',
-            '{"action": "done", "final_answer": "done"}',
-        ])
-        supervisor = Supervisor(llm=llm, workers=[Worker(name="analyst", agent=Agent(llm=SimpleEchoLLM()))])
+        llm = SequenceLLM(
+            [
+                '{"action": "delegate", "worker": "analyst", "task": "analyze"}',
+                '{"action": "done", "final_answer": "done"}',
+            ]
+        )
+        supervisor = Supervisor(
+            llm=llm, workers=[Worker(name="analyst", agent=Agent(llm=SimpleEchoLLM()))]
+        )
         events = list(supervisor.stream("task"))
         worker_events = [e for e in events if e.payload.get("worker") == "analyst"]
         assert len(worker_events) >= 1
 
     def test_stream_emits_run_completed(self):
         llm = JSONReplyLLM('{"action": "done", "final_answer": "result"}')
-        supervisor = Supervisor(llm=llm, workers=[Worker(name="w", agent=Agent(llm=SimpleEchoLLM()))])
+        supervisor = Supervisor(
+            llm=llm, workers=[Worker(name="w", agent=Agent(llm=SimpleEchoLLM()))]
+        )
         events = list(supervisor.stream("task"))
         assert events[-1].type == "run_completed"
 
     def test_stream_handles_unknown_worker(self):
-        llm = SequenceLLM([
-            '{"action": "delegate", "worker": "ghost", "task": "work"}',
-            '{"action": "done", "final_answer": "done"}',
-        ])
-        supervisor = Supervisor(llm=llm, workers=[Worker(name="real", agent=Agent(llm=SimpleEchoLLM()))])
+        llm = SequenceLLM(
+            [
+                '{"action": "delegate", "worker": "ghost", "task": "work"}',
+                '{"action": "done", "final_answer": "done"}',
+            ]
+        )
+        supervisor = Supervisor(
+            llm=llm, workers=[Worker(name="real", agent=Agent(llm=SimpleEchoLLM()))]
+        )
         events = list(supervisor.stream("task"))
         failed = [e for e in events if e.type == "tool_failed"]
         assert len(failed) >= 1
@@ -209,6 +284,7 @@ class TestSupervisorStreaming:
 # ===========================================================================
 # ADAPTIVE AGENT STREAMING
 # ===========================================================================
+
 
 class TestAdaptiveAgentStreaming:
     def test_stream_emits_events(self):
@@ -228,6 +304,7 @@ class TestAdaptiveAgentStreaming:
 # ===========================================================================
 # WITH_BUILTINS FACTORY METHODS
 # ===========================================================================
+
 
 class TestWithBuiltins:
     def test_goal_agent_with_builtins(self):
@@ -274,6 +351,7 @@ class TestWithBuiltins:
 
     def test_goal_agent_with_builtins_and_mcps(self):
         from shipit_agent.mcp import MCPServer
+
         mcp = MCPServer(name="test-mcp")
         agent = GoalAgent.with_builtins(
             llm=SimpleEchoLLM(),
@@ -286,6 +364,7 @@ class TestWithBuiltins:
 # ===========================================================================
 # PIPELINE TEMPLATE RESOLUTION
 # ===========================================================================
+
 
 class TestPipelineTemplates:
     def test_simple_key_resolution(self):
@@ -342,11 +421,19 @@ class TestPipelineTemplates:
 # CHANNEL COMPREHENSIVE
 # ===========================================================================
 
+
 class TestChannelAdvanced:
     def test_broadcast_to_multiple_agents(self):
         channel = Channel()
         for target in ["dev1", "dev2", "dev3"]:
-            channel.send(AgentMessage(from_agent="manager", to_agent=target, type="task", data={"work": f"for {target}"}))
+            channel.send(
+                AgentMessage(
+                    from_agent="manager",
+                    to_agent=target,
+                    type="task",
+                    data={"work": f"for {target}"},
+                )
+            )
         assert channel.pending(agent="dev1") == 1
         assert channel.pending(agent="dev2") == 1
         assert channel.pending(agent="dev3") == 1
@@ -354,7 +441,9 @@ class TestChannelAdvanced:
     def test_fifo_ordering(self):
         channel = Channel()
         for i in range(5):
-            channel.send(AgentMessage(from_agent="a", to_agent="b", type="t", data={"n": i}))
+            channel.send(
+                AgentMessage(from_agent="a", to_agent="b", type="t", data={"n": i})
+            )
         for i in range(5):
             msg = channel.receive(agent="b")
             assert msg.data["n"] == i
@@ -380,12 +469,17 @@ class TestChannelAdvanced:
 # BENCHMARK COMPREHENSIVE
 # ===========================================================================
 
+
 class TestBenchmarkAdvanced:
     def test_multiple_expected_contains(self):
         agent = Agent(llm=SimpleEchoLLM(), prompt="test")
         report = AgentBenchmark(
             name="multi",
-            cases=[TestCase(input="hello world foo", expected_contains=["hello", "world", "foo"])],
+            cases=[
+                TestCase(
+                    input="hello world foo", expected_contains=["hello", "world", "foo"]
+                )
+            ],
         ).run(agent)
         assert report.passed == 1
 
@@ -393,7 +487,9 @@ class TestBenchmarkAdvanced:
         agent = Agent(llm=SimpleEchoLLM(), prompt="test")
         report = AgentBenchmark(
             name="neg",
-            cases=[TestCase(input="secret password", expected_not_contains=["password"])],
+            cases=[
+                TestCase(input="secret password", expected_not_contains=["password"])
+            ],
         ).run(agent)
         assert report.failed == 1
         assert "password" in report.results[0].failures[0]
@@ -425,11 +521,14 @@ class TestBenchmarkAdvanced:
 # PERSISTENT AGENT COMPREHENSIVE
 # ===========================================================================
 
+
 class TestPersistentAgentAdvanced:
     def test_checkpoint_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = PersistentAgent(llm=SimpleEchoLLM(), checkpoint_dir=tmpdir)
-            cp = Checkpoint(agent_id="rt", step=7, state={"task": "test"}, outputs=["a", "b", "c"])
+            cp = Checkpoint(
+                agent_id="rt", step=7, state={"task": "test"}, outputs=["a", "b", "c"]
+            )
             agent._save_checkpoint(cp)
             loaded = agent._load_checkpoint("rt")
             assert loaded.step == 7
@@ -467,6 +566,7 @@ class TestPersistentAgentAdvanced:
 # GOAL RESULT SERIALIZATION
 # ===========================================================================
 
+
 class TestGoalResultSerialization:
     def test_to_dict(self):
         result = GoalResult(
@@ -487,9 +587,12 @@ class TestGoalResultSerialization:
 class TestReflectionResultSerialization:
     def test_to_dict(self):
         from shipit_agent.deep.reflective_agent import Reflection
+
         result = ReflectionResult(
             output="final",
-            reflections=[Reflection(feedback="ok", quality_score=0.9, revision_needed=False)],
+            reflections=[
+                Reflection(feedback="ok", quality_score=0.9, revision_needed=False)
+            ],
             revisions=["v1", "v2"],
             final_quality=0.9,
             iterations=1,
@@ -503,9 +606,12 @@ class TestReflectionResultSerialization:
 class TestSupervisorResultSerialization:
     def test_to_dict(self):
         from shipit_agent.deep.supervisor import Delegation
+
         result = SupervisorResult(
             output="done",
-            delegations=[Delegation(round=1, worker="w", task="do", output="did", approved=True)],
+            delegations=[
+                Delegation(round=1, worker="w", task="do", output="did", approved=True)
+            ],
             total_rounds=1,
         )
         d = result.to_dict()

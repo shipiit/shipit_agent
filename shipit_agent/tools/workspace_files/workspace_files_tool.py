@@ -71,13 +71,24 @@ class WorkspaceFilesTool:
 
         if action == "list":
             target = path if path.exists() else self.root_dir
-            items = sorted(str(item.relative_to(self.root_dir)) for item in target.iterdir()) if target.exists() else []
-            return ToolOutput(text="\n".join(items) if items else "Workspace is empty.", metadata={"items": items})
+            items = (
+                sorted(
+                    str(item.relative_to(self.root_dir)) for item in target.iterdir()
+                )
+                if target.exists()
+                else []
+            )
+            return ToolOutput(
+                text="\n".join(items) if items else "Workspace is empty.",
+                metadata={"items": items},
+            )
 
         if action == "read":
             if not path.exists():
                 return ToolOutput(text=f"File not found: {path}")
-            return ToolOutput(text=path.read_text(encoding="utf-8"), metadata={"path": str(path)})
+            return ToolOutput(
+                text=path.read_text(encoding="utf-8"), metadata={"path": str(path)}
+            )
 
         if action in {"write", "append"}:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,6 +98,9 @@ class WorkspaceFilesTool:
             else:
                 with path.open("a", encoding="utf-8") as handle:
                     handle.write(content)
-            return ToolOutput(text=f"File updated: {path}", metadata={"path": str(path), "size": path.stat().st_size})
+            return ToolOutput(
+                text=f"File updated: {path}",
+                metadata={"path": str(path), "size": path.stat().st_size},
+            )
 
         raise ValueError(f"Unsupported action: {action}")

@@ -19,9 +19,7 @@ class PlaywrightBrowserTool:
         self.name = name
         self.description = description
         self.prompt = prompt or PLAYWRIGHT_BROWSER_PROMPT
-        self.prompt_instructions = (
-            "Use this when JavaScript rendering matters or basic HTTP fetch is insufficient."
-        )
+        self.prompt_instructions = "Use this when JavaScript rendering matters or basic HTTP fetch is insufficient."
 
     def schema(self) -> dict:
         return {
@@ -50,6 +48,7 @@ class PlaywrightBrowserTool:
             )
 
         try:
+
             def _run() -> str:
                 with sync_playwright() as playwright:
                     browser = playwright.chromium.launch(headless=True)
@@ -63,7 +62,12 @@ class PlaywrightBrowserTool:
         except Exception as exc:
             return ToolOutput(
                 text=f"Playwright could not open {url}: {exc}",
-                metadata={"url": url, "driver": "playwright", "implemented": False, "error": str(exc)},
+                metadata={
+                    "url": url,
+                    "driver": "playwright",
+                    "implemented": False,
+                    "error": str(exc),
+                },
             )
 
         text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", unescape(content))).strip()

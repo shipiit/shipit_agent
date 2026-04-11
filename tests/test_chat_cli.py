@@ -1,7 +1,7 @@
 """Tests for the modern multi-agent chat REPL (shipit_agent.chat_cli)."""
+
 from __future__ import annotations
 
-import json
 
 import pytest
 
@@ -65,7 +65,9 @@ def test_agent_tools_returns_list_for_deep():
 def test_agent_chat_session_uses_inner_agent_for_deep():
     llm = SimpleEchoLLM()
     deep = make_agent("deep", llm=llm, use_builtins=False)
-    chat = agent_chat_session(deep, session_id="x", session_store=InMemorySessionStore())
+    chat = agent_chat_session(
+        deep, session_id="x", session_store=InMemorySessionStore()
+    )
     assert chat is not None
     assert chat.agent is deep.agent
 

@@ -17,8 +17,12 @@ class SearchResult:
 class VectorStore(Protocol):
     """Protocol for vector stores."""
 
-    def add(self, texts: list[str], metadatas: list[dict[str, Any]] | None = None) -> list[str]: ...
-    def search(self, query_embedding: list[float], top_k: int = 5) -> list[SearchResult]: ...
+    def add(
+        self, texts: list[str], metadatas: list[dict[str, Any]] | None = None
+    ) -> list[str]: ...
+    def search(
+        self, query_embedding: list[float], top_k: int = 5
+    ) -> list[SearchResult]: ...
     def delete(self, ids: list[str]) -> None: ...
 
 
@@ -32,44 +36,63 @@ class InMemoryVectorStore:
     def __init__(self) -> None:
         self._entries: list[dict[str, Any]] = []
 
-    def add(self, texts: list[str], metadatas: list[dict[str, Any]] | None = None) -> list[str]:
+    def add(
+        self, texts: list[str], metadatas: list[dict[str, Any]] | None = None
+    ) -> list[str]:
         ids = []
         for i, text in enumerate(texts):
             entry_id = f"mem_{len(self._entries)}"
-            self._entries.append({
-                "id": entry_id,
-                "text": text,
-                "embedding": None,  # set by SemanticMemory
-                "metadata": (metadatas[i] if metadatas and i < len(metadatas) else {}),
-            })
+            self._entries.append(
+                {
+                    "id": entry_id,
+                    "text": text,
+                    "embedding": None,  # set by SemanticMemory
+                    "metadata": (
+                        metadatas[i] if metadatas and i < len(metadatas) else {}
+                    ),
+                }
+            )
             ids.append(entry_id)
         return ids
 
-    def add_with_embeddings(self, texts: list[str], embeddings: list[list[float]], metadatas: list[dict[str, Any]] | None = None) -> list[str]:
+    def add_with_embeddings(
+        self,
+        texts: list[str],
+        embeddings: list[list[float]],
+        metadatas: list[dict[str, Any]] | None = None,
+    ) -> list[str]:
         ids = []
         for i, text in enumerate(texts):
             entry_id = f"mem_{len(self._entries)}"
-            self._entries.append({
-                "id": entry_id,
-                "text": text,
-                "embedding": embeddings[i],
-                "metadata": (metadatas[i] if metadatas and i < len(metadatas) else {}),
-            })
+            self._entries.append(
+                {
+                    "id": entry_id,
+                    "text": text,
+                    "embedding": embeddings[i],
+                    "metadata": (
+                        metadatas[i] if metadatas and i < len(metadatas) else {}
+                    ),
+                }
+            )
             ids.append(entry_id)
         return ids
 
-    def search(self, query_embedding: list[float], top_k: int = 5) -> list[SearchResult]:
+    def search(
+        self, query_embedding: list[float], top_k: int = 5
+    ) -> list[SearchResult]:
         scored = []
         for entry in self._entries:
             emb = entry.get("embedding")
             if emb is None:
                 continue
             score = self._cosine_similarity(query_embedding, emb)
-            scored.append(SearchResult(
-                text=entry["text"],
-                score=score,
-                metadata=entry.get("metadata", {}),
-            ))
+            scored.append(
+                SearchResult(
+                    text=entry["text"],
+                    score=score,
+                    metadata=entry.get("metadata", {}),
+                )
+            )
         scored.sort(key=lambda r: r.score, reverse=True)
         return scored[:top_k]
 
@@ -127,7 +150,9 @@ class SemanticMemory:
             ids = self.vector_store.add([text], [metadata or {}])
         return ids[0]
 
-    def add_many(self, texts: list[str], metadatas: list[dict[str, Any]] | None = None) -> list[str]:
+    def add_many(
+        self, texts: list[str], metadatas: list[dict[str, Any]] | None = None
+    ) -> list[str]:
         """Add multiple facts."""
         if self.embedding_fn:
             embeddings = [self.embedding_fn(t) for t in texts]

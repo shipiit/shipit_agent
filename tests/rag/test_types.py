@@ -77,7 +77,10 @@ def test_rag_context_empty_prompt_context():
 
 
 def test_rag_context_prompt_context_renders_indexed_chunks():
-    chunks = [_chunk(cid="d1::0", text="alpha"), _chunk(cid="d1::1", chunk_index=1, text="beta")]
+    chunks = [
+        _chunk(cid="d1::0", text="alpha"),
+        _chunk(cid="d1::1", chunk_index=1, text="beta"),
+    ]
     results = [SearchResult(chunk=c, score=0.9) for c in chunks]
     ctx = RAGContext(query="q", results=results, total_found=2)
     text = ctx.to_prompt_context()
@@ -88,7 +91,9 @@ def test_rag_context_prompt_context_renders_indexed_chunks():
 
 def test_rag_context_prompt_context_truncates_to_max_chars():
     big = _chunk(text="x" * 500)
-    ctx = RAGContext(query="q", results=[SearchResult(chunk=big, score=1.0)], total_found=1)
+    ctx = RAGContext(
+        query="q", results=[SearchResult(chunk=big, score=1.0)], total_found=1
+    )
     text = ctx.to_prompt_context(max_chars=120)
     assert len(text) <= 120
     assert "chunk_id=d1::0" in text

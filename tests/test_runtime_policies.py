@@ -1,6 +1,5 @@
 from shipit_agent import Agent, FunctionTool, RetryPolicy, RouterPolicy
 from shipit_agent.llms import LLMResponse
-from shipit_agent.models import ToolCall
 
 
 def test_runtime_auto_plans_for_complex_prompts() -> None:
@@ -10,7 +9,9 @@ def test_runtime_auto_plans_for_complex_prompts() -> None:
 
     agent = Agent(
         llm=PassiveLLM(),
-        tools=[FunctionTool.from_callable(lambda goal: goal, name="noop"),],
+        tools=[
+            FunctionTool.from_callable(lambda goal: goal, name="noop"),
+        ],
         router_policy=RouterPolicy(auto_plan=True, long_prompt_threshold=10),
     )
     agent.tools.append(__import__("shipit_agent").PlannerTool())
@@ -32,7 +33,9 @@ def test_runtime_retries_llm_failures() -> None:
 
     agent = Agent(
         llm=FlakyLLM(),
-        retry_policy=RetryPolicy(max_llm_retries=1, retry_on_exceptions=(RuntimeError,)),
+        retry_policy=RetryPolicy(
+            max_llm_retries=1, retry_on_exceptions=(RuntimeError,)
+        ),
     )
     result = agent.run("hello")
     assert result.output == "recovered"

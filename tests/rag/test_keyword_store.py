@@ -2,7 +2,9 @@ from shipit_agent.rag.keyword_store import InMemoryBM25Store, _tokenize
 from shipit_agent.rag.types import Chunk, IndexFilters
 
 
-def _chunk(cid: str, doc_id: str, index: int, text: str, source: str | None = None) -> Chunk:
+def _chunk(
+    cid: str, doc_id: str, index: int, text: str, source: str | None = None
+) -> Chunk:
     return Chunk(
         id=cid,
         document_id=doc_id,
@@ -22,11 +24,13 @@ def test_tokenize_drops_stopwords_and_lowercases():
 
 def test_search_ranks_exact_matches_higher():
     store = InMemoryBM25Store()
-    store.add([
-        _chunk("d1::0", "d1", 0, "python programming language"),
-        _chunk("d1::1", "d1", 1, "rust programming language"),
-        _chunk("d1::2", "d1", 2, "sailing across the ocean"),
-    ])
+    store.add(
+        [
+            _chunk("d1::0", "d1", 0, "python programming language"),
+            _chunk("d1::1", "d1", 1, "rust programming language"),
+            _chunk("d1::2", "d1", 2, "sailing across the ocean"),
+        ]
+    )
     results = store.search("python language", top_k=3)
     assert results[0][0].id == "d1::0"
     # Unrelated chunk (sailing) should not appear
@@ -36,20 +40,24 @@ def test_search_ranks_exact_matches_higher():
 
 def test_search_respects_top_k():
     store = InMemoryBM25Store()
-    store.add([
-        _chunk(f"d1::{i}", "d1", i, "python programming snippet example")
-        for i in range(10)
-    ])
+    store.add(
+        [
+            _chunk(f"d1::{i}", "d1", i, "python programming snippet example")
+            for i in range(10)
+        ]
+    )
     results = store.search("python", top_k=3)
     assert len(results) == 3
 
 
 def test_search_applies_filters():
     store = InMemoryBM25Store()
-    store.add([
-        _chunk("d1::0", "d1", 0, "python language", source="readme"),
-        _chunk("d2::0", "d2", 0, "python language", source="manual"),
-    ])
+    store.add(
+        [
+            _chunk("d1::0", "d1", 0, "python language", source="readme"),
+            _chunk("d2::0", "d2", 0, "python language", source="manual"),
+        ]
+    )
     results = store.search("python", top_k=5, filters=IndexFilters(sources=["manual"]))
     assert [r[0].id for r in results] == ["d2::0"]
 
@@ -68,10 +76,12 @@ def test_empty_query_returns_empty():
 
 def test_delete_removes_from_index():
     store = InMemoryBM25Store()
-    store.add([
-        _chunk("d1::0", "d1", 0, "python programming"),
-        _chunk("d1::1", "d1", 1, "python scripting"),
-    ])
+    store.add(
+        [
+            _chunk("d1::0", "d1", 0, "python programming"),
+            _chunk("d1::1", "d1", 1, "python scripting"),
+        ]
+    )
     store.delete(["d1::0"])
     results = store.search("programming", top_k=5)
     assert all(r[0].id != "d1::0" for r in results)
@@ -79,11 +89,13 @@ def test_delete_removes_from_index():
 
 def test_delete_document_removes_all_chunks():
     store = InMemoryBM25Store()
-    store.add([
-        _chunk("d1::0", "d1", 0, "python"),
-        _chunk("d1::1", "d1", 1, "python"),
-        _chunk("d2::0", "d2", 0, "python"),
-    ])
+    store.add(
+        [
+            _chunk("d1::0", "d1", 0, "python"),
+            _chunk("d1::1", "d1", 1, "python"),
+            _chunk("d2::0", "d2", 0, "python"),
+        ]
+    )
     store.delete_document("d1")
     assert store.count() == 1
     results = store.search("python", top_k=5)

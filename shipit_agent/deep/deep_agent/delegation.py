@@ -15,6 +15,7 @@ Each delegate can be:
   :class:`Supervisor`, …)
 * any object that exposes a ``run(prompt) -> AgentResult``-like method
 """
+
 from __future__ import annotations
 
 import json
@@ -75,11 +76,13 @@ def _run_agent(
         except TypeError:
             stream_iter = agent.stream()
         for event in stream_iter:
-            captured_events.append({
-                "type": getattr(event, "type", ""),
-                "message": getattr(event, "message", ""),
-                "payload": dict(getattr(event, "payload", {}) or {}),
-            })
+            captured_events.append(
+                {
+                    "type": getattr(event, "type", ""),
+                    "message": getattr(event, "message", ""),
+                    "payload": dict(getattr(event, "payload", {}) or {}),
+                }
+            )
             if getattr(event, "type", "") == "run_completed":
                 payload = getattr(event, "payload", {}) or {}
                 if isinstance(payload, dict) and payload.get("output"):
@@ -104,9 +107,7 @@ def _run_agent(
                 src.to_dict() if hasattr(src, "to_dict") else src for src in sources
             ]
         return text, metadata
-    raise TypeError(
-        f"Sub-agent {agent.__class__.__name__} has no run() method"
-    )
+    raise TypeError(f"Sub-agent {agent.__class__.__name__} has no run() method")
 
 
 @dataclass
@@ -170,10 +171,13 @@ class AgentDelegationTool:
     # ---- Tool protocol -------------------------------------------------
 
     def schema(self) -> dict[str, Any]:
-        roster = "\n".join(
-            f"- {name}: {_agent_description(agent)}"
-            for name, agent in self.agents.items()
-        ) or "(no sub-agents registered)"
+        roster = (
+            "\n".join(
+                f"- {name}: {_agent_description(agent)}"
+                for name, agent in self.agents.items()
+            )
+            or "(no sub-agents registered)"
+        )
         return {
             "type": "function",
             "function": {
@@ -225,10 +229,12 @@ class AgentDelegationTool:
 
         if agent_name not in self.agents:
             return ToolOutput(
-                text=json.dumps({
-                    "error": f"unknown sub-agent: {agent_name!r}",
-                    "available": list(self.agents.keys()),
-                })
+                text=json.dumps(
+                    {
+                        "error": f"unknown sub-agent: {agent_name!r}",
+                        "available": list(self.agents.keys()),
+                    }
+                )
             )
 
         if not task:
@@ -270,7 +276,9 @@ class AgentDelegationTool:
         self.agents[name] = agent
 
 
-def build_delegation_tool(agents: list[Any] | dict[str, Any] | None) -> AgentDelegationTool | None:
+def build_delegation_tool(
+    agents: list[Any] | dict[str, Any] | None,
+) -> AgentDelegationTool | None:
     """Convert a user-supplied ``agents=`` value into an :class:`AgentDelegationTool`.
 
     Accepts:
@@ -296,9 +304,7 @@ def build_delegation_tool(agents: list[Any] | dict[str, Any] | None) -> AgentDel
                 counter += 1
             named[unique] = agent
         return AgentDelegationTool(agents=named)
-    raise TypeError(
-        f"agents= must be a list or dict, got {type(agents).__name__}"
-    )
+    raise TypeError(f"agents= must be a list or dict, got {type(agents).__name__}")
 
 
 __all__ = ["AgentDelegationTool", "build_delegation_tool"]

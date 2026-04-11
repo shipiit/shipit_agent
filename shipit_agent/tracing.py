@@ -16,7 +16,9 @@ class TraceRecord:
 
 
 class TraceStore(Protocol):
-    def append_event(self, trace_id: str, event: AgentEvent, metadata: dict[str, Any] | None = None) -> None: ...
+    def append_event(
+        self, trace_id: str, event: AgentEvent, metadata: dict[str, Any] | None = None
+    ) -> None: ...
 
     def load(self, trace_id: str) -> TraceRecord | None: ...
 
@@ -25,8 +27,12 @@ class InMemoryTraceStore:
     def __init__(self) -> None:
         self._records: dict[str, TraceRecord] = {}
 
-    def append_event(self, trace_id: str, event: AgentEvent, metadata: dict[str, Any] | None = None) -> None:
-        record = self._records.setdefault(trace_id, TraceRecord(trace_id=trace_id, metadata=dict(metadata or {})))
+    def append_event(
+        self, trace_id: str, event: AgentEvent, metadata: dict[str, Any] | None = None
+    ) -> None:
+        record = self._records.setdefault(
+            trace_id, TraceRecord(trace_id=trace_id, metadata=dict(metadata or {}))
+        )
         if metadata:
             record.metadata.update(metadata)
         record.events.append(event)
@@ -54,7 +60,9 @@ class FileTraceStore:
             events=[AgentEvent(**event) for event in raw.get("events", [])],
         )
 
-    def append_event(self, trace_id: str, event: AgentEvent, metadata: dict[str, Any] | None = None) -> None:
+    def append_event(
+        self, trace_id: str, event: AgentEvent, metadata: dict[str, Any] | None = None
+    ) -> None:
         record = self.load(trace_id) or TraceRecord(trace_id=trace_id)
         if metadata:
             record.metadata.update(metadata)
@@ -64,4 +72,6 @@ class FileTraceStore:
             "metadata": record.metadata,
             "events": [asdict(item) for item in record.events],
         }
-        self._path_for(trace_id).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self._path_for(trace_id).write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )

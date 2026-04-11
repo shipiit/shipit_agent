@@ -1,11 +1,22 @@
-from shipit_agent import Agent, FileMemoryStore, FileSessionStore, InMemoryMemoryStore, InMemorySessionStore, MemoryTool, Message, WorkspaceFilesTool
+from shipit_agent import (
+    Agent,
+    FileMemoryStore,
+    FileSessionStore,
+    InMemoryMemoryStore,
+    InMemorySessionStore,
+    MemoryTool,
+    Message,
+    WorkspaceFilesTool,
+)
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
 from shipit_agent.models import ToolCall
 
 
 def test_session_store_persists_messages_between_runs() -> None:
     store = InMemorySessionStore()
-    agent = Agent(llm=SimpleEchoLLM(), prompt="Prompt", session_store=store, session_id="abc")
+    agent = Agent(
+        llm=SimpleEchoLLM(), prompt="Prompt", session_store=store, session_id="abc"
+    )
     first = agent.run("first")
     second = agent.run("second")
     assert len(second.messages) > len(first.messages)
@@ -19,7 +30,9 @@ def test_memory_store_collects_tool_outputs() -> None:
             tool_messages = [m for m in messages if getattr(m, "role", "") == "tool"]
             if tool_messages:
                 return LLMResponse(content="done")
-            return LLMResponse(content="", tool_calls=[ToolCall(name="echo_tool", arguments={})])
+            return LLMResponse(
+                content="", tool_calls=[ToolCall(name="echo_tool", arguments={})]
+            )
 
     class EchoTool:
         name = "echo_tool"
@@ -29,13 +42,21 @@ def test_memory_store_collects_tool_outputs() -> None:
         def schema(self) -> dict:
             return {
                 "type": "function",
-                "function": {"name": self.name, "description": self.description, "parameters": {"type": "object", "properties": {}, "required": []}},
+                "function": {
+                    "name": self.name,
+                    "description": self.description,
+                    "parameters": {"type": "object", "properties": {}, "required": []},
+                },
             }
 
         def run(self, context, **kwargs):
-            return type("Output", (), {"text": "stored value", "metadata": {"persist": True}})()
+            return type(
+                "Output", (), {"text": "stored value", "metadata": {"persist": True}}
+            )()
 
-    agent = Agent(llm=ToolCallingLLM(), prompt="Prompt", tools=[EchoTool()], memory_store=memory)
+    agent = Agent(
+        llm=ToolCallingLLM(), prompt="Prompt", tools=[EchoTool()], memory_store=memory
+    )
     agent.run("store")
     matches = memory.search("stored")
     assert matches
@@ -59,7 +80,18 @@ def test_workspace_files_tool_roundtrip(tmp_path) -> None:
 
 def test_file_memory_store_persists_facts(tmp_path) -> None:
     store = FileMemoryStore(tmp_path / "memory.json")
-    store.add(type("Fact", (), {"content": "alpha fact", "category": "general", "score": 1.0, "metadata": {}})())
+    store.add(
+        type(
+            "Fact",
+            (),
+            {
+                "content": "alpha fact",
+                "category": "general",
+                "score": 1.0,
+                "metadata": {},
+            },
+        )()
+    )
     matches = store.search("alpha")
     assert matches
     assert matches[0].content == "alpha fact"
@@ -67,10 +99,14 @@ def test_file_memory_store_persists_facts(tmp_path) -> None:
 
 def test_file_session_store_persists_records(tmp_path) -> None:
     store = FileSessionStore(tmp_path / "sessions")
-    first_agent = Agent(llm=SimpleEchoLLM(), session_store=store, session_id="persisted")
+    first_agent = Agent(
+        llm=SimpleEchoLLM(), session_store=store, session_id="persisted"
+    )
     first_agent.run("hello")
 
-    second_agent = Agent(llm=SimpleEchoLLM(), session_store=store, session_id="persisted")
+    second_agent = Agent(
+        llm=SimpleEchoLLM(), session_store=store, session_id="persisted"
+    )
     result = second_agent.run("again")
     assert len(result.messages) > 2
 

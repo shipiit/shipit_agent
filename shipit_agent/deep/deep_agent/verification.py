@@ -6,6 +6,7 @@ against a set of success criteria. Used both by the synchronous
 and by the streaming path (emits a final ``run_completed`` event with
 type ``verification_completed``).
 """
+
 from __future__ import annotations
 
 from typing import Any

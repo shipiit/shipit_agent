@@ -33,13 +33,18 @@ class ToolRunner:
         # Filter out reserved argument names that would collide with the
         # positional `context` parameter passed by the runner.
         safe_arguments = {
-            k: v for k, v in tool_call.arguments.items()
+            k: v
+            for k, v in tool_call.arguments.items()
             if k not in self._RESERVED_ARG_NAMES
         }
         output = tool.run(context, **safe_arguments)
-        return ToolResult(name=tool_call.name, output=output.text, metadata=dict(output.metadata))
+        return ToolResult(
+            name=tool_call.name, output=output.text, metadata=dict(output.metadata)
+        )
 
-    def run_many(self, tool_calls: list[ToolCall], context: ToolContext) -> ToolRunnerResult:
+    def run_many(
+        self, tool_calls: list[ToolCall], context: ToolContext
+    ) -> ToolRunnerResult:
         result = ToolRunnerResult()
         for tool_call in tool_calls:
             tool = self.registry.get(tool_call.name)

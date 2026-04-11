@@ -60,9 +60,7 @@ class CodeExecutionTool:
         self.name = name
         self.description = description
         self.prompt = prompt or CODE_EXECUTION_PROMPT
-        self.prompt_instructions = (
-            "Use this for deterministic local execution, transformations, parsing, and script-based validation."
-        )
+        self.prompt_instructions = "Use this for deterministic local execution, transformations, parsing, and script-based validation."
         self.timeout_seconds = timeout_seconds
 
     def schema(self) -> dict:
@@ -79,8 +77,14 @@ class CodeExecutionTool:
                             "enum": sorted(self.supported_languages()),
                             "description": "Interpreter to use",
                         },
-                        "code": {"type": "string", "description": "Source code to execute"},
-                        "timeout_seconds": {"type": "number", "description": "Optional execution timeout"},
+                        "code": {
+                            "type": "string",
+                            "description": "Source code to execute",
+                        },
+                        "timeout_seconds": {
+                            "type": "number",
+                            "description": "Optional execution timeout",
+                        },
                     },
                     "required": ["language", "code"],
                 },
@@ -106,7 +110,9 @@ class CodeExecutionTool:
                 continue
             return [executable, *candidate[1:], str(script_path)]
         tried = ", ".join(" ".join(parts) for parts in candidates)
-        raise RuntimeError(f"No interpreter found for language '{normalized}'. Tried: {tried}")
+        raise RuntimeError(
+            f"No interpreter found for language '{normalized}'. Tried: {tried}"
+        )
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         language = self._normalize_language(str(kwargs["language"]))

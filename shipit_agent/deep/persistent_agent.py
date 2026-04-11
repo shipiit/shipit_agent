@@ -115,7 +115,9 @@ class PersistentAgent:
                 self._save_checkpoint(checkpoint)
 
             # Check if agent says it's done
-            if any(w in result.output.lower() for w in ["complete", "finished", "done"]):
+            if any(
+                w in result.output.lower() for w in ["complete", "finished", "done"]
+            ):
                 self._delete_checkpoint(agent_id)
                 return result
 
@@ -155,7 +157,9 @@ class PersistentAgent:
             if step % self.checkpoint_interval == 0:
                 self._save_checkpoint(checkpoint)
 
-            if any(w in (step_text or "").lower() for w in ["complete", "finished", "done"]):
+            if any(
+                w in (step_text or "").lower() for w in ["complete", "finished", "done"]
+            ):
                 self._delete_checkpoint(agent_id)
                 yield AgentEvent(
                     type="run_completed",
@@ -183,6 +187,7 @@ class PersistentAgent:
 
         task = checkpoint.state.get("task", "")
         from shipit_agent.agent import Agent
+
         agent = Agent(llm=self.llm, tools=list(self.tools), **self.agent_kwargs)
 
         for step in range(checkpoint.step + 1, self.max_steps + 1):
@@ -193,7 +198,9 @@ class PersistentAgent:
             if step % self.checkpoint_interval == 0:
                 self._save_checkpoint(checkpoint)
 
-            if any(w in result.output.lower() for w in ["complete", "finished", "done"]):
+            if any(
+                w in result.output.lower() for w in ["complete", "finished", "done"]
+            ):
                 self._delete_checkpoint(agent_id)
                 return result
 

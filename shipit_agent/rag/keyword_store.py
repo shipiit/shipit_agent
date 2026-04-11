@@ -1,4 +1,5 @@
 """Keyword store protocol and pure-Python BM25 implementation."""
+
 from __future__ import annotations
 
 import math
@@ -13,15 +14,42 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
 _STOPWORDS = frozenset(
     {
-        "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with",
-        "is", "are", "was", "were", "be", "been", "being", "this", "that",
-        "it", "at", "as", "by", "from", "but", "not", "no",
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "of",
+        "to",
+        "in",
+        "on",
+        "for",
+        "with",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "this",
+        "that",
+        "it",
+        "at",
+        "as",
+        "by",
+        "from",
+        "but",
+        "not",
+        "no",
     }
 )
 
 
 def _tokenize(text: str) -> list[str]:
-    return [t.lower() for t in _TOKEN_RE.findall(text or "") if t.lower() not in _STOPWORDS]
+    return [
+        t.lower() for t in _TOKEN_RE.findall(text or "") if t.lower() not in _STOPWORDS
+    ]
 
 
 @runtime_checkable
@@ -134,7 +162,9 @@ class InMemoryBM25Store:
                 f = freq_map.get(qt, 0)
                 if f == 0:
                     continue
-                denom = f + self.k1 * (1 - self.b + self.b * dl / (self._avg_len or 1.0))
+                denom = f + self.k1 * (
+                    1 - self.b + self.b * dl / (self._avg_len or 1.0)
+                )
                 score += idf * (f * (self.k1 + 1)) / denom
             if score > 0:
                 scored.append((chunk, score))

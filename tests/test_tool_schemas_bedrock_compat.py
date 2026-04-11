@@ -10,6 +10,7 @@ dict get treated as if their top-level ``name`` and ``description`` were
 empty by LiteLLM's Bedrock adapter, which is the bug this test prevents
 from regressing.
 """
+
 from __future__ import annotations
 
 import re
@@ -40,22 +41,24 @@ def _assert_bedrock_compatible(tool, *, label: str) -> None:
     name = fn.get("name", "")
     description = fn.get("description", "")
 
-    assert name, f"{label}: function name must be non-empty (Bedrock rejects empty names)"
+    assert (
+        name
+    ), f"{label}: function name must be non-empty (Bedrock rejects empty names)"
     assert _NAME_RE.fullmatch(name), (
         f"{label}: function name {name!r} must match [a-zA-Z0-9_-]+ "
         "(Bedrock's regex constraint)"
     )
-    assert description, (
-        f"{label}: function description must be non-empty (Bedrock rejects empty)"
-    )
+    assert (
+        description
+    ), f"{label}: function description must be non-empty (Bedrock rejects empty)"
 
     parameters = fn.get("parameters")
-    assert isinstance(parameters, dict), (
-        f"{label}: parameters block must be present (got {type(parameters).__name__})"
-    )
-    assert parameters.get("type") == "object", (
-        f"{label}: parameters.type must be 'object'"
-    )
+    assert isinstance(
+        parameters, dict
+    ), f"{label}: parameters block must be present (got {type(parameters).__name__})"
+    assert (
+        parameters.get("type") == "object"
+    ), f"{label}: parameters.type must be 'object'"
 
 
 def test_all_builtin_tools_are_bedrock_compatible():
@@ -111,6 +114,6 @@ def test_no_tool_schema_has_empty_top_level_keys():
                 "this triggers the Bedrock validation error"
             )
         if "description" in schema:
-            assert schema["description"], (
-                f"{tool.__class__.__name__} has empty top-level 'description' key"
-            )
+            assert schema[
+                "description"
+            ], f"{tool.__class__.__name__} has empty top-level 'description' key"

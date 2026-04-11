@@ -6,6 +6,7 @@ workloads should plug in a production embedder through
 :class:`CallableEmbedder` or one of the provider-specific adapters in
 :mod:`shipit_agent.rag.adapters`.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -30,8 +31,9 @@ class Embedder(Protocol):
 
     dimension: int
 
-    def embed(self, texts: list[str], *, kind: str = "passage") -> list[list[float]]:
-        ...
+    def embed(
+        self, texts: list[str], *, kind: str = "passage"
+    ) -> list[list[float]]: ...
 
 
 def _tokenize(text: str) -> list[str]:

@@ -37,12 +37,16 @@ class Step:
             branch_key = self.router(context)
             branch_step = self.branches.get(branch_key)
             if branch_step is None:
-                return StepResult(name=self.name, output=f"No branch for key: {branch_key}")
+                return StepResult(
+                    name=self.name, output=f"No branch for key: {branch_key}"
+                )
             return branch_step.execute(context, **inputs)
 
         if self.fn is not None:
             # Plain function step
-            resolved_prompt = self._resolve_template(self.prompt, context) if self.prompt else ""
+            resolved_prompt = (
+                self._resolve_template(self.prompt, context) if self.prompt else ""
+            )
             if resolved_prompt:
                 result_text = self.fn(resolved_prompt)
             else:
@@ -56,11 +60,17 @@ class Step:
 
         if self.agent is not None:
             resolved_prompt = self._resolve_template(self.prompt, context)
-            result = self.agent.run(resolved_prompt, output_schema=self.output_schema) if self.output_schema else self.agent.run(resolved_prompt)
+            result = (
+                self.agent.run(resolved_prompt, output_schema=self.output_schema)
+                if self.output_schema
+                else self.agent.run(resolved_prompt)
+            )
             return StepResult(
                 name=self.name,
                 output=result.output,
-                metadata={"parsed": result.parsed} if hasattr(result, "parsed") and result.parsed else {},
+                metadata={"parsed": result.parsed}
+                if hasattr(result, "parsed") and result.parsed
+                else {},
             )
 
         return StepResult(name=self.name, output="No agent or function provided")
@@ -73,6 +83,7 @@ class Step:
         - ``{step_name.output}`` — access a specific attribute of a step result
         - ``{key}`` — shorthand for ``{key.output}`` (the step's output text)
         """
+
         # First resolve {step_name.attribute} references
         def dotted_replacer(match: re.Match) -> str:
             step_name = match.group(1)
@@ -102,7 +113,9 @@ class ParallelGroup:
 
     steps: list[Step] = field(default_factory=list)
 
-    def execute(self, context: dict[str, StepResult], **inputs: Any) -> list[StepResult]:
+    def execute(
+        self, context: dict[str, StepResult], **inputs: Any
+    ) -> list[StepResult]:
         if len(self.steps) <= 1:
             return [s.execute(context, **inputs) for s in self.steps]
 

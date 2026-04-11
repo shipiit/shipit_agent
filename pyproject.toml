@@ -118,6 +118,9 @@ all = [
 shipit = "shipit_agent.cli:main"
 shipit-chat = "shipit_agent.chat_cli:main"
 
+[tool.ruff.lint.per-file-ignores]
+"notebooks/*.ipynb" = ["E402"]
+
 [tool.setuptools]
 package-dir = {"" = "."}
 

@@ -23,6 +23,12 @@ def test_variables_extraction():
 
 
 def test_render_multiple_variables():
-    t = PromptTemplate(template="{payload.action} on {payload.repo.name} by {payload.sender.login}")
-    payload = {"action": "opened", "repo": {"name": "shipit"}, "sender": {"login": "rahul"}}
+    t = PromptTemplate(
+        template="{payload.action} on {payload.repo.name} by {payload.sender.login}"
+    )
+    payload = {
+        "action": "opened",
+        "repo": {"name": "shipit"},
+        "sender": {"login": "rahul"},
+    }
     assert t.render(payload=payload) == "opened on shipit by rahul"

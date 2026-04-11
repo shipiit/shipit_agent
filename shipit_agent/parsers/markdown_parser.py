@@ -50,20 +50,24 @@ class MarkdownParser:
     def _extract_code_blocks(text: str) -> list[dict[str, str]]:
         blocks = []
         for match in re.finditer(r"```(\w*)\s*\n(.*?)\n\s*```", text, re.DOTALL):
-            blocks.append({
-                "language": match.group(1) or "text",
-                "code": match.group(2).strip(),
-            })
+            blocks.append(
+                {
+                    "language": match.group(1) or "text",
+                    "code": match.group(2).strip(),
+                }
+            )
         return blocks
 
     @staticmethod
     def _extract_headings(text: str) -> list[dict[str, str]]:
         headings = []
         for match in re.finditer(r"^(#{1,6})\s+(.+)$", text, re.MULTILINE):
-            headings.append({
-                "level": str(len(match.group(1))),
-                "text": match.group(2).strip(),
-            })
+            headings.append(
+                {
+                    "level": str(len(match.group(1))),
+                    "text": match.group(2).strip(),
+                }
+            )
         return headings
 
     @staticmethod

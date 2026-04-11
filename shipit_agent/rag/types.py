@@ -1,4 +1,5 @@
 """Core data types for the shipit_agent RAG subsystem."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

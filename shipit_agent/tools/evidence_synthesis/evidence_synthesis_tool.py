@@ -15,9 +15,7 @@ class EvidenceSynthesisTool:
         self.name = name
         self.description = description
         self.prompt = prompt or EVIDENCE_SYNTHESIS_PROMPT
-        self.prompt_instructions = (
-            "Use this after search, connector, or workspace tools when several observations must be distilled."
-        )
+        self.prompt_instructions = "Use this after search, connector, or workspace tools when several observations must be distilled."
 
     def schema(self) -> dict:
         return {
@@ -28,8 +26,14 @@ class EvidenceSynthesisTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "observations": {"type": "array", "description": "Facts, excerpts, or observations to synthesize"},
-                        "question": {"type": "string", "description": "Optional framing question"},
+                        "observations": {
+                            "type": "array",
+                            "description": "Facts, excerpts, or observations to synthesize",
+                        },
+                        "question": {
+                            "type": "string",
+                            "description": "Optional framing question",
+                        },
                     },
                     "required": ["observations"],
                 },
@@ -37,7 +41,11 @@ class EvidenceSynthesisTool:
         }
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
-        observations = [str(item).strip() for item in kwargs.get("observations", []) if str(item).strip()]
+        observations = [
+            str(item).strip()
+            for item in kwargs.get("observations", [])
+            if str(item).strip()
+        ]
         question = str(kwargs.get("question", "")).strip()
         facts = observations[:4]
         inferences = observations[4:6]
@@ -47,9 +55,15 @@ class EvidenceSynthesisTool:
         lines.append("Facts:")
         lines.extend(f"- {item}" for item in facts or ["No concrete facts provided."])
         lines.append("Inferences:")
-        lines.extend(f"- {item}" for item in inferences or ["Need more evidence before drawing stronger conclusions."])
+        lines.extend(
+            f"- {item}"
+            for item in inferences
+            or ["Need more evidence before drawing stronger conclusions."]
+        )
         lines.append("Gaps:")
-        lines.append("- Confirm the missing source of truth and unresolved assumptions.")
+        lines.append(
+            "- Confirm the missing source of truth and unresolved assumptions."
+        )
         lines.append("Recommendations:")
         lines.append("- Gather the next highest-signal piece of evidence.")
         lines.append("- Verify the most important claim before acting on it.")

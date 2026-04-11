@@ -5,7 +5,9 @@ from shipit_agent.tools.code_execution import CodeExecutionTool
 
 def test_code_execution_tool_schema_lists_multiple_languages() -> None:
     tool = CodeExecutionTool()
-    enum_values = tool.schema()["function"]["parameters"]["properties"]["language"]["enum"]
+    enum_values = tool.schema()["function"]["parameters"]["properties"]["language"][
+        "enum"
+    ]
     assert "python" in enum_values
     assert "javascript" in enum_values
     assert "ruby" in enum_values

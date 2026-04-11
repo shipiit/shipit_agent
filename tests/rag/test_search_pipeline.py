@@ -127,6 +127,7 @@ def test_reranker_reorders_results():
             # Rank third chunk highest, second next, first last.
             class R:
                 content = "[1, 5, 9]"
+
             return R()
 
     pipeline = HybridSearchPipeline(

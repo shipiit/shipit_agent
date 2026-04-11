@@ -59,5 +59,9 @@ def test_build_search_provider_requires_keys_for_remote_apis() -> None:
 
 
 def test_build_search_provider_accepts_remote_api_keys() -> None:
-    assert isinstance(build_search_provider("serper", api_key="x"), SerperSearchProvider)
-    assert isinstance(build_search_provider("tavily", api_key="x"), TavilySearchProvider)
+    assert isinstance(
+        build_search_provider("serper", api_key="x"), SerperSearchProvider
+    )
+    assert isinstance(
+        build_search_provider("tavily", api_key="x"), TavilySearchProvider
+    )

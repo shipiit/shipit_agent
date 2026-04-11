@@ -16,18 +16,28 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     # `shipit run "..."` (also the default when no subcommand is given).
-    run_parser = sub.add_parser("run", help="Run a one-shot prompt and print the result.")
+    run_parser = sub.add_parser(
+        "run", help="Run a one-shot prompt and print the result."
+    )
     run_parser.add_argument("prompt", nargs="?", default="Hello from shipit_agent")
-    run_parser.add_argument("--system-prompt", default="You are Shipit, a clean and capable agent runtime.")
-    run_parser.add_argument("--json", action="store_true", help="Print the full result as JSON.")
+    run_parser.add_argument(
+        "--system-prompt", default="You are Shipit, a clean and capable agent runtime."
+    )
+    run_parser.add_argument(
+        "--json", action="store_true", help="Print the full result as JSON."
+    )
 
     # `shipit chat` — modern multi-agent interactive REPL.
     sub.add_parser("chat", help="Open an interactive chat with any agent type.")
 
     # Backwards-compatible top-level args (for `shipit "prompt"` without `run`).
     parser.add_argument("prompt", nargs="?", default=None)
-    parser.add_argument("--system-prompt", default="You are Shipit, a clean and capable agent runtime.")
-    parser.add_argument("--json", action="store_true", help="Print the full result as JSON.")
+    parser.add_argument(
+        "--system-prompt", default="You are Shipit, a clean and capable agent runtime."
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Print the full result as JSON."
+    )
     return parser
 
 
@@ -41,7 +51,11 @@ def _run_one_shot(*, prompt: str, system_prompt: str, as_json: bool) -> int:
                 {
                     "output": result.output,
                     "events": [
-                        {"type": event.type, "message": event.message, "payload": event.payload}
+                        {
+                            "type": event.type,
+                            "message": event.message,
+                            "payload": event.payload,
+                        }
                         for event in result.events
                     ],
                 },
@@ -61,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     # working.
     if argv and argv[0] == "chat":
         from shipit_agent.chat_cli import main as chat_main
+
         return chat_main(argv[1:])
 
     parser = build_parser()

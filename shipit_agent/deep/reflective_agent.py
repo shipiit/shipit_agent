@@ -110,32 +110,45 @@ class ReflectiveAgent:
 
     def _build_agent(self) -> Any:
         from shipit_agent.agent import Agent
+
         extra = dict(self.agent_kwargs)
         if self.memory and hasattr(self.memory, "get_conversation_messages"):
             extra.setdefault("history", self.memory.get_conversation_messages())
         if self.use_builtins:
-            return Agent.with_builtins(llm=self.llm, prompt=self.prompt, mcps=self.mcps, **extra)
-        return Agent(llm=self.llm, prompt=self.prompt, tools=self.tools, mcps=self.mcps, **extra)
+            return Agent.with_builtins(
+                llm=self.llm, prompt=self.prompt, mcps=self.mcps, **extra
+            )
+        return Agent(
+            llm=self.llm, prompt=self.prompt, tools=self.tools, mcps=self.mcps, **extra
+        )
 
     def _save_to_memory(self, role: str, content: str) -> None:
         if self.memory and hasattr(self.memory, "add_message"):
             from shipit_agent.models import Message
+
             self.memory.add_message(Message(role=role, content=content))
 
     @classmethod
-    def with_builtins(cls, *, llm: Any, mcps: list[Any] | None = None, **kwargs: Any) -> "ReflectiveAgent":
+    def with_builtins(
+        cls, *, llm: Any, mcps: list[Any] | None = None, **kwargs: Any
+    ) -> "ReflectiveAgent":
         """Create a ReflectiveAgent with all built-in tools."""
         return cls(llm=llm, mcps=mcps, use_builtins=True, **kwargs)
 
     def _llm_call(self, prompt: str) -> str:
         from shipit_agent.models import Message
+
         response = self.llm.complete(messages=[Message(role="user", content=prompt)])
         return response.content
 
     def _reflect(self, task: str, output: str) -> Reflection:
-        text = self._llm_call(REFLECT_PROMPT.format(
-            task=task, criteria=self.reflection_prompt, output=output,
-        ))
+        text = self._llm_call(
+            REFLECT_PROMPT.format(
+                task=task,
+                criteria=self.reflection_prompt,
+                output=output,
+            )
+        )
         try:
             start = text.find("{")
             end = text.rfind("}") + 1
@@ -151,9 +164,13 @@ class ReflectiveAgent:
         return Reflection(feedback=text, quality_score=0.5, revision_needed=True)
 
     def _revise(self, task: str, output: str, feedback: str) -> str:
-        return self._llm_call(REVISE_PROMPT.format(
-            task=task, output=output, feedback=feedback,
-        ))
+        return self._llm_call(
+            REVISE_PROMPT.format(
+                task=task,
+                output=output,
+                feedback=feedback,
+            )
+        )
 
     def run(self, task: str) -> ReflectionResult:
         agent = self._build_agent()
@@ -169,7 +186,10 @@ class ReflectiveAgent:
             result.reflections.append(reflection)
             result.final_quality = reflection.quality_score
 
-            if not reflection.revision_needed or reflection.quality_score >= self.quality_threshold:
+            if (
+                not reflection.revision_needed
+                or reflection.quality_score >= self.quality_threshold
+            ):
                 break
 
             current_output = self._revise(task, current_output, reflection.feedback)
@@ -191,26 +211,70 @@ class ReflectiveAgent:
         from shipit_agent.agent import Agent
         from shipit_agent.models import AgentEvent
 
-        yield AgentEvent(type="run_started", message=f"ReflectiveAgent: {task[:80]}", payload={"task": task, "max_reflections": self.max_reflections, "threshold": self.quality_threshold})
+        yield AgentEvent(
+            type="run_started",
+            message=f"ReflectiveAgent: {task[:80]}",
+            payload={
+                "task": task,
+                "max_reflections": self.max_reflections,
+                "threshold": self.quality_threshold,
+            },
+        )
 
         agent = Agent(llm=self.llm, tools=self.tools)
 
         yield AgentEvent(type="step_started", message="Generating initial output")
         initial_result = agent.run(task)
         current_output = initial_result.output
-        yield AgentEvent(type="tool_completed", message="Initial output generated", payload={"output": current_output})
+        yield AgentEvent(
+            type="tool_completed",
+            message="Initial output generated",
+            payload={"output": current_output},
+        )
 
         for i in range(self.max_reflections):
-            yield AgentEvent(type="reasoning_started", message=f"Reflection {i + 1}/{self.max_reflections}")
+            yield AgentEvent(
+                type="reasoning_started",
+                message=f"Reflection {i + 1}/{self.max_reflections}",
+            )
             reflection = self._reflect(task, current_output)
-            yield AgentEvent(type="reasoning_completed", message=f"Quality: {reflection.quality_score:.2f} — {reflection.feedback[:100]}", payload={"quality": reflection.quality_score, "feedback": reflection.feedback, "revision_needed": reflection.revision_needed})
+            yield AgentEvent(
+                type="reasoning_completed",
+                message=f"Quality: {reflection.quality_score:.2f} — {reflection.feedback[:100]}",
+                payload={
+                    "quality": reflection.quality_score,
+                    "feedback": reflection.feedback,
+                    "revision_needed": reflection.revision_needed,
+                },
+            )
 
-            if not reflection.revision_needed or reflection.quality_score >= self.quality_threshold:
-                yield AgentEvent(type="run_completed", message=f"Quality threshold met: {reflection.quality_score:.2f}", payload={"quality": reflection.quality_score, "iterations": i + 1, "output": current_output})
+            if (
+                not reflection.revision_needed
+                or reflection.quality_score >= self.quality_threshold
+            ):
+                yield AgentEvent(
+                    type="run_completed",
+                    message=f"Quality threshold met: {reflection.quality_score:.2f}",
+                    payload={
+                        "quality": reflection.quality_score,
+                        "iterations": i + 1,
+                        "output": current_output,
+                    },
+                )
                 return
 
-            yield AgentEvent(type="step_started", message=f"Revising (iteration {i + 2})")
+            yield AgentEvent(
+                type="step_started", message=f"Revising (iteration {i + 2})"
+            )
             current_output = self._revise(task, current_output, reflection.feedback)
-            yield AgentEvent(type="tool_completed", message=f"Revision {i + 2} complete", payload={"output": current_output})
+            yield AgentEvent(
+                type="tool_completed",
+                message=f"Revision {i + 2} complete",
+                payload={"output": current_output},
+            )
 
-        yield AgentEvent(type="run_completed", message="Max reflections reached", payload={"iterations": self.max_reflections, "output": current_output})
+        yield AgentEvent(
+            type="run_completed",
+            message="Max reflections reached",
+            payload={"iterations": self.max_reflections, "output": current_output},
+        )

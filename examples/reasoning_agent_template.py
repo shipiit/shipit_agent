@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from shipit_agent import Agent, get_builtin_tools
 from shipit_agent.llms import SimpleEchoLLM
-from shipit_agent.tools import DecisionMatrixTool, EvidenceSynthesisTool, ThoughtDecompositionTool
+from shipit_agent.tools import (
+    DecisionMatrixTool,
+    EvidenceSynthesisTool,
+    ThoughtDecompositionTool,
+)
 
 
 llm = SimpleEchoLLM()
@@ -23,5 +27,7 @@ agent = Agent(
 )
 
 if __name__ == "__main__":
-    result = agent.run("Break down a project migration, synthesize the evidence, and recommend the best path.")
+    result = agent.run(
+        "Break down a project migration, synthesize the evidence, and recommend the best path."
+    )
     print(result.output)

@@ -27,6 +27,7 @@ Tests every public surface against a real LLM:
 
 Requires AWS credentials (AWS_REGION_NAME / AWS_PROFILE / AWS_ACCESS_KEY_ID).
 """
+
 from __future__ import annotations
 
 import sys
@@ -125,6 +126,7 @@ def test_1_plain_agent(llm) -> bool:
 def test_2_agent_with_custom_tool(llm) -> bool:
     section("2. Agent + custom FunctionTool")
     try:
+
         def reverse_string(text: str) -> str:
             """Reverse the input string."""
             return text[::-1]
@@ -134,7 +136,9 @@ def test_2_agent_with_custom_tool(llm) -> bool:
         names = {t.name for t in agent.tools}
         assert "reverse_string" in names, "custom tool must be registered"
         ok("custom function tool wired")
-        result = agent.run("Use the reverse_string tool to reverse 'shipit' and tell me the result.")
+        result = agent.run(
+            "Use the reverse_string tool to reverse 'shipit' and tell me the result."
+        )
         ok(f"run completed — output: {result.output[:120]!r}")
         return True
     except Exception as exc:
@@ -171,7 +175,9 @@ def test_4_agent_stream(llm) -> bool:
         events = []
         for event in agent.stream("Say 'streaming works' and stop."):
             events.append(event.type)
-        ok(f"received {len(events)} events: {events[:5]}{'…' if len(events) > 5 else ''}")
+        ok(
+            f"received {len(events)} events: {events[:5]}{'…' if len(events) > 5 else ''}"
+        )
         assert "run_completed" in events, "missing run_completed event"
         return True
     except Exception as exc:
@@ -247,7 +253,9 @@ def test_8_deep_agent_stream(llm) -> bool:
         events = []
         for event in agent.stream("Say 'deep stream works' and stop."):
             events.append(event.type)
-        ok(f"received {len(events)} events: {events[:5]}{'…' if len(events) > 5 else ''}")
+        ok(
+            f"received {len(events)} events: {events[:5]}{'…' if len(events) > 5 else ''}"
+        )
         assert "run_completed" in events
         return True
     except Exception as exc:

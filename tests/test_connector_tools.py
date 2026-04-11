@@ -21,7 +21,9 @@ from shipit_agent.integrations import InMemoryCredentialStore
 
 def test_file_credential_store_roundtrip(tmp_path: Path) -> None:
     store = FileCredentialStore(tmp_path / "credentials.json")
-    store.set(CredentialRecord(key="gmail", provider="gmail", secrets={"access_token": "x"}))
+    store.set(
+        CredentialRecord(key="gmail", provider="gmail", secrets={"access_token": "x"})
+    )
     record = store.get("gmail")
     assert record is not None
     assert record.provider == "gmail"
@@ -36,23 +38,48 @@ def test_inmemory_credential_store_lists_records() -> None:
 
 
 def test_gmail_tool_schema_supports_multiple_actions() -> None:
-    actions = GmailTool().schema()["function"]["parameters"]["properties"]["action"]["enum"]
-    assert {"search", "read_message", "read_thread", "get_attachment", "create_draft", "send_message"}.issubset(set(actions))
+    actions = GmailTool().schema()["function"]["parameters"]["properties"]["action"][
+        "enum"
+    ]
+    assert {
+        "search",
+        "read_message",
+        "read_thread",
+        "get_attachment",
+        "create_draft",
+        "send_message",
+    }.issubset(set(actions))
 
 
 def test_slack_tool_schema_supports_richer_actions() -> None:
-    actions = SlackTool().schema()["function"]["parameters"]["properties"]["action"]["enum"]
-    assert {"channel_history", "get_thread_replies", "user_lookup"}.issubset(set(actions))
+    actions = SlackTool().schema()["function"]["parameters"]["properties"]["action"][
+        "enum"
+    ]
+    assert {"channel_history", "get_thread_replies", "user_lookup"}.issubset(
+        set(actions)
+    )
 
 
 def test_linear_tool_schema_supports_richer_actions() -> None:
-    actions = LinearTool().schema()["function"]["parameters"]["properties"]["action"]["enum"]
-    assert {"get_issue", "update_issue", "list_teams", "list_projects"}.issubset(set(actions))
+    actions = LinearTool().schema()["function"]["parameters"]["properties"]["action"][
+        "enum"
+    ]
+    assert {"get_issue", "update_issue", "list_teams", "list_projects"}.issubset(
+        set(actions)
+    )
 
 
 def test_jira_tool_schema_supports_richer_actions() -> None:
-    actions = JiraTool().schema()["function"]["parameters"]["properties"]["action"]["enum"]
-    assert {"get_issue", "list_transitions", "transition_issue", "add_comment", "assign_issue"}.issubset(set(actions))
+    actions = JiraTool().schema()["function"]["parameters"]["properties"]["action"][
+        "enum"
+    ]
+    assert {
+        "get_issue",
+        "list_transitions",
+        "transition_issue",
+        "add_comment",
+        "assign_issue",
+    }.issubset(set(actions))
 
 
 def test_connector_tools_return_not_connected_without_credentials() -> None:
@@ -70,7 +97,11 @@ def test_connector_tools_return_not_connected_without_credentials() -> None:
     ]
     for tool in tools:
         props = tool.schema()["function"]["parameters"]["properties"]
-        kwargs = {"action": props["action"]["default"]} if "action" in props else {"method": "GET", "path": "/health"}
+        kwargs = (
+            {"action": props["action"]["default"]}
+            if "action" in props
+            else {"method": "GET", "path": "/health"}
+        )
         result = tool.run(context=context, **kwargs)
         assert result.metadata["connected"] is False
 
@@ -160,15 +191,28 @@ def test_gmail_tool_read_message_includes_full_body_and_attachments() -> None:
                             {"name": "Date", "value": "Thu, 1 Jan 2026 10:00:00 +0000"},
                         ],
                         "parts": [
-                            {"mimeType": "text/plain", "body": {"data": base64.urlsafe_b64encode(b"Plain text body").decode("utf-8")}},
-                            {"mimeType": "application/pdf", "filename": "invoice.pdf", "body": {"attachmentId": "att-1", "size": 24}},
+                            {
+                                "mimeType": "text/plain",
+                                "body": {
+                                    "data": base64.urlsafe_b64encode(
+                                        b"Plain text body"
+                                    ).decode("utf-8")
+                                },
+                            },
+                            {
+                                "mimeType": "application/pdf",
+                                "filename": "invoice.pdf",
+                                "body": {"attachmentId": "att-1", "size": 24},
+                            },
                         ],
                     },
                 }
             )
 
     store = InMemoryCredentialStore()
-    store.set(CredentialRecord(key="gmail", provider="gmail", secrets={"access_token": "x"}))
+    store.set(
+        CredentialRecord(key="gmail", provider="gmail", secrets={"access_token": "x"})
+    )
     tool = FakeGmailTool(credential_store=store)
     context = SimpleNamespace(state={})
     result = tool.run(context=context, action="read_message", message_id="m1")
@@ -184,17 +228,39 @@ def test_slack_tool_supports_history_replies_and_user_lookup() -> None:
 
         def _request_json(self, *, record, method, path, query=None, body=None):
             if path == "/conversations.history":
-                return {"ok": True, "messages": [{"user": "U1", "text": "hello history", "ts": "1.0"}]}
+                return {
+                    "ok": True,
+                    "messages": [{"user": "U1", "text": "hello history", "ts": "1.0"}],
+                }
             if path == "/conversations.replies":
-                return {"ok": True, "messages": [{"user": "U2", "text": "thread reply", "ts": "2.0", "thread_ts": "1.0"}]}
+                return {
+                    "ok": True,
+                    "messages": [
+                        {
+                            "user": "U2",
+                            "text": "thread reply",
+                            "ts": "2.0",
+                            "thread_ts": "1.0",
+                        }
+                    ],
+                }
             if path == "/users.lookupByEmail":
-                return {"ok": True, "user": {"id": "U3", "real_name": "Ada Lovelace", "profile": {"email": "ada@example.com"}}}
+                return {
+                    "ok": True,
+                    "user": {
+                        "id": "U3",
+                        "real_name": "Ada Lovelace",
+                        "profile": {"email": "ada@example.com"},
+                    },
+                }
             raise AssertionError(path)
 
     tool = FakeSlackTool()
     context = SimpleNamespace(state={})
     history = tool.run(context=context, action="channel_history", channel="C1")
-    replies = tool.run(context=context, action="get_thread_replies", channel="C1", thread_ts="1.0")
+    replies = tool.run(
+        context=context, action="get_thread_replies", channel="C1", thread_ts="1.0"
+    )
     user = tool.run(context=context, action="user_lookup", email="ada@example.com")
     assert "hello history" in history.text
     assert "thread reply" in replies.text
@@ -209,13 +275,59 @@ def test_linear_tool_supports_team_project_get_and_update_actions() -> None:
         def _request_json(self, *, record, method, path, query=None, body=None):
             query_text = body["query"]
             if "ListTeams" in query_text:
-                return {"data": {"teams": {"nodes": [{"id": "t1", "key": "ENG", "name": "Engineering"}]}}}
+                return {
+                    "data": {
+                        "teams": {
+                            "nodes": [{"id": "t1", "key": "ENG", "name": "Engineering"}]
+                        }
+                    }
+                }
             if "ListProjects" in query_text:
-                return {"data": {"projects": {"nodes": [{"id": "p1", "name": "Shipit", "slug": "shipit", "state": "planned", "color": "#000"}]}}}
+                return {
+                    "data": {
+                        "projects": {
+                            "nodes": [
+                                {
+                                    "id": "p1",
+                                    "name": "Shipit",
+                                    "slug": "shipit",
+                                    "state": "planned",
+                                    "color": "#000",
+                                }
+                            ]
+                        }
+                    }
+                }
             if "GetIssue" in query_text:
-                return {"data": {"issues": {"nodes": [{"id": "i1", "identifier": "ENG-12", "title": "Bug", "priority": 2, "state": {"id": "s1", "name": "Todo"}, "assignee": {"id": "u1", "name": "Rahul"}, "project": {"id": "p1", "name": "Shipit"}}]}}}
+                return {
+                    "data": {
+                        "issues": {
+                            "nodes": [
+                                {
+                                    "id": "i1",
+                                    "identifier": "ENG-12",
+                                    "title": "Bug",
+                                    "priority": 2,
+                                    "state": {"id": "s1", "name": "Todo"},
+                                    "assignee": {"id": "u1", "name": "Rahul"},
+                                    "project": {"id": "p1", "name": "Shipit"},
+                                }
+                            ]
+                        }
+                    }
+                }
             if "UpdateIssue" in query_text:
-                return {"data": {"issueUpdate": {"issue": {"id": "i1", "identifier": "ENG-12", "title": "Renamed bug"}}}}
+                return {
+                    "data": {
+                        "issueUpdate": {
+                            "issue": {
+                                "id": "i1",
+                                "identifier": "ENG-12",
+                                "title": "Renamed bug",
+                            }
+                        }
+                    }
+                }
             raise AssertionError(query_text)
 
     tool = FakeLinearTool()
@@ -223,7 +335,9 @@ def test_linear_tool_supports_team_project_get_and_update_actions() -> None:
     teams = tool.run(context=context, action="list_teams")
     projects = tool.run(context=context, action="list_projects")
     issue = tool.run(context=context, action="get_issue", identifier="ENG-12")
-    updated = tool.run(context=context, action="update_issue", issue_id="i1", title="Renamed bug")
+    updated = tool.run(
+        context=context, action="update_issue", issue_id="i1", title="Renamed bug"
+    )
     assert "Engineering" in teams.text
     assert "Shipit" in projects.text
     assert "ENG-12" in issue.text
@@ -245,16 +359,34 @@ def test_jira_tool_supports_transition_comment_assign_and_get() -> None:
             if path.endswith("/assignee"):
                 return {"ok": True}
             if "/issue/PROJ-7" in path and method == "GET":
-                return {"key": "PROJ-7", "fields": {"summary": "Bug", "status": {"name": "In Progress"}, "assignee": {"displayName": "Rahul"}}}
+                return {
+                    "key": "PROJ-7",
+                    "fields": {
+                        "summary": "Bug",
+                        "status": {"name": "In Progress"},
+                        "assignee": {"displayName": "Rahul"},
+                    },
+                }
             raise AssertionError((method, path))
 
     tool = FakeJiraTool()
     context = SimpleNamespace(state={})
     issue = tool.run(context=context, action="get_issue", issue_key="PROJ-7")
-    transitions = tool.run(context=context, action="list_transitions", issue_key="PROJ-7")
-    transitioned = tool.run(context=context, action="transition_issue", issue_key="PROJ-7", transition_id="31")
-    commented = tool.run(context=context, action="add_comment", issue_key="PROJ-7", comment_body="done")
-    assigned = tool.run(context=context, action="assign_issue", issue_key="PROJ-7", account_id="acct-1")
+    transitions = tool.run(
+        context=context, action="list_transitions", issue_key="PROJ-7"
+    )
+    transitioned = tool.run(
+        context=context,
+        action="transition_issue",
+        issue_key="PROJ-7",
+        transition_id="31",
+    )
+    commented = tool.run(
+        context=context, action="add_comment", issue_key="PROJ-7", comment_body="done"
+    )
+    assigned = tool.run(
+        context=context, action="assign_issue", issue_key="PROJ-7", account_id="acct-1"
+    )
     assert "PROJ-7" in issue.text
     assert "Done" in transitions.text
     assert "31" in transitioned.text

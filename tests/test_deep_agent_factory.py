@@ -1,7 +1,7 @@
 """Tests for shipit_agent.deep.deep_agent (the DeepAgent factory)."""
+
 from __future__ import annotations
 
-import pytest
 
 from shipit_agent.deep import (
     DEEP_AGENT_PROMPT,
@@ -23,15 +23,17 @@ from shipit_agent.tools.base import Tool, ToolContext, ToolOutput
 def test_deep_tool_set_returns_seven_tools():
     tools = deep_tool_set(llm=SimpleEchoLLM(), workspace_root=".tmp_workspace")
     names = sorted(t.name for t in tools)
-    assert names == sorted([
-        "plan_task",
-        "decompose_problem",
-        "workspace_files",
-        "sub_agent",
-        "synthesize_evidence",
-        "decision_matrix",
-        "verify_output",
-    ])
+    assert names == sorted(
+        [
+            "plan_task",
+            "decompose_problem",
+            "workspace_files",
+            "sub_agent",
+            "synthesize_evidence",
+            "decision_matrix",
+            "verify_output",
+        ]
+    )
 
 
 def test_merge_tools_dedupes_by_name_last_wins():
@@ -117,6 +119,7 @@ def test_deep_agent_user_tool_with_clashing_name_is_replaced_by_deep_tool():
     planner = next(t for t in agent.tools if t.name == "plan_task")
     # The real PlannerTool wins (last-write semantics).
     from shipit_agent.tools.planner import PlannerTool
+
     assert isinstance(planner, PlannerTool)
 
 
@@ -158,9 +161,14 @@ def test_verify_text_falls_back_to_default_criterion():
 def test_verify_text_uses_goal_criteria_when_provided():
     goal = Goal(objective="x", success_criteria=["mentions python", "mentions runtime"])
     verdict = verify_text("python runtime is great", goal=goal)
-    assert verdict["metadata"].get("criteria") == [
-        "mentions python", "mentions runtime",
-    ] or verdict["text"]  # tolerant check — different verifier impls
+    assert (
+        verdict["metadata"].get("criteria")
+        == [
+            "mentions python",
+            "mentions runtime",
+        ]
+        or verdict["text"]
+    )  # tolerant check — different verifier impls
 
 
 def test_deep_agent_run_with_verify_attaches_verdict_to_metadata():

@@ -19,9 +19,7 @@ class ArtifactBuilderTool:
         self.description = description
         self.prompt = prompt or ARTIFACT_BUILDER_PROMPT
         self.workspace_root = Path(workspace_root)
-        self.prompt_instructions = (
-            "Use this when the user needs a structured deliverable rather than only conversational text."
-        )
+        self.prompt_instructions = "Use this when the user needs a structured deliverable rather than only conversational text."
 
     def schema(self) -> dict:
         return {
@@ -33,10 +31,23 @@ class ArtifactBuilderTool:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "Artifact name"},
-                        "content": {"type": "string", "description": "Artifact content"},
-                        "media_type": {"type": "string", "description": "Artifact media type", "default": "text/plain"},
-                        "export": {"type": "boolean", "description": "Whether to save the artifact to a file"},
-                        "path": {"type": "string", "description": "Optional relative export path"},
+                        "content": {
+                            "type": "string",
+                            "description": "Artifact content",
+                        },
+                        "media_type": {
+                            "type": "string",
+                            "description": "Artifact media type",
+                            "default": "text/plain",
+                        },
+                        "export": {
+                            "type": "boolean",
+                            "description": "Whether to save the artifact to a file",
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional relative export path",
+                        },
                     },
                     "required": ["name", "content"],
                 },
@@ -50,7 +61,9 @@ class ArtifactBuilderTool:
             "media_type": kwargs.get("media_type", "text/plain"),
         }
         if kwargs.get("export"):
-            root = Path(context.state.get("artifact_workspace_root", self.workspace_root))
+            root = Path(
+                context.state.get("artifact_workspace_root", self.workspace_root)
+            )
             root.mkdir(parents=True, exist_ok=True)
             relative_path = Path(str(kwargs.get("path", artifact["name"])))
             export_path = (root / relative_path).resolve()

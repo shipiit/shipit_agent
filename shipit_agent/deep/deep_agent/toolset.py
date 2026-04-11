@@ -4,6 +4,7 @@ A single function that returns the seven tools every Deep Agent gets,
 plus a small helper to merge them with user-supplied and built-in tools
 without producing duplicates.
 """
+
 from __future__ import annotations
 
 from typing import Any

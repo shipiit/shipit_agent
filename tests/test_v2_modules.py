@@ -2,16 +2,14 @@
 
 Covers: parsers, structured output, pipeline, team, memory, deep agents.
 """
+
 from __future__ import annotations
 
-import os
 import tempfile
-from typing import Any
-from dataclasses import dataclass
 
-from shipit_agent import Agent, FunctionTool
+from shipit_agent import Agent
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.models import Message
 
 
 # ---------------------------------------------------------------------------
@@ -21,18 +19,38 @@ from shipit_agent.models import Message, ToolCall
 
 class JSONReplyLLM:
     """LLM that always returns a specific JSON string."""
+
     def __init__(self, json_text: str):
         self._json = json_text
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         return LLMResponse(content=self._json)
 
 
 class SequenceLLM:
     """LLM that returns responses from a list in order."""
+
     def __init__(self, responses: list[str]):
         self._responses = list(responses)
         self._index = 0
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         text = self._responses[min(self._index, len(self._responses) - 1)]
         self._index += 1
         return LLMResponse(content=text)
@@ -46,12 +64,14 @@ class SequenceLLM:
 class TestJSONParser:
     def test_parse_valid_json(self):
         from shipit_agent.parsers import JSONParser
+
         parser = JSONParser()
         result = parser.parse('{"name": "Alice", "age": 30}')
         assert result == {"name": "Alice", "age": 30}
 
     def test_parse_json_in_code_fence(self):
         from shipit_agent.parsers import JSONParser
+
         parser = JSONParser()
         text = 'Here is the result:\n```json\n{"status": "ok"}\n```\nDone.'
         result = parser.parse(text)
@@ -59,6 +79,7 @@ class TestJSONParser:
 
     def test_parse_json_with_surrounding_prose(self):
         from shipit_agent.parsers import JSONParser
+
         parser = JSONParser()
         text = 'The answer is {"value": 42} and that is final.'
         result = parser.parse(text)
@@ -66,6 +87,7 @@ class TestJSONParser:
 
     def test_parse_validates_required_keys(self):
         from shipit_agent.parsers import JSONParser, ParseError
+
         parser = JSONParser(schema={"properties": {"x": {}}, "required": ["x"]})
         try:
             parser.parse('{"y": 1}')
@@ -75,6 +97,7 @@ class TestJSONParser:
 
     def test_parse_invalid_json_raises(self):
         from shipit_agent.parsers import JSONParser, ParseError
+
         parser = JSONParser()
         try:
             parser.parse("not json at all")
@@ -84,6 +107,7 @@ class TestJSONParser:
 
     def test_format_instructions(self):
         from shipit_agent.parsers import JSONParser
+
         parser = JSONParser(schema={"type": "object"})
         instructions = parser.get_format_instructions()
         assert "JSON" in instructions
@@ -144,12 +168,14 @@ class TestPydanticParser:
 class TestRegexParser:
     def test_parse_with_output_keys(self):
         from shipit_agent.parsers import RegexParser
+
         parser = RegexParser(pattern=r"Score: (\d+)/10", output_keys=["score"])
         result = parser.parse("The movie gets a Score: 8/10")
         assert result == {"score": "8"}
 
     def test_parse_no_match_raises(self):
         from shipit_agent.parsers import RegexParser, ParseError
+
         parser = RegexParser(pattern=r"Score: (\d+)")
         try:
             parser.parse("No score here")
@@ -159,6 +185,7 @@ class TestRegexParser:
 
     def test_parse_without_keys(self):
         from shipit_agent.parsers import RegexParser
+
         parser = RegexParser(pattern=r"(\w+)@(\w+)")
         result = parser.parse("Email: user@example")
         assert result["0"] == "user"
@@ -168,6 +195,7 @@ class TestRegexParser:
 class TestMarkdownParser:
     def test_extract_code_blocks(self):
         from shipit_agent.parsers import MarkdownParser
+
         parser = MarkdownParser()
         result = parser.parse("```python\nprint('hello')\n```")
         assert len(result.code_blocks) == 1
@@ -176,6 +204,7 @@ class TestMarkdownParser:
 
     def test_extract_headings(self):
         from shipit_agent.parsers import MarkdownParser
+
         parser = MarkdownParser()
         result = parser.parse("# Title\n## Subtitle\n### Section")
         assert len(result.headings) == 3
@@ -184,6 +213,7 @@ class TestMarkdownParser:
 
     def test_extract_lists(self):
         from shipit_agent.parsers import MarkdownParser
+
         parser = MarkdownParser()
         result = parser.parse("- item 1\n- item 2\n* item 3")
         assert len(result.lists) == 3
@@ -201,7 +231,11 @@ class TestStructuredOutput:
         agent = Agent(llm=llm)
         result = agent.run(
             "Analyze this",
-            output_schema={"type": "object", "properties": {"sentiment": {}, "score": {}}, "required": ["sentiment"]},
+            output_schema={
+                "type": "object",
+                "properties": {"sentiment": {}, "score": {}},
+                "required": ["sentiment"],
+            },
         )
         assert result.parsed is not None
         assert result.parsed["sentiment"] == "positive"
@@ -228,7 +262,9 @@ class TestStructuredOutput:
     def test_parse_failure_returns_none(self):
         llm = JSONReplyLLM("not json")
         agent = Agent(llm=llm)
-        result = agent.run("test", output_schema={"type": "object", "properties": {"x": {}}})
+        result = agent.run(
+            "test", output_schema={"type": "object", "properties": {"x": {}}}
+        )
         assert result.parsed is None
 
 
@@ -281,12 +317,14 @@ class TestPipeline:
         from shipit_agent.pipeline import Pipeline, step
 
         pipe = Pipeline.sequential(
-            step("route",
-                 router=lambda ctx: "path_a",
-                 branches={
-                     "path_a": step("a", fn=lambda x: "took path A"),
-                     "path_b": step("b", fn=lambda x: "took path B"),
-                 }),
+            step(
+                "route",
+                router=lambda ctx: "path_a",
+                branches={
+                    "path_a": step("a", fn=lambda x: "took path A"),
+                    "path_b": step("b", fn=lambda x: "took path B"),
+                },
+            ),
         )
         result = pipe.run()
         assert "took path A" in result.output
@@ -321,8 +359,12 @@ class TestAgentTeam:
         from shipit_agent.team import AgentTeam, TeamAgent
 
         # Coordinator decides to finish immediately
-        coordinator = JSONReplyLLM('{"next_agent": null, "done": true, "final_answer": "Team result"}')
-        worker = TeamAgent(name="worker", role="Does stuff", agent=Agent(llm=SimpleEchoLLM()))
+        coordinator = JSONReplyLLM(
+            '{"next_agent": null, "done": true, "final_answer": "Team result"}'
+        )
+        worker = TeamAgent(
+            name="worker", role="Does stuff", agent=Agent(llm=SimpleEchoLLM())
+        )
 
         team = AgentTeam(coordinator=coordinator, agents=[worker])
         result = team.run("Do something")
@@ -331,11 +373,15 @@ class TestAgentTeam:
     def test_team_delegates_to_agent(self):
         from shipit_agent.team import AgentTeam, TeamAgent
 
-        coordinator = SequenceLLM([
-            '{"next_agent": "worker", "prompt": "Do the task", "done": false}',
-            '{"done": true, "final_answer": "All done"}',
-        ])
-        worker = TeamAgent(name="worker", role="Worker", agent=Agent(llm=SimpleEchoLLM()))
+        coordinator = SequenceLLM(
+            [
+                '{"next_agent": "worker", "prompt": "Do the task", "done": false}',
+                '{"done": true, "final_answer": "All done"}',
+            ]
+        )
+        worker = TeamAgent(
+            name="worker", role="Worker", agent=Agent(llm=SimpleEchoLLM())
+        )
 
         team = AgentTeam(coordinator=coordinator, agents=[worker])
         result = team.run("Task")
@@ -346,7 +392,9 @@ class TestAgentTeam:
         from shipit_agent.team import AgentTeam, TeamAgent
 
         # Coordinator never finishes
-        coordinator = JSONReplyLLM('{"next_agent": "w", "prompt": "work", "done": false}')
+        coordinator = JSONReplyLLM(
+            '{"next_agent": "w", "prompt": "work", "done": false}'
+        )
         worker = TeamAgent(name="w", role="Worker", agent=Agent(llm=SimpleEchoLLM()))
 
         team = AgentTeam(coordinator=coordinator, agents=[worker], max_rounds=3)
@@ -357,7 +405,10 @@ class TestAgentTeam:
         from shipit_agent.team import AgentTeam, TeamAgent
 
         coordinator = JSONReplyLLM('{"done": true, "final_answer": "Done"}')
-        team = AgentTeam(coordinator=coordinator, agents=[TeamAgent(name="w", role="W", agent=Agent(llm=SimpleEchoLLM()))])
+        team = AgentTeam(
+            coordinator=coordinator,
+            agents=[TeamAgent(name="w", role="W", agent=Agent(llm=SimpleEchoLLM()))],
+        )
         result = team.run("Task")
         d = result.to_dict()
         assert "output" in d
@@ -372,6 +423,7 @@ class TestAgentTeam:
 class TestConversationMemory:
     def test_buffer_strategy(self):
         from shipit_agent.memory import ConversationMemory
+
         mem = ConversationMemory(strategy="buffer")
         for i in range(10):
             mem.add(Message(role="user", content=f"msg {i}"))
@@ -379,6 +431,7 @@ class TestConversationMemory:
 
     def test_window_strategy(self):
         from shipit_agent.memory import ConversationMemory
+
         mem = ConversationMemory(strategy="window", window_size=3)
         for i in range(10):
             mem.add(Message(role="user", content=f"msg {i}"))
@@ -388,6 +441,7 @@ class TestConversationMemory:
 
     def test_token_strategy(self):
         from shipit_agent.memory import ConversationMemory
+
         mem = ConversationMemory(strategy="token", max_tokens=20)
         mem.add(Message(role="user", content="x" * 100))
         mem.add(Message(role="user", content="short"))
@@ -396,6 +450,7 @@ class TestConversationMemory:
 
     def test_summary_strategy_without_llm(self):
         from shipit_agent.memory import ConversationMemory
+
         mem = ConversationMemory(strategy="summary", window_size=3)
         for i in range(10):
             mem.add(Message(role="user", content=f"msg {i}"))
@@ -406,6 +461,7 @@ class TestConversationMemory:
 
     def test_clear(self):
         from shipit_agent.memory import ConversationMemory
+
         mem = ConversationMemory()
         mem.add(Message(role="user", content="test"))
         mem.clear()
@@ -444,6 +500,7 @@ class TestSemanticMemory:
 
     def test_search_without_embeddings(self):
         from shipit_agent.memory import SemanticMemory
+
         mem = SemanticMemory(embedding_fn=None)
         results = mem.search("query")
         assert results == []
@@ -494,6 +551,7 @@ class TestEntityMemory:
 class TestAgentMemory:
     def test_default_factory(self):
         from shipit_agent.memory import AgentMemory
+
         mem = AgentMemory.default()
         assert mem.conversation is not None
         assert mem.knowledge is not None
@@ -501,6 +559,7 @@ class TestAgentMemory:
 
     def test_add_message(self):
         from shipit_agent.memory import AgentMemory
+
         mem = AgentMemory.default()
         mem.add_message(Message(role="user", content="Hello"))
         msgs = mem.get_conversation_messages()
@@ -509,6 +568,7 @@ class TestAgentMemory:
     def test_add_entity(self):
         from shipit_agent.memory import AgentMemory
         from shipit_agent.memory.entity import Entity
+
         mem = AgentMemory.default()
         mem.add_entity(Entity(name="Test", context="testing"))
         assert mem.get_entity("Test") is not None
@@ -523,11 +583,13 @@ class TestGoalAgent:
     def test_goal_agent_runs(self):
         from shipit_agent.deep import GoalAgent, Goal
 
-        llm = SequenceLLM([
-            '{"subtasks": ["do step 1", "do step 2"]}',  # decompose
-            "Step 1 done",  # agent run 1
-            '{"criteria_met": [true], "all_done": true}',  # evaluate
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["do step 1", "do step 2"]}',  # decompose
+                "Step 1 done",  # agent run 1
+                '{"criteria_met": [true], "all_done": true}',  # evaluate
+            ]
+        )
         agent = GoalAgent(
             llm=llm,
             goal=Goal(objective="Test goal", success_criteria=["criterion 1"]),
@@ -538,15 +600,19 @@ class TestGoalAgent:
     def test_goal_agent_partial(self):
         from shipit_agent.deep import GoalAgent, Goal
 
-        llm = SequenceLLM([
-            '{"subtasks": ["task"]}',
-            "Partial work",
-            '{"criteria_met": [false], "all_done": false}',
-            '{"criteria_met": [false], "all_done": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["task"]}',
+                "Partial work",
+                '{"criteria_met": [false], "all_done": false}',
+                '{"criteria_met": [false], "all_done": false}',
+            ]
+        )
         agent = GoalAgent(
             llm=llm,
-            goal=Goal(objective="Hard goal", success_criteria=["never met"], max_steps=1),
+            goal=Goal(
+                objective="Hard goal", success_criteria=["never met"], max_steps=1
+            ),
         )
         result = agent.run()
         assert result.goal_status in ("partial", "failed")
@@ -556,12 +622,14 @@ class TestReflectiveAgent:
     def test_reflective_agent_improves(self):
         from shipit_agent.deep import ReflectiveAgent
 
-        llm = SequenceLLM([
-            "Initial draft of explanation",  # first agent run
-            '{"feedback": "needs more detail", "quality_score": 0.6, "revision_needed": true}',  # reflect
-            "Revised and improved explanation with more detail",  # revise
-            '{"feedback": "good", "quality_score": 0.9, "revision_needed": false}',  # reflect again
-        ])
+        llm = SequenceLLM(
+            [
+                "Initial draft of explanation",  # first agent run
+                '{"feedback": "needs more detail", "quality_score": 0.6, "revision_needed": true}',  # reflect
+                "Revised and improved explanation with more detail",  # revise
+                '{"feedback": "good", "quality_score": 0.9, "revision_needed": false}',  # reflect again
+            ]
+        )
         agent = ReflectiveAgent(llm=llm, max_reflections=3, quality_threshold=0.8)
         result = agent.run("Explain transformers")
         assert result.final_quality >= 0.8
@@ -570,10 +638,12 @@ class TestReflectiveAgent:
     def test_reflective_agent_stops_at_threshold(self):
         from shipit_agent.deep import ReflectiveAgent
 
-        llm = SequenceLLM([
-            "Great output",
-            '{"feedback": "excellent", "quality_score": 0.95, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Great output",
+                '{"feedback": "excellent", "quality_score": 0.95, "revision_needed": false}',
+            ]
+        )
         agent = ReflectiveAgent(llm=llm, quality_threshold=0.8)
         result = agent.run("Simple task")
         assert result.iterations == 1
@@ -599,7 +669,9 @@ class TestAdaptiveAgent:
         from shipit_agent.tools.base import ToolContext
 
         agent = AdaptiveAgent(llm=SimpleEchoLLM())
-        tool = agent.create_tool("adder", "Adds", "def adder(a: int, b: int) -> str:\n    return str(a + b)")
+        tool = agent.create_tool(
+            "adder", "Adds", "def adder(a: int, b: int) -> str:\n    return str(a + b)"
+        )
         output = tool.run(ToolContext(prompt="test"), a=3, b=4)
         assert output.text == "7"
 
@@ -608,10 +680,12 @@ class TestSupervisor:
     def test_supervisor_delegates_and_finishes(self):
         from shipit_agent.deep import Supervisor, Worker
 
-        llm = SequenceLLM([
-            '{"action": "delegate", "worker": "w1", "task": "Do work"}',
-            '{"action": "done", "final_answer": "All complete"}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"action": "delegate", "worker": "w1", "task": "Do work"}',
+                '{"action": "done", "final_answer": "All complete"}',
+            ]
+        )
         w1 = Worker(name="w1", agent=Agent(llm=SimpleEchoLLM()))
 
         supervisor = Supervisor(llm=llm, workers=[w1])
@@ -634,7 +708,9 @@ class TestSupervisor:
         from shipit_agent.deep import Supervisor, Worker
 
         llm = JSONReplyLLM('{"action": "done", "final_answer": "Done"}')
-        supervisor = Supervisor(llm=llm, workers=[Worker(name="w", agent=Agent(llm=SimpleEchoLLM()))])
+        supervisor = Supervisor(
+            llm=llm, workers=[Worker(name="w", agent=Agent(llm=SimpleEchoLLM()))]
+        )
         result = supervisor.run("Task")
         d = result.to_dict()
         assert "output" in d
@@ -675,7 +751,9 @@ class TestChannel:
         from shipit_agent.deep import Channel, AgentMessage
 
         channel = Channel(name="test")
-        msg = AgentMessage(from_agent="a", to_agent="b", type="data", data={"key": "value"})
+        msg = AgentMessage(
+            from_agent="a", to_agent="b", type="data", data={"key": "value"}
+        )
         channel.send(msg)
 
         received = channel.receive(agent="b")
@@ -714,6 +792,7 @@ class TestChannel:
 
     def test_message_to_dict(self):
         from shipit_agent.deep import AgentMessage
+
         msg = AgentMessage(from_agent="a", to_agent="b", type="test", data={"k": "v"})
         d = msg.to_dict()
         assert d["from"] == "a"

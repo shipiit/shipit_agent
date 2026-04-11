@@ -18,6 +18,7 @@ For best results, use a reasoning-capable model:
     SHIPIT_LLM_PROVIDER=openai SHIPIT_OPENAI_MODEL=o3-mini python examples/02_streaming_with_reasoning.py
     SHIPIT_LLM_PROVIDER=bedrock python examples/02_streaming_with_reasoning.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -47,7 +48,9 @@ def render_event(event) -> None:
     p = event.payload or {}
 
     if t == "run_started":
-        print(f"{BOLD}{BLUE}▶ run started{RESET}  {DIM}{truncate(p.get('prompt', ''), 80)}{RESET}")
+        print(
+            f"{BOLD}{BLUE}▶ run started{RESET}  {DIM}{truncate(p.get('prompt', ''), 80)}{RESET}"
+        )
     elif t == "step_started":
         iteration = p.get("iteration", "?")
         tools = p.get("tool_count", "?")

@@ -4,12 +4,12 @@ Covers: retry policy defaults, graceful tool failure, parallel tool execution,
 context window management, hooks/middleware, mid-run re-planning, selective
 memory, structured output, and async runtime.
 """
+
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-import pytest
 
 from shipit_agent import (
     Agent,
@@ -21,11 +21,11 @@ from shipit_agent import (
 )
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
 from shipit_agent.llms.base import LLMResponse as BaseLLMResponse
-from shipit_agent.models import Message, ToolCall, ToolResult
+from shipit_agent.models import Message, ToolCall
 from shipit_agent.policies import RetryPolicy as RP
 from shipit_agent.runtime import AgentRuntime
 from shipit_agent.stores import InMemoryMemoryStore
-from shipit_agent.tools import ToolContext, ToolOutput
+from shipit_agent.tools import ToolOutput
 
 
 # ---------------------------------------------------------------------------
@@ -35,25 +35,46 @@ from shipit_agent.tools import ToolContext, ToolOutput
 
 class SingleToolCallLLM:
     """LLM that calls a tool once, then responds."""
+
     def __init__(self, tool_name: str, tool_args: dict[str, Any] | None = None):
         self._tool_name = tool_name
         self._tool_args = tool_args or {}
         self._called = False
 
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         if not self._called:
             self._called = True
-            return LLMResponse(content="", tool_calls=[ToolCall(name=self._tool_name, arguments=self._tool_args)])
+            return LLMResponse(
+                content="",
+                tool_calls=[ToolCall(name=self._tool_name, arguments=self._tool_args)],
+            )
         return LLMResponse(content="done")
 
 
 class MultiToolCallLLM:
     """LLM that calls multiple tools in one turn, then responds."""
+
     def __init__(self, calls: list[tuple[str, dict[str, Any]]]):
         self._calls = calls
         self._called = False
 
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         if not self._called:
             self._called = True
             return LLMResponse(
@@ -65,21 +86,33 @@ class MultiToolCallLLM:
 
 class IteratingLLM:
     """LLM that calls a tool every turn for N iterations."""
+
     def __init__(self, tool_name: str, iterations: int):
         self._tool_name = tool_name
         self._count = 0
         self._iterations = iterations
 
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         self._count += 1
         if self._count <= self._iterations:
-            return LLMResponse(content="", tool_calls=[ToolCall(name=self._tool_name, arguments={})])
+            return LLMResponse(
+                content="", tool_calls=[ToolCall(name=self._tool_name, arguments={})]
+            )
         return LLMResponse(content="done after iterations")
 
 
 def _make_simple_tool(name: str, output: str = "ok") -> FunctionTool:
     def _fn(**kwargs: Any) -> str:
         return output
+
     return FunctionTool.from_callable(_fn, name=name)
 
 
@@ -113,13 +146,16 @@ class TestRetryPolicyDefaults:
 class TestGracefulToolFailure:
     def test_tool_failure_does_not_crash_run(self) -> None:
         """When a tool fails after retries, the agent continues with an error message."""
+
         def failing_tool(**kwargs: Any) -> str:
             raise ConnectionError("connection refused")
 
         agent = Agent(
             llm=SingleToolCallLLM("fail_tool"),
             tools=[FunctionTool.from_callable(failing_tool, name="fail_tool")],
-            retry_policy=RetryPolicy(max_tool_retries=0, retry_on_exceptions=(ConnectionError,)),
+            retry_policy=RetryPolicy(
+                max_tool_retries=0, retry_on_exceptions=(ConnectionError,)
+            ),
         )
         result = agent.run("do something")
         # The run should complete (not raise)
@@ -127,7 +163,11 @@ class TestGracefulToolFailure:
         # Should have a tool_failed event
         assert any(e.type == "tool_failed" for e in result.events)
         # The error message should be in the messages
-        error_msgs = [m for m in result.messages if m.role == "tool" and "Error running tool" in m.content]
+        error_msgs = [
+            m
+            for m in result.messages
+            if m.role == "tool" and "Error running tool" in m.content
+        ]
         assert error_msgs
 
     def test_hallucinated_tool_produces_error_message(self) -> None:
@@ -138,7 +178,11 @@ class TestGracefulToolFailure:
         )
         result = agent.run("call something")
         assert result.output == "done"
-        error_msgs = [m for m in result.messages if m.role == "tool" and "not registered" in m.content]
+        error_msgs = [
+            m
+            for m in result.messages
+            if m.role == "tool" and "not registered" in m.content
+        ]
         assert error_msgs
 
 
@@ -153,7 +197,10 @@ class TestParallelToolExecution:
         calls = [("tool_a", {}), ("tool_b", {})]
         agent = Agent(
             llm=MultiToolCallLLM(calls),
-            tools=[_make_simple_tool("tool_a", "result_a"), _make_simple_tool("tool_b", "result_b")],
+            tools=[
+                _make_simple_tool("tool_a", "result_a"),
+                _make_simple_tool("tool_b", "result_b"),
+            ],
             parallel_tool_execution=True,
         )
         result = agent.run("run both")
@@ -166,7 +213,11 @@ class TestParallelToolExecution:
         calls = [("t1", {}), ("t2", {}), ("t3", {})]
         agent = Agent(
             llm=MultiToolCallLLM(calls),
-            tools=[_make_simple_tool("t1"), _make_simple_tool("t2"), _make_simple_tool("t3")],
+            tools=[
+                _make_simple_tool("t1"),
+                _make_simple_tool("t2"),
+                _make_simple_tool("t3"),
+            ],
             parallel_tool_execution=True,
         )
         result = agent.run("go")
@@ -201,20 +252,39 @@ class TestContextWindowManagement:
         resp = BaseLLMResponse(content="hello")
         assert resp.usage == {}
 
-        resp2 = BaseLLMResponse(content="hello", usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+        resp2 = BaseLLMResponse(
+            content="hello",
+            usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        )
         assert resp2.usage["total_tokens"] == 15
 
     def test_usage_tracked_across_iterations(self) -> None:
         """Runtime should accumulate usage stats."""
+
         class UsageTrackingLLM:
             def __init__(self):
                 self._calls = 0
-            def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+            def complete(
+                self,
+                *,
+                messages,
+                tools=None,
+                system_prompt=None,
+                metadata=None,
+                response_format=None,
+            ):
                 self._calls += 1
                 return LLMResponse(
                     content="done" if self._calls > 1 else "",
-                    tool_calls=[ToolCall(name="t", arguments={})] if self._calls == 1 else [],
-                    usage={"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+                    tool_calls=[ToolCall(name="t", arguments={})]
+                    if self._calls == 1
+                    else [],
+                    usage={
+                        "prompt_tokens": 100,
+                        "completion_tokens": 50,
+                        "total_tokens": 150,
+                    },
                 )
 
         runtime = AgentRuntime(
@@ -406,8 +476,17 @@ class TestSelectiveMemory:
             name = "persist_tool"
             description = "Tool that persists"
             prompt_instructions = ""
+
             def schema(self):
-                return {"type": "function", "function": {"name": self.name, "description": self.description, "parameters": {"type": "object", "properties": {}}}}
+                return {
+                    "type": "function",
+                    "function": {
+                        "name": self.name,
+                        "description": self.description,
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+
             def run(self, context, **kwargs):
                 return ToolOutput(text="important fact", metadata={"persist": True})
 
@@ -494,6 +573,7 @@ class TestAsyncRuntime:
 
     def test_async_graceful_tool_failure(self) -> None:
         """Async runtime should handle tool failures gracefully."""
+
         def failing(**kwargs):
             raise ConnectionError("fail")
 
@@ -501,7 +581,9 @@ class TestAsyncRuntime:
             llm=SingleToolCallLLM("fail_tool"),
             prompt="System",
             tools=[FunctionTool.from_callable(failing, name="fail_tool")],
-            retry_policy=RetryPolicy(max_tool_retries=0, retry_on_exceptions=(ConnectionError,)),
+            retry_policy=RetryPolicy(
+                max_tool_retries=0, retry_on_exceptions=(ConnectionError,)
+            ),
         )
         state, response = asyncio.run(runtime.run("fail"))
         assert response.content == "done"

@@ -15,6 +15,7 @@ This example shows tool_search in two modes:
 Run:
     python examples/07_tool_search.py
 """
+
 from __future__ import annotations
 
 from shipit_agent import Agent, ToolSearchTool, get_builtin_tools
@@ -85,7 +86,7 @@ def llm_demo() -> None:
     result = agent.run(prompt)
 
     print(f"  Agent answer:\n  {result.output}\n")
-    print(f"  Tools called in order:")
+    print("  Tools called in order:")
     for i, tool_result in enumerate(result.tool_results, start=1):
         print(f"    {i}. {tool_result.name}")
 

@@ -67,7 +67,12 @@ class LiteLLMChatLLM:
             # ConnectionError so the runtime's RetryPolicy can catch them.
             exc_name = type(exc).__name__
             status = getattr(exc, "status_code", None)
-            if status in (429, 500, 502, 503, 529) or "ServiceUnavailable" in exc_name or "RateLimitError" in exc_name or "InternalServerError" in exc_name:
+            if (
+                status in (429, 500, 502, 503, 529)
+                or "ServiceUnavailable" in exc_name
+                or "RateLimitError" in exc_name
+                or "InternalServerError" in exc_name
+            ):
                 raise ConnectionError(f"{exc_name}: {exc}") from exc
             raise
         message = response.choices[0].message
@@ -77,7 +82,9 @@ class LiteLLMChatLLM:
             tool_calls.append(
                 ToolCall(
                     name=call.function.name,
-                    arguments=json.loads(arguments) if isinstance(arguments, str) else arguments,
+                    arguments=json.loads(arguments)
+                    if isinstance(arguments, str)
+                    else arguments,
                 )
             )
         reasoning_content = _extract_reasoning(message)
@@ -152,7 +159,9 @@ def _extract_reasoning(message: Any) -> str | None:
 
 
 class BedrockChatLLM(LiteLLMChatLLM):
-    def __init__(self, model: str = "bedrock/openai.gpt-oss-120b-1:0", **completion_kwargs: Any) -> None:
+    def __init__(
+        self, model: str = "bedrock/openai.gpt-oss-120b-1:0", **completion_kwargs: Any
+    ) -> None:
         # Bedrock requires strict tool_use/tool_result id pairing. The shipit_agent
         # Message model doesn't carry tool-call IDs, so we let litellm patch the
         # request on our behalf (inserts dummy assistant turns + filler tool_results
@@ -164,13 +173,16 @@ class BedrockChatLLM(LiteLLMChatLLM):
         # code paths consult litellm.modify_params directly rather than kwargs.
         try:
             import litellm  # type: ignore
+
             litellm.modify_params = True
         except Exception:
             pass
 
 
 class GeminiChatLLM(LiteLLMChatLLM):
-    def __init__(self, model: str = "gemini/gemini-1.5-pro", **completion_kwargs: Any) -> None:
+    def __init__(
+        self, model: str = "gemini/gemini-1.5-pro", **completion_kwargs: Any
+    ) -> None:
         super().__init__(model=model, **completion_kwargs)
 
 
@@ -211,7 +223,9 @@ class VertexAIChatLLM(LiteLLMChatLLM):
         # Wire the service-account JSON file into the environment so LiteLLM
         # and google-auth can find it. Only sets if not already set.
         if service_account_file:
-            _os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", service_account_file)
+            _os.environ.setdefault(
+                "GOOGLE_APPLICATION_CREDENTIALS", service_account_file
+            )
 
         # Vertex AI requires project + location. LiteLLM reads these from
         # per-call kwargs OR from env vars. We inject into kwargs when
@@ -270,15 +284,23 @@ class LiteLLMProxyChatLLM(LiteLLMChatLLM):
 
 
 class GroqChatLLM(LiteLLMChatLLM):
-    def __init__(self, model: str = "groq/llama-3.3-70b-versatile", **completion_kwargs: Any) -> None:
+    def __init__(
+        self, model: str = "groq/llama-3.3-70b-versatile", **completion_kwargs: Any
+    ) -> None:
         super().__init__(model=model, **completion_kwargs)
 
 
 class TogetherChatLLM(LiteLLMChatLLM):
-    def __init__(self, model: str = "together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo", **completion_kwargs: Any) -> None:
+    def __init__(
+        self,
+        model: str = "together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo",
+        **completion_kwargs: Any,
+    ) -> None:
         super().__init__(model=model, **completion_kwargs)
 
 
 class OllamaChatLLM(LiteLLMChatLLM):
-    def __init__(self, model: str = "ollama/llama3.1", **completion_kwargs: Any) -> None:
+    def __init__(
+        self, model: str = "ollama/llama3.1", **completion_kwargs: Any
+    ) -> None:
         super().__init__(model=model, **completion_kwargs)

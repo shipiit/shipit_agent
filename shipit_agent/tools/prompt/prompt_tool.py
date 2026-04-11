@@ -15,9 +15,7 @@ class PromptTool:
         self.name = name
         self.description = description
         self.prompt = prompt or PROMPT_TOOL_PROMPT
-        self.prompt_instructions = (
-            "Use this to generate or refine a system prompt for a downstream agent, role, or workflow."
-        )
+        self.prompt_instructions = "Use this to generate or refine a system prompt for a downstream agent, role, or workflow."
 
     def schema(self) -> dict:
         return {
@@ -28,9 +26,18 @@ class PromptTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "goal": {"type": "string", "description": "Primary responsibility of the prompt"},
-                        "constraints": {"type": "array", "description": "Hard constraints"},
-                        "style": {"type": "string", "description": "Tone and style guidance"},
+                        "goal": {
+                            "type": "string",
+                            "description": "Primary responsibility of the prompt",
+                        },
+                        "constraints": {
+                            "type": "array",
+                            "description": "Hard constraints",
+                        },
+                        "style": {
+                            "type": "string",
+                            "description": "Tone and style guidance",
+                        },
                     },
                     "required": ["goal"],
                 },
@@ -45,4 +52,7 @@ class PromptTool:
         if constraints:
             lines.append("Constraints:")
             lines.extend(f"- {constraint}" for constraint in constraints)
-        return ToolOutput(text="\n".join(lines), metadata={"goal": goal, "constraints": constraints, "style": style})
+        return ToolOutput(
+            text="\n".join(lines),
+            metadata={"goal": goal, "constraints": constraints, "style": style},
+        )

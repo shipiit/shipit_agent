@@ -84,7 +84,9 @@ class AgentDoctor:
             self._check_tools(agent.tools),
             self._check_mcps(agent.mcps),
             self._check_stores(agent),
-            self._check_connectors(agent.tools, getattr(agent, "credential_store", None)),
+            self._check_connectors(
+                agent.tools, getattr(agent, "credential_store", None)
+            ),
             self._check_iterations(agent),
         ]
         return DoctorReport(checks=checks)
@@ -134,7 +136,10 @@ class AgentDoctor:
             name="tools",
             status="pass",
             message="Tool registry looks consistent.",
-            details={"tool_count": len(names), "tools": ", ".join(names[:12]) + (" ..." if len(names) > 12 else "")},
+            details={
+                "tool_count": len(names),
+                "tools": ", ".join(names[:12]) + (" ..." if len(names) > 12 else ""),
+            },
         )
 
     def _check_mcps(self, mcps: list[Any]) -> DoctorCheck:
@@ -155,13 +160,21 @@ class AgentDoctor:
 
     def _check_stores(self, agent: Any) -> DoctorCheck:
         details = {
-            "memory_store": agent.memory_store.__class__.__name__ if getattr(agent, "memory_store", None) else "None",
-            "session_store": agent.session_store.__class__.__name__ if getattr(agent, "session_store", None) else "None",
-            "trace_store": agent.trace_store.__class__.__name__ if getattr(agent, "trace_store", None) else "None",
+            "memory_store": agent.memory_store.__class__.__name__
+            if getattr(agent, "memory_store", None)
+            else "None",
+            "session_store": agent.session_store.__class__.__name__
+            if getattr(agent, "session_store", None)
+            else "None",
+            "trace_store": agent.trace_store.__class__.__name__
+            if getattr(agent, "trace_store", None)
+            else "None",
             "session_id": getattr(agent, "session_id", None) or "unset",
             "trace_id": getattr(agent, "trace_id", None) or "unset",
         }
-        if not getattr(agent, "memory_store", None) or not getattr(agent, "session_store", None):
+        if not getattr(agent, "memory_store", None) or not getattr(
+            agent, "session_store", None
+        ):
             return DoctorCheck(
                 name="stores",
                 status="warn",
@@ -176,10 +189,7 @@ class AgentDoctor:
         )
 
     def _check_connectors(self, tools: list[Any], credential_store: Any) -> DoctorCheck:
-        connector_tools = [
-            tool for tool in tools
-            if hasattr(tool, "credential_key")
-        ]
+        connector_tools = [tool for tool in tools if hasattr(tool, "credential_key")]
         if not connector_tools:
             return DoctorCheck(
                 name="connectors",
@@ -198,7 +208,9 @@ class AgentDoctor:
         connected: list[str] = []
         for tool in connector_tools:
             credential_key = getattr(tool, "credential_key", "")
-            provider = getattr(tool, "provider", credential_key or getattr(tool, "name", "connector"))
+            provider = getattr(
+                tool, "provider", credential_key or getattr(tool, "name", "connector")
+            )
             record = credential_store.get(credential_key)
             if record is None:
                 missing.append(f"{provider}:{credential_key}")
@@ -267,8 +279,17 @@ class AgentDoctor:
             provider = "anthropic"
             if not (getattr(llm, "api_key", None) or env_present("ANTHROPIC_API_KEY")):
                 missing.append("ANTHROPIC_API_KEY")
-        elif class_name in {"LiteLLMChatLLM", "BedrockChatLLM", "GeminiChatLLM", "GroqChatLLM", "TogetherChatLLM", "OllamaChatLLM"}:
-            provider, missing = self._litellm_requirements(class_name=class_name, model=str(model))
+        elif class_name in {
+            "LiteLLMChatLLM",
+            "BedrockChatLLM",
+            "GeminiChatLLM",
+            "GroqChatLLM",
+            "TogetherChatLLM",
+            "OllamaChatLLM",
+        }:
+            provider, missing = self._litellm_requirements(
+                class_name=class_name, model=str(model)
+            )
 
         return provider, {
             "class_name": class_name,
@@ -276,7 +297,9 @@ class AgentDoctor:
             "missing": missing,
         }
 
-    def _litellm_requirements(self, *, class_name: str, model: str) -> tuple[str, list[str]]:
+    def _litellm_requirements(
+        self, *, class_name: str, model: str
+    ) -> tuple[str, list[str]]:
         lower_model = model.lower()
         if class_name == "BedrockChatLLM" or lower_model.startswith("bedrock/"):
             provider = "bedrock"
@@ -285,14 +308,20 @@ class AgentDoctor:
                 or self.env.get("AWS_REGION_NAME")
                 or self.env.get("AWS_DEFAULT_REGION")
             ):
-                return provider, ["AWS_REGION_NAME or AWS_DEFAULT_REGION or AWS_PROFILE"]
+                return provider, [
+                    "AWS_REGION_NAME or AWS_DEFAULT_REGION or AWS_PROFILE"
+                ]
             return provider, []
         if class_name == "GeminiChatLLM" or lower_model.startswith("gemini/"):
-            return "gemini", [] if (self.env.get("GEMINI_API_KEY") or self.env.get("GOOGLE_API_KEY")) else ["GEMINI_API_KEY or GOOGLE_API_KEY"]
+            return "gemini", [] if (
+                self.env.get("GEMINI_API_KEY") or self.env.get("GOOGLE_API_KEY")
+            ) else ["GEMINI_API_KEY or GOOGLE_API_KEY"]
         if class_name == "GroqChatLLM" or lower_model.startswith("groq/"):
             return "groq", [] if self.env.get("GROQ_API_KEY") else ["GROQ_API_KEY"]
         if class_name == "TogetherChatLLM" or lower_model.startswith("together_ai/"):
-            return "together", [] if (self.env.get("TOGETHERAI_API_KEY") or self.env.get("TOGETHER_API_KEY")) else ["TOGETHERAI_API_KEY or TOGETHER_API_KEY"]
+            return "together", [] if (
+                self.env.get("TOGETHERAI_API_KEY") or self.env.get("TOGETHER_API_KEY")
+            ) else ["TOGETHERAI_API_KEY or TOGETHER_API_KEY"]
         if class_name == "OllamaChatLLM" or lower_model.startswith("ollama/"):
             return "ollama", []
         return "litellm", []

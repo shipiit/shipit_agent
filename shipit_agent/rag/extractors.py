@@ -5,6 +5,7 @@
 imported lazily. Missing libraries raise :class:`RAGDependencyError`
 with a clear install hint.
 """
+
 from __future__ import annotations
 
 import os
@@ -36,9 +37,7 @@ def _read_pdf(path: str) -> str:
     try:
         import pypdf  # type: ignore[import-not-found]
     except ImportError as exc:  # pragma: no cover - env-dependent
-        raise RAGDependencyError(
-            "PDF extraction requires `pip install pypdf`"
-        ) from exc
+        raise RAGDependencyError("PDF extraction requires `pip install pypdf`") from exc
     reader = pypdf.PdfReader(path)
     parts: list[str] = []
     for page in reader.pages:

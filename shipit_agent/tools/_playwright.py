@@ -14,5 +14,7 @@ def run_playwright_sync(task: Callable[[], T]) -> T:
     except RuntimeError:
         return task()
 
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="shipit-playwright") as executor:
+    with ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="shipit-playwright"
+    ) as executor:
         return executor.submit(task).result()

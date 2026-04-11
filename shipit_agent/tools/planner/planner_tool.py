@@ -15,9 +15,7 @@ class PlannerTool:
         self.name = name
         self.description = description
         self.prompt = prompt or PLANNER_PROMPT
-        self.prompt_instructions = (
-            "Use this before larger workflows or when a task benefits from decomposition into clear steps."
-        )
+        self.prompt_instructions = "Use this before larger workflows or when a task benefits from decomposition into clear steps."
 
     def schema(self) -> dict:
         return {
@@ -29,7 +27,10 @@ class PlannerTool:
                     "type": "object",
                     "properties": {
                         "goal": {"type": "string", "description": "Desired end state"},
-                        "constraints": {"type": "array", "description": "Optional constraints"},
+                        "constraints": {
+                            "type": "array",
+                            "description": "Optional constraints",
+                        },
                     },
                     "required": ["goal"],
                 },
@@ -51,4 +52,6 @@ class PlannerTool:
         if constraints:
             lines.append("Constraints:")
             lines.extend(f"- {constraint}" for constraint in constraints)
-        return ToolOutput(text="\n".join(lines), metadata={"goal": goal, "constraints": constraints})
+        return ToolOutput(
+            text="\n".join(lines), metadata={"goal": goal, "constraints": constraints}
+        )

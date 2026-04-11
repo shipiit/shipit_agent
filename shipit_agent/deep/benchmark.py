@@ -52,7 +52,9 @@ class BenchmarkReport:
         return self.passed / self.total if self.total else 0.0
 
     def summary(self) -> str:
-        avg_iters = sum(r.iterations for r in self.results) / self.total if self.total else 0
+        avg_iters = (
+            sum(r.iterations for r in self.results) / self.total if self.total else 0
+        )
         tool_counts = {}
         for r in self.results:
             for t in r.tools_used:
@@ -65,7 +67,9 @@ class BenchmarkReport:
             f"Avg iterations: {avg_iters:.1f}",
         ]
         if tool_counts:
-            lines.append(f"Tools used: {', '.join(f'{k}({v})' for k, v in tool_counts.items())}")
+            lines.append(
+                f"Tools used: {', '.join(f'{k}({v})' for k, v in tool_counts.items())}"
+            )
 
         for r in self.results:
             status = "PASS" if r.passed else "FAIL"
@@ -129,6 +133,7 @@ class AgentBenchmark:
             delay: Seconds to wait between test cases (helps with rate limits).
         """
         import time
+
         report = BenchmarkReport(name=self.name)
 
         for case_idx, case in enumerate(self.cases):
@@ -140,7 +145,15 @@ class AgentBenchmark:
                     break
                 except (ConnectionError, TimeoutError, OSError) as exc:
                     if attempt >= retry:
-                        result = type("FailedResult", (), {"output": f"Error: {exc}", "tool_results": [], "events": []})()
+                        result = type(
+                            "FailedResult",
+                            (),
+                            {
+                                "output": f"Error: {exc}",
+                                "tool_results": [],
+                                "events": [],
+                            },
+                        )()
                         break
                     time.sleep(delay * (attempt + 1))
 

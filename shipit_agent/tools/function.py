@@ -27,7 +27,9 @@ class FunctionTool:
     name: str
     description: str
     func: Callable[..., Any]
-    prompt_instructions: str = "Use this when a direct callable can complete the task reliably."
+    prompt_instructions: str = (
+        "Use this when a direct callable can complete the task reliably."
+    )
     prompt: str = FUNCTION_TOOL_PROMPT
 
     @classmethod
@@ -40,7 +42,9 @@ class FunctionTool:
     ) -> "FunctionTool":
         return cls(
             name=name or func.__name__,
-            description=description or inspect.getdoc(func) or f"Function tool for {func.__name__}",
+            description=description
+            or inspect.getdoc(func)
+            or f"Function tool for {func.__name__}",
             func=func,
         )
 

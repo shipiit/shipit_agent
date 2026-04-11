@@ -15,9 +15,7 @@ class ThoughtDecompositionTool:
         self.name = name
         self.description = description
         self.prompt = prompt or THOUGHT_DECOMPOSITION_PROMPT
-        self.prompt_instructions = (
-            "Use this when the task needs visible structured reasoning before execution."
-        )
+        self.prompt_instructions = "Use this when the task needs visible structured reasoning before execution."
 
     def schema(self) -> dict:
         return {
@@ -28,9 +26,18 @@ class ThoughtDecompositionTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "problem": {"type": "string", "description": "Problem or task to break down"},
-                        "objective": {"type": "string", "description": "Desired outcome"},
-                        "constraints": {"type": "array", "description": "Known limits or requirements"},
+                        "problem": {
+                            "type": "string",
+                            "description": "Problem or task to break down",
+                        },
+                        "objective": {
+                            "type": "string",
+                            "description": "Desired outcome",
+                        },
+                        "constraints": {
+                            "type": "array",
+                            "description": "Known limits or requirements",
+                        },
                     },
                     "required": ["problem"],
                 },
@@ -40,7 +47,11 @@ class ThoughtDecompositionTool:
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         problem = str(kwargs["problem"]).strip()
         objective = str(kwargs.get("objective", "")).strip()
-        constraints = [str(item).strip() for item in kwargs.get("constraints", []) if str(item).strip()]
+        constraints = [
+            str(item).strip()
+            for item in kwargs.get("constraints", [])
+            if str(item).strip()
+        ]
         lines = [f"Problem: {problem}"]
         if objective:
             lines.append(f"Objective: {objective}")
@@ -71,5 +82,9 @@ class ThoughtDecompositionTool:
             lines.extend(f"- {constraint}" for constraint in constraints)
         return ToolOutput(
             text="\n".join(lines),
-            metadata={"problem": problem, "objective": objective, "constraints": constraints},
+            metadata={
+                "problem": problem,
+                "objective": objective,
+                "constraints": constraints,
+            },
         )

@@ -1,14 +1,12 @@
 """Integration tests: RAG with Agent and deep agents."""
+
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Any
 
 from shipit_agent.agent import Agent
 from shipit_agent.deep.goal_agent import Goal, GoalAgent
 from shipit_agent.deep.reflective_agent import ReflectiveAgent
-from shipit_agent.models import Message
 from shipit_agent.rag.embedder import HashingEmbedder
 from shipit_agent.rag.rag import RAG
 
@@ -28,7 +26,9 @@ class _ScriptedLLM:
 
 def test_agent_accepts_rag_parameter():
     rag = RAG.default(embedder=HashingEmbedder(dimension=128))
-    rag.index_text("Shipit supports Python 3.10+.", document_id="readme", source="readme")
+    rag.index_text(
+        "Shipit supports Python 3.10+.", document_id="readme", source="readme"
+    )
     agent = Agent(llm=_ScriptedLLM(), rag=rag)
     tool_names = {t.name for t in agent.tools}
     assert "rag_search" in tool_names
@@ -96,7 +96,9 @@ def test_goal_agent_accepts_rag():
     rag.index_text("Shipit supports Python 3.10+.", document_id="readme")
     goal_agent = GoalAgent(
         llm=_ScriptedLLM(),
-        goal=Goal(objective="Find python version", success_criteria=["mentions python"]),
+        goal=Goal(
+            objective="Find python version", success_criteria=["mentions python"]
+        ),
         rag=rag,
     )
     inner = goal_agent._build_agent()

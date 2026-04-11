@@ -11,7 +11,9 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 class ConnectorToolBase:
     provider: str = "connector"
 
-    def __init__(self, *, credential_key: str, credential_store: CredentialStore | None = None) -> None:
+    def __init__(
+        self, *, credential_key: str, credential_store: CredentialStore | None = None
+    ) -> None:
         self.credential_key = credential_key
         self.credential_store = credential_store
 
@@ -30,14 +32,22 @@ class ConnectorToolBase:
     def _not_connected_output(self) -> ToolOutput:
         return ToolOutput(
             text=f"{self.provider} is not connected. Configure a credential record first.",
-            metadata={"provider": self.provider, "connected": False, "credential_key": self.credential_key},
+            metadata={
+                "provider": self.provider,
+                "connected": False,
+                "credential_key": self.credential_key,
+            },
         )
 
 
 class HTTPConnectorToolBase(ConnectorToolBase):
     def _headers(self, record: CredentialRecord) -> dict[str, str]:
         headers = {"content-type": "application/json"}
-        token = record.secrets.get("api_key") or record.secrets.get("token") or record.secrets.get("access_token")
+        token = (
+            record.secrets.get("api_key")
+            or record.secrets.get("token")
+            or record.secrets.get("access_token")
+        )
         if token:
             auth_scheme = str(record.metadata.get("auth_scheme", "Bearer"))
             headers["authorization"] = f"{auth_scheme} {token}"
@@ -47,7 +57,9 @@ class HTTPConnectorToolBase(ConnectorToolBase):
         return headers
 
     def _base_url(self, record: CredentialRecord) -> str:
-        return str(record.metadata.get("base_url") or record.secrets.get("base_url") or "").rstrip("/")
+        return str(
+            record.metadata.get("base_url") or record.secrets.get("base_url") or ""
+        ).rstrip("/")
 
     def _request_json(
         self,
@@ -60,12 +72,16 @@ class HTTPConnectorToolBase(ConnectorToolBase):
     ) -> Any:
         base_url = self._base_url(record)
         if not base_url:
-            raise RuntimeError(f"{self.provider} credential record is missing base_url metadata.")
+            raise RuntimeError(
+                f"{self.provider} credential record is missing base_url metadata."
+            )
         url = f"{base_url}/{path.lstrip('/')}"
         if query:
             url = f"{url}?{parse.urlencode(query, doseq=True)}"
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = request.Request(url, data=data, headers=self._headers(record), method=method.upper())
+        req = request.Request(
+            url, data=data, headers=self._headers(record), method=method.upper()
+        )
         with request.urlopen(req, timeout=30.0) as response:  # nosec B310
             raw = response.read().decode("utf-8")
         return json.loads(raw) if raw else {}

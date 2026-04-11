@@ -4,6 +4,7 @@ Produces :class:`Chunk` instances with a title prefix and metadata suffix
 baked into ``text_for_embedding`` so retrieval quality remains high even
 without a dedicated title-embedding stream.
 """
+
 from __future__ import annotations
 
 import re
@@ -131,7 +132,9 @@ class DocumentChunker:
                 prev_text = raw_chunks[idx - 1][2]
                 tail = prev_text[-overlap_chars:]
                 # Avoid duplicating text if the prev chunk already covers us.
-                stitched.append((max(0, start - len(tail)), end, f"{tail} {text}".strip()))
+                stitched.append(
+                    (max(0, start - len(tail)), end, f"{tail} {text}".strip())
+                )
             raw_chunks = stitched
 
         title_prefix = ""

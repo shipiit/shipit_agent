@@ -123,12 +123,14 @@ class ToolSearchTool:
             instructions = str(tool.get("prompt_instructions", "") or "")
             haystack = f"{name} {description} {instructions}".lower()
             score = self._score(query_lower, query_tokens, haystack)
-            scored.append({
-                "name": name,
-                "description": description,
-                "prompt_instructions": instructions,
-                "score": score,
-            })
+            scored.append(
+                {
+                    "name": name,
+                    "description": description,
+                    "prompt_instructions": instructions,
+                    "score": score,
+                }
+            )
 
         scored.sort(key=lambda item: item["score"], reverse=True)
         matches = scored[:limit]
@@ -144,9 +146,7 @@ class ToolSearchTool:
         lines = [f"Best tools for '{query_text}' (ranked by relevance):"]
         for idx, match in enumerate(meaningful, start=1):
             desc = match["description"] or "No description provided."
-            lines.append(
-                f"{idx}. {match['name']} (score={match['score']}) — {desc}"
-            )
+            lines.append(f"{idx}. {match['name']} (score={match['score']}) — {desc}")
             if match["prompt_instructions"]:
                 lines.append(f"   ↳ when to use: {match['prompt_instructions']}")
 

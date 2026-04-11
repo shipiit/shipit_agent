@@ -17,9 +17,7 @@ class HumanReviewTool:
         self.name = name
         self.description = description
         self.prompt = prompt or HUMAN_REVIEW_PROMPT
-        self.prompt_instructions = (
-            "Use this before high-impact actions or when a proposed change should be approved by a human."
-        )
+        self.prompt_instructions = "Use this before high-impact actions or when a proposed change should be approved by a human."
 
     def schema(self) -> dict:
         return {
@@ -30,8 +28,14 @@ class HumanReviewTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "summary": {"type": "string", "description": "What requires review"},
-                        "preview": {"type": "string", "description": "Preview of the proposed action"},
+                        "summary": {
+                            "type": "string",
+                            "description": "What requires review",
+                        },
+                        "preview": {
+                            "type": "string",
+                            "description": "Preview of the proposed action",
+                        },
                     },
                     "required": ["summary"],
                 },
@@ -44,4 +48,6 @@ class HumanReviewTool:
             "summary": kwargs["summary"],
             "preview": kwargs.get("preview", ""),
         }
-        return ToolOutput(text=json.dumps(payload), metadata={"interactive": True, **payload})
+        return ToolOutput(
+            text=json.dumps(payload), metadata={"interactive": True, **payload}
+        )

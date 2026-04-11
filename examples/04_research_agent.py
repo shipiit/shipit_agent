@@ -15,6 +15,7 @@ Run:
     python examples/04_research_agent.py "your question here"
     python examples/04_research_agent.py            # uses default question
 """
+
 from __future__ import annotations
 
 import sys

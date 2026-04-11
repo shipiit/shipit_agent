@@ -7,11 +7,19 @@ and the unified AgentMemory interface.
 Run:
     python examples/12_advanced_memory.py
 """
+
 from __future__ import annotations
 
 import hashlib
 
-from shipit_agent import AgentMemory, ConversationMemory, SemanticMemory, EntityMemory, InMemoryVectorStore, Entity
+from shipit_agent import (
+    AgentMemory,
+    ConversationMemory,
+    SemanticMemory,
+    EntityMemory,
+    InMemoryVectorStore,
+    Entity,
+)
 from shipit_agent.models import Message
 
 
@@ -33,7 +41,9 @@ def main() -> None:
 
     # --- Semantic Memory ---
     print("\n=== Semantic Memory ===\n")
-    sem = SemanticMemory(vector_store=InMemoryVectorStore(), embedding_fn=simple_embed, top_k=3)
+    sem = SemanticMemory(
+        vector_store=InMemoryVectorStore(), embedding_fn=simple_embed, top_k=3
+    )
     facts = [
         "Python was created by Guido van Rossum",
         "JavaScript runs in web browsers",
@@ -51,7 +61,9 @@ def main() -> None:
     print("\n=== Entity Memory ===\n")
     ent = EntityMemory()
     ent.add(Entity(name="Alice", entity_type="person", context="Lead engineer"))
-    ent.add(Entity(name="Project Atlas", entity_type="project", context="K8s migration"))
+    ent.add(
+        Entity(name="Project Atlas", entity_type="project", context="K8s migration")
+    )
     ent.add(Entity(name="Alice", context="promoted to CTO"))  # auto-merges
 
     alice = ent.get("Alice")

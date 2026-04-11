@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from shipit_agent import Agent, AgentDoctor, CredentialRecord, InMemoryCredentialStore
 from shipit_agent.doctor import DoctorReport
 from shipit_agent.llms import OpenAIChatLLM, SimpleEchoLLM
@@ -15,7 +13,10 @@ def test_agent_doctor_passes_for_local_echo_agent() -> None:
     report = agent.doctor()
     assert isinstance(report, DoctorReport)
     assert not report.failures
-    assert any(check.name == "llm_provider" and check.status == "pass" for check in report.checks)
+    assert any(
+        check.name == "llm_provider" and check.status == "pass"
+        for check in report.checks
+    )
 
 
 def test_agent_doctor_detects_missing_openai_key() -> None:
@@ -33,14 +34,18 @@ def test_agent_doctor_warns_for_missing_connector_credentials() -> None:
         max_iterations=4,
     )
     report = agent.doctor()
-    connector_check = next(check for check in report.checks if check.name == "connectors")
+    connector_check = next(
+        check for check in report.checks if check.name == "connectors"
+    )
     assert connector_check.status == "warn"
     assert "credential store" in connector_check.message.lower()
 
 
 def test_agent_doctor_reports_connected_connector_credentials() -> None:
     store = InMemoryCredentialStore()
-    store.set(CredentialRecord(key="gmail", provider="gmail", secrets={"access_token": "x"}))
+    store.set(
+        CredentialRecord(key="gmail", provider="gmail", secrets={"access_token": "x"})
+    )
     agent = Agent(
         llm=SimpleEchoLLM(),
         tools=[GmailTool(credential_store=store)],
@@ -48,7 +53,9 @@ def test_agent_doctor_reports_connected_connector_credentials() -> None:
         max_iterations=4,
     )
     report = AgentDoctor(env={}).inspect(agent)
-    connector_check = next(check for check in report.checks if check.name == "connectors")
+    connector_check = next(
+        check for check in report.checks if check.name == "connectors"
+    )
     assert connector_check.status == "pass"
     assert "gmail:gmail" in connector_check.details["connected"]
 

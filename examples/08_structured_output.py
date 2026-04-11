@@ -11,6 +11,7 @@ Requires:
     pip install 'shipit-agent[all]'
     AWS credentials or SHIPIT_LLM_PROVIDER in .env
 """
+
 from __future__ import annotations
 
 from pydantic import BaseModel

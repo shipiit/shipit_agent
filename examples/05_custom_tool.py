@@ -13,6 +13,7 @@ Both end up indexed by tool_search and visible to the LLM identically.
 Run:
     python examples/05_custom_tool.py
 """
+
 from __future__ import annotations
 
 import math
@@ -27,13 +28,17 @@ from examples.run_multi_tool_agent import build_llm_from_env
 # Approach A — wrap a plain function
 # ---------------------------------------------------------------------- #
 
+
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> str:
     """Compute great-circle distance between two GPS coordinates in km."""
     r = 6371.0  # Earth radius (km)
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
     distance_km = 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return f"{distance_km:.2f} km"
 
@@ -48,6 +53,7 @@ haversine_tool = FunctionTool.from_callable(
 # ---------------------------------------------------------------------- #
 # Approach B — full Tool class with rich metadata
 # ---------------------------------------------------------------------- #
+
 
 class CompoundInterestTool:
     """Tool class style — more control over schema and output metadata."""
@@ -68,8 +74,14 @@ class CompoundInterestTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "principal": {"type": "number", "description": "Starting amount in dollars"},
-                        "annual_rate_percent": {"type": "number", "description": "Annual interest rate as a percent (e.g. 5.0 for 5%)"},
+                        "principal": {
+                            "type": "number",
+                            "description": "Starting amount in dollars",
+                        },
+                        "annual_rate_percent": {
+                            "type": "number",
+                            "description": "Annual interest rate as a percent (e.g. 5.0 for 5%)",
+                        },
                         "years": {"type": "number", "description": "Number of years"},
                         "compounds_per_year": {
                             "type": "integer",
@@ -110,6 +122,7 @@ class CompoundInterestTool:
 # ---------------------------------------------------------------------- #
 # Wire it all up
 # ---------------------------------------------------------------------- #
+
 
 def main() -> None:
     llm = build_llm_from_env()

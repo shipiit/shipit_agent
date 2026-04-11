@@ -30,7 +30,12 @@ class TeamResult:
         return {
             "output": self.output,
             "rounds": [
-                {"number": r.number, "agent": r.agent, "prompt": r.prompt[:100], "output": r.output[:200]}
+                {
+                    "number": r.number,
+                    "agent": r.agent,
+                    "prompt": r.prompt[:100],
+                    "output": r.output[:200],
+                }
                 for r in self.rounds
             ],
         }
@@ -94,7 +99,11 @@ class AgentTeam:
     def _build_agent_descriptions(self) -> str:
         lines = []
         for a in self.agents.values():
-            caps = f" (capabilities: {', '.join(a.capabilities)})" if a.capabilities else ""
+            caps = (
+                f" (capabilities: {', '.join(a.capabilities)})"
+                if a.capabilities
+                else ""
+            )
             lines.append(f"- **{a.name}**: {a.role}{caps}")
         return "\n".join(lines)
 
@@ -146,21 +155,25 @@ class AgentTeam:
             agent = self.agents.get(agent_name)
 
             if agent is None:
-                rounds.append(TeamRound(
-                    number=round_num,
-                    agent=agent_name or "unknown",
-                    prompt=agent_prompt,
-                    output=f"Error: agent '{agent_name}' not found in team",
-                ))
+                rounds.append(
+                    TeamRound(
+                        number=round_num,
+                        agent=agent_name or "unknown",
+                        prompt=agent_prompt,
+                        output=f"Error: agent '{agent_name}' not found in team",
+                    )
+                )
                 continue
 
             result = agent.agent.run(agent_prompt)
-            rounds.append(TeamRound(
-                number=round_num,
-                agent=agent_name,
-                prompt=agent_prompt,
-                output=result.output,
-            ))
+            rounds.append(
+                TeamRound(
+                    number=round_num,
+                    agent=agent_name,
+                    prompt=agent_prompt,
+                    output=result.output,
+                )
+            )
 
         # Max rounds reached — return last output
         final = rounds[-1].output if rounds else "Max rounds reached with no output"
@@ -189,7 +202,11 @@ class AgentTeam:
         rounds: list[TeamRound] = []
 
         for round_num in range(1, self.max_rounds + 1):
-            yield AgentEvent(type="planning_started", message=f"Round {round_num}: Coordinator deciding next step", payload={"round": round_num})
+            yield AgentEvent(
+                type="planning_started",
+                message=f"Round {round_num}: Coordinator deciding next step",
+                payload={"round": round_num},
+            )
 
             decision = self._ask_coordinator(task, rounds)
 
@@ -197,7 +214,11 @@ class AgentTeam:
                 final = decision.get("final_answer", "")
                 if not final and rounds:
                     final = rounds[-1].output
-                yield AgentEvent(type="run_completed", message="Team completed", payload={"output": final[:300], "rounds": round_num})
+                yield AgentEvent(
+                    type="run_completed",
+                    message="Team completed",
+                    payload={"output": final[:300], "rounds": round_num},
+                )
                 return
 
             agent_name = decision.get("next_agent", "")
@@ -205,15 +226,45 @@ class AgentTeam:
             agent = self.agents.get(agent_name)
 
             if agent is None:
-                yield AgentEvent(type="tool_failed", message=f"Agent '{agent_name}' not found", payload={"agent": agent_name})
-                rounds.append(TeamRound(number=round_num, agent=agent_name or "unknown", prompt=agent_prompt, output=f"Error: agent '{agent_name}' not found"))
+                yield AgentEvent(
+                    type="tool_failed",
+                    message=f"Agent '{agent_name}' not found",
+                    payload={"agent": agent_name},
+                )
+                rounds.append(
+                    TeamRound(
+                        number=round_num,
+                        agent=agent_name or "unknown",
+                        prompt=agent_prompt,
+                        output=f"Error: agent '{agent_name}' not found",
+                    )
+                )
                 continue
 
-            yield AgentEvent(type="tool_called", message=f"Delegating to {agent_name}: {agent_prompt[:80]}", payload={"agent": agent_name, "prompt": agent_prompt})
+            yield AgentEvent(
+                type="tool_called",
+                message=f"Delegating to {agent_name}: {agent_prompt[:80]}",
+                payload={"agent": agent_name, "prompt": agent_prompt},
+            )
 
             result = agent.agent.run(agent_prompt)
-            rounds.append(TeamRound(number=round_num, agent=agent_name, prompt=agent_prompt, output=result.output))
+            rounds.append(
+                TeamRound(
+                    number=round_num,
+                    agent=agent_name,
+                    prompt=agent_prompt,
+                    output=result.output,
+                )
+            )
 
-            yield AgentEvent(type="tool_completed", message=f"{agent_name} finished", payload={"agent": agent_name, "output": result.output})
+            yield AgentEvent(
+                type="tool_completed",
+                message=f"{agent_name} finished",
+                payload={"agent": agent_name, "output": result.output},
+            )
 
-        yield AgentEvent(type="run_completed", message="Team max rounds reached", payload={"rounds": self.max_rounds})
+        yield AgentEvent(
+            type="run_completed",
+            message="Team max rounds reached",
+            payload={"rounds": self.max_rounds},
+        )

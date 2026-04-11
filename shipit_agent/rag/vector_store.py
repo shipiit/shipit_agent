@@ -5,6 +5,7 @@ for the common case of a few thousand chunks. Production users should
 swap in one of the adapters under :mod:`shipit_agent.rag.adapters` for
 larger corpora.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

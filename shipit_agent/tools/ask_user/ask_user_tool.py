@@ -31,9 +31,18 @@ class AskUserTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "question": {"type": "string", "description": "Question to ask the user"},
-                        "context": {"type": "string", "description": "Optional context"},
-                        "options": {"type": "array", "description": "Suggested options"},
+                        "question": {
+                            "type": "string",
+                            "description": "Question to ask the user",
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": "Optional context",
+                        },
+                        "options": {
+                            "type": "array",
+                            "description": "Suggested options",
+                        },
                     },
                     "required": ["question"],
                 },
@@ -47,4 +56,6 @@ class AskUserTool:
             "context": kwargs.get("context", ""),
             "options": kwargs.get("options", []),
         }
-        return ToolOutput(text=json.dumps(payload), metadata={"interactive": True, **payload})
+        return ToolOutput(
+            text=json.dumps(payload), metadata={"interactive": True, **payload}
+        )

@@ -56,7 +56,6 @@ class JSONParser:
         """Basic schema validation — checks required keys and types."""
         if not isinstance(self.schema, dict):
             return
-        props = self.schema.get("properties", {})
         required = self.schema.get("required", [])
         if isinstance(result, dict):
             for key in required:

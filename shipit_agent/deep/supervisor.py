@@ -40,7 +40,12 @@ class SupervisorResult:
             "plan": self.plan[:300],
             "total_rounds": self.total_rounds,
             "delegations": [
-                {"round": d.round, "worker": d.worker, "task": d.task[:100], "approved": d.approved}
+                {
+                    "round": d.round,
+                    "worker": d.worker,
+                    "task": d.task[:100],
+                    "approved": d.approved,
+                }
                 for d in self.delegations
             ],
         }
@@ -129,6 +134,7 @@ class Supervisor:
             )
         """
         from shipit_agent.agent import Agent
+
         workers = []
         for cfg in worker_configs:
             agent = Agent.with_builtins(
@@ -137,11 +143,13 @@ class Supervisor:
                 mcps=mcps,
                 rag=rag,
             )
-            workers.append(Worker(
-                name=cfg["name"],
-                agent=agent,
-                capabilities=cfg.get("capabilities", []),
-            ))
+            workers.append(
+                Worker(
+                    name=cfg["name"],
+                    agent=agent,
+                    capabilities=cfg.get("capabilities", []),
+                )
+            )
         return cls(llm=llm, workers=workers, rag=rag, **kwargs)
 
     def _build_workers_desc(self) -> str:
@@ -151,11 +159,17 @@ class Supervisor:
             lines.append(f"- {w.name}{caps}")
         return "\n".join(lines)
 
-    def _ask_supervisor(self, task: str, delegations: list[Delegation]) -> dict[str, Any]:
+    def _ask_supervisor(
+        self, task: str, delegations: list[Delegation]
+    ) -> dict[str, Any]:
         from shipit_agent.models import Message
 
-        history = "(None yet)" if not delegations else "\n".join(
-            f"Round {d.round}: {d.worker} -> {d.output[:300]}" for d in delegations
+        history = (
+            "(None yet)"
+            if not delegations
+            else "\n".join(
+                f"Round {d.round}: {d.worker} -> {d.output[:300]}" for d in delegations
+            )
         )
         prompt = SUPERVISOR_PROMPT.format(
             workers=self._build_workers_desc(),
@@ -195,24 +209,32 @@ class Supervisor:
             worker = self.workers.get(worker_name)
 
             if worker is None:
-                delegations.append(Delegation(
-                    round=round_num, worker=worker_name,
-                    task=worker_task, output=f"Error: worker '{worker_name}' not found",
-                ))
+                delegations.append(
+                    Delegation(
+                        round=round_num,
+                        worker=worker_name,
+                        task=worker_task,
+                        output=f"Error: worker '{worker_name}' not found",
+                    )
+                )
                 continue
 
             result = worker.agent.run(worker_task)
-            delegations.append(Delegation(
-                round=round_num,
-                worker=worker_name,
-                task=worker_task,
-                output=result.output,
-                approved=(action != "revise"),
-            ))
+            delegations.append(
+                Delegation(
+                    round=round_num,
+                    worker=worker_name,
+                    task=worker_task,
+                    output=result.output,
+                    approved=(action != "revise"),
+                )
+            )
 
         final = delegations[-1].output if delegations else "Max delegations reached"
         return SupervisorResult(
-            output=final, delegations=delegations, total_rounds=self.max_delegations,
+            output=final,
+            delegations=delegations,
+            total_rounds=self.max_delegations,
         )
 
     def stream(self, task: str):
@@ -225,12 +247,19 @@ class Supervisor:
         """
         from shipit_agent.models import AgentEvent
 
-        yield AgentEvent(type="run_started", message=f"Supervisor: {task[:80]}", payload={"task": task, "workers": list(self.workers.keys())})
+        yield AgentEvent(
+            type="run_started",
+            message=f"Supervisor: {task[:80]}",
+            payload={"task": task, "workers": list(self.workers.keys())},
+        )
 
         delegations: list[Delegation] = []
 
         for round_num in range(1, self.max_delegations + 1):
-            yield AgentEvent(type="planning_started", message=f"Round {round_num}: Supervisor deciding next step")
+            yield AgentEvent(
+                type="planning_started",
+                message=f"Round {round_num}: Supervisor deciding next step",
+            )
             decision = self._ask_supervisor(task, delegations)
             action = decision.get("action", "done")
 
@@ -238,7 +267,11 @@ class Supervisor:
                 final = decision.get("final_answer", "")
                 if not final and delegations:
                     final = delegations[-1].output
-                yield AgentEvent(type="run_completed", message="Supervisor: task complete", payload={"output": final[:300], "rounds": round_num})
+                yield AgentEvent(
+                    type="run_completed",
+                    message="Supervisor: task complete",
+                    payload={"output": final[:300], "rounds": round_num},
+                )
                 return
 
             worker_name = decision.get("worker", "")
@@ -246,15 +279,46 @@ class Supervisor:
             worker = self.workers.get(worker_name)
 
             if worker is None:
-                yield AgentEvent(type="tool_failed", message=f"Worker '{worker_name}' not found", payload={"worker": worker_name})
-                delegations.append(Delegation(round=round_num, worker=worker_name, task=worker_task, output=f"Error: worker '{worker_name}' not found"))
+                yield AgentEvent(
+                    type="tool_failed",
+                    message=f"Worker '{worker_name}' not found",
+                    payload={"worker": worker_name},
+                )
+                delegations.append(
+                    Delegation(
+                        round=round_num,
+                        worker=worker_name,
+                        task=worker_task,
+                        output=f"Error: worker '{worker_name}' not found",
+                    )
+                )
                 continue
 
-            yield AgentEvent(type="tool_called", message=f"Delegating to {worker_name}: {worker_task[:80]}", payload={"worker": worker_name, "task": worker_task})
+            yield AgentEvent(
+                type="tool_called",
+                message=f"Delegating to {worker_name}: {worker_task[:80]}",
+                payload={"worker": worker_name, "task": worker_task},
+            )
 
             result = worker.agent.run(worker_task)
-            delegations.append(Delegation(round=round_num, worker=worker_name, task=worker_task, output=result.output, approved=(action != "revise")))
+            delegations.append(
+                Delegation(
+                    round=round_num,
+                    worker=worker_name,
+                    task=worker_task,
+                    output=result.output,
+                    approved=(action != "revise"),
+                )
+            )
 
-            yield AgentEvent(type="tool_completed", message=f"{worker_name} finished", payload={"worker": worker_name, "output": result.output})
+            yield AgentEvent(
+                type="tool_completed",
+                message=f"{worker_name} finished",
+                payload={"worker": worker_name, "output": result.output},
+            )
 
-        yield AgentEvent(type="run_completed", message="Supervisor: max rounds reached", payload={"rounds": self.max_delegations})
+        yield AgentEvent(
+            type="run_completed",
+            message="Supervisor: max rounds reached",
+            payload={"rounds": self.max_delegations},
+        )

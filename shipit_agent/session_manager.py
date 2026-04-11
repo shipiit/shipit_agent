@@ -50,7 +50,9 @@ class SessionManager:
             raise ValueError(f"Session {session_id!r} not found")
 
         new_id = str(uuid.uuid4())
-        messages = record.messages[:from_message] if from_message > 0 else record.messages[:]
+        messages = (
+            record.messages[:from_message] if from_message > 0 else record.messages[:]
+        )
         fork_name = record.metadata.get("name", session_id)
         new_record = SessionRecord(
             session_id=new_id,

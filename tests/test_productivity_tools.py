@@ -67,7 +67,21 @@ def test_planner_tool_returns_ordered_plan() -> None:
 def test_tool_search_can_find_available_tools() -> None:
     tool = ToolSearchTool()
     result = tool.run(
-        context=type("Ctx", (), {"state": {"available_tools": [{"name": "web_search", "description": "Search the web", "prompt_instructions": ""}]}})(),
+        context=type(
+            "Ctx",
+            (),
+            {
+                "state": {
+                    "available_tools": [
+                        {
+                            "name": "web_search",
+                            "description": "Search the web",
+                            "prompt_instructions": "",
+                        }
+                    ]
+                }
+            },
+        )(),
         query="search web",
     )
     assert "web_search" in result.text
@@ -75,7 +89,9 @@ def test_tool_search_can_find_available_tools() -> None:
 
 def test_thought_decomposition_tool_returns_structure() -> None:
     tool = ThoughtDecompositionTool()
-    result = tool.run(context=None, problem="Migrate a large project", objective="Ship safely")  # type: ignore[arg-type]
+    result = tool.run(
+        context=None, problem="Migrate a large project", objective="Ship safely"
+    )  # type: ignore[arg-type]
     assert "Workstreams:" in result.text
     assert "Risks:" in result.text
 
@@ -84,7 +100,11 @@ def test_evidence_synthesis_tool_returns_grounded_sections() -> None:
     tool = EvidenceSynthesisTool()
     result = tool.run(
         context=None,  # type: ignore[arg-type]
-        observations=["Build is failing in CI", "Local tests pass", "Dependency version changed"],
+        observations=[
+            "Build is failing in CI",
+            "Local tests pass",
+            "Dependency version changed",
+        ],
         question="Why is CI failing?",
     )
     assert "Facts:" in result.text

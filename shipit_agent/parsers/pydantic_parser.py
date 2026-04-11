@@ -32,9 +32,15 @@ class PydanticParser:
     def parse(self, text: str) -> Any:
         data = self._json_parser.parse(text)
         try:
-            return self.model(**data) if isinstance(data, dict) else self.model.model_validate(data)
+            return (
+                self.model(**data)
+                if isinstance(data, dict)
+                else self.model.model_validate(data)
+            )
         except Exception as exc:
-            raise ParseError(f"Pydantic validation failed: {exc}", raw_text=text) from exc
+            raise ParseError(
+                f"Pydantic validation failed: {exc}", raw_text=text
+            ) from exc
 
     def get_format_instructions(self) -> str:
         try:
@@ -44,7 +50,8 @@ class PydanticParser:
             schema = {
                 "type": "object",
                 "properties": {
-                    k: {"type": "string"} for k in getattr(self.model, "__annotations__", {})
+                    k: {"type": "string"}
+                    for k in getattr(self.model, "__annotations__", {})
                 },
             }
         return f"Respond with valid JSON matching this schema:\n{json.dumps(schema, indent=2)}"

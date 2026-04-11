@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from shipit_agent.parsers.base import ParseError
 

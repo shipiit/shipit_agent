@@ -55,7 +55,9 @@ def test_chunk_indices_are_sequential():
 
 
 def test_title_prefix_added_to_text_for_embedding():
-    chunker = DocumentChunker(target_tokens=512, overlap_tokens=0, title_prefix_chars=32)
+    chunker = DocumentChunker(
+        target_tokens=512, overlap_tokens=0, title_prefix_chars=32
+    )
     doc = Document(
         id="d1",
         content="Body text here.",

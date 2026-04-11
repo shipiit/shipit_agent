@@ -15,6 +15,7 @@ Run:
 The example skips any provider whose credentials aren't configured, so
 you can run it with just one provider set up.
 """
+
 from __future__ import annotations
 
 import os

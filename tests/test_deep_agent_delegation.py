@@ -1,4 +1,5 @@
 """Tests for DeepAgent's `agents=` sub-agent delegation + streaming."""
+
 from __future__ import annotations
 
 import json

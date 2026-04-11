@@ -1,4 +1,11 @@
-from shipit_agent import Agent, AgentChatSession, event_packet, result_packet, sse_event_packet, websocket_event_packet
+from shipit_agent import (
+    Agent,
+    AgentChatSession,
+    event_packet,
+    result_packet,
+    sse_event_packet,
+    websocket_event_packet,
+)
 from shipit_agent.llms import SimpleEchoLLM
 
 
@@ -8,8 +15,12 @@ def test_chat_session_persists_history_across_messages() -> None:
     session.send("hello")
     session.send("world")
     history = session.history()
-    assert any(message.role == "user" and message.content == "hello" for message in history)
-    assert any(message.role == "user" and message.content == "world" for message in history)
+    assert any(
+        message.role == "user" and message.content == "hello" for message in history
+    )
+    assert any(
+        message.role == "user" and message.content == "world" for message in history
+    )
 
 
 def test_chat_session_packet_callbacks_receive_packets() -> None:
@@ -30,4 +41,3 @@ def test_packet_helpers_return_expected_shapes() -> None:
     assert websocket_event_packet(first_event)["type"] == "agent_event"
     assert sse_event_packet(first_event).startswith("event: run_started")
     assert result_packet(result)["result"]["output"]
-

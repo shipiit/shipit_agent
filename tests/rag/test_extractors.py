@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from shipit_agent.rag.extractors import RAGIngestError, TextExtractor
@@ -31,7 +29,9 @@ def test_extract_missing_file_raises_ingest_error():
 
 def test_extract_html_strips_tags(tmp_path):
     path = tmp_path / "page.html"
-    path.write_text("<html><body><h1>Title</h1><p>Body text.</p></body></html>", encoding="utf-8")
+    path.write_text(
+        "<html><body><h1>Title</h1><p>Body text.</p></body></html>", encoding="utf-8"
+    )
     text = TextExtractor().extract(str(path))
     assert "Title" in text
     assert "Body text" in text

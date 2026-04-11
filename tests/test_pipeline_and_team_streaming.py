@@ -1,4 +1,5 @@
 """Tests for Pipeline streaming and AgentTeam streaming."""
+
 from __future__ import annotations
 
 from shipit_agent import Agent, AgentTeam, TeamAgent, Pipeline, step, parallel
@@ -8,7 +9,16 @@ from shipit_agent.llms import LLMResponse, SimpleEchoLLM
 class JSONReplyLLM:
     def __init__(self, json_text: str):
         self._json = json_text
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         return LLMResponse(content=self._json)
 
 
@@ -16,7 +26,16 @@ class SequenceLLM:
     def __init__(self, responses: list[str]):
         self._responses = list(responses)
         self._index = 0
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         text = self._responses[min(self._index, len(self._responses) - 1)]
         self._index += 1
         return LLMResponse(content=text)
@@ -25,6 +44,7 @@ class SequenceLLM:
 # ===========================================================================
 # PIPELINE STREAMING
 # ===========================================================================
+
 
 class TestPipelineStreaming:
     def test_stream_emits_run_started(self):
@@ -74,7 +94,11 @@ class TestPipelineStreaming:
 
     def test_stream_with_agent_step_forwards_inner_events(self):
         pipe = Pipeline.sequential(
-            step("agent_step", agent=Agent(llm=SimpleEchoLLM(), prompt="test"), prompt="Hello"),
+            step(
+                "agent_step",
+                agent=Agent(llm=SimpleEchoLLM(), prompt="test"),
+                prompt="Hello",
+            ),
         )
         events = list(pipe.stream())
         # Should have inner agent events tagged with pipeline_step
@@ -82,7 +106,9 @@ class TestPipelineStreaming:
         assert len(inner) >= 1
 
     def test_stream_with_inputs(self):
-        pipe = Pipeline.sequential(step("greet", fn=lambda x: f"Hello {x}", prompt="{name}"))
+        pipe = Pipeline.sequential(
+            step("greet", fn=lambda x: f"Hello {x}", prompt="{name}")
+        )
         events = list(pipe.stream(name="World"))
         assert events[0].payload["inputs"] == ["name"]
 
@@ -100,6 +126,7 @@ class TestPipelineStreaming:
 # ===========================================================================
 # AGENT TEAM STREAMING
 # ===========================================================================
+
 
 class TestAgentTeamStreaming:
     def test_team_stream_emits_run_started(self):
@@ -122,13 +149,17 @@ class TestAgentTeamStreaming:
         assert events[-1].type == "run_completed"
 
     def test_team_stream_shows_delegation(self):
-        coordinator = SequenceLLM([
-            '{"next_agent": "worker", "prompt": "do it", "done": false}',
-            '{"done": true, "final_answer": "all done"}',
-        ])
+        coordinator = SequenceLLM(
+            [
+                '{"next_agent": "worker", "prompt": "do it", "done": false}',
+                '{"done": true, "final_answer": "all done"}',
+            ]
+        )
         team = AgentTeam(
             coordinator=coordinator,
-            agents=[TeamAgent(name="worker", role="W", agent=Agent(llm=SimpleEchoLLM()))],
+            agents=[
+                TeamAgent(name="worker", role="W", agent=Agent(llm=SimpleEchoLLM()))
+            ],
         )
         events = list(team.stream("task"))
         delegations = [e for e in events if e.type == "tool_called"]

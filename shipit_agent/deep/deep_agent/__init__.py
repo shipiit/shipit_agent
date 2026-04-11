@@ -9,6 +9,7 @@ Public surface:
 - :func:`create_deep_agent`       — LangChain-style functional helper
 - :data:`DEEP_AGENT_PROMPT`       — the opinionated system prompt
 """
+
 from .delegation import AgentDelegationTool, build_delegation_tool
 from .factory import DeepAgent, create_deep_agent
 from .prompt import DEEP_AGENT_PROMPT

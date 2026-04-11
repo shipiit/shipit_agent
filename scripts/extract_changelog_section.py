@@ -13,6 +13,7 @@ the end of file.
 
 Exits 0 with output, 1 if version not found.
 """
+
 from __future__ import annotations
 
 import re
@@ -54,7 +55,9 @@ def main() -> int:
     version = sys.argv[1].lstrip("v").strip()
     body = extract(version)
     if body is None:
-        print(f"error: no [## {version}] section found in CHANGELOG.md", file=sys.stderr)
+        print(
+            f"error: no [## {version}] section found in CHANGELOG.md", file=sys.stderr
+        )
         return 1
 
     print(body)

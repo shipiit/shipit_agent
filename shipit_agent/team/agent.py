@@ -30,8 +30,20 @@ class TeamAgent:
     capabilities: list[str] = field(default_factory=list)
 
     @classmethod
-    def with_builtins(cls, *, name: str, role: str, llm: Any, mcps: list[Any] | None = None, capabilities: list[str] | None = None, **kwargs: Any) -> "TeamAgent":
+    def with_builtins(
+        cls,
+        *,
+        name: str,
+        role: str,
+        llm: Any,
+        mcps: list[Any] | None = None,
+        capabilities: list[str] | None = None,
+        **kwargs: Any,
+    ) -> "TeamAgent":
         """Create a TeamAgent backed by an Agent with all built-in tools."""
         from shipit_agent.agent import Agent
-        agent = Agent.with_builtins(llm=llm, prompt=f"You are {name}. {role}", mcps=mcps, **kwargs)
+
+        agent = Agent.with_builtins(
+            llm=llm, prompt=f"You are {name}. {role}", mcps=mcps, **kwargs
+        )
         return cls(name=name, role=role, agent=agent, capabilities=capabilities or [])

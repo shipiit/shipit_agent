@@ -1589,7 +1589,7 @@ class HandoffTool(Tool):
     """Tool that allows an agent to hand off to another agent."""
     name = "handoff"
     description = "Hand off the task to a specialized agent"
-    
+
     def run(self, context, target_agent: str, message: str, **kwargs):
         # Find target agent, run it, return result
         ...

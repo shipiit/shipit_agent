@@ -4,7 +4,13 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable
 
 from shipit_agent.models import AgentEvent, AgentResult, Message
-from shipit_agent.packets import event_packet, sse_event_packet, sse_result_packet, websocket_event_packet, websocket_result_packet
+from shipit_agent.packets import (
+    event_packet,
+    sse_event_packet,
+    sse_result_packet,
+    websocket_event_packet,
+    websocket_result_packet,
+)
 from shipit_agent.stores import InMemorySessionStore, SessionStore
 
 if TYPE_CHECKING:
@@ -69,7 +75,9 @@ class AgentChatSession:
         for event in self.stream(user_prompt):
             yield websocket_event_packet(event)
 
-    def send_result_packet(self, user_prompt: str, *, transport: str = "websocket") -> Any:
+    def send_result_packet(
+        self, user_prompt: str, *, transport: str = "websocket"
+    ) -> Any:
         result = self.send(user_prompt)
         if transport == "sse":
             return sse_result_packet(result)

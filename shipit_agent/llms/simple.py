@@ -19,7 +19,11 @@ class ShipitLLM:
         response_format: dict | None = None,
     ) -> LLMResponse:
         last_user_message = next(
-            (message.content for message in reversed(messages) if message.role == "user"),
+            (
+                message.content
+                for message in reversed(messages)
+                if message.role == "user"
+            ),
             "",
         )
         if system_prompt:

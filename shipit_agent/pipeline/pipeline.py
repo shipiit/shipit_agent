@@ -16,7 +16,9 @@ class PipelineResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "output": self.output,
-            "steps": {k: {"name": v.name, "output": v.output} for k, v in self.steps.items()},
+            "steps": {
+                k: {"name": v.name, "output": v.output} for k, v in self.steps.items()
+            },
         }
 
 
@@ -102,15 +104,27 @@ class Pipeline:
         for stage_idx, stage in enumerate(self.stages, 1):
             if isinstance(stage, ParallelGroup):
                 names = [s.name for s in stage.steps]
-                yield AgentEvent(type="step_started", message=f"Parallel stage {stage_idx}: {names}", payload={"parallel": True, "steps": names})
+                yield AgentEvent(
+                    type="step_started",
+                    message=f"Parallel stage {stage_idx}: {names}",
+                    payload={"parallel": True, "steps": names},
+                )
                 results = stage.execute(context, **inputs)
                 for r in results:
                     context[r.name] = r
                     last_output = r.output
-                    yield AgentEvent(type="tool_completed", message=f"Step '{r.name}' completed", payload={"step": r.name, "output": r.output[:200]})
+                    yield AgentEvent(
+                        type="tool_completed",
+                        message=f"Step '{r.name}' completed",
+                        payload={"step": r.name, "output": r.output[:200]},
+                    )
 
             elif isinstance(stage, Step):
-                yield AgentEvent(type="step_started", message=f"Step '{stage.name}' started", payload={"step": stage.name})
+                yield AgentEvent(
+                    type="step_started",
+                    message=f"Step '{stage.name}' started",
+                    payload={"step": stage.name},
+                )
 
                 # If the step has an agent, stream inner agent events
                 if stage.agent is not None:
@@ -122,7 +136,11 @@ class Pipeline:
                 result = stage.execute(context, **inputs)
                 context[result.name] = result
                 last_output = result.output
-                yield AgentEvent(type="tool_completed", message=f"Step '{stage.name}' completed", payload={"step": stage.name, "output": result.output[:200]})
+                yield AgentEvent(
+                    type="tool_completed",
+                    message=f"Step '{stage.name}' completed",
+                    payload={"step": stage.name, "output": result.output[:200]},
+                )
 
         yield AgentEvent(
             type="run_completed",

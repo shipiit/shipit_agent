@@ -31,4 +31,6 @@ class RouterPolicy:
 
     def should_plan(self, prompt: str) -> bool:
         lowered = prompt.lower()
-        return len(prompt) >= self.long_prompt_threshold or any(keyword in lowered for keyword in self.plan_keywords)
+        return len(prompt) >= self.long_prompt_threshold or any(
+            keyword in lowered for keyword in self.plan_keywords
+        )

@@ -13,7 +13,9 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 
 
 class MCPTransport(Protocol):
-    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]: ...
+    def request(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
 
     def close(self) -> None: ...
 
@@ -29,8 +31,12 @@ class MCPTool:
     handler: Callable[..., Any]
     metadata: dict[str, Any] = field(default_factory=dict)
     input_schema: dict[str, Any] = field(default_factory=dict)
-    prompt: str = "Use this MCP tool when the remote capability is the right fit for the task."
-    prompt_instructions: str = "Use this when the attached MCP server exposes the capability you need."
+    prompt: str = (
+        "Use this MCP tool when the remote capability is the right fit for the task."
+    )
+    prompt_instructions: str = (
+        "Use this when the attached MCP server exposes the capability you need."
+    )
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -38,7 +44,8 @@ class MCPTool:
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.input_schema or {"type": "object", "properties": {}, "required": []},
+                "parameters": self.input_schema
+                or {"type": "object", "properties": {}, "required": []},
             },
         }
 
@@ -55,10 +62,14 @@ class MCPRemoteTool:
     transport: MCPTransport
     name: str
     description: str
-    input_schema: dict[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}, "required": []})
+    input_schema: dict[str, Any] = field(
+        default_factory=lambda: {"type": "object", "properties": {}, "required": []}
+    )
     metadata: dict[str, Any] = field(default_factory=dict)
     prompt: str = "Use this MCP tool when the remote server provides the best capability for the task."
-    prompt_instructions: str = "Remote MCP capability discovered dynamically from the attached server."
+    prompt_instructions: str = (
+        "Remote MCP capability discovered dynamically from the attached server."
+    )
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -117,12 +128,16 @@ class MCPServer:
 
 
 class MCPSubprocessTransport:
-    def __init__(self, command: list[str], *, env: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, command: list[str], *, env: dict[str, str] | None = None
+    ) -> None:
         self.command = command
         self.env = env
         self._id_counter = count(1)
 
-    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def request(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         payload = {
             "jsonrpc": "2.0",
             "id": next(self._id_counter),
@@ -138,7 +153,10 @@ class MCPSubprocessTransport:
             check=False,
         )
         if completed.returncode != 0:
-            raise MCPError(completed.stderr.strip() or f"MCP subprocess failed with exit code {completed.returncode}")
+            raise MCPError(
+                completed.stderr.strip()
+                or f"MCP subprocess failed with exit code {completed.returncode}"
+            )
         output = completed.stdout.strip()
         if not output:
             return {}
@@ -152,7 +170,9 @@ class MCPSubprocessTransport:
 
 
 class PersistentMCPSubprocessTransport:
-    def __init__(self, command: list[str], *, env: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, command: list[str], *, env: dict[str, str] | None = None
+    ) -> None:
         self.command = command
         self.env = {**os.environ, **(env or {})}
         self._id_counter = count(1)
@@ -172,7 +192,9 @@ class PersistentMCPSubprocessTransport:
         )
         return self._process
 
-    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def request(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         with self._lock:
             process = self._ensure_process()
             if process.stdin is None or process.stdout is None:
@@ -188,7 +210,10 @@ class PersistentMCPSubprocessTransport:
             line = process.stdout.readline()
             if not line:
                 stderr = process.stderr.read() if process.stderr is not None else ""
-                raise MCPError(stderr.strip() or "Persistent MCP subprocess exited without a response.")
+                raise MCPError(
+                    stderr.strip()
+                    or "Persistent MCP subprocess exited without a response."
+                )
             response = json.loads(line)
             if "error" in response:
                 raise MCPError(str(response["error"]))
@@ -213,13 +238,21 @@ class PersistentMCPSubprocessTransport:
 
 
 class MCPHTTPTransport:
-    def __init__(self, endpoint: str, *, headers: dict[str, str] | None = None, timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        *,
+        headers: dict[str, str] | None = None,
+        timeout: float = 20.0,
+    ) -> None:
         self.endpoint = endpoint
         self.headers = headers or {}
         self.timeout = timeout
         self._id_counter = count(1)
 
-    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def request(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         payload = json.dumps(
             {
                 "jsonrpc": "2.0",
@@ -277,7 +310,10 @@ class RemoteMCPServer(MCPServer):
                     transport=self.transport,
                     name=str(item["name"]),
                     description=str(item.get("description", "")),
-                    input_schema=dict(item.get("inputSchema") or {"type": "object", "properties": {}, "required": []}),
+                    input_schema=dict(
+                        item.get("inputSchema")
+                        or {"type": "object", "properties": {}, "required": []}
+                    ),
                     metadata={"server": self.name},
                 )
             )

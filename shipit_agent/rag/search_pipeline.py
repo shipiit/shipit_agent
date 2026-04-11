@@ -4,6 +4,7 @@ Combines vector + keyword retrieval via Reciprocal Rank Fusion (RRF),
 optionally applies recency bias, reranking, and pulls neighbouring
 chunks from the same document for context expansion.
 """
+
 from __future__ import annotations
 
 import math
@@ -70,7 +71,9 @@ class HybridSearchPipeline:
 
         def _vec() -> list[tuple[Chunk, float]]:
             t = time.perf_counter()
-            out = self.vector_store.search(query_embedding, top_n, filters=query.filters)
+            out = self.vector_store.search(
+                query_embedding, top_n, filters=query.filters
+            )
             timings["vector_ms"] = (time.perf_counter() - t) * 1000
             return out
 
@@ -96,7 +99,12 @@ class HybridSearchPipeline:
         for rank, (chunk, raw_score) in enumerate(vec_results):
             entry = fused.setdefault(
                 chunk.id,
-                {"chunk": chunk, "vector_score": None, "keyword_score": None, "score": 0.0},
+                {
+                    "chunk": chunk,
+                    "vector_score": None,
+                    "keyword_score": None,
+                    "score": 0.0,
+                },
             )
             entry["vector_score"] = raw_score
             entry["score"] += alpha * _rrf_score(rank)
@@ -104,7 +112,12 @@ class HybridSearchPipeline:
             for rank, (chunk, raw_score) in enumerate(kw_results):
                 entry = fused.setdefault(
                     chunk.id,
-                    {"chunk": chunk, "vector_score": None, "keyword_score": None, "score": 0.0},
+                    {
+                        "chunk": chunk,
+                        "vector_score": None,
+                        "keyword_score": None,
+                        "score": 0.0,
+                    },
                 )
                 entry["keyword_score"] = raw_score
                 entry["score"] += (1.0 - alpha) * _rrf_score(rank)
@@ -126,7 +139,9 @@ class HybridSearchPipeline:
         if query.enable_reranking and self.reranker is not None and fused_list:
             t = time.perf_counter()
             candidates = [entry["chunk"] for entry in fused_list[: query.top_k * 2]]
-            reranked = self.reranker.rerank(query.query, candidates, top_k=len(candidates))
+            reranked = self.reranker.rerank(
+                query.query, candidates, top_k=len(candidates)
+            )
             ordering = {chunk.id: idx for idx, (chunk, _) in enumerate(reranked)}
             rerank_scores = {chunk.id: score for chunk, score in reranked}
             fused_list = sorted(

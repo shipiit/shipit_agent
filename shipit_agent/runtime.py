@@ -14,7 +14,14 @@ from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
-from shipit_agent.stores import InMemoryMemoryStore, InMemorySessionStore, MemoryFact, MemoryStore, SessionRecord, SessionStore
+from shipit_agent.stores import (
+    InMemoryMemoryStore,
+    InMemorySessionStore,
+    MemoryFact,
+    MemoryStore,
+    SessionRecord,
+    SessionStore,
+)
 from shipit_agent.tool_runner import ToolRunner
 from shipit_agent.tools import Tool, ToolContext
 from shipit_agent.tools.helpers import build_tools_prompt
@@ -71,7 +78,11 @@ class AgentRuntime:
         self.hooks = hooks
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
-        self._total_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        self._total_usage: dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
 
     def registry(self) -> ToolRegistry:
@@ -80,7 +91,9 @@ class AgentRuntime:
     def build_tool_schemas(self) -> list[dict[str, Any]]:
         return build_tool_schemas(self.registry())
 
-    def emit(self, state: RuntimeState, event_type: str, message: str, **payload: Any) -> None:
+    def emit(
+        self, state: RuntimeState, event_type: str, message: str, **payload: Any
+    ) -> None:
         event = AgentEvent(type=event_type, message=message, payload=payload)
         state.events.append(event)
         if self._event_subscriber is not None:
@@ -109,7 +122,11 @@ class AgentRuntime:
         tool_runner: ToolRunner,
     ) -> None:
         planner = registry.get("plan_task")
-        if planner is None or not self.router_policy.auto_plan or not self.router_policy.should_plan(user_prompt):
+        if (
+            planner is None
+            or not self.router_policy.auto_plan
+            or not self.router_policy.should_plan(user_prompt)
+        ):
             return
         self.emit(state, "planning_started", "Planner started", prompt=user_prompt)
         context = ToolContext(
@@ -120,7 +137,11 @@ class AgentRuntime:
             session_id=self.session_id,
         )
         tool_result = tool_runner.run_tool_call(
-            tool_call=type("PlannerCall", (), {"name": planner.name, "arguments": {"goal": user_prompt}})(),
+            tool_call=type(
+                "PlannerCall",
+                (),
+                {"name": planner.name, "arguments": {"goal": user_prompt}},
+            )(),
             context=context,
         )
         state.tool_results.append(tool_result)
@@ -137,7 +158,9 @@ class AgentRuntime:
                 metadata={"source": "planner", "planner_tool": planner.name},
             )
         )
-        self.emit(state, "planning_completed", "Planner completed", output=tool_result.output)
+        self.emit(
+            state, "planning_completed", "Planner completed", output=tool_result.output
+        )
 
     def _execute_single_tool(
         self,
@@ -181,7 +204,13 @@ class AgentRuntime:
         if self.hooks:
             self.hooks.run_before_tool(tool_call.name, tool_call.arguments)
 
-        self.emit(state, "tool_called", f"Tool called: {tool_call.name}", arguments=tool_call.arguments, iteration=iteration)
+        self.emit(
+            state,
+            "tool_called",
+            f"Tool called: {tool_call.name}",
+            arguments=tool_call.arguments,
+            iteration=iteration,
+        )
         attempt = 0
         while True:
             try:
@@ -189,7 +218,13 @@ class AgentRuntime:
                 break
             except self.retry_policy.retry_on_exceptions as exc:
                 if attempt >= self.retry_policy.max_tool_retries:
-                    self.emit(state, "tool_failed", f"Tool failed: {tool_call.name}", error=str(exc), iteration=iteration)
+                    self.emit(
+                        state,
+                        "tool_failed",
+                        f"Tool failed: {tool_call.name}",
+                        error=str(exc),
+                        iteration=iteration,
+                    )
                     error_output = f"Error running tool '{tool_call.name}': {exc}"
                     tool_result = ToolResult(
                         name=tool_call.name,
@@ -198,7 +233,14 @@ class AgentRuntime:
                     )
                     break
                 attempt += 1
-                self.emit(state, "tool_retry", f"Retrying tool: {tool_call.name}", attempt=attempt, error=str(exc), iteration=iteration)
+                self.emit(
+                    state,
+                    "tool_retry",
+                    f"Retrying tool: {tool_call.name}",
+                    attempt=attempt,
+                    error=str(exc),
+                    iteration=iteration,
+                )
 
         if self.hooks:
             self.hooks.run_after_tool(tool_call.name, tool_result)
@@ -212,7 +254,13 @@ class AgentRuntime:
                 "tool_call_id": tool_call_record["id"],
             },
         )
-        self.emit(state, "tool_completed", f"Tool completed: {tool_call.name}", output=tool_result.output, iteration=iteration)
+        self.emit(
+            state,
+            "tool_completed",
+            f"Tool completed: {tool_call.name}",
+            output=tool_result.output,
+            iteration=iteration,
+        )
         if tool_result.metadata.get("interactive"):
             self.emit(
                 state,
@@ -356,7 +404,14 @@ class AgentRuntime:
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
             self._total_usage[key] += response.usage.get(key, 0)
 
-    def _complete_with_retry(self, *, state: RuntimeState, messages: list[Message], tools: list[dict[str, Any]], base_prompt: str) -> LLMResponse:
+    def _complete_with_retry(
+        self,
+        *,
+        state: RuntimeState,
+        messages: list[Message],
+        tools: list[dict[str, Any]],
+        base_prompt: str,
+    ) -> LLMResponse:
         attempt = 0
         while True:
             try:
@@ -370,26 +425,41 @@ class AgentRuntime:
                 if attempt >= self.retry_policy.max_llm_retries:
                     raise
                 attempt += 1
-                self.emit(state, "llm_retry", "Retrying LLM completion", attempt=attempt, error=str(exc))
+                self.emit(
+                    state,
+                    "llm_retry",
+                    "Retrying LLM completion",
+                    attempt=attempt,
+                    error=str(exc),
+                )
 
     def run(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
         shared_state: dict[str, Any] = {}
         registry = self.registry()
         tool_prompt = build_tools_prompt(registry.values())
-        base_prompt = self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
+        base_prompt = (
+            self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
+        )
         existing_session = self.session_store.load(self.session_id)
         if existing_session:
             state.messages.extend(existing_session.messages)
         elif self.history_messages:
             state.messages.extend(self.history_messages)
-        state.messages.append(Message(role="system", content=base_prompt, metadata=dict(self.metadata)))
+        state.messages.append(
+            Message(role="system", content=base_prompt, metadata=dict(self.metadata))
+        )
         state.messages.append(Message(role="user", content=user_prompt))
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
 
         for mcp in self.mcps:
-            self.emit(state, "mcp_attached", f"MCP server attached: {mcp.name}", server=mcp.name)
+            self.emit(
+                state,
+                "mcp_attached",
+                f"MCP server attached: {mcp.name}",
+                server=mcp.name,
+            )
 
         tool_schemas = registry.schemas()
         shared_state["available_tools"] = [
@@ -402,8 +472,12 @@ class AgentRuntime:
         ]
         shared_state["memory_store"] = self.memory_store
         shared_state["credential_store"] = self.credential_store
-        shared_state["artifact_workspace_root"] = self.metadata.get("artifact_workspace_root", ".shipit_workspace/artifacts")
-        shared_state["workspace_root"] = self.metadata.get("workspace_root", ".shipit_workspace")
+        shared_state["artifact_workspace_root"] = self.metadata.get(
+            "artifact_workspace_root", ".shipit_workspace/artifacts"
+        )
+        shared_state["workspace_root"] = self.metadata.get(
+            "workspace_root", ".shipit_workspace"
+        )
         tool_runner = ToolRunner(registry)
         self._run_planner_if_needed(
             state=state,
@@ -422,7 +496,13 @@ class AgentRuntime:
             # Compact messages if approaching context window limit
             compacted_messages = self._compact_messages(list(state.messages))
 
-            self.emit(state, "step_started", "LLM completion started", tool_count=len(tool_schemas), iteration=iteration)
+            self.emit(
+                state,
+                "step_started",
+                "LLM completion started",
+                tool_count=len(tool_schemas),
+                iteration=iteration,
+            )
             response = self._complete_with_retry(
                 state=state,
                 messages=compacted_messages,
@@ -471,7 +551,7 @@ class AgentRuntime:
                 )
             )
 
-            tool_results_ordered = self._execute_tool_calls(
+            self._execute_tool_calls(
                 state=state,
                 registry=registry,
                 tool_runner=tool_runner,
@@ -528,7 +608,13 @@ class AgentRuntime:
                 pass
 
         if response.content:
-            state.messages.append(Message(role="assistant", content=response.content, metadata=dict(response.metadata)))
+            state.messages.append(
+                Message(
+                    role="assistant",
+                    content=response.content,
+                    metadata=dict(response.metadata),
+                )
+            )
 
         for tool_result in state.tool_results:
             # Only persist tool results that opt-in via persist=True metadata.
@@ -544,7 +630,9 @@ class AgentRuntime:
                     metadata=dict(tool_result.metadata),
                 )
             )
-        self.session_store.save(SessionRecord(session_id=self.session_id, messages=list(state.messages)))
+        self.session_store.save(
+            SessionRecord(session_id=self.session_id, messages=list(state.messages))
+        )
         # Expose the final answer as both `output` (legacy) and `content`
         # (explicit markdown string) so consumers can render it directly.
         self.emit(
@@ -580,7 +668,9 @@ class AgentRuntime:
                 event_queue.put(sentinel)
 
         self._event_subscriber = _subscriber
-        worker = threading.Thread(target=_worker, name="shipit-agent-stream", daemon=True)
+        worker = threading.Thread(
+            target=_worker, name="shipit-agent-stream", daemon=True
+        )
         worker.start()
         try:
             while True:

@@ -67,16 +67,26 @@ def test_agent_executes_tool_calls() -> None:
     result = agent.run("compute")
     assert result.tool_results[0].output == "7"
     assert any(event.type == "tool_completed" for event in result.events)
-    assistant_tool_message = next(message for message in result.messages if message.role == "assistant" and message.metadata.get("tool_calls"))
+    assistant_tool_message = next(
+        message
+        for message in result.messages
+        if message.role == "assistant" and message.metadata.get("tool_calls")
+    )
     assert assistant_tool_message.metadata["tool_calls"][0]["name"] == "add"
-    tool_message = next(message for message in result.messages if message.role == "tool" and message.name == "add")
+    tool_message = next(
+        message
+        for message in result.messages
+        if message.role == "tool" and message.name == "add"
+    )
     assert tool_message.metadata["tool_call_id"].startswith("call_")
 
 
 def test_agent_retries_flaky_tool() -> None:
     class StableLLM:
         def complete(self, *, messages, tools=None, system_prompt=None, metadata=None):
-            return LLMResponse(content="completed", tool_calls=[ToolCall(name="flaky", arguments={})])
+            return LLMResponse(
+                content="completed", tool_calls=[ToolCall(name="flaky", arguments={})]
+            )
 
     calls = {"count": 0}
 
@@ -89,7 +99,9 @@ def test_agent_retries_flaky_tool() -> None:
     agent = Agent(
         llm=StableLLM(),
         tools=[FunctionTool.from_callable(flaky, name="flaky")],
-        retry_policy=RetryPolicy(max_tool_retries=1, retry_on_exceptions=(RuntimeError,)),
+        retry_policy=RetryPolicy(
+            max_tool_retries=1, retry_on_exceptions=(RuntimeError,)
+        ),
     )
     result = agent.run("run flaky tool")
     assert result.tool_results[-1].output == "ok"

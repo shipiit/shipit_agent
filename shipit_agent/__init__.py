@@ -1,17 +1,60 @@
 try:
     from importlib.metadata import version as _pkg_version
+
     __version__ = _pkg_version("shipit-agent")
 except Exception:
     __version__ = "0.0.0+unknown"
 
 from .async_runtime import AsyncAgentRuntime
-from .deep import AdaptiveAgent, AgentBenchmark, AgentMessage, BenchmarkReport, Channel, Checkpoint, DEEP_AGENT_PROMPT, DeepAgent, Goal, GoalAgent, GoalResult, PersistentAgent, ReflectionResult, ReflectiveAgent, Supervisor, SupervisorResult, TestCase, Worker, create_deep_agent
+from .deep import (
+    AdaptiveAgent,
+    AgentBenchmark,
+    AgentMessage,
+    BenchmarkReport,
+    Channel,
+    Checkpoint,
+    DEEP_AGENT_PROMPT,
+    DeepAgent,
+    Goal,
+    GoalAgent,
+    GoalResult,
+    PersistentAgent,
+    ReflectionResult,
+    ReflectiveAgent,
+    Supervisor,
+    SupervisorResult,
+    TestCase,
+    Worker,
+    create_deep_agent,
+)
 from .exceptions import DuplicateToolError, ShipitAgentError
 from .hooks import AgentHooks
-from .memory import AgentMemory, ConversationMemory, Entity, EntityMemory, InMemoryVectorStore, SearchResult, SemanticMemory, VectorStore
-from .parsers import JSONParser, MarkdownParser, MarkdownResult, OutputParser, ParseError, PydanticParser, RegexParser
+from .memory import (
+    AgentMemory,
+    ConversationMemory,
+    Entity,
+    EntityMemory,
+    InMemoryVectorStore,
+    SearchResult,
+    SemanticMemory,
+    VectorStore,
+)
+from .parsers import (
+    JSONParser,
+    MarkdownParser,
+    MarkdownResult,
+    OutputParser,
+    ParseError,
+    PydanticParser,
+    RegexParser,
+)
 from .pipeline import Pipeline, Step, parallel, step
-from .structured import build_schema_prompt, is_pydantic_model, parse_structured_output, schema_to_response_format
+from .structured import (
+    build_schema_prompt,
+    is_pydantic_model,
+    parse_structured_output,
+    schema_to_response_format,
+)
 from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
 from .agent import Agent
 from .builtins import get_builtin_tools
@@ -19,10 +62,38 @@ from .chat_session import AgentChatSession
 from .construction import build_tool_schemas, construct_tool_registry
 from .context_tracker import ContextSnapshot, ContextTracker
 from .doctor import AgentDoctor, DoctorCheck, DoctorReport
-from .integrations import CredentialRecord, CredentialStore, FileCredentialStore, FileOAuthStateStore, GoogleOAuthHelper, InMemoryCredentialStore, InMemoryOAuthStateStore, OAuthClientConfig, OAuthHelper, OAuthStateStore, SlackOAuthHelper
-from .mcp import MCPError, MCPHTTPTransport, MCPServer, MCPSubprocessTransport, MCPTool, PersistentMCPSubprocessTransport, RemoteMCPServer, discover_mcp_tools
+from .integrations import (
+    CredentialRecord,
+    CredentialStore,
+    FileCredentialStore,
+    FileOAuthStateStore,
+    GoogleOAuthHelper,
+    InMemoryCredentialStore,
+    InMemoryOAuthStateStore,
+    OAuthClientConfig,
+    OAuthHelper,
+    OAuthStateStore,
+    SlackOAuthHelper,
+)
+from .mcp import (
+    MCPError,
+    MCPHTTPTransport,
+    MCPServer,
+    MCPSubprocessTransport,
+    MCPTool,
+    PersistentMCPSubprocessTransport,
+    RemoteMCPServer,
+    discover_mcp_tools,
+)
 from .models import AgentEvent, AgentResult, Artifact, Message, ToolCall, ToolResult
-from .packets import event_packet, result_packet, sse_event_packet, sse_result_packet, websocket_event_packet, websocket_result_packet
+from .packets import (
+    event_packet,
+    result_packet,
+    sse_event_packet,
+    sse_result_packet,
+    websocket_event_packet,
+    websocket_result_packet,
+)
 from .policies import RetryPolicy, RouterPolicy
 from .profiles import AgentProfile, AgentProfileBuilder
 from .prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
@@ -30,7 +101,16 @@ from .reasoning import ReasoningResult, ReasoningRuntime
 from .registry import ToolRegistry
 from .schedule import ScheduleResult, ScheduleRunner
 from .session_manager import SessionManager
-from .stores import FileMemoryStore, FileSessionStore, InMemoryMemoryStore, InMemorySessionStore, MemoryFact, MemoryStore, SessionRecord, SessionStore
+from .stores import (
+    FileMemoryStore,
+    FileSessionStore,
+    InMemoryMemoryStore,
+    InMemorySessionStore,
+    MemoryFact,
+    MemoryStore,
+    SessionRecord,
+    SessionStore,
+)
 from .templates import PromptTemplate
 from .tool_runner import ToolRunner, ToolRunnerResult
 from .tracing import FileTraceStore, InMemoryTraceStore, TraceRecord, TraceStore
@@ -200,6 +280,7 @@ __all__ = [
     "MemoryFact",
     "MemoryStore",
     "Message",
+    "NotionTool",
     "OpenURLTool",
     "OAuthClientConfig",
     "OAuthHelper",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -53,7 +53,9 @@ class AdaptiveAgent:
         self.created_tools: list[CreatedTool] = []
 
     @classmethod
-    def with_builtins(cls, *, llm: Any, mcps: list[Any] | None = None, **kwargs: Any) -> "AdaptiveAgent":
+    def with_builtins(
+        cls, *, llm: Any, mcps: list[Any] | None = None, **kwargs: Any
+    ) -> "AdaptiveAgent":
         """Create an AdaptiveAgent with all built-in tools."""
         return cls(llm=llm, mcps=mcps, use_builtins=True, **kwargs)
 
@@ -79,18 +81,28 @@ class AdaptiveAgent:
 
         tool = FunctionTool.from_callable(fn, name=name, description=description)
         self.tools.append(tool)
-        self.created_tools.append(CreatedTool(name=name, description=description, code=code))
+        self.created_tools.append(
+            CreatedTool(name=name, description=description, code=code)
+        )
         return tool
 
     def run(self, task: str) -> Any:
         from shipit_agent.agent import Agent
 
         if self.use_builtins:
-            agent = Agent.with_builtins(llm=self.llm, prompt=self.prompt, mcps=self.mcps, **self.agent_kwargs)
+            agent = Agent.with_builtins(
+                llm=self.llm, prompt=self.prompt, mcps=self.mcps, **self.agent_kwargs
+            )
             # Add dynamically created tools
             agent.tools.extend(self.tools)
         else:
-            agent = Agent(llm=self.llm, prompt=self.prompt, tools=list(self.tools), mcps=self.mcps, **self.agent_kwargs)
+            agent = Agent(
+                llm=self.llm,
+                prompt=self.prompt,
+                tools=list(self.tools),
+                mcps=self.mcps,
+                **self.agent_kwargs,
+            )
         return agent.run(task)
 
     def stream(self, task: str):
@@ -98,13 +110,25 @@ class AdaptiveAgent:
         from shipit_agent.agent import Agent
         from shipit_agent.models import AgentEvent
 
-        yield AgentEvent(type="run_started", message=f"AdaptiveAgent: {task[:80]}", payload={"created_tools": [t.name for t in self.created_tools]})
+        yield AgentEvent(
+            type="run_started",
+            message=f"AdaptiveAgent: {task[:80]}",
+            payload={"created_tools": [t.name for t in self.created_tools]},
+        )
 
         if self.use_builtins:
-            agent = Agent.with_builtins(llm=self.llm, prompt=self.prompt, mcps=self.mcps, **self.agent_kwargs)
+            agent = Agent.with_builtins(
+                llm=self.llm, prompt=self.prompt, mcps=self.mcps, **self.agent_kwargs
+            )
             agent.tools.extend(self.tools)
         else:
-            agent = Agent(llm=self.llm, prompt=self.prompt, tools=list(self.tools), mcps=self.mcps, **self.agent_kwargs)
+            agent = Agent(
+                llm=self.llm,
+                prompt=self.prompt,
+                tools=list(self.tools),
+                mcps=self.mcps,
+                **self.agent_kwargs,
+            )
 
         for event in agent.stream(task):
             yield event

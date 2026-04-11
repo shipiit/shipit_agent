@@ -72,7 +72,10 @@ class OpenURLTool:
                     "type": "object",
                     "properties": {
                         "url": {"type": "string", "description": "URL to open"},
-                        "max_chars": {"type": "number", "description": "Optional max output length"},
+                        "max_chars": {
+                            "type": "number",
+                            "description": "Optional max output length",
+                        },
                     },
                     "required": ["url"],
                 },
@@ -97,14 +100,18 @@ class OpenURLTool:
                     locale="en-US",
                 )
                 page = context.new_page()
-                response = page.goto(url, wait_until=self.wait_until, timeout=timeout_ms)
+                response = page.goto(
+                    url, wait_until=self.wait_until, timeout=timeout_ms
+                )
                 status = response.status if response is not None else None
                 if status is not None and status >= 400:
                     raise RuntimeError(f"HTTP {status} from {url}")
 
                 # Prefer visible body text; fall back to full rendered HTML.
                 try:
-                    text = page.evaluate("() => document.body && document.body.innerText || ''")
+                    text = page.evaluate(
+                        "() => document.body && document.body.innerText || ''"
+                    )
                 except Exception:
                     text = ""
                 if not text:
@@ -145,12 +152,16 @@ class OpenURLTool:
         text = _strip_html(raw)
         title_match = re.search(r"<title[^>]*>([\s\S]*?)</title>", raw, re.IGNORECASE)
         title = _strip_html(title_match.group(1)) if title_match else ""
-        return text, title, {
-            "fetch_method": "urllib",
-            "status_code": status,
-            "final_url": final_url,
-            "title": title,
-        }
+        return (
+            text,
+            title,
+            {
+                "fetch_method": "urllib",
+                "status_code": status,
+                "final_url": final_url,
+                "title": title,
+            },
+        )
 
     # ------------------------------------------------------------------ #
     #  Entry point

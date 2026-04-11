@@ -56,11 +56,18 @@ class FileOAuthStateStore:
 
 
 class OAuthHelper:
-    def __init__(self, config: OAuthClientConfig, *, state_store: OAuthStateStore | None = None) -> None:
+    def __init__(
+        self, config: OAuthClientConfig, *, state_store: OAuthStateStore | None = None
+    ) -> None:
         self.config = config
         self.state_store = state_store or InMemoryOAuthStateStore()
 
-    def create_authorization_url(self, *, state_payload: dict[str, Any] | None = None, extra_params: dict[str, Any] | None = None) -> dict[str, str]:
+    def create_authorization_url(
+        self,
+        *,
+        state_payload: dict[str, Any] | None = None,
+        extra_params: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
         state = secrets.token_urlsafe(24)
         self.state_store.save(state, state_payload or {})
         params = {
@@ -99,7 +106,15 @@ class OAuthHelper:
 
 
 class GoogleOAuthHelper(OAuthHelper):
-    def __init__(self, client_id: str, client_secret: str, redirect_uri: str, *, scopes: list[str], state_store: OAuthStateStore | None = None) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        redirect_uri: str,
+        *,
+        scopes: list[str],
+        state_store: OAuthStateStore | None = None,
+    ) -> None:
         super().__init__(
             OAuthClientConfig(
                 client_id=client_id,
@@ -115,7 +130,15 @@ class GoogleOAuthHelper(OAuthHelper):
 
 
 class SlackOAuthHelper(OAuthHelper):
-    def __init__(self, client_id: str, client_secret: str, redirect_uri: str, *, scopes: list[str], state_store: OAuthStateStore | None = None) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        redirect_uri: str,
+        *,
+        scopes: list[str],
+        state_store: OAuthStateStore | None = None,
+    ) -> None:
         super().__init__(
             OAuthClientConfig(
                 client_id=client_id,

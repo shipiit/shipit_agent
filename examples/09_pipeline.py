@@ -10,6 +10,7 @@ Run:
 Requires:
     pip install 'shipit-agent[all]'
 """
+
 from __future__ import annotations
 
 import time
@@ -27,14 +28,22 @@ def word_count(text: str) -> str:
 def main() -> None:
     llm = build_llm_from_env()
 
-    researcher = Agent(llm=llm, prompt="You are a research expert. Return concise bullet points.")
-    writer = Agent(llm=llm, prompt="You are a technical writer. Write clear, engaging content.")
+    researcher = Agent(
+        llm=llm, prompt="You are a research expert. Return concise bullet points."
+    )
+    writer = Agent(
+        llm=llm, prompt="You are a technical writer. Write clear, engaging content."
+    )
 
     # --- Sequential pipeline ---
     print("=== Sequential Pipeline ===\n")
     pipe = Pipeline.sequential(
         step("research", agent=researcher, prompt="Find 3 key facts about {topic}"),
-        step("write", agent=writer, prompt="Write a short paragraph using:\n{research.output}"),
+        step(
+            "write",
+            agent=writer,
+            prompt="Write a short paragraph using:\n{research.output}",
+        ),
         step("final", fn=word_count),
     )
 
@@ -52,7 +61,11 @@ def main() -> None:
             step("pros", agent=pros, prompt="Pros of {topic}"),
             step("cons", agent=cons, prompt="Cons of {topic}"),
         ),
-        step("combine", agent=writer, prompt="Synthesize:\nPros: {pros.output}\nCons: {cons.output}"),
+        step(
+            "combine",
+            agent=writer,
+            prompt="Synthesize:\nPros: {pros.output}\nCons: {cons.output}",
+        ),
     )
 
     start = time.time()
@@ -73,7 +86,7 @@ def main() -> None:
         elif event.type == "tool_completed":
             print(f"  << {event.payload['step']}: {event.payload['output'][:60]}...")
         elif event.type == "run_completed":
-            print(f"  DONE")
+            print("  DONE")
 
 
 if __name__ == "__main__":

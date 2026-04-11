@@ -18,7 +18,9 @@ class ReasoningResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "prompt": self.prompt,
-            "outputs": {name: result.to_dict() for name, result in self.outputs.items()},
+            "outputs": {
+                name: result.to_dict() for name, result in self.outputs.items()
+            },
             "events": [event.to_dict() for event in self.events],
         }
 
@@ -41,8 +43,12 @@ class ReasoningRuntime:
         shared_state = {
             "memory_store": self.agent.memory_store,
             "credential_store": self.agent.credential_store,
-            "workspace_root": self.agent.metadata.get("workspace_root", ".shipit_workspace"),
-            "artifact_workspace_root": self.agent.metadata.get("artifact_workspace_root", ".shipit_workspace/artifacts"),
+            "workspace_root": self.agent.metadata.get(
+                "workspace_root", ".shipit_workspace"
+            ),
+            "artifact_workspace_root": self.agent.metadata.get(
+                "artifact_workspace_root", ".shipit_workspace/artifacts"
+            ),
         }
         context = ToolContext(
             prompt=prompt,
@@ -52,23 +58,60 @@ class ReasoningRuntime:
             session_id=self.agent.session_id,
         )
         result = ReasoningResult(prompt=prompt)
-        result.events.append(AgentEvent(type="reasoning_started", message="Reasoning runtime started", payload={"prompt": prompt}))
+        result.events.append(
+            AgentEvent(
+                type="reasoning_started",
+                message="Reasoning runtime started",
+                payload={"prompt": prompt},
+            )
+        )
 
         def maybe_run(tool_name: str, arguments: dict[str, Any]) -> None:
             tool = registry.get(tool_name)
             if tool is None:
                 return
-            result.events.append(AgentEvent(type="tool_called", message=f"Tool called: {tool_name}", payload={"arguments": dict(arguments), "reasoning": True}))
-            tool_result = tool_runner.run_tool_call(ToolCall(name=tool_name, arguments=arguments), context)
+            result.events.append(
+                AgentEvent(
+                    type="tool_called",
+                    message=f"Tool called: {tool_name}",
+                    payload={"arguments": dict(arguments), "reasoning": True},
+                )
+            )
+            tool_result = tool_runner.run_tool_call(
+                ToolCall(name=tool_name, arguments=arguments), context
+            )
             result.outputs[tool_name] = tool_result
-            result.events.append(AgentEvent(type="tool_completed", message=f"Tool completed: {tool_name}", payload={"output": tool_result.output, "reasoning": True}))
+            result.events.append(
+                AgentEvent(
+                    type="tool_completed",
+                    message=f"Tool completed: {tool_name}",
+                    payload={"output": tool_result.output, "reasoning": True},
+                )
+            )
 
         maybe_run("plan_task", {"goal": prompt, "constraints": list(constraints or [])})
-        maybe_run("decompose_problem", {"problem": prompt, "objective": prompt, "constraints": list(constraints or [])})
+        maybe_run(
+            "decompose_problem",
+            {
+                "problem": prompt,
+                "objective": prompt,
+                "constraints": list(constraints or []),
+            },
+        )
         if observations:
-            maybe_run("synthesize_evidence", {"observations": list(observations), "question": prompt})
+            maybe_run(
+                "synthesize_evidence",
+                {"observations": list(observations), "question": prompt},
+            )
         if options and criteria:
-            maybe_run("decision_matrix", {"decision": prompt, "options": list(options), "criteria": list(criteria)})
+            maybe_run(
+                "decision_matrix",
+                {
+                    "decision": prompt,
+                    "options": list(options),
+                    "criteria": list(criteria),
+                },
+            )
 
         result.events.append(
             AgentEvent(

@@ -100,7 +100,9 @@ class AgentResult:
             "output": self.output,
             "messages": [message.to_dict() for message in self.messages],
             "events": [event.to_dict() for event in self.events],
-            "tool_results": [tool_result.to_dict() for tool_result in self.tool_results],
+            "tool_results": [
+                tool_result.to_dict() for tool_result in self.tool_results
+            ],
             "metadata": dict(self.metadata),
             "rag_sources": [
                 src.to_dict() if hasattr(src, "to_dict") else src

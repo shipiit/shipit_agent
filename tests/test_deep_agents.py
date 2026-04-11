@@ -3,26 +3,34 @@
 Comprehensive tests for GoalAgent, ReflectiveAgent, AdaptiveAgent,
 Supervisor, PersistentAgent, Channel, and AgentBenchmark.
 """
+
 from __future__ import annotations
 
-import os
 import tempfile
-from typing import Any
 
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
-from shipit_agent.models import Message
-from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.base import ToolContext
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class JSONReplyLLM:
     def __init__(self, json_text: str):
         self._json = json_text
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         return LLMResponse(content=self._json)
 
 
@@ -30,7 +38,16 @@ class SequenceLLM:
     def __init__(self, responses: list[str]):
         self._responses = list(responses)
         self._index = 0
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         text = self._responses[min(self._index, len(self._responses) - 1)]
         self._index += 1
         return LLMResponse(content=text)
@@ -38,9 +55,19 @@ class SequenceLLM:
 
 class CountingLLM:
     """LLM that counts how many times it's been called."""
+
     def __init__(self):
         self.call_count = 0
-    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None, response_format=None):
+
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        response_format=None,
+    ):
         self.call_count += 1
         return LLMResponse(content=f"Response #{self.call_count}")
 
@@ -49,17 +76,20 @@ class CountingLLM:
 # GOAL AGENT
 # ===========================================================================
 
+
 class TestGoalAgentComprehensive:
     def test_successful_goal_completion(self):
         from shipit_agent.deep import GoalAgent, Goal
 
-        llm = SequenceLLM([
-            '{"subtasks": ["research", "implement", "test"]}',
-            "Research done",
-            '{"criteria_met": [true, false], "all_done": false, "next_action": "continue"}',
-            "Implementation done",
-            '{"criteria_met": [true, true], "all_done": true}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["research", "implement", "test"]}',
+                "Research done",
+                '{"criteria_met": [true, false], "all_done": false, "next_action": "continue"}',
+                "Implementation done",
+                '{"criteria_met": [true, true], "all_done": true}',
+            ]
+        )
         result = GoalAgent(
             llm=llm,
             goal=Goal(objective="Build app", success_criteria=["Works", "Has tests"]),
@@ -70,12 +100,14 @@ class TestGoalAgentComprehensive:
     def test_partial_goal(self):
         from shipit_agent.deep import GoalAgent, Goal
 
-        llm = SequenceLLM([
-            '{"subtasks": ["task1"]}',
-            "Did some work",
-            '{"criteria_met": [true, false], "all_done": false}',
-            '{"criteria_met": [true, false], "all_done": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["task1"]}',
+                "Did some work",
+                '{"criteria_met": [true, false], "all_done": false}',
+                '{"criteria_met": [true, false], "all_done": false}',
+            ]
+        )
         result = GoalAgent(
             llm=llm,
             goal=Goal(objective="Hard task", success_criteria=["A", "B"], max_steps=1),
@@ -86,22 +118,26 @@ class TestGoalAgentComprehensive:
     def test_goal_with_no_criteria(self):
         from shipit_agent.deep import GoalAgent, Goal
 
-        llm = SequenceLLM([
-            '{"subtasks": ["do it"]}',
-            "Done",
-            '{"criteria_met": [], "all_done": true}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["do it"]}',
+                "Done",
+                '{"criteria_met": [], "all_done": true}',
+            ]
+        )
         result = GoalAgent(llm=llm, goal=Goal(objective="Simple")).run()
         assert result.goal_status == "completed"
 
     def test_goal_result_has_step_outputs(self):
         from shipit_agent.deep import GoalAgent, Goal
 
-        llm = SequenceLLM([
-            '{"subtasks": ["step1"]}',
-            "Output of step 1",
-            '{"criteria_met": [true], "all_done": true}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["step1"]}',
+                "Output of step 1",
+                '{"criteria_met": [true], "all_done": true}',
+            ]
+        )
         result = GoalAgent(
             llm=llm,
             goal=Goal(objective="Test", success_criteria=["done"]),
@@ -112,11 +148,16 @@ class TestGoalAgentComprehensive:
     def test_goal_result_to_dict(self):
         from shipit_agent.deep import GoalAgent, Goal
 
-        llm = SequenceLLM([
-            '{"subtasks": ["x"]}', "done",
-            '{"criteria_met": [true], "all_done": true}',
-        ])
-        result = GoalAgent(llm=llm, goal=Goal(objective="Test", success_criteria=["c"])).run()
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["x"]}',
+                "done",
+                '{"criteria_met": [true], "all_done": true}',
+            ]
+        )
+        result = GoalAgent(
+            llm=llm, goal=Goal(objective="Test", success_criteria=["c"])
+        ).run()
         d = result.to_dict()
         assert "objective" in d
         assert "status" in d
@@ -128,11 +169,13 @@ class TestGoalAgentComprehensive:
         def helper() -> str:
             return "helped"
 
-        llm = SequenceLLM([
-            '{"subtasks": ["use helper"]}',
-            "Used helper",
-            '{"criteria_met": [true], "all_done": true}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"subtasks": ["use helper"]}',
+                "Used helper",
+                '{"criteria_met": [true], "all_done": true}',
+            ]
+        )
         result = GoalAgent(
             llm=llm,
             tools=[FunctionTool.from_callable(helper)],
@@ -145,17 +188,22 @@ class TestGoalAgentComprehensive:
 # REFLECTIVE AGENT
 # ===========================================================================
 
+
 class TestReflectiveAgentComprehensive:
     def test_improves_through_reflections(self):
         from shipit_agent.deep import ReflectiveAgent
 
-        llm = SequenceLLM([
-            "Draft v1",
-            '{"feedback": "too short", "quality_score": 0.4, "revision_needed": true}',
-            "Draft v2 with more detail",
-            '{"feedback": "good", "quality_score": 0.85, "revision_needed": false}',
-        ])
-        result = ReflectiveAgent(llm=llm, quality_threshold=0.8).run("Write explanation")
+        llm = SequenceLLM(
+            [
+                "Draft v1",
+                '{"feedback": "too short", "quality_score": 0.4, "revision_needed": true}',
+                "Draft v2 with more detail",
+                '{"feedback": "good", "quality_score": 0.85, "revision_needed": false}',
+            ]
+        )
+        result = ReflectiveAgent(llm=llm, quality_threshold=0.8).run(
+            "Write explanation"
+        )
         assert result.final_quality >= 0.8
         assert len(result.revisions) == 2
         assert len(result.reflections) == 2
@@ -163,10 +211,12 @@ class TestReflectiveAgentComprehensive:
     def test_stops_immediately_if_good(self):
         from shipit_agent.deep import ReflectiveAgent
 
-        llm = SequenceLLM([
-            "Perfect output",
-            '{"feedback": "perfect", "quality_score": 0.99, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Perfect output",
+                '{"feedback": "perfect", "quality_score": 0.99, "revision_needed": false}',
+            ]
+        )
         result = ReflectiveAgent(llm=llm, quality_threshold=0.8).run("Simple task")
         assert result.iterations == 1
         assert len(result.revisions) == 1
@@ -174,24 +224,30 @@ class TestReflectiveAgentComprehensive:
     def test_respects_max_reflections(self):
         from shipit_agent.deep import ReflectiveAgent
 
-        llm = SequenceLLM([
-            "Draft",
-            '{"feedback": "bad", "quality_score": 0.1, "revision_needed": true}',
-            "Better draft",
-            '{"feedback": "still bad", "quality_score": 0.2, "revision_needed": true}',
-            "Another draft",
-            '{"feedback": "still bad", "quality_score": 0.3, "revision_needed": true}',
-        ])
-        result = ReflectiveAgent(llm=llm, max_reflections=2, quality_threshold=0.9).run("Task")
+        llm = SequenceLLM(
+            [
+                "Draft",
+                '{"feedback": "bad", "quality_score": 0.1, "revision_needed": true}',
+                "Better draft",
+                '{"feedback": "still bad", "quality_score": 0.2, "revision_needed": true}',
+                "Another draft",
+                '{"feedback": "still bad", "quality_score": 0.3, "revision_needed": true}',
+            ]
+        )
+        result = ReflectiveAgent(llm=llm, max_reflections=2, quality_threshold=0.9).run(
+            "Task"
+        )
         assert result.iterations == 2  # stopped at max, not at quality
 
     def test_result_to_dict(self):
         from shipit_agent.deep import ReflectiveAgent
 
-        llm = SequenceLLM([
-            "Output",
-            '{"feedback": "ok", "quality_score": 0.9, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Output",
+                '{"feedback": "ok", "quality_score": 0.9, "revision_needed": false}',
+            ]
+        )
         result = ReflectiveAgent(llm=llm).run("Task")
         d = result.to_dict()
         assert "output" in d
@@ -201,10 +257,12 @@ class TestReflectiveAgentComprehensive:
     def test_custom_reflection_prompt(self):
         from shipit_agent.deep import ReflectiveAgent
 
-        llm = SequenceLLM([
-            "Code output",
-            '{"feedback": "no bugs", "quality_score": 0.95, "revision_needed": false}',
-        ])
+        llm = SequenceLLM(
+            [
+                "Code output",
+                '{"feedback": "no bugs", "quality_score": 0.95, "revision_needed": false}',
+            ]
+        )
         result = ReflectiveAgent(
             llm=llm,
             reflection_prompt="Check for bugs, edge cases, and performance issues.",
@@ -216,12 +274,17 @@ class TestReflectiveAgentComprehensive:
 # ADAPTIVE AGENT
 # ===========================================================================
 
+
 class TestAdaptiveAgentComprehensive:
     def test_create_simple_tool(self):
         from shipit_agent.deep import AdaptiveAgent
 
         agent = AdaptiveAgent(llm=SimpleEchoLLM())
-        tool = agent.create_tool("greet", "Greets", "def greet(name: str) -> str:\n    return f'Hello {name}'")
+        tool = agent.create_tool(
+            "greet",
+            "Greets",
+            "def greet(name: str) -> str:\n    return f'Hello {name}'",
+        )
         assert tool.name == "greet"
         output = tool.run(ToolContext(prompt="test"), name="World")
         assert output.text == "Hello World"
@@ -259,7 +322,9 @@ class TestAdaptiveAgentComprehensive:
         from shipit_agent.deep import AdaptiveAgent
 
         agent = AdaptiveAgent(llm=SimpleEchoLLM())
-        agent.create_tool("calc", "Calculator", "def calc(x: int) -> str:\n    return str(x * 2)")
+        agent.create_tool(
+            "calc", "Calculator", "def calc(x: int) -> str:\n    return str(x * 2)"
+        )
         record = agent.created_tools[0]
         assert record.name == "calc"
         assert record.description == "Calculator"
@@ -270,14 +335,17 @@ class TestAdaptiveAgentComprehensive:
 # SUPERVISOR
 # ===========================================================================
 
+
 class TestSupervisorComprehensive:
     def test_single_delegation_then_done(self):
         from shipit_agent.deep import Supervisor, Worker
 
-        llm = SequenceLLM([
-            '{"action": "delegate", "worker": "analyst", "task": "Analyze data"}',
-            '{"action": "done", "final_answer": "Analysis: positive trends"}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"action": "delegate", "worker": "analyst", "task": "Analyze data"}',
+                '{"action": "done", "final_answer": "Analysis: positive trends"}',
+            ]
+        )
         result = Supervisor(
             llm=llm,
             workers=[Worker(name="analyst", agent=Agent(llm=SimpleEchoLLM()))],
@@ -288,11 +356,13 @@ class TestSupervisorComprehensive:
     def test_multiple_delegations(self):
         from shipit_agent.deep import Supervisor, Worker
 
-        llm = SequenceLLM([
-            '{"action": "delegate", "worker": "a", "task": "Do A"}',
-            '{"action": "delegate", "worker": "b", "task": "Do B"}',
-            '{"action": "done", "final_answer": "Both done"}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"action": "delegate", "worker": "a", "task": "Do A"}',
+                '{"action": "delegate", "worker": "b", "task": "Do B"}',
+                '{"action": "done", "final_answer": "Both done"}',
+            ]
+        )
         result = Supervisor(
             llm=llm,
             workers=[
@@ -305,10 +375,12 @@ class TestSupervisorComprehensive:
     def test_unknown_worker_handled(self):
         from shipit_agent.deep import Supervisor, Worker
 
-        llm = SequenceLLM([
-            '{"action": "delegate", "worker": "ghost", "task": "Do stuff"}',
-            '{"action": "done", "final_answer": "Handled"}',
-        ])
+        llm = SequenceLLM(
+            [
+                '{"action": "delegate", "worker": "ghost", "task": "Do stuff"}',
+                '{"action": "done", "final_answer": "Handled"}',
+            ]
+        )
         result = Supervisor(
             llm=llm,
             workers=[Worker(name="real", agent=Agent(llm=SimpleEchoLLM()))],
@@ -341,13 +413,19 @@ class TestSupervisorComprehensive:
 
     def test_worker_capabilities(self):
         from shipit_agent.deep import Worker
-        w = Worker(name="dev", agent=Agent(llm=SimpleEchoLLM()), capabilities=["python", "testing"])
+
+        w = Worker(
+            name="dev",
+            agent=Agent(llm=SimpleEchoLLM()),
+            capabilities=["python", "testing"],
+        )
         assert "python" in w.capabilities
 
 
 # ===========================================================================
 # PERSISTENT AGENT
 # ===========================================================================
+
 
 class TestPersistentAgentComprehensive:
     def test_save_and_load_checkpoint(self):
@@ -356,7 +434,9 @@ class TestPersistentAgentComprehensive:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = PersistentAgent(llm=SimpleEchoLLM(), checkpoint_dir=tmpdir)
-            cp = Checkpoint(agent_id="test", step=5, state={"task": "x"}, outputs=["a", "b"])
+            cp = Checkpoint(
+                agent_id="test", step=5, state={"task": "x"}, outputs=["a", "b"]
+            )
             agent._save_checkpoint(cp)
 
             loaded = agent._load_checkpoint("test")
@@ -387,7 +467,9 @@ class TestPersistentAgentComprehensive:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agent = PersistentAgent(llm=SimpleEchoLLM(), checkpoint_dir=tmpdir)
-            agent._save_checkpoint(Checkpoint(agent_id="s1", step=10, outputs=["x"] * 10))
+            agent._save_checkpoint(
+                Checkpoint(agent_id="s1", step=10, outputs=["x"] * 10)
+            )
             status = agent.status("s1")
             assert status["state"] == "paused"
             assert status["steps_done"] == 10
@@ -407,6 +489,7 @@ class TestPersistentAgentComprehensive:
 # ===========================================================================
 # CHANNEL
 # ===========================================================================
+
 
 class TestChannelComprehensive:
     def test_send_receive_roundtrip(self):
@@ -463,6 +546,7 @@ class TestChannelComprehensive:
 # ===========================================================================
 # BENCHMARK
 # ===========================================================================
+
 
 class TestBenchmarkComprehensive:
     def test_all_pass(self):

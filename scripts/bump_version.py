@@ -21,6 +21,7 @@ Exit codes:
     3 = required file not found or unparseable
     4 = no [Unreleased] section to promote
 """
+
 from __future__ import annotations
 
 import re
@@ -83,7 +84,7 @@ def read_current_version() -> str:
     text = PYPROJECT.read_text(encoding="utf-8")
     match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
     if not match:
-        fail(3, "could not find `version = \"...\"` in pyproject.toml")
+        fail(3, 'could not find `version = "..."` in pyproject.toml')
     return match.group(1)
 
 
@@ -149,7 +150,9 @@ def bump_changelog(new_version: str, release_date: str) -> None:
 
 def read_current_version_from_text(changelog_text: str) -> str:
     """Find the most recent version header in CHANGELOG.md."""
-    match = re.search(r"^## \[(\d+\.\d+\.\d+(?:[-.][\w.]+)?)\]", changelog_text, re.MULTILINE)
+    match = re.search(
+        r"^## \[(\d+\.\d+\.\d+(?:[-.][\w.]+)?)\]", changelog_text, re.MULTILINE
+    )
     if match:
         return match.group(1)
     return "0.0.0"
@@ -172,7 +175,7 @@ def bump_docs_changelog(new_version: str, release_date: str) -> None:
     else:
         # Insert new version header BEFORE the first existing one
         insertion = f"## v{new_version} — {release_date}\n\n_Release notes in progress. See CHANGELOG.md for details._\n\n---\n\n"
-        new_text = text[: match.start()] + insertion + text[match.start():]
+        new_text = text[: match.start()] + insertion + text[match.start() :]
 
     DOCS_CHANGELOG.write_text(new_text, encoding="utf-8")
 
@@ -220,10 +223,16 @@ def main() -> int:
     print()
     print(f"{BOLD}Next steps:{RESET}")
     print(f"  1. Review the diff:          {DIM}git diff{RESET}")
-    print(f"  2. Fill in real notes:       {DIM}edit CHANGELOG.md + docs/changelog.md{RESET}")
+    print(
+        f"  2. Fill in real notes:       {DIM}edit CHANGELOG.md + docs/changelog.md{RESET}"
+    )
     print(f"  3. Run full pre-flight:      {DIM}make new-release{RESET}")
-    print(f"  4. Commit:                   {DIM}git add -A && git commit -m 'release: v{new_version}'{RESET}")
-    print(f"  5. Tag:                      {DIM}git tag -a v{new_version} -m 'shipit-agent {new_version}'{RESET}")
+    print(
+        f"  4. Commit:                   {DIM}git add -A && git commit -m 'release: v{new_version}'{RESET}"
+    )
+    print(
+        f"  5. Tag:                      {DIM}git tag -a v{new_version} -m 'shipit-agent {new_version}'{RESET}"
+    )
     print(f"  6. Push:                     {DIM}git push origin main --tags{RESET}")
     print(f"  7. Publish to PyPI:          {DIM}make publish{RESET}")
 

@@ -7,17 +7,22 @@ and AgentBenchmark — the features that put SHIPIT beyond LangChain.
 Run:
     python examples/11_deep_agents.py
 """
+
 from __future__ import annotations
 
 from examples.run_multi_tool_agent import build_llm_from_env
 from shipit_agent import Agent
 from shipit_agent.deep import (
-    GoalAgent, Goal,
+    GoalAgent,
+    Goal,
     ReflectiveAgent,
-    Supervisor, Worker,
+    Supervisor,
+    Worker,
     AdaptiveAgent,
-    Channel, AgentMessage,
-    AgentBenchmark, TestCase,
+    Channel,
+    AgentMessage,
+    AgentBenchmark,
+    TestCase,
 )
 from shipit_agent.tools.base import ToolContext
 
@@ -31,13 +36,21 @@ def demo_goal_agent(llm) -> None:
         llm=llm,
         goal=Goal(
             objective="Explain 3 sorting algorithms with time complexity",
-            success_criteria=["Covers bubble sort, merge sort, quick sort", "Includes Big-O"],
+            success_criteria=[
+                "Covers bubble sort, merge sort, quick sort",
+                "Includes Big-O",
+            ],
             max_steps=3,
         ),
     )
 
     for event in agent.stream():
-        if event.type in ("run_started", "planning_completed", "step_started", "run_completed"):
+        if event.type in (
+            "run_started",
+            "planning_completed",
+            "step_started",
+            "run_completed",
+        ):
             print(f"  [{event.type:22s}] {event.message[:70]}")
 
 
@@ -55,7 +68,9 @@ def demo_reflective_agent(llm) -> None:
 
     for event in agent.stream("Explain how a hash table works"):
         if event.type == "reasoning_completed":
-            print(f"  REFLECTION: quality={event.payload.get('quality', '?'):.2f} — {event.payload.get('feedback', '')[:60]}")
+            print(
+                f"  REFLECTION: quality={event.payload.get('quality', '?'):.2f} — {event.payload.get('feedback', '')[:60]}"
+            )
         elif event.type == "run_completed":
             print(f"  DONE: {event.message}")
 
@@ -68,8 +83,13 @@ def demo_supervisor(llm) -> None:
     supervisor = Supervisor(
         llm=llm,
         workers=[
-            Worker(name="analyst", agent=Agent(llm=llm, prompt="You are a data analyst. Be concise.")),
-            Worker(name="writer", agent=Agent(llm=llm, prompt="You write clear summaries.")),
+            Worker(
+                name="analyst",
+                agent=Agent(llm=llm, prompt="You are a data analyst. Be concise."),
+            ),
+            Worker(
+                name="writer", agent=Agent(llm=llm, prompt="You write clear summaries.")
+            ),
         ],
         max_delegations=4,
     )
@@ -87,13 +107,17 @@ def demo_adaptive_agent(llm) -> None:
 
     agent = AdaptiveAgent(llm=llm, can_create_tools=True)
 
-    fib = agent.create_tool("fibonacci", "Fibonacci calculator", """
+    fib = agent.create_tool(
+        "fibonacci",
+        "Fibonacci calculator",
+        """
     def fibonacci(n: int) -> str:
         a, b = 0, 1
         for _ in range(n):
             a, b = b, a + b
         return str(a)
-    """)
+    """,
+    )
 
     print(f"  Created: {fib.name}")
     print(f"  fibonacci(10) = {fib.run(ToolContext(prompt='test'), n=10).text}")
@@ -108,8 +132,23 @@ def demo_channel() -> None:
 
     channel = Channel(name="demo-pipeline")
 
-    channel.send(AgentMessage(from_agent="researcher", to_agent="writer", type="findings", data={"facts": ["Fact 1", "Fact 2"]}, requires_ack=True))
-    channel.send(AgentMessage(from_agent="researcher", to_agent="reviewer", type="summary", data={"text": "Summary here"}))
+    channel.send(
+        AgentMessage(
+            from_agent="researcher",
+            to_agent="writer",
+            type="findings",
+            data={"facts": ["Fact 1", "Fact 2"]},
+            requires_ack=True,
+        )
+    )
+    channel.send(
+        AgentMessage(
+            from_agent="researcher",
+            to_agent="reviewer",
+            type="summary",
+            data={"text": "Summary here"},
+        )
+    )
 
     msg = channel.receive(agent="writer")
     print(f"  Writer got: {msg.type} from {msg.from_agent} — {msg.data}")
@@ -129,7 +168,9 @@ def demo_benchmark(llm) -> None:
     report = AgentBenchmark(
         name="knowledge-eval",
         cases=[
-            TestCase(input="What is Python?", expected_contains=["python", "programming"]),
+            TestCase(
+                input="What is Python?", expected_contains=["python", "programming"]
+            ),
             TestCase(input="Explain REST APIs", expected_contains=["http"]),
             TestCase(input="What is Docker?", expected_contains=["container"]),
         ],

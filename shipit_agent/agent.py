@@ -109,6 +109,7 @@ class Agent:
         effective_user_prompt = user_prompt
         if output_schema:
             from shipit_agent.structured import build_schema_prompt
+
             effective_user_prompt = user_prompt + build_schema_prompt(output_schema)
 
         if self.rag is not None:
@@ -145,6 +146,7 @@ class Agent:
         if output_schema and response.content:
             try:
                 from shipit_agent.structured import parse_structured_output
+
                 parsed = parse_structured_output(response.content, output_schema)
             except Exception:
                 parsed = None
@@ -207,7 +209,9 @@ class Agent:
     def doctor(self, *, env: dict[str, str] | None = None) -> DoctorReport:
         return AgentDoctor(env=env).inspect(self)
 
-    def chat_session(self, *, session_id: str, trace_id: str | None = None) -> AgentChatSession:
+    def chat_session(
+        self, *, session_id: str, trace_id: str | None = None
+    ) -> AgentChatSession:
         return AgentChatSession(agent=self, session_id=session_id, trace_id=trace_id)
 
     def reason(

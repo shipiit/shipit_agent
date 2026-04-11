@@ -12,7 +12,9 @@ def _ctx() -> ToolContext:
 
 def _rag_with_docs() -> RAG:
     rag = RAG.default(embedder=HashingEmbedder(dimension=256))
-    rag.index_text("Shipit supports Python 3.10+.", document_id="readme", source="readme")
+    rag.index_text(
+        "Shipit supports Python 3.10+.", document_id="readme", source="readme"
+    )
     rag.index_text(
         "The agent streams events in real time.",
         document_id="streaming",

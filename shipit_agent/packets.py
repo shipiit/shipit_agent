@@ -38,11 +38,15 @@ def websocket_result_packet(result: AgentResult) -> dict[str, Any]:
 
 
 def sse_event_packet(event: AgentEvent) -> str:
-    return f"event: {event.type}\ndata: {json.dumps(event.to_dict(), sort_keys=True)}\n\n"
+    return (
+        f"event: {event.type}\ndata: {json.dumps(event.to_dict(), sort_keys=True)}\n\n"
+    )
 
 
 def sse_result_packet(result: AgentResult) -> str:
-    return f"event: agent_result\ndata: {json.dumps(result.to_dict(), sort_keys=True)}\n\n"
+    return (
+        f"event: agent_result\ndata: {json.dumps(result.to_dict(), sort_keys=True)}\n\n"
+    )
 
 
 def sse_event_stream(events: Iterable[AgentEvent]) -> list[str]:

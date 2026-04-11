@@ -1,10 +1,9 @@
 """Extended RAG coverage: concurrency, deep-agent wiring, prompt injection, edge cases."""
+
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
 
-import pytest
 
 from shipit_agent.agent import Agent
 from shipit_agent.deep.adaptive_agent import AdaptiveAgent
@@ -17,7 +16,7 @@ from shipit_agent.rag.chunker import DocumentChunker
 from shipit_agent.rag.embedder import HashingEmbedder
 from shipit_agent.rag.keyword_store import InMemoryBM25Store
 from shipit_agent.rag.rag import RAG
-from shipit_agent.rag.types import Chunk, Document, IndexFilters, RAGContext, SearchResult
+from shipit_agent.rag.types import Chunk, Document, IndexFilters, RAGContext
 from shipit_agent.rag.vector_store import InMemoryVectorStore
 
 
@@ -31,7 +30,9 @@ class _DummyLLM:
 
 def _seeded_rag() -> RAG:
     rag = RAG.default(embedder=HashingEmbedder(dimension=256))
-    rag.index_text("python is a programming language", document_id="d1", source="readme")
+    rag.index_text(
+        "python is a programming language", document_id="d1", source="readme"
+    )
     rag.index_text("rust is a systems language", document_id="d2", source="readme")
     return rag
 
@@ -62,8 +63,10 @@ def test_concurrent_runs_do_not_leak_sources():
 
     t1 = threading.Thread(target=worker_a)
     t2 = threading.Thread(target=worker_b)
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
 
     assert captured_a == [1]
     assert captured_b == [1]
@@ -183,7 +186,9 @@ def test_chunker_handles_unicode():
 
 def test_chunker_custom_target_tokens():
     chunker = DocumentChunker(target_tokens=50, overlap_tokens=0)
-    doc = Document(id="d1", content=". ".join(f"sentence number {i}" for i in range(30)))
+    doc = Document(
+        id="d1", content=". ".join(f"sentence number {i}" for i in range(30))
+    )
     chunks = chunker.chunk(doc)
     assert len(chunks) >= 2
 
@@ -196,15 +201,17 @@ def test_chunker_custom_target_tokens():
 def test_vector_store_search_empty_top_k_returns_empty():
     emb = HashingEmbedder(dimension=64)
     store = InMemoryVectorStore()
-    store.add([
-        Chunk(
-            id="d1::0",
-            document_id="d1",
-            chunk_index=0,
-            text="x",
-            embedding=emb.embed(["x"])[0],
-        )
-    ])
+    store.add(
+        [
+            Chunk(
+                id="d1::0",
+                document_id="d1",
+                chunk_index=0,
+                text="x",
+                embedding=emb.embed(["x"])[0],
+            )
+        ]
+    )
     q = emb.embed(["x"])[0]
     assert store.search(q, top_k=0) == []
 
@@ -224,9 +231,16 @@ def test_index_filters_time_min_without_created_at_rejects():
 
 def test_keyword_store_handles_unicode_and_punctuation():
     store = InMemoryBM25Store()
-    store.add([
-        Chunk(id="d1::0", document_id="d1", chunk_index=0, text="Python! Python? Python."),
-    ])
+    store.add(
+        [
+            Chunk(
+                id="d1::0",
+                document_id="d1",
+                chunk_index=0,
+                text="Python! Python? Python.",
+            ),
+        ]
+    )
     results = store.search("python", top_k=1)
     assert results
     assert results[0][1] > 0

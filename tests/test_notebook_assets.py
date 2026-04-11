@@ -36,7 +36,9 @@ def test_additional_notebooks_exist_for_major_agent_scenarios() -> None:
         notebook_path = ROOT / "notebooks" / notebook_name
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
         assert notebook["nbformat"] == 4
-        joined = "\n".join("".join(cell.get("source", [])) for cell in notebook["cells"])
+        joined = "\n".join(
+            "".join(cell.get("source", [])) for cell in notebook["cells"]
+        )
         assert marker in joined
 
 

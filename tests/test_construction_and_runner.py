@@ -1,5 +1,10 @@
 from shipit_agent import ToolRunner, construct_tool_registry, get_builtin_tools
-from shipit_agent.llms import BedrockChatLLM, GeminiChatLLM, SimpleEchoLLM, VertexAIChatLLM
+from shipit_agent.llms import (
+    BedrockChatLLM,
+    GeminiChatLLM,
+    SimpleEchoLLM,
+    VertexAIChatLLM,
+)
 from shipit_agent.models import ToolCall
 from shipit_agent.tools import FunctionTool, ToolContext
 
@@ -36,6 +41,7 @@ def test_tool_runner_strips_reserved_arg_names() -> None:
     The runner must strip ``context`` (and other Python-reserved names like
     ``self``) from tool-call arguments before forwarding.
     """
+
     def add(a: int, b: int) -> str:
         return str(a + b)
 
@@ -46,7 +52,12 @@ def test_tool_runner_strips_reserved_arg_names() -> None:
     result = runner.run_tool_call(
         ToolCall(
             name="add",
-            arguments={"a": 1, "b": 2, "context": "should be stripped", "self": "ignored"},
+            arguments={
+                "a": 1,
+                "b": 2,
+                "context": "should be stripped",
+                "self": "ignored",
+            },
         ),
         ToolContext(prompt="sum"),
     )

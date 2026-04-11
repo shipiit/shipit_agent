@@ -4,6 +4,7 @@ Each tool follows the :class:`shipit_agent.tools.base.Tool` protocol and
 forwards to a bound :class:`RAG` instance. Tools emit JSON payloads with
 chunk ids and sources so the agent can cite them in its final answer.
 """
+
 from __future__ import annotations
 
 import json
@@ -84,7 +85,9 @@ class RAGSearchTool:
         payload = {
             "query": query,
             "total_found": ctx.total_found,
-            "results": [_summarise_result(i, r) for i, r in enumerate(ctx.results, start=1)],
+            "results": [
+                _summarise_result(i, r) for i, r in enumerate(ctx.results, start=1)
+            ],
         }
         return ToolOutput(
             text=json.dumps(payload, indent=2),
@@ -149,7 +152,9 @@ class RAGFetchChunkTool:
             chunks_below=chunks_below,
         )
         if chunk is None:
-            return ToolOutput(text=json.dumps({"error": f"chunk {chunk_id!r} not found"}))
+            return ToolOutput(
+                text=json.dumps({"error": f"chunk {chunk_id!r} not found"})
+            )
         payload: dict[str, Any] = {
             "chunk_id": chunk.id,
             "document_id": chunk.document_id,

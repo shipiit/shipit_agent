@@ -22,7 +22,10 @@ class WorkspaceConventionTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "topic": {"type": "string", "description": "Convention area to explain"},
+                        "topic": {
+                            "type": "string",
+                            "description": "Convention area to explain",
+                        },
                     },
                     "required": ["topic"],
                 },

@@ -1,4 +1,5 @@
 """The :class:`RAG` facade — the primary user-facing entry point."""
+
 from __future__ import annotations
 
 import threading
@@ -11,7 +12,7 @@ from .chunker import DocumentChunker, make_document_id
 from .embedder import Embedder, coerce_embedder
 from .extractors import TextExtractor
 from .keyword_store import InMemoryBM25Store, KeywordStore
-from .reranker import LLMReranker, Reranker
+from .reranker import Reranker
 from .search_pipeline import HybridSearchPipeline
 from .types import (
     Chunk,

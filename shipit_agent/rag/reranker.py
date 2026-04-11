@@ -1,4 +1,5 @@
 """Reranker protocol + LLM-as-judge default implementation."""
+
 from __future__ import annotations
 
 import json
@@ -99,8 +100,12 @@ class LLMReranker:
                 query=query,
                 candidates=_format_candidates(batch),
             )
-            response = self.llm.complete(messages=[Message(role="user", content=prompt)])
-            raw_scores = _parse_scores(getattr(response, "content", "") or "", len(batch))
+            response = self.llm.complete(
+                messages=[Message(role="user", content=prompt)]
+            )
+            raw_scores = _parse_scores(
+                getattr(response, "content", "") or "", len(batch)
+            )
             for chunk, score in zip(batch, raw_scores):
                 scored.append((chunk, score / 10.0))
         scored.sort(key=lambda item: item[1], reverse=True)

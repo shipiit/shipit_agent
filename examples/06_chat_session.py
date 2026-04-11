@@ -15,11 +15,12 @@ the second run still has the memory from the first.
 To reset:
     rm -rf .shipit_sessions/chat-demo
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
-from shipit_agent import Agent, FileSessionStore
+from shipit_agent import FileSessionStore
 
 from examples.run_multi_tool_agent import build_demo_agent, build_llm_from_env
 

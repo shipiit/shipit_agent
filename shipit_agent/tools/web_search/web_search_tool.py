@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
-from shipit_agent.tools.web_search.providers import SearchProvider, build_search_provider
+from shipit_agent.tools.web_search.providers import (
+    SearchProvider,
+    build_search_provider,
+)
 from .prompt import WEB_SEARCH_PROMPT
 
 
@@ -16,7 +19,9 @@ class WebSearchTool:
         description: str = "Search the web and return structured search results.",
         prompt: str | None = None,
     ) -> None:
-        self.provider = build_search_provider(provider, api_key=api_key, config=provider_config)
+        self.provider = build_search_provider(
+            provider, api_key=api_key, config=provider_config
+        )
         self.provider_name = getattr(
             self.provider,
             "name",
@@ -40,7 +45,11 @@ class WebSearchTool:
                     "type": "object",
                     "properties": {
                         "query": {"type": "string", "description": "Search query"},
-                        "max_results": {"type": "number", "description": "Maximum results", "default": 5},
+                        "max_results": {
+                            "type": "number",
+                            "description": "Maximum results",
+                            "default": 5,
+                        },
                     },
                     "required": ["query"],
                 },
@@ -60,5 +69,9 @@ class WebSearchTool:
             )
         return ToolOutput(
             text="\n\n".join(lines) if lines else "No results found.",
-            metadata={"query": query, "results": results, "provider": self.provider_name},
+            metadata={
+                "query": query,
+                "results": results,
+                "provider": self.provider_name,
+            },
         )

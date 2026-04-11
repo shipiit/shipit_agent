@@ -18,9 +18,7 @@ class SubAgentTool:
         self.name = name
         self.description = description
         self.prompt = prompt or SUB_AGENT_PROMPT
-        self.prompt_instructions = (
-            "Use this for side tasks like summarization, analysis, translation, or focused research."
-        )
+        self.prompt_instructions = "Use this for side tasks like summarization, analysis, translation, or focused research."
 
     def schema(self) -> dict:
         return {
@@ -32,7 +30,10 @@ class SubAgentTool:
                     "type": "object",
                     "properties": {
                         "task": {"type": "string", "description": "Delegated task"},
-                        "context": {"type": "string", "description": "Optional supporting context"},
+                        "context": {
+                            "type": "string",
+                            "description": "Optional supporting context",
+                        },
                     },
                     "required": ["task"],
                 },

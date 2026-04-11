@@ -56,7 +56,9 @@ class Channel:
         self._queues[target].put(message)
         self._history.append(message)
 
-    def receive(self, *, agent: str, timeout: float | None = None) -> AgentMessage | None:
+    def receive(
+        self, *, agent: str, timeout: float | None = None
+    ) -> AgentMessage | None:
         """Receive the next message for an agent."""
         if agent not in self._queues:
             self._queues[agent] = queue.Queue()

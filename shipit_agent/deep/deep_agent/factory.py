@@ -51,6 +51,7 @@ Live chat::
     for event in chat.stream("Hi"):
         print(event.message)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -419,7 +420,9 @@ class DeepAgent:
     # ---- verification --------------------------------------------------
 
     def _post_verify(self, result: AgentResult) -> None:
-        result.metadata["verification"] = verify_text(result.output or "", goal=self.goal)
+        result.metadata["verification"] = verify_text(
+            result.output or "", goal=self.goal
+        )
 
     # ====================================================================
     # Live chat
@@ -509,6 +512,7 @@ def create_deep_agent(
     for tool in tools or []:
         if callable(tool) and not hasattr(tool, "schema"):
             from shipit_agent.tools import FunctionTool
+
             extra_tools.append(FunctionTool.from_callable(tool))
         else:
             extra_tools.append(tool)

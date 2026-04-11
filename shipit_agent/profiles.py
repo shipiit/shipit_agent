@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shipit_agent.mcp import MCPServer
+
+if TYPE_CHECKING:
+    from shipit_agent.agent import Agent
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
 from shipit_agent.tools import Tool
@@ -123,7 +126,7 @@ class AgentProfileBuilder:
             replan_interval=self._replan_interval,
         )
 
-    def build(self, *, llm: Any) -> "Agent":
+    def build(self, *, llm: Any) -> Agent:
         from shipit_agent.agent import Agent
 
         profile = self.build_profile()

@@ -24,9 +24,7 @@ class GmailTool:
         self.name = name
         self.description = description
         self.prompt = prompt or GMAIL_PROMPT
-        self.prompt_instructions = (
-            "Use this for inbox search, message lookup, labels, drafts, sending email, and Gmail thread context."
-        )
+        self.prompt_instructions = "Use this for inbox search, message lookup, labels, drafts, sending email, and Gmail thread context."
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -51,17 +49,56 @@ class GmailTool:
                             "description": "Gmail action to perform",
                             "default": "search",
                         },
-                        "query": {"type": "string", "description": 'Gmail query like "from:john unread" or "invoice"'},
-                        "max_results": {"type": "integer", "description": "Maximum number of messages to return", "default": 10},
-                        "message_id": {"type": "string", "description": "Message ID for read_message"},
-                        "thread_id": {"type": "string", "description": "Thread ID for read_thread"},
-                        "attachment_id": {"type": "string", "description": "Attachment ID for get_attachment"},
-                        "filename": {"type": "string", "description": "Attachment filename for display"},
-                        "include_body": {"type": "boolean", "description": "Include decoded body content in the response", "default": True},
-                        "include_attachments": {"type": "boolean", "description": "Include attachment metadata in the response", "default": True},
-                        "to": {"type": "array", "items": {"type": "string"}, "description": "Recipient email list"},
-                        "cc": {"type": "array", "items": {"type": "string"}, "description": "CC email list"},
-                        "bcc": {"type": "array", "items": {"type": "string"}, "description": "BCC email list"},
+                        "query": {
+                            "type": "string",
+                            "description": 'Gmail query like "from:john unread" or "invoice"',
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Maximum number of messages to return",
+                            "default": 10,
+                        },
+                        "message_id": {
+                            "type": "string",
+                            "description": "Message ID for read_message",
+                        },
+                        "thread_id": {
+                            "type": "string",
+                            "description": "Thread ID for read_thread",
+                        },
+                        "attachment_id": {
+                            "type": "string",
+                            "description": "Attachment ID for get_attachment",
+                        },
+                        "filename": {
+                            "type": "string",
+                            "description": "Attachment filename for display",
+                        },
+                        "include_body": {
+                            "type": "boolean",
+                            "description": "Include decoded body content in the response",
+                            "default": True,
+                        },
+                        "include_attachments": {
+                            "type": "boolean",
+                            "description": "Include attachment metadata in the response",
+                            "default": True,
+                        },
+                        "to": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Recipient email list",
+                        },
+                        "cc": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "CC email list",
+                        },
+                        "bcc": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "BCC email list",
+                        },
                         "subject": {"type": "string", "description": "Email subject"},
                         "body": {"type": "string", "description": "Email body content"},
                     },
@@ -92,7 +129,9 @@ class GmailTool:
         try:
             from googleapiclient.discovery import build
         except ImportError as exc:
-            raise RuntimeError("Install `google-api-python-client` and `google-auth` to use GmailTool.") from exc
+            raise RuntimeError(
+                "Install `google-api-python-client` and `google-auth` to use GmailTool."
+            ) from exc
 
         creds = self._build_google_creds(record.secrets)
         return build("gmail", "v1", credentials=creds)
@@ -107,7 +146,10 @@ class GmailTool:
         return gmail_query.strip()
 
     def _message_headers(self, message: dict[str, Any]) -> dict[str, str]:
-        return {header["name"]: header["value"] for header in message.get("payload", {}).get("headers", [])}
+        return {
+            header["name"]: header["value"]
+            for header in message.get("payload", {}).get("headers", [])
+        }
 
     def _decode_base64_data(self, raw: str | None) -> str:
         if not raw:
@@ -158,12 +200,18 @@ class GmailTool:
             plain_parts.append(self._decode_base64_data(payload["body"]["data"]))
 
         return {
-            "body_text": "\n\n".join(item.strip() for item in plain_parts if item.strip()).strip(),
-            "body_html": "\n".join(item.strip() for item in html_parts if item.strip()).strip(),
+            "body_text": "\n\n".join(
+                item.strip() for item in plain_parts if item.strip()
+            ).strip(),
+            "body_html": "\n".join(
+                item.strip() for item in html_parts if item.strip()
+            ).strip(),
             "attachments": attachments,
         }
 
-    def _message_preview(self, message: dict[str, Any], message_id: str) -> dict[str, Any]:
+    def _message_preview(
+        self, message: dict[str, Any], message_id: str
+    ) -> dict[str, Any]:
         headers = self._message_headers(message)
         return {
             "id": message_id,
@@ -188,7 +236,9 @@ class GmailTool:
             f"URL: {item['url']}"
         )
 
-    def _format_detailed_message(self, item: dict[str, Any], *, include_body: bool, include_attachments: bool) -> str:
+    def _format_detailed_message(
+        self, item: dict[str, Any], *, include_body: bool, include_attachments: bool
+    ) -> str:
         lines = [self._format_preview(item)]
         if include_body:
             body_text = str(item.get("body_text", "")).strip()
@@ -205,7 +255,9 @@ class GmailTool:
             lines.append("Attachments:\n" + "\n".join(attachment_lines))
         return "\n\n".join(lines)
 
-    def _build_detailed_item(self, message: dict[str, Any], message_id: str) -> dict[str, Any]:
+    def _build_detailed_item(
+        self, message: dict[str, Any], message_id: str
+    ) -> dict[str, Any]:
         preview = self._message_preview(message, message_id)
         details = self._extract_message_content(message)
         return {
@@ -215,7 +267,15 @@ class GmailTool:
             "attachments": details["attachments"],
         }
 
-    def _format_attachment_output(self, *, message_id: str, attachment_id: str, filename: str, mime_type: str, raw_bytes: bytes) -> ToolOutput:
+    def _format_attachment_output(
+        self,
+        *,
+        message_id: str,
+        attachment_id: str,
+        filename: str,
+        mime_type: str,
+        raw_bytes: bytes,
+    ) -> ToolOutput:
         preview_text = raw_bytes.decode("utf-8", errors="replace")
         preview_snippet = preview_text[:400]
         metadata: dict[str, Any] = {
@@ -250,7 +310,9 @@ class GmailTool:
             )
         return ToolOutput(text=text, metadata=metadata)
 
-    def _encode_email(self, *, to: list[str], cc: list[str], bcc: list[str], subject: str, body: str) -> str:
+    def _encode_email(
+        self, *, to: list[str], cc: list[str], bcc: list[str], subject: str, body: str
+    ) -> str:
         message = EmailMessage()
         message["To"] = ", ".join(to)
         if cc:
@@ -264,13 +326,20 @@ class GmailTool:
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
         store = self._resolve_store(context)
         if store is None:
-            return ToolOutput(text="No credential store configured for Gmail.", metadata={"provider": "gmail", "connected": False})
+            return ToolOutput(
+                text="No credential store configured for Gmail.",
+                metadata={"provider": "gmail", "connected": False},
+            )
 
         record = store.get(self.credential_key)
         if record is None:
             return ToolOutput(
                 text="Gmail is not connected. Configure a Gmail credential record first.",
-                metadata={"provider": "gmail", "connected": False, "credential_key": self.credential_key},
+                metadata={
+                    "provider": "gmail",
+                    "connected": False,
+                    "credential_key": self.credential_key,
+                },
             )
 
         action = str(kwargs.get("action", "search")).strip().lower()
@@ -280,21 +349,37 @@ class GmailTool:
             query = str(kwargs.get("query", "")).strip()
             max_results = int(kwargs.get("max_results", 10))
             gmail_query = self._gmail_query(query)
-            results = service.users().messages().list(userId="me", q=gmail_query, maxResults=max_results).execute()
+            results = (
+                service.users()
+                .messages()
+                .list(userId="me", q=gmail_query, maxResults=max_results)
+                .execute()
+            )
             messages = results.get("messages", [])
             if not messages:
                 return ToolOutput(
                     text=f"No Gmail messages found for: {query}",
-                    metadata={"provider": "gmail", "connected": True, "action": action, "query": query, "count": 0},
+                    metadata={
+                        "provider": "gmail",
+                        "connected": True,
+                        "action": action,
+                        "query": query,
+                        "count": 0,
+                    },
                 )
             items: list[dict[str, Any]] = []
             for msg_ref in messages[:max_results]:
-                msg = service.users().messages().get(
-                    userId="me",
-                    id=msg_ref["id"],
-                    format="metadata",
-                    metadataHeaders=["From", "To", "Subject", "Date"],
-                ).execute()
+                msg = (
+                    service.users()
+                    .messages()
+                    .get(
+                        userId="me",
+                        id=msg_ref["id"],
+                        format="metadata",
+                        metadataHeaders=["From", "To", "Subject", "Date"],
+                    )
+                    .execute()
+                )
                 items.append(self._message_preview(msg, msg_ref["id"]))
             return ToolOutput(
                 text="\n\n".join(self._format_preview(item) for item in items),
@@ -313,45 +398,101 @@ class GmailTool:
         if action == "read_message":
             message_id = str(kwargs.get("message_id", "")).strip()
             if not message_id:
-                return ToolOutput(text="message_id is required for read_message.", metadata={"provider": "gmail", "action": action})
+                return ToolOutput(
+                    text="message_id is required for read_message.",
+                    metadata={"provider": "gmail", "action": action},
+                )
             include_body = bool(kwargs.get("include_body", True))
             include_attachments = bool(kwargs.get("include_attachments", True))
-            msg = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+            msg = (
+                service.users()
+                .messages()
+                .get(userId="me", id=message_id, format="full")
+                .execute()
+            )
             item = self._build_detailed_item(msg, message_id)
             return ToolOutput(
-                text=self._format_detailed_message(item, include_body=include_body, include_attachments=include_attachments),
-                metadata={"provider": "gmail", "connected": True, "action": action, "item": item, "credential_key": self.credential_key},
+                text=self._format_detailed_message(
+                    item,
+                    include_body=include_body,
+                    include_attachments=include_attachments,
+                ),
+                metadata={
+                    "provider": "gmail",
+                    "connected": True,
+                    "action": action,
+                    "item": item,
+                    "credential_key": self.credential_key,
+                },
             )
 
         if action == "read_thread":
             thread_id = str(kwargs.get("thread_id", "")).strip()
             if not thread_id:
-                return ToolOutput(text="thread_id is required for read_thread.", metadata={"provider": "gmail", "action": action})
+                return ToolOutput(
+                    text="thread_id is required for read_thread.",
+                    metadata={"provider": "gmail", "action": action},
+                )
             include_body = bool(kwargs.get("include_body", True))
             include_attachments = bool(kwargs.get("include_attachments", True))
-            thread = service.users().threads().get(userId="me", id=thread_id, format="full").execute()
+            thread = (
+                service.users()
+                .threads()
+                .get(userId="me", id=thread_id, format="full")
+                .execute()
+            )
             messages = thread.get("messages", [])
-            items = [self._build_detailed_item(message, message["id"]) for message in messages]
+            items = [
+                self._build_detailed_item(message, message["id"])
+                for message in messages
+            ]
             return ToolOutput(
-                text="\n\n".join(self._format_detailed_message(item, include_body=include_body, include_attachments=include_attachments) for item in items) if items else f"No messages found in thread {thread_id}.",
-                metadata={"provider": "gmail", "connected": True, "action": action, "thread_id": thread_id, "items": items, "count": len(items), "credential_key": self.credential_key},
+                text="\n\n".join(
+                    self._format_detailed_message(
+                        item,
+                        include_body=include_body,
+                        include_attachments=include_attachments,
+                    )
+                    for item in items
+                )
+                if items
+                else f"No messages found in thread {thread_id}.",
+                metadata={
+                    "provider": "gmail",
+                    "connected": True,
+                    "action": action,
+                    "thread_id": thread_id,
+                    "items": items,
+                    "count": len(items),
+                    "credential_key": self.credential_key,
+                },
             )
 
         if action == "get_attachment":
             message_id = str(kwargs.get("message_id", "")).strip()
             attachment_id = str(kwargs.get("attachment_id", "")).strip()
-            filename = str(kwargs.get("filename", "")).strip() or attachment_id or "attachment"
+            filename = (
+                str(kwargs.get("filename", "")).strip() or attachment_id or "attachment"
+            )
             if not message_id or not attachment_id:
                 return ToolOutput(
                     text="message_id and attachment_id are required for get_attachment.",
                     metadata={"provider": "gmail", "action": action},
                 )
-            attachment = service.users().messages().attachments().get(
-                userId="me",
-                messageId=message_id,
-                id=attachment_id,
-            ).execute()
-            raw_bytes = base64.urlsafe_b64decode(attachment.get("data", "").encode("utf-8"))
+            attachment = (
+                service.users()
+                .messages()
+                .attachments()
+                .get(
+                    userId="me",
+                    messageId=message_id,
+                    id=attachment_id,
+                )
+                .execute()
+            )
+            raw_bytes = base64.urlsafe_b64decode(
+                attachment.get("data", "").encode("utf-8")
+            )
             mime_type = str(kwargs.get("mime_type", "application/octet-stream"))
             return self._format_attachment_output(
                 message_id=message_id,
@@ -362,11 +503,22 @@ class GmailTool:
             )
 
         if action == "list_labels":
-            labels = service.users().labels().list(userId="me").execute().get("labels", [])
-            lines = [f"{label.get('name', '?')} ({label.get('id', '?')})" for label in labels]
+            labels = (
+                service.users().labels().list(userId="me").execute().get("labels", [])
+            )
+            lines = [
+                f"{label.get('name', '?')} ({label.get('id', '?')})" for label in labels
+            ]
             return ToolOutput(
                 text="\n".join(lines) if lines else "No Gmail labels found.",
-                metadata={"provider": "gmail", "connected": True, "action": action, "labels": labels, "count": len(labels), "credential_key": self.credential_key},
+                metadata={
+                    "provider": "gmail",
+                    "connected": True,
+                    "action": action,
+                    "labels": labels,
+                    "count": len(labels),
+                    "credential_key": self.credential_key,
+                },
             )
 
         if action in {"create_draft", "send_message"}:
@@ -376,18 +528,43 @@ class GmailTool:
             subject = str(kwargs.get("subject", "")).strip()
             body = str(kwargs.get("body", "")).strip()
             if not to or not subject:
-                return ToolOutput(text="`to` and `subject` are required for Gmail draft/send actions.", metadata={"provider": "gmail", "action": action})
+                return ToolOutput(
+                    text="`to` and `subject` are required for Gmail draft/send actions.",
+                    metadata={"provider": "gmail", "action": action},
+                )
             raw = self._encode_email(to=to, cc=cc, bcc=bcc, subject=subject, body=body)
             if action == "create_draft":
-                result = service.users().drafts().create(userId="me", body={"message": {"raw": raw}}).execute()
+                result = (
+                    service.users()
+                    .drafts()
+                    .create(userId="me", body={"message": {"raw": raw}})
+                    .execute()
+                )
                 return ToolOutput(
                     text=f"Draft created: {subject}",
-                    metadata={"provider": "gmail", "connected": True, "action": action, "draft": result, "credential_key": self.credential_key},
+                    metadata={
+                        "provider": "gmail",
+                        "connected": True,
+                        "action": action,
+                        "draft": result,
+                        "credential_key": self.credential_key,
+                    },
                 )
-            result = service.users().messages().send(userId="me", body={"raw": raw}).execute()
+            result = (
+                service.users()
+                .messages()
+                .send(userId="me", body={"raw": raw})
+                .execute()
+            )
             return ToolOutput(
                 text=f"Email sent: {subject}",
-                metadata={"provider": "gmail", "connected": True, "action": action, "message": result, "credential_key": self.credential_key},
+                metadata={
+                    "provider": "gmail",
+                    "connected": True,
+                    "action": action,
+                    "message": result,
+                    "credential_key": self.credential_key,
+                },
             )
 
         raise ValueError(f"Unsupported Gmail action: {action}")

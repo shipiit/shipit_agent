@@ -25,7 +25,9 @@ class SearchProvider(Protocol):
 class DuckDuckGoSearchProvider:
     name = "duckduckgo"
 
-    def __init__(self, *, timeout: float = 15.0, user_agent: str = "shipit-agent/0.1") -> None:
+    def __init__(
+        self, *, timeout: float = 15.0, user_agent: str = "shipit-agent/0.1"
+    ) -> None:
         self.timeout = timeout
         self.user_agent = user_agent
 
@@ -65,9 +67,12 @@ class PlaywrightSearchProvider:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
-            raise RuntimeError("Install `playwright` to use PlaywrightSearchProvider.") from exc
+            raise RuntimeError(
+                "Install `playwright` to use PlaywrightSearchProvider."
+            ) from exc
 
         url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
+
         def _run() -> str:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(headless=True)
@@ -161,7 +166,10 @@ class TavilySearchProvider:
                     "include_answer": False,
                 }
             ).encode("utf-8"),
-            headers={"Content-Type": "application/json", "User-Agent": "shipit-agent/0.1"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "shipit-agent/0.1",
+            },
             method="POST",
         )
         with urlopen(request, timeout=self.timeout) as response:  # nosec B310
@@ -221,14 +229,20 @@ def build_search_provider(
     if provider_name == "brave":
         if not api_key:
             raise ValueError("Brave search requires `api_key`.")
-        return BraveSearchProvider(api_key=api_key, timeout=float(config.get("timeout", 15.0)))
+        return BraveSearchProvider(
+            api_key=api_key, timeout=float(config.get("timeout", 15.0))
+        )
     if provider_name == "serper":
         if not api_key:
             raise ValueError("Serper search requires `api_key`.")
-        return SerperSearchProvider(api_key=api_key, timeout=float(config.get("timeout", 15.0)))
+        return SerperSearchProvider(
+            api_key=api_key, timeout=float(config.get("timeout", 15.0))
+        )
     if provider_name == "tavily":
         if not api_key:
             raise ValueError("Tavily search requires `api_key`.")
-        return TavilySearchProvider(api_key=api_key, timeout=float(config.get("timeout", 20.0)))
+        return TavilySearchProvider(
+            api_key=api_key, timeout=float(config.get("timeout", 20.0))
+        )
 
     raise ValueError(f"Unsupported search provider: {provider_name}")

@@ -5,7 +5,11 @@ from typing import Any
 
 from shipit_agent.memory.conversation import ConversationMemory
 from shipit_agent.memory.entity import Entity, EntityMemory
-from shipit_agent.memory.semantic import InMemoryVectorStore, SearchResult, SemanticMemory
+from shipit_agent.memory.semantic import (
+    InMemoryVectorStore,
+    SearchResult,
+    SemanticMemory,
+)
 from shipit_agent.models import Message
 
 

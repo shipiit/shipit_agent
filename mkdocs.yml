@@ -115,6 +115,9 @@ plugins:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - javascripts/toc-toggle.js
+
 extra:
   social:
     - icon: fontawesome/brands/github
@@ -132,6 +135,14 @@ nav:
       - Quick Start: getting-started/quickstart.md
       - Environment Setup: getting-started/environment.md
       - Changelog: changelog.md
+  - Agent:
+      - Overview: agent/index.md
+      - Examples: agent/examples.md
+      - Streaming: agent/streaming.md
+      - With RAG: agent/with-rag.md
+      - With Tools: agent/with-tools.md
+      - Memory: agent/memory.md
+      - Sessions & Memory: agent/sessions.md
   - Build with SHIPIT:
       # Core concepts
       - Streaming Events: guides/streaming.md
@@ -153,6 +164,7 @@ nav:
       - Pipelines & Teams: guides/pipelines-and-teams.md
   - Deep Agents:
       - Overview: deep-agents/index.md
+      - DeepAgent (create_deep_agent): deep-agents/deep-agent.md
       - GoalAgent: deep-agents/goal-agent.md
       - ReflectiveAgent: deep-agents/reflective-agent.md
       - Supervisor & Workers: deep-agents/supervisor.md
@@ -164,8 +176,17 @@ nav:
       - API Reference: reference/deep-agents-api.md
   - Memory:
       - Advanced Memory: guides/advanced-memory.md
+  - Super RAG:
+      - Overview: rag/index.md
+      - Standalone RAG: rag/standalone.md
+      - Files, Chunks & Sources: rag/files-and-chunks.md
+      - RAG + Agent: rag/with-agent.md
+      - RAG + Deep Agents: rag/with-deep-agents.md
+      - Adapters: rag/adapters.md
+      - API Reference: rag/api.md
   - Reference:
       - Architecture: reference/architecture.md
+      - Parameters Reference: reference/parameters.md
       - Event Types: reference/events.md
       - Model Adapters: reference/adapters.md
       - Deep Agents API: reference/deep-agents-api.md

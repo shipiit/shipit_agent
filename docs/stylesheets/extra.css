@@ -129,9 +129,113 @@
   font-weight: 600;
 }
 
-/* Content max-width — like Anthropic */
+/* ── Full-width layout ─────────────────────────────────────
+ * Override mkdocs-material's default ~61rem grid cap so the
+ * page uses the full viewport, with tight horizontal padding.
+ * The right-hand TOC stays on screens >= 1220px (md-grid breakpoint).
+ */
+.md-grid {
+  max-width: none;
+}
+
+.md-main__inner {
+  max-width: none;
+  margin-left: 0.75rem;
+  margin-right: 0.75rem;
+}
+
 .md-typeset .md-content__inner {
-  max-width: 48rem;
+  max-width: none;
+  padding: 0 1rem;
+  margin: 0 auto;
+}
+
+/* Tighter inner padding on the content slot itself */
+.md-content {
+  padding: 0;
+}
+
+.md-content__inner {
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+/* On wide screens, leave a little breathing room around tables and code blocks */
+@media (min-width: 1600px) {
+  .md-typeset .md-content__inner {
+    padding: 0 2rem;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* Collapsible right-hand TOC sidebar                          */
+/* ─────────────────────────────────────────────────────────── */
+
+/*
+ * The right-hand "Table of contents" panel (`.md-sidebar--secondary`)
+ * is hidden by default so the page content fills the viewport. The
+ * `shipit-toc-open` class is added to <html> by toc-toggle.js when the
+ * user clicks the floating "📑 Show TOC" button.
+ */
+.md-sidebar--secondary {
+  display: none !important;
+}
+
+html.shipit-toc-open .md-sidebar--secondary {
+  display: block !important;
+}
+
+/* When the TOC is shown, give the content a tasteful right margin so
+   it doesn't crash into the sidebar edge. */
+@media screen and (min-width: 76.25em) {
+  html.shipit-toc-open .md-main__inner {
+    margin-right: 0.75rem;
+  }
+}
+
+/* The floating toggle button — top-right corner, above all content. */
+.shipit-toc-toggle {
+  position: fixed;
+  top: 4.2rem;
+  right: 1rem;
+  z-index: 100;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--md-default-fg-color--lightest, rgba(0, 0, 0, 0.12));
+  background: var(--md-default-bg-color, #fff);
+  color: var(--md-default-fg-color, #1B1B1F);
+  font: 600 0.72rem/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease,
+              background 0.15s ease, color 0.15s ease;
+}
+
+.shipit-toc-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+  background: var(--md-accent-fg-color, #D97706);
+  color: #fff;
+  border-color: transparent;
+}
+
+.shipit-toc-toggle:active {
+  transform: translateY(0);
+}
+
+[aria-pressed="true"].shipit-toc-toggle {
+  background: var(--s-accent-bg, rgba(217, 119, 6, 0.1));
+  color: var(--md-accent-fg-color, #D97706);
+  border-color: var(--md-accent-fg-color, #D97706);
+}
+
+/* On narrow screens, hide the toggle entirely — the right TOC isn't
+   shown by mkdocs-material below 76.25em anyway. */
+@media (max-width: 76.25em) {
+  .shipit-toc-toggle {
+    display: none;
+  }
 }
 
 /* Landing page title — slightly larger */

@@ -42,6 +42,43 @@ for event in agent.stream("Write a technical guide"):
         print(event.payload.get("output", "")[:200])
 ```
 
+## With Super RAG
+
+```python
+from shipit_agent.rag import RAG, HashingEmbedder
+
+rag = RAG.default(embedder=HashingEmbedder(dimension=512))
+rag.index_file("docs/api.md")
+
+agent = ReflectiveAgent.with_builtins(
+    llm=llm,
+    rag=rag,                           # auto-cited critique cycles
+    reflection_prompt="Check accuracy against indexed docs.",
+    quality_threshold=0.85,
+)
+result = agent.run("Explain how to stream events.")
+```
+
+## As a sub-agent of DeepAgent (the critic role)
+
+`ReflectiveAgent` is a natural fit for the critic role inside a deep
+agent that has multiple specialised workers:
+
+```python
+from shipit_agent import Agent
+from shipit_agent.deep import DeepAgent, ReflectiveAgent
+
+writer = Agent.with_builtins(llm=llm, name="writer")
+critic = ReflectiveAgent.with_builtins(llm=llm, name="critic", quality_threshold=0.85)
+
+deep = DeepAgent.with_builtins(llm=llm, agents=[writer, critic])
+result = deep.run("Draft and review the API guide.")
+```
+
+When the parent calls `delegate_to_agent(agent_name="critic", task=...)`,
+the reflection cycle runs inside the sub-agent and the events stream
+back through `tool_completed.metadata['events']`.
+
 ## ReflectionResult fields
 
 | Field | Type | Description |

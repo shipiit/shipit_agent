@@ -90,6 +90,7 @@ class GoalAgent:
         use_builtins: bool = False,
         prompt: str = "You are a helpful assistant. Complete the task thoroughly.",
         memory: Any = None,
+        rag: Any = None,
         **agent_kwargs: Any,
     ) -> None:
         self.llm = llm
@@ -99,6 +100,7 @@ class GoalAgent:
         self.use_builtins = use_builtins
         self.prompt = prompt
         self.memory = memory
+        self.rag = rag
         self.agent_kwargs = agent_kwargs
 
     def _build_agent(self) -> Any:
@@ -106,10 +108,14 @@ class GoalAgent:
         from shipit_agent.agent import Agent
         extra = dict(self.agent_kwargs)
         if self.memory:
-            extra.setdefault("memory_store", self.memory.knowledge if hasattr(self.memory, "knowledge") else None)
-            # Inject conversation history from memory
+            # AgentMemory.knowledge is a SemanticMemory, not a MemoryStore —
+            # they have different interfaces. Only hydrate the conversation
+            # history here; users pass memory_store= explicitly if they
+            # want the runtime's memory tool wired up too.
             if hasattr(self.memory, "get_conversation_messages"):
                 extra.setdefault("history", self.memory.get_conversation_messages())
+        if self.rag is not None:
+            extra.setdefault("rag", self.rag)
         if self.use_builtins:
             return Agent.with_builtins(
                 llm=self.llm, prompt=self.prompt,
@@ -117,7 +123,7 @@ class GoalAgent:
             )
         return Agent(
             llm=self.llm, prompt=self.prompt,
-            tools=self.tools, mcps=self.mcps,
+            tools=list(self.tools), mcps=self.mcps,
             **extra,
         )
 
@@ -128,9 +134,17 @@ class GoalAgent:
             self.memory.add_message(Message(role=role, content=content))
 
     @classmethod
-    def with_builtins(cls, *, llm: Any, goal: Goal, mcps: list[Any] | None = None, **kwargs: Any) -> "GoalAgent":
+    def with_builtins(
+        cls,
+        *,
+        llm: Any,
+        goal: Goal,
+        mcps: list[Any] | None = None,
+        rag: Any = None,
+        **kwargs: Any,
+    ) -> "GoalAgent":
         """Create a GoalAgent with all built-in tools (web search, code exec, etc.)."""
-        return cls(llm=llm, goal=goal, mcps=mcps, use_builtins=True, **kwargs)
+        return cls(llm=llm, goal=goal, mcps=mcps, use_builtins=True, rag=rag, **kwargs)
 
     def _llm_call(self, prompt: str) -> str:
         from shipit_agent.models import Message

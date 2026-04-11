@@ -20,6 +20,8 @@ class SessionStore(Protocol):
 
     def save(self, record: SessionRecord) -> None: ...
 
+    def list_all(self) -> list[SessionRecord]: ...
+
 
 class InMemorySessionStore:
     def __init__(self) -> None:
@@ -30,6 +32,9 @@ class InMemorySessionStore:
 
     def save(self, record: SessionRecord) -> None:
         self._records[record.session_id] = record
+
+    def list_all(self) -> list[SessionRecord]:
+        return list(self._records.values())
 
 
 class FileSessionStore:
@@ -76,3 +81,11 @@ class FileSessionStore:
             "metadata": record.metadata,
         }
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def list_all(self) -> list[SessionRecord]:
+        records: list[SessionRecord] = []
+        for path in sorted(self.root_dir.glob("*.json")):
+            record = self.load(path.stem)
+            if record is not None:
+                records.append(record)
+        return records

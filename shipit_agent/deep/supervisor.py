@@ -88,16 +88,34 @@ class Supervisor:
         strategy: str = "plan_and_delegate",
         allow_parallel: bool = False,
         max_delegations: int = 15,
+        rag: Any = None,
+        **agent_kwargs: Any,
     ) -> None:
         self.llm = llm
         self.workers = {w.name: w for w in workers}
         self.strategy = strategy
         self.allow_parallel = allow_parallel
         self.max_delegations = max_delegations
+        self.rag = rag
+        self.agent_kwargs: dict[str, Any] = dict(agent_kwargs)
+        if rag is not None:
+            self.agent_kwargs["rag"] = rag
 
     @classmethod
-    def with_builtins(cls, *, llm: Any, worker_configs: list[dict[str, Any]], mcps: list[Any] | None = None, **kwargs: Any) -> "Supervisor":
+    def with_builtins(
+        cls,
+        *,
+        llm: Any,
+        worker_configs: list[dict[str, Any]],
+        mcps: list[Any] | None = None,
+        rag: Any = None,
+        **kwargs: Any,
+    ) -> "Supervisor":
         """Create a Supervisor where each worker has all built-in tools.
+
+        When ``rag`` is provided every worker is wired with the same RAG
+        instance so sources captured by any worker flow back to the
+        surrounding run.
 
         Example::
 
@@ -107,6 +125,7 @@ class Supervisor:
                     {"name": "researcher", "prompt": "You research topics."},
                     {"name": "writer", "prompt": "You write content."},
                 ],
+                rag=my_rag,
             )
         """
         from shipit_agent.agent import Agent
@@ -116,13 +135,14 @@ class Supervisor:
                 llm=llm,
                 prompt=cfg.get("prompt", "You are a helpful assistant."),
                 mcps=mcps,
+                rag=rag,
             )
             workers.append(Worker(
                 name=cfg["name"],
                 agent=agent,
                 capabilities=cfg.get("capabilities", []),
             ))
-        return cls(llm=llm, workers=workers, **kwargs)
+        return cls(llm=llm, workers=workers, rag=rag, **kwargs)
 
     def _build_workers_desc(self) -> str:
         lines = []

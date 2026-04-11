@@ -5,8 +5,8 @@ description: A clean, powerful Python agent library with tools, MCP, streaming e
 
 # SHIPIT Agent
 
-!!! tip "v1.0.2 — Power features"
-    New in 1.0.2: **parallel tool execution**, **async runtime**, **hooks & middleware**, **graceful error recovery**, **context window management**, **mid-run re-planning**, and **structured output**. See the [changelog](changelog.md).
+!!! tip "v1.0.3 — Super RAG, DeepAgent, live chat REPL"
+    New in 1.0.3: **Super RAG subsystem** (hybrid search, auto-cited sources), **DeepAgent factory** with verify / reflect / goal / sub-agents, **`shipit chat`** live multi-agent terminal REPL, and the **Agent memory cookbook**. 521 unit tests + 19 real-Bedrock end-to-end smoke tests, all passing. See the [changelog](changelog.md).
 
 **SHIPIT Agent** is a standalone Python agent library focused on a clean runtime:
 

@@ -5,14 +5,23 @@ from .supervisor import Supervisor, Worker, SupervisorResult
 from .persistent_agent import PersistentAgent, Checkpoint
 from .channel import Channel, AgentMessage
 from .benchmark import AgentBenchmark, TestCase, BenchmarkReport
+from .deep_agent import (
+    DEEP_AGENT_PROMPT,
+    AgentDelegationTool,
+    DeepAgent,
+    create_deep_agent,
+)
 
 __all__ = [
     "AdaptiveAgent",
     "AgentBenchmark",
+    "AgentDelegationTool",
     "AgentMessage",
     "BenchmarkReport",
     "Channel",
     "Checkpoint",
+    "DEEP_AGENT_PROMPT",
+    "DeepAgent",
     "Goal",
     "GoalAgent",
     "GoalResult",
@@ -23,4 +32,5 @@ __all__ = [
     "SupervisorResult",
     "TestCase",
     "Worker",
+    "create_deep_agent",
 ]

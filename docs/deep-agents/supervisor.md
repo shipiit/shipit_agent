@@ -64,6 +64,52 @@ for event in supervisor.stream("Analyze data and write report"):
         print(output[:300])
 ```
 
+## With Super RAG — one shared knowledge base
+
+Pass `rag=` to `Supervisor.with_builtins` and **every** worker is wired
+with the same `RAG` instance. Sources captured by any worker show up in
+the shared `result.rag_sources` panel.
+
+```python
+from shipit_agent.rag import RAG, HashingEmbedder
+
+rag = RAG.default(embedder=HashingEmbedder(dimension=512))
+rag.index_file("docs/api.md")
+
+supervisor = Supervisor.with_builtins(
+    llm=llm,
+    worker_configs=[
+        {"name": "researcher", "prompt": "You research the codebase."},
+        {"name": "writer", "prompt": "You write user-facing answers."},
+    ],
+    rag=rag,
+)
+result = supervisor.run("Draft a release blog post about deep agents.")
+```
+
+## Supervisor inside a DeepAgent
+
+A `Supervisor` is itself a perfectly valid sub-agent — drop it into a
+parent `DeepAgent` and the parent gets a "team in a box" delegate:
+
+```python
+from shipit_agent.deep import DeepAgent
+
+team = Supervisor.with_builtins(
+    llm=llm,
+    worker_configs=[
+        {"name": "researcher", "prompt": "You research."},
+        {"name": "writer",     "prompt": "You write."},
+    ],
+)
+
+deep = DeepAgent.with_builtins(
+    llm=llm,
+    agents={"team": team},
+)
+deep.run("Use the team sub-agent to research and draft the release notes.")
+```
+
 ## SupervisorResult fields
 
 | Field | Type | Description |

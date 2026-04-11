@@ -36,6 +36,36 @@ agent = AdaptiveAgent.with_builtins(llm=llm, can_create_tools=True)
 # Has web search + code exec + dynamic tool creation
 ```
 
+## With Super RAG
+
+```python
+from shipit_agent.rag import RAG, HashingEmbedder
+
+rag = RAG.default(embedder=HashingEmbedder(dimension=512))
+rag.index_file("docs/api.md")
+
+agent = AdaptiveAgent.with_builtins(llm=llm, rag=rag)
+# rag_search/rag_fetch_chunk are auto-wired alongside the runtime tool
+# factory; the agent can write a new tool that calls into RAG.
+```
+
+## Streaming
+
+```python
+for event in agent.stream("Parse the CSV at /data/sales.csv and report totals"):
+    print(f"[{event.type}] {event.message}")
+```
+
+## Inside a DeepAgent
+
+```python
+from shipit_agent.deep import DeepAgent
+
+builder = AdaptiveAgent.with_builtins(llm=llm, name="builder")
+deep = DeepAgent.with_builtins(llm=llm, agents=[builder])
+deep.run("Use the builder sub-agent to create a CSV totals tool, then use it.")
+```
+
 ## Properties
 
 | Property | Type | Description |

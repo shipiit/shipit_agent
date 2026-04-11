@@ -24,6 +24,7 @@ from .sub_agent import SubAgentTool
 from .thought_decomposition import ThoughtDecompositionTool
 from .tool_search import ToolSearchTool
 from .verifier import VerifierTool
+from .webhook_payload import WebhookPayloadTool
 from .workspace_files import WorkspaceFilesTool
 from .web_search import DuckDuckGoSearchProvider, SearchProvider, WebSearchTool
 from .web_search import (
@@ -71,5 +72,6 @@ __all__ = [
     "ToolOutput",
     "VerifierTool",
     "WebSearchTool",
+    "WebhookPayloadTool",
     "WorkspaceFilesTool",
 ]

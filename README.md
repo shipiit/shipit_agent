@@ -51,9 +51,84 @@
   <img src="https://img.shields.io/badge/Custom%20API-supported-gray?style=flat-square" alt="Custom" />
 </p>
 
-## 🚀 What's new in 1.0.2
+## 🚀 What's new in 1.0.3
 
-**SHIPIT Agent 1.0.2** is a major feature release — deep agents, structured output, pipelines, agent teams, advanced memory, and output parsers. Everything LangChain has, plus features it doesn't. **285 tests. 12 examples. 8 notebooks.**
+**SHIPIT Agent 1.0.3** ships **Super RAG**, the **DeepAgent factory**, a **live multi-agent chat REPL**, and an **Agent memory cookbook**. **521 unit tests. 19 Bedrock end-to-end smoke tests. All passing.**
+
+### Super RAG — hybrid search with auto-cited sources
+
+```python
+from shipit_agent import Agent
+from shipit_agent.rag import RAG, HashingEmbedder
+
+rag = RAG.default(embedder=HashingEmbedder(dimension=512))
+rag.index_file("docs/manual.pdf")
+
+agent = Agent.with_builtins(llm=llm, rag=rag)
+result = agent.run("How do I configure logging?")
+
+print(result.output)              # "Set SHIPIT_LOG_LEVEL=debug. [1]"
+for src in result.rag_sources:     # DRK_CACHE-style citation panel
+    print(f"[{src.index}] {src.source}: {src.text[:80]}")
+```
+
+Pluggable `VectorStore` / `KeywordStore` / `Embedder` / `Reranker` protocols, hybrid vector+BM25 search with Reciprocal Rank Fusion, context expansion, optional recency bias, and a thread-local per-run source tracker.
+
+### DeepAgent — one factory, all the power
+
+```python
+from shipit_agent.deep import DeepAgent, Goal
+
+agent = DeepAgent.with_builtins(
+    llm=llm,
+    rag=rag,                                 # grounded answers
+    verify=True,                              # verifier after every answer
+    reflect=True,                             # self-critique loop
+    goal=Goal(                                # goal-driven decomposition
+        objective="Ship the auth fix",
+        success_criteria=["Patch compiles", "Tests pass"],
+    ),
+    agents=[researcher, writer, reviewer],    # named sub-agent delegates
+)
+result = agent.run()
+```
+
+Seven deep tools wired automatically (`plan_task`, `decompose_problem`, `workspace_files`, `sub_agent`, `synthesize_evidence`, `decision_matrix`, `verify_output`). `create_deep_agent()` gives you the functional spelling and auto-wraps plain Python functions as tools.
+
+### Live chat — `shipit chat`
+
+```bash
+shipit chat                                    # default: DeepAgent
+shipit chat --agent goal --goal "Build a CLI"
+shipit chat --rag-file docs/manual.pdf --reflect --verify
+```
+
+Modern multi-agent terminal REPL. Switch agent types live with `/agent`, index files mid-session with `/index`, save/load conversations, toggle `reflect`/`verify`, inspect sources. Works with every LLM provider.
+
+### Agent memory — OpenAI-style "remember things"
+
+```python
+from shipit_agent import Agent, AgentMemory
+from shipit_agent.stores import FileMemoryStore, FileSessionStore
+
+profile = AgentMemory.default(llm=llm, embedding_fn=embed)
+profile.add_fact("user_timezone=Europe/Berlin")
+
+agent = Agent.with_builtins(
+    llm=llm,
+    memory_store=FileMemoryStore(root="~/.shipit/memory"),      # LLM-writable
+    session_store=FileSessionStore(root="~/.shipit/sessions"),  # chat history
+    history=profile.get_conversation_messages(),                # curated profile
+)
+```
+
+Two complementary memory systems: `memory_store=` for the LLM's `memory` tool, `AgentMemory` for application-curated profiles. Full cookbook in `docs/agent/memory.md`.
+
+---
+
+## 🎯 Also new in 1.0.3
+
+**SHIPIT Agent 1.0.2** (still available) introduced deep agents, structured output, pipelines, agent teams, advanced memory, and output parsers. 1.0.3 builds directly on that foundation.
 
 ### Deep Agents — Beyond LangChain
 

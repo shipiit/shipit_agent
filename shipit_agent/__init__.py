@@ -5,7 +5,7 @@ except Exception:
     __version__ = "0.0.0+unknown"
 
 from .async_runtime import AsyncAgentRuntime
-from .deep import AdaptiveAgent, AgentBenchmark, AgentMessage, BenchmarkReport, Channel, Checkpoint, Goal, GoalAgent, GoalResult, PersistentAgent, ReflectionResult, ReflectiveAgent, Supervisor, SupervisorResult, TestCase, Worker
+from .deep import AdaptiveAgent, AgentBenchmark, AgentMessage, BenchmarkReport, Channel, Checkpoint, DEEP_AGENT_PROMPT, DeepAgent, Goal, GoalAgent, GoalResult, PersistentAgent, ReflectionResult, ReflectiveAgent, Supervisor, SupervisorResult, TestCase, Worker, create_deep_agent
 from .exceptions import DuplicateToolError, ShipitAgentError
 from .hooks import AgentHooks
 from .memory import AgentMemory, ConversationMemory, Entity, EntityMemory, InMemoryVectorStore, SearchResult, SemanticMemory, VectorStore
@@ -17,6 +17,7 @@ from .agent import Agent
 from .builtins import get_builtin_tools
 from .chat_session import AgentChatSession
 from .construction import build_tool_schemas, construct_tool_registry
+from .context_tracker import ContextSnapshot, ContextTracker
 from .doctor import AgentDoctor, DoctorCheck, DoctorReport
 from .integrations import CredentialRecord, CredentialStore, FileCredentialStore, FileOAuthStateStore, GoogleOAuthHelper, InMemoryCredentialStore, InMemoryOAuthStateStore, OAuthClientConfig, OAuthHelper, OAuthStateStore, SlackOAuthHelper
 from .mcp import MCPError, MCPHTTPTransport, MCPServer, MCPSubprocessTransport, MCPTool, PersistentMCPSubprocessTransport, RemoteMCPServer, discover_mcp_tools
@@ -27,9 +28,26 @@ from .profiles import AgentProfile, AgentProfileBuilder
 from .prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
 from .reasoning import ReasoningResult, ReasoningRuntime
 from .registry import ToolRegistry
+from .schedule import ScheduleResult, ScheduleRunner
+from .session_manager import SessionManager
 from .stores import FileMemoryStore, FileSessionStore, InMemoryMemoryStore, InMemorySessionStore, MemoryFact, MemoryStore, SessionRecord, SessionStore
+from .templates import PromptTemplate
 from .tool_runner import ToolRunner, ToolRunnerResult
 from .tracing import FileTraceStore, InMemoryTraceStore, TraceRecord, TraceStore
+from .rag import (
+    Chunk as RAGChunk,
+    Document as RAGDocument,
+    IndexFilters as RAGIndexFilters,
+    RAGContext,
+    RAGSource,
+    SearchQuery as RAGSearchQuery,
+    SearchResult as RAGSearchResult,
+)
+from .rag.rag import RAG
+from .rag.chunker import DocumentChunker
+from .rag.embedder import CallableEmbedder, HashingEmbedder
+from .rag.reranker import LLMReranker
+from .rag.search_pipeline import HybridSearchPipeline
 from .tools import (
     AskUserTool,
     ArtifactBuilderTool,
@@ -66,6 +84,7 @@ from .tools import (
     ToolOutput,
     VerifierTool,
     WebSearchTool,
+    WebhookPayloadTool,
     WorkspaceFilesTool,
 )
 
@@ -83,6 +102,9 @@ __all__ = [
     "Channel",
     "Checkpoint",
     "ConversationMemory",
+    "DEEP_AGENT_PROMPT",
+    "DeepAgent",
+    "create_deep_agent",
     "Entity",
     "EntityMemory",
     "Goal",
@@ -101,6 +123,8 @@ __all__ = [
     "ReflectiveAgent",
     "RegexParser",
     "SearchResult",
+    "ScheduleResult",
+    "ScheduleRunner",
     "SemanticMemory",
     "Step",
     "Supervisor",
@@ -132,6 +156,8 @@ __all__ = [
     "BraveSearchProvider",
     "CodeExecutionTool",
     "ConfluenceTool",
+    "ContextSnapshot",
+    "ContextTracker",
     "CredentialRecord",
     "CredentialStore",
     "CustomAPITool",
@@ -182,6 +208,7 @@ __all__ = [
     "PlaywrightSearchProvider",
     "PlannerTool",
     "PromptTool",
+    "PromptTemplate",
     "RemoteMCPServer",
     "result_packet",
     "RetryPolicy",
@@ -189,6 +216,7 @@ __all__ = [
     "sse_event_packet",
     "sse_result_packet",
     "SerperSearchProvider",
+    "SessionManager",
     "SessionRecord",
     "SessionStore",
     "ShipitAgentError",
@@ -210,7 +238,22 @@ __all__ = [
     "ToolResult",
     "VerifierTool",
     "WebSearchTool",
+    "WebhookPayloadTool",
     "websocket_event_packet",
     "websocket_result_packet",
     "WorkspaceFilesTool",
+    # --- Super RAG subsystem ------------------------------------------------
+    "RAG",
+    "RAGChunk",
+    "RAGContext",
+    "RAGDocument",
+    "RAGIndexFilters",
+    "RAGSearchQuery",
+    "RAGSearchResult",
+    "RAGSource",
+    "DocumentChunker",
+    "HybridSearchPipeline",
+    "HashingEmbedder",
+    "CallableEmbedder",
+    "LLMReranker",
 ]

@@ -20,6 +20,8 @@ EventType = Literal[
     "llm_retry",
     "tool_retry",
     "run_completed",
+    "context_snapshot",
+    "rag_sources",
 ]
 
 
@@ -87,6 +89,7 @@ class AgentResult:
     tool_results: list[ToolResult] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     parsed: Any = None
+    rag_sources: list[Any] = field(default_factory=list)
 
     @property
     def steps(self) -> list[AgentEvent]:
@@ -99,6 +102,10 @@ class AgentResult:
             "events": [event.to_dict() for event in self.events],
             "tool_results": [tool_result.to_dict() for tool_result in self.tool_results],
             "metadata": dict(self.metadata),
+            "rag_sources": [
+                src.to_dict() if hasattr(src, "to_dict") else src
+                for src in self.rag_sources
+            ],
         }
 
 

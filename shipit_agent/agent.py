@@ -39,6 +39,19 @@ class Agent:
     hooks: Any = None
     context_window_tokens: int = 0
     replan_interval: int = 0
+    rag: Any = None
+
+    def __post_init__(self) -> None:
+        if self.rag is not None:
+            # Auto-wire RAG tools and augment the prompt once per Agent.
+            existing_names = {getattr(t, "name", None) for t in self.tools}
+            for tool in self.rag.as_tools():
+                if tool.name not in existing_names:
+                    self.tools.append(tool)
+                    existing_names.add(tool.name)
+            rag_section = self.rag.prompt_section()
+            if rag_section and rag_section not in self.prompt:
+                self.prompt = f"{self.prompt}\n\n{rag_section}"
 
     @classmethod
     def with_builtins(
@@ -54,23 +67,37 @@ class Agent:
         web_search_api_key: str | None = None,
         web_search_config: dict[str, Any] | None = None,
         mcps: list[Any] | None = None,
+        rag: Any = None,
+        tools: list[Any] | None = None,
         **kwargs: Any,
     ) -> "Agent":
-        tools = get_builtin_tools(
+        """Build an Agent that ships with the full built-in tool catalogue.
+
+        ``tools=`` may be passed alongside the builtins — user tools are
+        merged in and any tool whose ``name`` collides with a builtin
+        replaces the builtin (last-write-wins).
+        """
+        builtin_tools = get_builtin_tools(
             llm=llm,
             workspace_root=workspace_root,
             web_search_provider=web_search_provider,
             web_search_api_key=web_search_api_key,
             web_search_config=web_search_config,
         )
+        merged: dict[str, Any] = {}
+        for tool in (*builtin_tools, *(tools or [])):
+            tool_name = getattr(tool, "name", None)
+            if tool_name:
+                merged[tool_name] = tool
         return cls(
             llm=llm,
             prompt=prompt,
-            tools=tools,
+            tools=list(merged.values()),
             mcps=list(mcps or []),
             name=name,
             description=description,
             metadata=metadata or {},
+            rag=rag,
             **kwargs,
         )
 
@@ -83,6 +110,9 @@ class Agent:
         if output_schema:
             from shipit_agent.structured import build_schema_prompt
             effective_user_prompt = user_prompt + build_schema_prompt(output_schema)
+
+        if self.rag is not None:
+            self.rag.begin_run()
 
         runtime = AgentRuntime(
             llm=self.llm,
@@ -119,6 +149,8 @@ class Agent:
             except Exception:
                 parsed = None
 
+        rag_sources = self.rag.end_run() if self.rag is not None else []
+
         return AgentResult(
             output=response.content,
             messages=state.messages,
@@ -126,9 +158,13 @@ class Agent:
             tool_results=state.tool_results,
             metadata=dict(response.metadata),
             parsed=parsed,
+            rag_sources=rag_sources,
         )
 
     def stream(self, user_prompt: str):
+        if self.rag is not None:
+            self.rag.begin_run()
+
         runtime = AgentRuntime(
             llm=self.llm,
             prompt=self.prompt,
@@ -156,6 +192,17 @@ class Agent:
         )
         for event in runtime.stream(user_prompt):
             yield event
+
+        if self.rag is not None:
+            from shipit_agent.models import AgentEvent
+
+            sources = self.rag.end_run()
+            if sources:
+                yield AgentEvent(
+                    type="rag_sources",
+                    message=f"Captured {len(sources)} RAG source(s)",
+                    payload={"sources": [s.to_dict() for s in sources]},
+                )
 
     def doctor(self, *, env: dict[str, str] | None = None) -> DoctorReport:
         return AgentDoctor(env=env).inspect(self)

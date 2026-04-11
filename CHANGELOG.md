@@ -5,6 +5,198 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] — 2026-04-11
+
+Major feature release. **Super RAG subsystem**, **DeepAgent factory** with
+verification / reflection / goal / sub-agent modes, **live multi-agent chat
+REPL** (`shipit chat`), **Agent memory cookbook**, and deep docs + notebook
+coverage across every new surface. **521 unit tests. 19 Bedrock end-to-end
+smoke tests. All passing.**
+
+### Super RAG (new)
+
+- **`shipit_agent.rag` subsystem** — a self-contained, pluggable
+  retrieval-augmented-generation stack:
+  - `RAG.default(embedder=...)` one-liner facade
+  - `DocumentChunker` with Onyx-style title prefix + metadata suffix +
+    sentence boundaries + overlap
+  - `Embedder` protocol with `HashingEmbedder` (stdlib-only deterministic)
+    and `CallableEmbedder` (wrap any function)
+  - `VectorStore` protocol + `InMemoryVectorStore` (pure-Python cosine)
+  - `KeywordStore` protocol + `InMemoryBM25Store` (pure-Python BM25)
+  - `HybridSearchPipeline` — vector + keyword in parallel, Reciprocal Rank
+    Fusion, recency bias, reranker, context expansion (chunks above/below)
+  - `LLMReranker` — zero-setup LLM-as-judge reranker
+  - `TextExtractor` for TXT/MD/HTML (stdlib) plus lazy PDF/DOCX
+  - `RAG.begin_run()` / `end_run()` per-run source tracker with thread-local
+    isolation
+
+- **`rag=` parameter on every agent type** — auto-wires three tools
+  (`rag_search`, `rag_fetch_chunk`, `rag_list_sources`), augments the system
+  prompt with citation instructions, and attaches `RAGSource[]` to
+  `AgentResult.rag_sources` with stable `[1]`, `[2]`, … indices.
+
+- **Adapters** — `DrkCacheVectorStore` (pgvector over psycopg2, read existing
+  indexes), plus lazy Chroma / Qdrant / pgvector adapters.
+
+### DeepAgent (new)
+
+- **`shipit_agent.deep.DeepAgent`** — power-user factory for long, multi-step
+  tasks. Bundles seven deep tools out of the box: `plan_task`,
+  `decompose_problem`, `workspace_files`, `sub_agent`, `synthesize_evidence`,
+  `decision_matrix`, `verify_output`.
+
+- **One-flag power features**:
+  - `verify=True` — runs `verify_output` against success criteria after every
+    answer, verdict attached to `result.metadata["verification"]`
+  - `reflect=True` — wraps in `ReflectiveAgent` for generate → critique →
+    revise loop
+  - `goal=Goal(...)` — switches to `GoalAgent` mode for decomposition +
+    self-evaluation
+  - `rag=RAG(...)` — grounded answers with auto-cited sources
+  - `memory=AgentMemory(...)` — seeds inner `Agent.history` from conversation
+    summary
+
+- **`agents=` sub-agent delegation** — plug any mix of `Agent`, `DeepAgent`,
+  `GoalAgent`, `ReflectiveAgent`, `AdaptiveAgent`, `Supervisor`,
+  `PersistentAgent` as named delegates. The deep agent gains a
+  `delegate_to_agent` tool it can call to hand off well-scoped sub-tasks
+  while still using its own toolset to plan, take notes, and verify.
+
+- **`create_deep_agent()` functional helper** — drop-in factory with
+  auto-wrapping of plain Python callables as `FunctionTool` instances.
+
+- **Nested event streaming** — when the parent calls `delegate_to_agent`, the
+  tool captures the inner agent's `stream()` events into
+  `tool_completed.metadata['events']` so UIs render sub-agent activity live.
+
+- **Clean subpackage layout** — `shipit_agent/deep/deep_agent/{prompt,
+  toolset, verification, delegation, factory}.py`.
+
+### Live chat REPL (new)
+
+- **`shipit chat`** — modern interactive terminal REPL that talks to every
+  agent type. Switch live with `/agent <type>`, index files mid-session with
+  `/index <path>`, set goals with `/goal`, toggle `reflect`/`verify`, save
+  and reload conversations, inspect tools and sources.
+
+- **Rich slash commands**: `/help`, `/agent`, `/agents`, `/tools`, `/sources`,
+  `/index`, `/rag`, `/goal`, `/reflect`, `/verify`, `/history`, `/clear`,
+  `/save`, `/load`, `/reset`, `/quiet`, `/info`, `/exit`.
+
+- **Pluggable LLM provider** via `--provider` (or `$SHIPIT_LLM_PROVIDER`),
+  persistent sessions with `--session-dir`, pre-index files with
+  `--rag-file`.
+
+### Streaming across every agent type
+
+- **`PersistentAgent.stream()`** added — yields events per step with
+  checkpointing between.
+- **`DeepAgent.stream()`** covers every execution mode: direct, verified
+  (emits extra `run_completed` with verification verdict), reflective,
+  goal-driven, and sub-agent delegation (nested events in tool metadata).
+- **`rag_sources` event type** added to the runtime, emitted after every
+  RAG-backed run with the consolidated citation list.
+- **`create_deep_agent()` returns a streamable object** — `.stream()` works
+  identically to `.run()`.
+
+### Memory cookbook
+
+- **Dedicated `docs/agent/memory.md` page** — explains the two complementary
+  memory systems (`memory_store=` for the LLM's `memory` tool,
+  `AgentMemory` for application-curated profiles), the OpenAI-style
+  "remember things across sessions" pattern, and how to persist
+  `SemanticMemory` across processes.
+
+- **`DeepAgent` memory auto-hydration** — `memory=AgentMemory(...)` seeds the
+  inner `Agent.history` from `memory.get_conversation_messages()`
+  automatically.
+
+- **`notebooks/26_agent_memory.ipynb`** — runnable end-to-end tour of every
+  memory pattern.
+
+### Docs
+
+- **New Agent section** with 6 pages: Overview, Examples, Streaming, With
+  RAG, With Tools, Memory, Sessions.
+- **New Super RAG section** with 6 pages: Overview, Standalone, Files &
+  Chunks, With Agent, With Deep Agents, Adapters, API.
+- **New DeepAgent page** — full factory reference.
+- **Modernised Architecture + Model Adapters** reference pages.
+- **Parameters reference** — every constructor parameter for every agent
+  type and key class, with types, defaults, and "use it when" notes.
+- **Updated quickstart** — six sections covering Agent, deep agent, and
+  Agent + RAG.
+- **Updated FAQ** — new "Agent types — which one should I use?" section.
+- **5 new notebooks** (22–26): RAG basics, RAG + Agent, RAG + Deep Agents,
+  Deep Agent chat, Agent memory.
+- **Full-width docs layout + collapsible TOC** with floating toggle,
+  persistence via localStorage.
+
+### Build + extras
+
+- **`shipit-chat` script entry point** added in `pyproject.toml`.
+- **`[project.optional-dependencies]`** expanded with granular extras: `rag`,
+  `rag-openai`, `rag-cohere`, `rag-sentence-transformers`, `rag-chroma`,
+  `rag-qdrant`, `rag-pgvector`, `rag-drk-cache`, `rag-pdf`, `rag-docx`,
+  `rag-rerank-cohere`, `rag-rerank-cross-encoder`, plus `bedrock`, `google`,
+  `groq`, `together`, `ollama`. The `all` extra bundles everything.
+
+### Fixed
+
+- **Tool schema format bug** — `RAGSearchTool`, `RAGFetchChunkTool`,
+  `RAGListSourcesTool`, and `WebhookPayloadTool` were returning flat
+  `{"name": ..., "description": ..., "parameters": ...}` dicts instead of
+  the LiteLLM/OpenAI `{"type": "function", "function": {...}}` wrapper,
+  causing Bedrock's Converse API to reject them with
+  `validation errors detected: Value '' at 'toolConfig.tools.N.toolSpec.name'`.
+  All four tool schemas are now properly wrapped. Regression test in
+  `tests/test_tool_schemas_bedrock_compat.py` scans every built-in tool for
+  the wrapped shape + non-empty `name`/`description` + Bedrock's regex
+  constraint `[a-zA-Z0-9_-]+`.
+
+- **`memory=AgentMemory` coercion bug** — `DeepAgent._resolve_memory` and
+  `GoalAgent._build_agent` were auto-assigning `AgentMemory.knowledge` (a
+  `SemanticMemory`) into `memory_store=` (which expects a `MemoryStore` with
+  a different interface). The runtime later tried to call
+  `memory_store.add(MemoryFact(...))` and crashed on the type mismatch. Fix:
+  `memory=` now only seeds `history`; users pass `memory_store=` separately
+  if they want the runtime's `memory` tool wired up.
+
+- **`Agent.with_builtins(tools=[...])` keyword collision** — passing
+  `tools=` alongside `with_builtins` raised
+  `TypeError: got multiple values for keyword argument 'tools'` because the
+  method built its own tool list and forwarded both. Fix:
+  `with_builtins(tools=...)` now merges user tools with the builtin catalogue
+  (last-write-wins on name collision).
+
+- **`AgentDelegationTool` events in streaming** — the tool now uses the
+  inner agent's `stream()` (when available) and packs events into
+  `tool_completed.metadata['events']` so parent streams surface sub-agent
+  activity.
+
+### Test coverage
+
+- **521 unit tests** (up from 285) — fully green.
+- **19 end-to-end Bedrock smoke tests** in
+  `scripts/smoke_bedrock_e2e.py` cover every public surface: plain Agent,
+  custom `FunctionTool`, Agent + RAG with citation capture, `Agent.stream()`,
+  `Agent.chat_session()`, DeepAgent with seven deep tools, DeepAgent + RAG,
+  `DeepAgent.stream()`, `verify=True`, `goal=Goal(...)`,
+  `DeepAgent.chat()`, `agents=[...]` sub-agent delegation, `GoalAgent`,
+  `ReflectiveAgent`, `AdaptiveAgent`, `Supervisor`, `PersistentAgent`, the
+  memory system, and the full-stack composition (`DeepAgent(rag, memory,
+  agents, verify)`). All 19 pass against real Bedrock with
+  `bedrock/openai.gpt-oss-120b-1:0`.
+
+### Changed
+
+- **`DeepAgent.run()` auto-routes** to `GoalAgent` when `goal=` is set, to
+  `ReflectiveAgent` when `reflect=True`, and runs the inner `Agent`
+  otherwise. Verification mode is additive on top of all three.
+
+---
+
 ## [1.0.2] — 2026-04-10
 
 Major feature release. Adds deep agents, structured output, pipelines, agent

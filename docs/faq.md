@@ -116,6 +116,56 @@ The adapter sets `GOOGLE_APPLICATION_CREDENTIALS` automatically so `google-auth`
 
 ---
 
+## Agent types — which one should I use?
+
+shipit_agent ships **seven** agent classes. Pick the one that matches your task shape:
+
+| Agent | When to use it | Run mode | Docs |
+| --- | --- | --- | --- |
+| `Agent` | Direct tool use, no planning ceremony, fastest | `agent.run(prompt)` | [Quickstart](getting-started/quickstart.md) |
+| `DeepAgent` | Long, multi-step tasks where planning + verification + workspace pay off. **The default for serious work.** | `deep.run(prompt)` | [DeepAgent](deep-agents/deep-agent.md) |
+| `GoalAgent` | A goal with explicit success criteria — decompose, execute, self-evaluate | `goal_agent.run()` (no prompt) | [GoalAgent](deep-agents/goal-agent.md) |
+| `ReflectiveAgent` | Generate → critique → revise loop until quality threshold met | `reflective.run(prompt)` | [ReflectiveAgent](deep-agents/reflective-agent.md) |
+| `AdaptiveAgent` | The agent should write *new tools* at runtime as it works | `adaptive.run(prompt)` | [AdaptiveAgent](deep-agents/adaptive-agent.md) |
+| `Supervisor` | Coordinate multiple specialised worker agents | `supervisor.run(task)` | [Supervisor](deep-agents/supervisor.md) |
+| `PersistentAgent` | Long-running task that must survive crashes via checkpoints | `persistent.run(task, agent_id=...)` | [PersistentAgent](deep-agents/persistent-agent.md) |
+
+**Rule of thumb:** start with `Agent.with_builtins(llm=llm)`. When the task starts to feel too long for a single linear run, switch to `DeepAgent.with_builtins(llm=llm)` — you keep all the same tools and gain planning, workspace, sub-agent delegation, and the option to enable verification or reflection with one extra flag.
+
+### Can I chat with a deep agent live?
+
+Yes — two ways:
+
+1. **Terminal REPL** (one command):
+   ```bash
+   shipit chat                          # default: DeepAgent
+   shipit chat --agent goal             # any other agent type
+   shipit chat --rag-file docs/manual.pdf --reflect --verify
+   ```
+   See [DeepAgent docs](deep-agents/deep-agent.md#live-chat-shipit-chat) for the full slash-command list.
+
+2. **Programmatically**:
+   ```python
+   chat = deep_agent.chat(session_id="user-42")
+   for event in chat.stream("Hi"):
+       print(event.message)
+   result = chat.send("Anything else I should know?")
+   ```
+
+### How is `DeepAgent` different from LangChain's `create_deep_agent`?
+
+It's a strict superset. Same one-liner DX, more capabilities — see the full [comparison table](deep-agents/deep-agent.md#side-by-side-with-langchain-deepagents). Highlights:
+
+- **7 deep tools** vs LangChain's 3
+- **`rag=`**, **`verify=True`**, **`reflect=True`**, **`goal=Goal(...)`** as one-liner flags
+- A **multi-agent live chat REPL** (`shipit chat`) that works for every agent type, not just `DeepAgent`
+
+### Where do I find every constructor parameter?
+
+The [Parameters Reference](reference/parameters.md) page lists every constructor parameter for every agent type and key class — `Agent`, `DeepAgent`, `GoalAgent`, `ReflectiveAgent`, `Supervisor`, `RAG`, and more — with types, defaults, and "use this when" notes.
+
+---
+
 ## Tools
 
 ### My agent has 28 tools and uses too many tokens per turn. What do I do?

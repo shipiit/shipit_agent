@@ -59,25 +59,20 @@
         "Scrape the top 100 Hacker News posts with titles, scores, and comment counts"
       ],
       "sample_output": "## Scraping Result\n\n- **URL**: https://example.com\n- **Status**: Success\n- **Items Found**: 12\n- **Output**: data.json\n\n```json\n[\n  { \"title\": \"Product 1\", \"price\": \"$10\" },\n  { \"title\": \"Product 2\", \"price\": \"$20\" }\n]\n```",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 100,
       "price": 100,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 22,
       "before_after": {
         "question": "Scrape the pricing page from competitor.com for me",
         "after": "🕷️ Scrapling — Scraping competitor.com/pricing\n\n✅ Bypassed Cloudflare protection\n✅ JavaScript rendered\n✅ Data extracted\n\nStarter: $29/month — 5 users, 10GB storage\nPro: $79/month — 25 users, 100GB, API access ⭐\nEnterprise: Custom\n\n💡 vs last week: Starter went up $4 (+16%)\n✅ Saved to: output/competitor_pricing.json",
         "before": "I'm not able to browse or scrape websites directly.\n\nYour options:\n• Manually visit their website\n• Copy the pricing table yourself\n• Hire a developer ($200-500+)\n\nI can't create image files or fetch real-time data. 🤷"
-      },
-      "featured": false
+      }
     },
     {
       "id": "portfolio-website-builder",
@@ -132,26 +127,20 @@
         "Create a portfolio page for a full-stack engineer with project showcases and contact form",
         "Generate a personal portfolio site from my GitHub projects and work history"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 15,
       "price": 15,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 17,
       "before_after": {
         "question": "Build me a portfolio website for a UX designer",
         "after": "🎨 Portfolio Built — Sarah Chen, UX Designer\n\n✅ Live at: sarah-chen-ux.vercel.app\n\nSections:\n• Hero: I design products people actually want to use\n• 3 case studies with before/after screenshots\n• Skills: Figma, User Research, Prototyping\n• Contact form + LinkedIn + Dribbble\n\nDesign: Navy + coral | Inter font | Case study first\n\n📱 Mobile-optimized ✅\n⚡ Lighthouse: 97 ✅\n🚀 Deployed to Vercel ✅",
         "before": "Building a portfolio requires coding skills or a large budget.\n\nOptions:\n• Hire a developer ($500-3,000)\n• Use Squarespace/Wix (generic templates)\n• Learn React yourself (weeks of work)\n\nI cannot build or deploy websites directly. 🤷"
-      },
-      "featured": false
+      }
     },
     {
       "id": "google-maps-lead-finder",
@@ -210,26 +199,20 @@
         "Extract dentist leads in Chicago",
         "Search Google Maps for gyms in London and export locally"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 60,
       "price": 60,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 12,
       "before_after": {
         "question": "Find me dentists in Chicago with their contact info",
         "after": "🗺️ Lead Extractor — Chicago Dentists\n\n✅ 20 leads found in 8 seconds\n\n#1 Bright Now! Dental\n📍 123 N Michigan Ave | ⭐ 4.6 | 📞 (312) 555-0142\n\n#2 Chicago Dental Arts\n📍 456 W Madison St | ⭐ 4.8 | 📞 (312) 555-0287\n\n#3 Lakefront Dental Group\n📍 789 S Lake Shore Dr | ⭐ 4.5 | 📞 (312) 555-0391\n\n... and 17 more\n✅ Saved: dentists_Chicago.csv",
         "before": "I can suggest ways to find dentists in Chicago:\n• Search Google Maps manually\n• Check Yelp for reviews\n• Visit Illinois Dental Society\n\nI don't have access to real-time business data. You'd need to copy contacts manually — could take hours. 🤷"
-      },
-      "featured": false
+      }
     },
     {
       "id": "amazon-affiliate-marketing-agent",
@@ -276,22 +259,15 @@
         "Create Pinterest posts with AI-generated images and captions for this Amazon deal.",
         "Generate 15 promotional images and captions for Twitter/X using this Amazon affiliate link."
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 40,
       "price": 40,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 11,
-      "before_after": null,
-      "featured": false
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
+      "total_sales": 11
     },
     {
       "id": "gmail-and-calendar-agent",
@@ -371,19 +347,14 @@
         "📅 What meetings do I have this week and what emails need my attention?",
         "✍️ Schedule a meeting and draft a follow-up email for me"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 40,
       "price": 40,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 9,
       "before_after": {
         "question": "Draft a follow-up email to a client who has not replied in 2 weeks",
@@ -458,25 +429,19 @@
         "Make a TikTok ad for this product",
         "Generate a UGC style video ad"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 40,
       "price": 40,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 9,
       "before_after": {
         "question": "Create a 10-second TikTok ad for my matte red lipstick",
         "answer": "Generated: script + AI anchor image + 10s Kling 3 video → final_ugc_ad.mp4 (1080x1920, ready to post)"
-      },
-      "featured": false
+      }
     },
     {
       "id": "video-clone-agent",
@@ -543,18 +508,14 @@
         "Generate a video about"
       ],
       "sample_output": "## Video Generation Complete ✅\n\n**Mode:** Clone\n**Source:** https://twitter.com/user/status/123\n**Segments:** 3\n**Resolution:** 720p\n**Duration:** ~12s\n\n🎬 Final video saved to: output/20260311_120000/final_output.mp4\n\n📝 Caption: Caught in the golden hour magic ✨ #cinematography #aifilm #visualart",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 40,
       "price": 40,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 9,
       "before_after": {
         "question": "Clone this YouTube video: youtube.com/watch?v=abc123",
@@ -616,26 +577,20 @@
         "Create an ambient electronic music track that feels cinematic and tense",
         "Generate a cheerful acoustic guitar jingle for my podcast intro"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 10,
       "price": 10,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 8,
       "before_after": {
         "question": "Create a chill lo-fi beat for my study playlist",
         "after": "🎵 Track Generated: Late Night Study Session\n\nStyle: Lo-fi hip hop | 75 BPM | C minor | 3:42\n\n• Vinyl crackle layer\n• Mellow piano melody (8-bar loop)\n• Warm bass, soft boom-bap drums\n• Rain ambience\n• Jazz chord progression\n\n📁 Output: late-night-study.mp3 + .wav + stems/\n✅ Royalty-free — use anywhere",
         "before": "I cannot generate or create audio files directly.\n\nOptions:\n• License from Epidemic Sound ($15-30/month)\n• Hire a producer ($50-500/track)\n• Use YouTube Audio Library (limited)\n\nI cannot create original music. 🤷"
-      },
-      "featured": false
+      }
     },
     {
       "id": "startup-idea-scout",
@@ -691,25 +646,20 @@
         "What B2B SaaS ideas are trending based on recent Y Combinator companies?"
       ],
       "sample_output": "Top MRR: Beehiiv - Newsletter platform, $2.1M MRR | Fastest Grower: CalGet - +340% growth in 30 days | Best Deal: ScreenshotOne - 1.2x multiple, $4.8K MRR | App Idea: AI Newsletter Analytics",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 10,
       "price": 10,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 7,
       "before_after": {
         "question": "What are the best startup deals right now?",
         "after": "🔥 Best Startup Deals Right Now\n\n🥇 Vibbbes — Developer Tools\n💰 MRR: $5,532 | Ask: $13,000 | 0.20x multiple | Margin: 92%\n\n🥈 ExporTiktok — Content Creation\n💰 MRR: $2,979 | Ask: $18,000 | 0.50x multiple | Margin: 100%\n\n🥉 AppAlchemy — AI / Design\n💰 MRR: $10,542 | Ask: $75,000 | 0.59x multiple | Margin: 95%",
         "before": "That's a great question! Finding the best startup deals depends on what you're looking for.\n\nSome popular platforms:\n• MicroAcquire\n• Flippa\n• Acquire.com\n\nHowever, I don't have access to live data or current listings. You'd need to manually browse these platforms yourself. 🤷"
-      },
-      "featured": false
+      }
     },
     {
       "id": "lead-enrichment",
@@ -777,25 +727,20 @@
         "Set up the lead enrichment agent"
       ],
       "sample_output": "## Lead Enriched ✅\n\n**Email:** sarah@stripe.com\n**Name:** Sarah Chen\n**Title:** Head of Partnerships\n**Company:** Stripe\n**LinkedIn:** linkedin.com/in/sarahchen\n**Location:** San Francisco, CA\n\n**Company Intel:**\n- Employees: 7,000\n- Revenue: Over B\n- Industry: Financial Services\n\n📊 Google Sheets → row added\n🟠 HubSpot → contact created (ID: 29471)\n🔵 Notion → page created\n🟡 Airtable → row created\n💾 Local → results/sarah_at_stripe_com.json",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 80,
       "price": 80,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 6,
       "before_after": {
         "question": "Enrich this lead: sarah@stripe.com",
         "after": "✅ Lead Enriched: sarah@stripe.com\n\n👤 Sarah Chen — Sr. Product Manager, Payments Infrastructure\n🏢 Stripe, Inc. | SF, CA | 8,000+ employees\n🔗 linkedin.com/in/sarahchen-stripe\n\nRecent news: Stripe Tax expanded to 12 new countries\n\n📬 Opener: Hi Sarah, saw Stripe expanded Tax — timing might be right to chat about how [your product] helps PM teams move faster.\n\n✅ Enriched in 6 seconds",
         "before": "I can provide general info about Stripe but cannot find individual employee details from an email.\n\nYou would need to:\n• Manually search LinkedIn\n• Use Apollo or Hunter.io (paid)\n• Browse the company website\n\nThis takes 20-30 minutes per lead. 🤷"
-      },
-      "featured": false
+      }
     },
     {
       "id": "competitor-intelligence-tracker",
@@ -842,25 +787,20 @@
         "Set up monitoring on competitor blog and changelog pages for new announcements"
       ],
       "sample_output": "### ✨ NEW URLs DETECTED:\n*   **competitor-site.ai:** 3 new pages found\n    *   - https://competitor-site.ai/blog/future-of-ai-2026\n    *   - https://competitor-site.ai/products/photo-to-video-pro\n    *   - https://competitor-site.ai/pricing/lifetime-deal",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 20,
       "price": 20,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 5,
       "before_after": {
         "question": "What content is my competitor posting this week?",
         "after": "📊 Competitor Report — Week of March 18, 2026\n\nTracking: techcrunch.com, producthunt.com\n\n🔥 Trending this week:\n1. AI agents replacing SaaS (47 articles)\n2. Bootstrapped to $1M ARR stories (23 articles)\n3. Vibe coding tools (19 articles)\n\nTechCrunch: 12 new posts\nTop: OpenAI new model crushes benchmarks (142K views)\n\n💡 Gap: Nobody covering AI agents for non-technical founders — opportunity!\n\n✅ Next run: Tuesday 9am",
         "before": "I can suggest ways to research competitors:\n• Visit their blog manually\n• Check their social media profiles\n• Subscribe to their newsletter\n\nI cannot browse the internet or pull real-time data. This would take 30-60 minutes per competitor per week. 🤷"
-      },
-      "featured": false
+      }
     },
     {
       "id": "expense-tracker",
@@ -933,25 +873,20 @@
         "Generate an expense report showing my spend by category this month"
       ],
       "sample_output": "📄 Processing: invoice_aws_march.pdf\n  Using GEMINI for extraction\n  Vendor:   Amazon Web Services\n  Invoice#: AWS-2024-0312\n  Date:     2024-03-12\n  Amount:   USD 142.50\n  Category: SaaS\n  Converted: USD 142.50\n  Saved to CSV, Notion\n  Done!",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
+
       "premium": true,
       "pricing": "paid",
       "creditCost": 20,
       "price": 20,
-      "tier": "paid",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
+      "tier": "free",
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "total_sales": 4,
       "before_after": {
         "question": "Process invoices from my Gmail and save to Notion",
         "after": "📧 Gmail scanned — 4 new invoice emails found\n\n✅ Invoice logged: AWS — USD 142.50 (Cloud)\n✅ Invoice logged: Figma — USD 45.00 (SaaS)\n✅ Invoice logged: Uber — USD 28.75 (Travel)\n⚠️  Duplicate skipped: Stripe — already logged on 2024-03-01\n\n📊 Saved to Notion database\n📊 Saved to expenses.csv\n\n💱 Total this batch: USD 216.25\nDone in 11 seconds ⚡",
         "before": "I can help you manually — but I cannot access your Gmail or extract invoice data automatically.\n\nYou would need to:\n• Open each email manually\n• Copy vendor, amount, date by hand\n• Paste into your spreadsheet one by one\n\nFor 20 invoices this takes about 45 minutes. 📋"
-      },
-      "featured": false
+      }
     },
     {
       "id": "ai-video-prompt-builder",
@@ -1011,21 +946,9 @@
         "Translate my video prompt to Japanese"
       ],
       "sample_output": "## Seedance 2.0 Production Brief\n\n**User request:** Make a cinematic shot of a lone samurai walking through a burning village at dusk.\n\n---\n\n**🎬 Generated Prompt:**\n\nA lone samurai walks through a smoldering feudal village at dusk, [Slow dolly push-in], embers drifting upward, golden-hour backlight cutting through smoke haze, medium shot transitioning to close-up on weathered face, anamorphic lens, 24fps motion blur, photorealistic render.\n\n---\n\n**⚙️ Technical Contract:**\n- Camera: Slow dolly push-in → close-up (One-Move Rule applied)\n- Lighting: Golden-hour backlight + practical fire practicals\n- Motion: 24fps cinematic motion blur, embers particle system\n- Style: Photorealistic / Historical Epic\n- Mode: Text-to-Video (T2V)\n- Safety: ✅ Passes content filter — no IP conflicts\n\n---\n\n**✅ Prompt length:** 187 chars (within 2000-char limit)\n**✅ Anti-slop check:** Passed — no hollow filler language detected",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "analytics-setup-assistant",
@@ -1094,22 +1017,9 @@
         "Implement Firebase Analytics",
         "Track user behavior on my website"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "api-test-assistant",
@@ -1158,22 +1068,9 @@
         "Run automated API tests for my user authentication flow including edge cases",
         "Load test my REST API with 100 concurrent requests and measure response times"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "app-store-screenshots",
@@ -1231,21 +1128,8 @@
         "Design 5 compelling App Store preview images for my language learning app"
       ],
       "sample_output": "Generates a Next.js page with multiple screenshot slides. Click any screenshot to export PNGs at 1320x2868, 1284x2778, 1206x2622, and 1125x2436 resolutions.",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "backup-manager",
@@ -1300,22 +1184,9 @@
         "Create a backup schedule for my home server that keeps 30 days of incremental backups",
         "Configure automatic backups of my /var/www directory with email alerts on failure"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "brand-voice-guide",
@@ -1369,22 +1240,9 @@
         "Define a brand voice for my B2B SaaS targeting mid-market CFOs — professional but approachable",
         "Compare my website copy to our competitors and identify voice inconsistencies"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "code-workflow-assistant",
@@ -1447,22 +1305,9 @@
         "debug",
         "plan this feature"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "database-architect",
@@ -1511,22 +1356,9 @@
         "Analyze my MySQL schema and suggest indexes to speed up my most common queries",
         "Rewrite this N+1 query problem in my ORM to use proper joins"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "deal-strategist",
@@ -1575,22 +1407,9 @@
         "I'm stuck in procurement limbo — help me create a strategy to close this Q4 deal",
         "Map out the economic buyer and decision process for my $200k enterprise software deal"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "devops-automation",
@@ -1639,22 +1458,9 @@
         "Write a Terraform script to provision an EKS cluster with auto-scaling node groups",
         "Automate my Docker image build and push to ECR on every merge to main"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "full-stack-developer",
@@ -1723,21 +1529,10 @@
         "create a react component",
         "optimize my postgresql query"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "featured": true
     },
     {
@@ -1816,22 +1611,9 @@
         "gtm plan",
         "voice of customer research"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "aRMHhVrMMuO1j3cDI20aqgrDooC3",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "aRMHhVrMMuO1j3cDI20aqgrDooC3"
     },
     {
       "id": "mcp-server-builder",
@@ -1880,22 +1662,9 @@
         "Create an MCP tool for searching my local file system with natural language queries",
         "Build an MCP integration that connects to the GitHub API for repository management"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "multi-agent-manager",
@@ -1959,21 +1728,10 @@
         "Spawn an agent team to review, fix, and test my codebase",
         "Use SAMURAI to break down and execute this complex project"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
+
       "featured": true
     },
     {
@@ -2029,22 +1787,9 @@
         "Set up a Notion content calendar database for my blog with categories and publish dates",
         "Add a new page to my Notion team wiki documenting our API integration process"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "obsidian-vault-manager",
@@ -2111,22 +1856,9 @@
         "create a canvas",
         "mind map"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "product-development-guide",
@@ -2181,22 +1913,9 @@
         "Create a product development roadmap for my fitness app from ideation to App Store launch",
         "Help me define the MVP features for my B2B SaaS and prioritize the development backlog"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "security-engineer",
@@ -2251,22 +1970,9 @@
         "Review my authentication implementation for SQL injection and XSS vulnerabilities",
         "Perform a security assessment of my AWS infrastructure and flag misconfigurations"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "seo-growth-guide",
@@ -2315,22 +2021,9 @@
         "Do keyword research for my fitness app landing page and suggest content clusters",
         "Audit my site's technical SEO issues including crawlability, speed, and schema markup"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "social-media-post-manager",
@@ -2385,22 +2078,9 @@
         "Create and schedule a week of Twitter/X content for my developer tools brand",
         "Plan and queue Instagram posts for my e-commerce store for the next 30 days"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "technical-writer",
@@ -2449,22 +2129,9 @@
         "Create a getting started guide for my open-source CLI tool with installation and examples",
         "Write an architecture decision record (ADR) for switching from REST to GraphQL"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "tiktok-app-marketing-agent",
@@ -2486,22 +2153,9 @@
       "requirements": [],
       "trigger": [],
       "trigger_phrases": [],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "ui-and-ux-design-guide",
@@ -2556,22 +2210,9 @@
         "Create a wireframe for a mobile dashboard that shows analytics data",
         "What design patterns should I use for a multi-step checkout experience?"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "video-downloader",
@@ -2593,22 +2234,9 @@
       "requirements": [],
       "trigger": [],
       "trigger_phrases": [],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     },
     {
       "id": "x-search-and-sentiment-tool",
@@ -2670,22 +2298,9 @@
         "find tweets about",
         "what are people saying about"
       ],
-      "sample_output": "",
-      "isAdminEnabled": true,
-      "isUserEnabled": true,
-      "isVisible": true,
-      "premium": false,
-      "pricing": "free",
-      "creditCost": 0,
-      "price": 0,
+
       "tier": "free",
-      "creator_id": "PUtFxERrOwdPga6VOzDeaQNBR8G2",
-      "like_count": 0,
-      "avg_rating": 0,
-      "review_count": 0,
-      "total_sales": 0,
-      "before_after": null,
-      "featured": false
+      "": "PUtFxERrOwdPga6VOzDeaQNBR8G2"
     }
   ]
 }

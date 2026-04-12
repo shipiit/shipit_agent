@@ -52,9 +52,12 @@ With skills::
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from shipit_agent.builtins import get_builtin_tool_map, get_builtin_tools
 from shipit_agent.chat_session import AgentChatSession
@@ -500,8 +503,18 @@ class Agent:
                 from shipit_agent.structured import parse_structured_output
 
                 parsed = parse_structured_output(response.content, output_schema)
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "output_schema parsing failed: %s — raw output: %s",
+                    exc,
+                    response.content[:500],
+                )
                 parsed = None
+        elif output_schema and not response.content:
+            logger.warning(
+                "output_schema was set but LLM returned empty content — "
+                "parsed will be None. Try increasing max_iterations."
+            )
 
         rag_sources = self.rag.end_run() if self.rag is not None else []
 

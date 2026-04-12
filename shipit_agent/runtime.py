@@ -595,9 +595,22 @@ class AgentRuntime:
                 iteration=self.max_iterations + 1,
             )
             try:
+                # Inject a nudge so the model knows it must produce a text
+                # answer now (no more tools). Without this, some models
+                # (especially via Bedrock) return empty content.
+                summary_messages = list(state.messages) + [
+                    Message(
+                        role="user",
+                        content=(
+                            "You have reached the tool-call limit. "
+                            "Based on everything above, write your final "
+                            "answer now. Do not call any tools."
+                        ),
+                    )
+                ]
                 summary = self._complete_with_retry(
                     state=state,
-                    messages=list(state.messages),
+                    messages=summary_messages,
                     tools=[],  # force text-only completion
                     base_prompt=base_prompt,
                 )

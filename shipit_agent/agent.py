@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
-from shipit_agent.builtins import get_builtin_tools
+from shipit_agent.builtins import get_builtin_tool_map, get_builtin_tools
 from shipit_agent.chat_session import AgentChatSession
 from shipit_agent.doctor import AgentDoctor, DoctorReport
 from shipit_agent.integrations import CredentialStore
@@ -12,8 +13,19 @@ from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
 from shipit_agent.reasoning import ReasoningResult, ReasoningRuntime
 from shipit_agent.runtime import AgentRuntime
+from shipit_agent.skills import (
+    FileSkillRegistry,
+    Skill,
+    SkillRegistry,
+    apply_skill,
+    find_relevant_skills,
+)
+from shipit_agent.skills.tool_bundles import tool_names_for_skills
 from shipit_agent.stores import MemoryStore, SessionStore
 from shipit_agent.tracing import TraceStore
+
+DEFAULT_SKILLS_PATH = Path(__file__).resolve().parent / "skills" / "skills.json"
+SkillLike = str | Skill
 
 
 @dataclass(slots=True)
@@ -40,6 +52,13 @@ class Agent:
     context_window_tokens: int = 0
     replan_interval: int = 0
     rag: Any = None
+    project_root: str | Path = "/tmp"
+    skill_registry: SkillRegistry | None = None
+    skill_source: str | Path | None = DEFAULT_SKILLS_PATH
+    auto_use_skills: bool = True
+    skills: list[SkillLike] = field(default_factory=list)
+    default_skill_ids: list[str] = field(default_factory=list)
+    skill_match_limit: int = 3
 
     def __post_init__(self) -> None:
         if self.rag is not None:
@@ -52,6 +71,11 @@ class Agent:
             rag_section = self.rag.prompt_section()
             if rag_section and rag_section not in self.prompt:
                 self.prompt = f"{self.prompt}\n\n{rag_section}"
+        if self.skill_registry is None and self.skill_source:
+            skill_path = Path(self.skill_source)
+            if skill_path.exists():
+                self.skill_registry = FileSkillRegistry(skill_path)
+        self.skills = self._resolve_skill_refs(self.skills)
 
     @classmethod
     def with_builtins(
@@ -79,6 +103,7 @@ class Agent:
         """
         builtin_tools = get_builtin_tools(
             llm=llm,
+            project_root=str(kwargs.get("project_root", "/tmp")),
             workspace_root=workspace_root,
             web_search_provider=web_search_provider,
             web_search_api_key=web_search_api_key,
@@ -101,6 +126,109 @@ class Agent:
             **kwargs,
         )
 
+    def _resolve_skill_ref(self, skill_ref: SkillLike) -> Skill:
+        if isinstance(skill_ref, Skill):
+            return skill_ref
+        if self.skill_registry is None:
+            raise ValueError(
+                f"Cannot resolve skill '{skill_ref}' because no skill registry is configured."
+            )
+        skill = self.skill_registry.get(skill_ref)
+        if skill is None:
+            raise ValueError(f"Unknown skill id: {skill_ref}")
+        return skill
+
+    def _resolve_skill_refs(self, skill_refs: list[SkillLike]) -> list[Skill]:
+        resolved: list[Skill] = []
+        seen_ids: set[str] = set()
+        for skill_ref in skill_refs:
+            skill = self._resolve_skill_ref(skill_ref)
+            if skill.id in seen_ids:
+                continue
+            resolved.append(skill)
+            seen_ids.add(skill.id)
+        return resolved
+
+    def available_skills(self) -> list[Skill]:
+        if self.skill_registry is None:
+            return []
+        return self.skill_registry.list()
+
+    def search_skills(self, query: str) -> list[Skill]:
+        if self.skill_registry is None:
+            return []
+        return self.skill_registry.search(query)
+
+    def add_skill(self, skill: SkillLike) -> Skill:
+        resolved = self._resolve_skill_ref(skill)
+        if resolved.id not in {existing.id for existing in self.skills}:
+            self.skills.append(resolved)
+        return resolved
+
+    def _selected_skills(self, user_prompt: str) -> list[Skill]:
+
+        selected: list[Skill] = []
+        seen_ids: set[str] = set()
+        for skill in self.skills:
+            if skill.id not in seen_ids:
+                selected.append(skill)
+                seen_ids.add(skill.id)
+        for skill_id in self.default_skill_ids:
+            skill = self._resolve_skill_ref(skill_id)
+            if skill.id not in seen_ids:
+                selected.append(skill)
+                seen_ids.add(skill.id)
+
+        if self.auto_use_skills and self.skill_registry is not None:
+            for skill in find_relevant_skills(
+                self.skill_registry,
+                user_prompt,
+                max_skills=self.skill_match_limit,
+            ):
+                if skill.id in seen_ids:
+                    continue
+                selected.append(skill)
+                seen_ids.add(skill.id)
+        return selected
+
+    def _effective_prompt(self, user_prompt: str) -> str:
+        effective = self.prompt
+        for skill in self._selected_skills(user_prompt):
+            holder = type("PromptHolder", (), {"prompt": effective})()
+            apply_skill(holder, skill)
+            effective = holder.prompt
+        return effective
+
+    def _effective_tools(self, user_prompt: str) -> list[Any]:
+        selected_skills = self._selected_skills(user_prompt)
+        effective: dict[str, Any] = {
+            getattr(tool, "name", f"tool_{index}"): tool
+            for index, tool in enumerate(self.tools)
+        }
+        if not selected_skills:
+            return list(effective.values())
+
+        builtin_tool_map = get_builtin_tool_map(
+            llm=self.llm,
+            project_root=str(self.project_root),
+        )
+        for tool_name in tool_names_for_skills(selected_skills):
+            tool = builtin_tool_map.get(tool_name)
+            if tool is not None:
+                effective[tool_name] = tool
+        return list(effective.values())
+
+    def _skill_tool_names(self, selected_skills: list[Skill]) -> list[str]:
+        available_names = {getattr(tool, "name", None) for tool in self.tools}
+        names: list[str] = []
+        seen: set[str] = set()
+        for tool_name in tool_names_for_skills(selected_skills):
+            if tool_name in available_names or tool_name in seen:
+                continue
+            names.append(tool_name)
+            seen.add(tool_name)
+        return names
+
     def run(self, user_prompt: str, *, output_schema: Any = None) -> AgentResult:
         # Append schema instructions to the USER prompt (not system prompt)
         # so the model can still use tools normally and only formats the
@@ -115,10 +243,14 @@ class Agent:
         if self.rag is not None:
             self.rag.begin_run()
 
+        selected_skills = self._selected_skills(user_prompt)
+        effective_tools = self._effective_tools(user_prompt)
+        skill_tool_names = self._skill_tool_names(selected_skills)
+
         runtime = AgentRuntime(
             llm=self.llm,
-            prompt=self.prompt,
-            tools=self.tools,
+            prompt=self._effective_prompt(user_prompt),
+            tools=effective_tools,
             mcps=self.mcps,
             metadata={
                 "agent_name": self.name,
@@ -153,12 +285,16 @@ class Agent:
 
         rag_sources = self.rag.end_run() if self.rag is not None else []
 
+        result_metadata = dict(response.metadata)
+        result_metadata["used_skills"] = [skill.id for skill in selected_skills]
+        result_metadata["used_skill_tools"] = skill_tool_names
+
         return AgentResult(
             output=response.content,
             messages=state.messages,
             events=state.events,
             tool_results=state.tool_results,
-            metadata=dict(response.metadata),
+            metadata=result_metadata,
             parsed=parsed,
             rag_sources=rag_sources,
         )
@@ -167,14 +303,19 @@ class Agent:
         if self.rag is not None:
             self.rag.begin_run()
 
+        selected_skills = self._selected_skills(user_prompt)
+        effective_tools = self._effective_tools(user_prompt)
+
         runtime = AgentRuntime(
             llm=self.llm,
-            prompt=self.prompt,
-            tools=self.tools,
+            prompt=self._effective_prompt(user_prompt),
+            tools=effective_tools,
             mcps=self.mcps,
             metadata={
                 "agent_name": self.name,
                 "agent_description": self.description,
+                "used_skills": [skill.id for skill in selected_skills],
+                "used_skill_tools": self._skill_tool_names(selected_skills),
                 **self.metadata,
             },
             history_messages=list(self.history),

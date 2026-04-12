@@ -77,6 +77,7 @@ renderer you can copy.
 | Need | Pass | Docs |
 | --- | --- | --- |
 | Tools | `tools=[…]` or `with_builtins()` | [Custom tools](../guides/custom-tools.md) |
+| Skills | `skills=[…]`, `default_skill_ids=[…]`, `skill_source=…` | [Skills guide](../guides/skills.md) |
 | MCP servers | `mcps=[…]` | [MCP integration](../guides/mcp.md) |
 | Grounded answers with citations | `rag=my_rag` | [RAG + Agent](../rag/with-agent.md) |
 | Long-term memory | `memory_store=…` | [Advanced memory](../guides/advanced-memory.md) |
@@ -103,6 +104,8 @@ the [Parameters Reference](../reference/parameters.md#agent).
   one parameter and read citations off `result.rag_sources`.
 - [With Tools](with-tools.md) — Extend the agent with custom tools, MCP
   servers, and runtime tool factories.
+- [Skills](../guides/skills.md) — attach packaged skills, custom catalogs,
+  and runtime-managed skill workflows.
 - [Memory](memory.md) — `AgentMemory`, conversation summaries, semantic
   facts, entity tracking, and the OpenAI-style "remember things across
   sessions" pattern.

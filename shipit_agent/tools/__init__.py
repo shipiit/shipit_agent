@@ -1,15 +1,21 @@
 from .ask_user import AskUserTool
 from .artifact_builder import ArtifactBuilderTool
+from .bash import BashTool
 from .base import Tool, ToolContext, ToolOutput
 from .code_execution import CodeExecutionTool
 from .confluence import ConfluenceTool
 from .custom_api import CustomAPITool
 from .decision_matrix import DecisionMatrixTool
+from .edit_file import EditFileTool
 from .evidence_synthesis import EvidenceSynthesisTool
 from .function import FunctionTool
+from .file_read import FileReadTool
+from .file_write import FileWriteTool
 from .gmail import GmailTool
+from .glob_search import GlobSearchTool
 from .google_calendar import GoogleCalendarTool
 from .google_drive import GoogleDriveTool
+from .grep_search import GrepSearchTool
 from .human_review import HumanReviewTool
 from .jira import JiraTool
 from .linear import LinearTool
@@ -38,6 +44,7 @@ from .web_search import (
 __all__ = [
     "AskUserTool",
     "ArtifactBuilderTool",
+    "BashTool",
     "BraveSearchProvider",
     "build_search_provider",
     "CodeExecutionTool",
@@ -45,11 +52,16 @@ __all__ = [
     "CustomAPITool",
     "DecisionMatrixTool",
     "DuckDuckGoSearchProvider",
+    "EditFileTool",
     "EvidenceSynthesisTool",
+    "FileReadTool",
+    "FileWriteTool",
     "FunctionTool",
     "GmailTool",
+    "GlobSearchTool",
     "GoogleCalendarTool",
     "GoogleDriveTool",
+    "GrepSearchTool",
     "HumanReviewTool",
     "JiraTool",
     "LinearTool",

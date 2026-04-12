@@ -56,8 +56,8 @@ from .structured import (
     schema_to_response_format,
 )
 from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
-from .agent import Agent
-from .builtins import get_builtin_tools
+from .agent import Agent, DEFAULT_SKILLS_PATH
+from .builtins import get_builtin_tool_map, get_builtin_tools
 from .chat_session import AgentChatSession
 from .construction import build_tool_schemas, construct_tool_registry
 from .context_tracker import ContextSnapshot, ContextTracker
@@ -114,6 +114,17 @@ from .stores import (
 from .templates import PromptTemplate
 from .tool_runner import ToolRunner, ToolRunnerResult
 from .tracing import FileTraceStore, InMemoryTraceStore, TraceRecord, TraceStore
+from .skills import (
+    FileSkillRegistry,
+    SkillCatalog,
+    Skill,
+    SkillRegistry,
+    apply_skill,
+    create_skill,
+    find_relevant_skills,
+    match_skill_by_trigger,
+    skill_id_from_name,
+)
 from .rag import (
     Chunk as RAGChunk,
     Document as RAGDocument,
@@ -131,6 +142,7 @@ from .rag.search_pipeline import HybridSearchPipeline
 from .tools import (
     AskUserTool,
     ArtifactBuilderTool,
+    BashTool,
     BraveSearchProvider,
     build_search_provider,
     CodeExecutionTool,
@@ -138,11 +150,16 @@ from .tools import (
     CustomAPITool,
     DecisionMatrixTool,
     DuckDuckGoSearchProvider,
+    EditFileTool,
     EvidenceSynthesisTool,
+    FileReadTool,
+    FileWriteTool,
     FunctionTool,
     GmailTool,
+    GlobSearchTool,
     GoogleCalendarTool,
     GoogleDriveTool,
+    GrepSearchTool,
     HumanReviewTool,
     JiraTool,
     LinearTool,
@@ -171,6 +188,7 @@ from .tools import (
 __all__ = [
     "AdaptiveAgent",
     "Agent",
+    "DEFAULT_SKILLS_PATH",
     "AgentBenchmark",
     "AgentChatSession",
     "AgentHooks",
@@ -231,6 +249,7 @@ __all__ = [
     "AskUserTool",
     "Artifact",
     "ArtifactBuilderTool",
+    "BashTool",
     "build_tool_schemas",
     "construct_tool_registry",
     "BraveSearchProvider",
@@ -246,12 +265,16 @@ __all__ = [
     "DoctorCheck",
     "DoctorReport",
     "discover_mcp_tools",
+    "get_builtin_tool_map",
     "get_builtin_tools",
     "AgentDoctor",
     "build_search_provider",
     "DuplicateToolError",
     "DuckDuckGoSearchProvider",
+    "EditFileTool",
     "EvidenceSynthesisTool",
+    "FileReadTool",
+    "FileWriteTool",
     "FileMemoryStore",
     "FileSessionStore",
     "FunctionTool",
@@ -259,9 +282,11 @@ __all__ = [
     "FileOAuthStateStore",
     "FileTraceStore",
     "GmailTool",
+    "GlobSearchTool",
     "GoogleOAuthHelper",
     "GoogleCalendarTool",
     "GoogleDriveTool",
+    "GrepSearchTool",
     "HumanReviewTool",
     "InMemoryMemoryStore",
     "InMemoryCredentialStore",
@@ -323,6 +348,16 @@ __all__ = [
     "websocket_event_packet",
     "websocket_result_packet",
     "WorkspaceFilesTool",
+    # --- Skills subsystem -----------------------------------------------------
+    "FileSkillRegistry",
+    "SkillCatalog",
+    "Skill",
+    "SkillRegistry",
+    "apply_skill",
+    "create_skill",
+    "find_relevant_skills",
+    "match_skill_by_trigger",
+    "skill_id_from_name",
     # --- Super RAG subsystem ------------------------------------------------
     "RAG",
     "RAGChunk",

@@ -12,6 +12,7 @@ description: A clean, powerful Python agent library with tools, MCP, streaming e
 
 - bring your own LLM — or use any of seven built-in provider adapters
 - attach Python tools, remote MCP servers, or connector-style third-party tools (Gmail, Drive, Slack, Linear, Notion, Jira, Confluence)
+- attach packaged or custom **skills** to steer agent behavior and reusable workflows
 - iterate tool-using agents with configurable retry and router policies
 - stream structured events (including **reasoning / thinking** blocks) as they happen
 - inspect every step: reasoning, tool arguments, tool outputs, retries, final answer
@@ -158,6 +159,7 @@ run_completed         Agent run completed
 - [**Explore streaming events**](guides/streaming.md) — understand the 14 event types and what they carry
 - [**Reasoning and thinking steps**](guides/reasoning.md) — render a live "Thinking" panel in your UI
 - [**Create a custom tool**](guides/custom-tools.md) — build a new tool from scratch
+- [**Use skills**](guides/skills.md) — packaged skills, custom skills, Agent, and DeepAgent workflows
 - [**MCP integration**](guides/mcp.md) — attach remote MCP servers to extend capabilities
 - [**Parallel tool execution**](guides/parallel-execution.md) — speed up multi-tool turns
 - [**Hooks & middleware**](guides/hooks.md) — add cost tracking, logging, and guardrails

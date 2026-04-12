@@ -55,12 +55,15 @@ Live chat::
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+from shipit_agent.agent import DEFAULT_SKILLS_PATH
 from shipit_agent.builtins import get_builtin_tools
 from shipit_agent.chat_session import AgentChatSession
 from shipit_agent.models import AgentEvent, AgentResult
 from shipit_agent.policies import RetryPolicy, RouterPolicy
+from shipit_agent.skills import Skill, SkillRegistry
 from shipit_agent.stores import InMemorySessionStore, SessionStore
 
 from ..goal_agent import Goal, GoalAgent, GoalResult
@@ -89,6 +92,7 @@ class DeepAgent:
     extra_tools: list[Any] = field(default_factory=list)
     mcps: list[Any] = field(default_factory=list)
     workspace_root: str = ".shipit_workspace"
+    project_root: str | Path = "/tmp"
     # Sub-agents the deep agent can delegate to via the
     # ``delegate_to_agent`` tool. Pass a list (names derived from each
     # agent's ``.name`` attribute) or a dict[name, agent].
@@ -114,6 +118,12 @@ class DeepAgent:
     hooks: Any = None
     trace_store: Any = None
     credential_store: Any = None
+    skill_registry: SkillRegistry | None = None
+    skill_source: str | Path | None = DEFAULT_SKILLS_PATH
+    auto_use_skills: bool = True
+    skills: list[str | Skill] = field(default_factory=list)
+    default_skill_ids: list[str] = field(default_factory=list)
+    skill_match_limit: int = 3
 
     # ---- builtins ---------------------------------------------------------
     use_builtins: bool = False
@@ -138,6 +148,7 @@ class DeepAgent:
         extra_tools: list[Any] | None = None,
         mcps: list[Any] | None = None,
         workspace_root: str = ".shipit_workspace",
+        project_root: str | Path = "/tmp",
         web_search_provider: str = "duckduckgo",
         web_search_api_key: str | None = None,
         rag: Any = None,
@@ -158,6 +169,12 @@ class DeepAgent:
         hooks: Any = None,
         trace_store: Any = None,
         credential_store: Any = None,
+        skill_registry: SkillRegistry | None = None,
+        skill_source: str | Path | None = DEFAULT_SKILLS_PATH,
+        auto_use_skills: bool = True,
+        skills: list[str | Skill] | None = None,
+        default_skill_ids: list[str] | None = None,
+        skill_match_limit: int = 3,
         **agent_kwargs: Any,
     ) -> "DeepAgent":
         """Build a DeepAgent that also bundles the full built-in tool catalogue."""
@@ -169,6 +186,7 @@ class DeepAgent:
             extra_tools=list(extra_tools or []),
             mcps=list(mcps or []),
             workspace_root=workspace_root,
+            project_root=project_root,
             web_search_provider=web_search_provider,
             web_search_api_key=web_search_api_key,
             rag=rag,
@@ -189,6 +207,12 @@ class DeepAgent:
             hooks=hooks,
             trace_store=trace_store,
             credential_store=credential_store,
+            skill_registry=skill_registry,
+            skill_source=skill_source,
+            auto_use_skills=auto_use_skills,
+            skills=list(skills or []),
+            default_skill_ids=list(default_skill_ids or []),
+            skill_match_limit=skill_match_limit,
             use_builtins=True,
             agent_kwargs=agent_kwargs,
         )
@@ -199,12 +223,14 @@ class DeepAgent:
 
     def __post_init__(self) -> None:
         self._agent = self._build_agent()
+        self.skills = list(self._agent.skills)
 
     def _builtin_tools(self) -> list[Any]:
         if not self.use_builtins:
             return []
         return get_builtin_tools(
             llm=self.llm,
+            project_root=str(self.project_root),
             workspace_root=self.workspace_root,
             web_search_provider=self.web_search_provider,
             web_search_api_key=self.web_search_api_key,
@@ -243,6 +269,13 @@ class DeepAgent:
             "max_iterations": self.max_iterations,
             "parallel_tool_execution": self.parallel_tool_execution,
             "context_window_tokens": self.context_window_tokens,
+            "skill_registry": self.skill_registry,
+            "skill_source": self.skill_source,
+            "auto_use_skills": self.auto_use_skills,
+            "skills": list(self.skills),
+            "default_skill_ids": list(self.default_skill_ids),
+            "skill_match_limit": self.skill_match_limit,
+            "project_root": self.project_root,
         }
         if history:
             kwargs["history"] = history
@@ -285,6 +318,18 @@ class DeepAgent:
     @property
     def tools(self) -> list[Any]:
         return self._agent.tools
+
+    @property
+    def skills_catalog(self) -> list[Skill]:
+        return self._agent.available_skills()
+
+    def search_skills(self, query: str) -> list[Skill]:
+        return self._agent.search_skills(query)
+
+    def add_skill(self, skill: str | Skill) -> Skill:
+        added = self._agent.add_skill(skill)
+        self.skills = list(self._agent.skills)
+        return added
 
     @property
     def delegation_tool(self) -> AgentDelegationTool | None:

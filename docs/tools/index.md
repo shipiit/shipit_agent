@@ -33,7 +33,15 @@ shipit-agent ships with **25+ production-ready built-in tools** organized into f
 
     Execute Python, manage workspace files, store memory facts, build artifacts.
 
-    `run_code` · `workspace_files` · `memory` · `build_artifact`
+    `bash` · `read_file` · `edit_file` · `write_file` · `glob_files` · `grep_files` · `run_code` · `workspace_files` · `memory` · `build_artifact`
+
+-   :material-script-text: **Tool prompt pages**
+
+    ---
+
+    Exact shipped prompt text and runtime notes for the main code-and-files tools.
+
+    `bash` · `read_file` · `edit_file` · `write_file` · `glob_files` · `grep_files`
 
 -   :material-link-variant: **[Connectors](connectors.md)**
 
@@ -51,12 +59,14 @@ shipit-agent ships with **25+ production-ready built-in tools** organized into f
 |---|---|---|
 | [`build_artifact`](code-and-files.md#build_artifact) | Code & files | Create named artifacts (markdown, JSON, code files) saved to workspace |
 | [`ask_user`](core-tools.md#ask_user) | Core | Pause and ask the user a structured question |
+| [`bash`](bash.md) | Code & files | Run a bounded shell command from the configured project root |
 | [`build_prompt`](reasoning-helpers.md#build_prompt) | Reasoning | Generate or refine a system prompt from goals + constraints |
 | [`run_code`](code-and-files.md#run_code) | Code & files | Run Python or shell code in a sandboxed subprocess |
 | [`confluence`](connectors.md#confluence) | Connector | Search and create Confluence pages |
 | [`custom_api`](connectors.md#custom_api) | Connector | Call any configured HTTP API with custom auth |
 | [`decision_matrix`](reasoning-helpers.md#decision_matrix) | Reasoning | Score options against criteria, recommend the strongest |
 | [`decompose_problem`](reasoning-helpers.md#decompose_problem) | Reasoning | Break a problem into workstreams, assumptions, risks |
+| [`edit_file`](edit-file.md) | Code & files | Apply exact string replacement patches to an existing file |
 | [`gmail_search`](connectors.md#gmail_search) | Connector | Search, read, draft, and send Gmail messages |
 | [`google_calendar`](connectors.md#google_calendar) | Connector | Search and list calendar events |
 | [`google_drive`](connectors.md#google_drive) | Connector | Search and list Drive files |
@@ -75,6 +85,10 @@ shipit-agent ships with **25+ production-ready built-in tools** organized into f
 | [`verify_output`](reasoning-helpers.md#verify_output) | Reasoning | Check whether content satisfies required criteria |
 | [`web_search`](core-tools.md#web_search) | Core | Search the web via DuckDuckGo, Brave, Serper, Tavily, or Playwright |
 | [`workspace_files`](code-and-files.md#workspace_files) | Code & files | Read, write, list, and inspect files in the workspace |
+| [`read_file`](read-file.md) | Code & files | Read a file from the configured project root |
+| [`write_file`](write-file.md) | Code & files | Create or overwrite a file under the configured project root |
+| [`glob_files`](glob-files.md) | Code & files | Find files by glob pattern under the configured project root |
+| [`grep_files`](grep-files.md) | Code & files | Search repository contents with ripgrep-style semantics |
 
 ## How tools are loaded
 

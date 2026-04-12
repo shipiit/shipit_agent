@@ -6,14 +6,20 @@ from shipit_agent.llms.base import LLM
 from shipit_agent.tools import (
     AskUserTool,
     ArtifactBuilderTool,
+    BashTool,
     CodeExecutionTool,
     ConfluenceTool,
     CustomAPITool,
     DecisionMatrixTool,
+    EditFileTool,
     EvidenceSynthesisTool,
+    FileReadTool,
+    FileWriteTool,
     GmailTool,
+    GlobSearchTool,
     GoogleCalendarTool,
     GoogleDriveTool,
+    GrepSearchTool,
     HumanReviewTool,
     JiraTool,
     LinearTool,
@@ -34,14 +40,15 @@ from shipit_agent.tools import (
 )
 
 
-def get_builtin_tools(
+def get_builtin_tool_map(
     *,
     llm: LLM | None = None,
+    project_root: str = "/tmp",
     workspace_root: str = ".shipit_workspace",
     web_search_provider: str = "duckduckgo",
     web_search_api_key: str | None = None,
     web_search_config: dict[str, Any] | None = None,
-) -> list[Tool]:
+) -> dict[str, Tool]:
     tools: list[Tool] = [
         WebSearchTool(
             provider=web_search_provider,
@@ -50,6 +57,12 @@ def get_builtin_tools(
         ),
         OpenURLTool(),
         PlaywrightBrowserTool(),
+        BashTool(root_dir=project_root),
+        FileReadTool(root_dir=project_root),
+        EditFileTool(root_dir=project_root),
+        FileWriteTool(root_dir=project_root),
+        GlobSearchTool(root_dir=project_root),
+        GrepSearchTool(root_dir=project_root),
         AskUserTool(),
         HumanReviewTool(),
         MemoryTool(),
@@ -75,4 +88,25 @@ def get_builtin_tools(
     ]
     if llm is not None:
         tools.append(SubAgentTool(llm=llm))
-    return tools
+    return {tool.name: tool for tool in tools}
+
+
+def get_builtin_tools(
+    *,
+    llm: LLM | None = None,
+    project_root: str = "/tmp",
+    workspace_root: str = ".shipit_workspace",
+    web_search_provider: str = "duckduckgo",
+    web_search_api_key: str | None = None,
+    web_search_config: dict[str, Any] | None = None,
+) -> list[Tool]:
+    return list(
+        get_builtin_tool_map(
+            llm=llm,
+            project_root=project_root,
+            workspace_root=workspace_root,
+            web_search_provider=web_search_provider,
+            web_search_api_key=web_search_api_key,
+            web_search_config=web_search_config,
+        ).values()
+    )

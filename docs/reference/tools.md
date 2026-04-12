@@ -9,6 +9,12 @@ Complete list of built-in tools with file paths.
 | `WebSearchTool` | `shipit_agent.tools.web_search.web_search_tool` |
 | `OpenURLTool` | `shipit_agent.tools.open_url.open_url_tool` |
 | `PlaywrightBrowserTool` | `shipit_agent.tools.playwright_browser.playwright_browser_tool` |
+| `BashTool` | `shipit_agent.tools.bash.bash_tool` |
+| `FileReadTool` | `shipit_agent.tools.file_read.file_read_tool` |
+| `EditFileTool` | `shipit_agent.tools.edit_file.edit_file_tool` |
+| `FileWriteTool` | `shipit_agent.tools.file_write.file_write_tool` |
+| `GlobSearchTool` | `shipit_agent.tools.glob_search.glob_search_tool` |
+| `GrepSearchTool` | `shipit_agent.tools.grep_search.grep_search_tool` |
 | `ToolSearchTool` | `shipit_agent.tools.tool_search.tool_search_tool` |
 | `AskUserTool` | `shipit_agent.tools.ask_user.ask_user_tool` |
 | `HumanReviewTool` | `shipit_agent.tools.human_review.human_review_tool` |

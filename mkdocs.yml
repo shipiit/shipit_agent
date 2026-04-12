@@ -138,6 +138,7 @@ nav:
   - Agent:
       - Overview: agent/index.md
       - Examples: agent/examples.md
+      - Skills: guides/skills.md
       - Streaming: agent/streaming.md
       - With RAG: agent/with-rag.md
       - With Tools: agent/with-tools.md
@@ -148,6 +149,7 @@ nav:
       - Streaming Events: guides/streaming.md
       - Reasoning & Thinking: guides/reasoning.md
       - Creating Custom Tools: guides/custom-tools.md
+      - Skills: guides/skills.md
       - Tool Search: guides/tool-search.md
       - MCP Integration: guides/mcp.md
       - Sessions & Memory: guides/sessions.md
@@ -196,6 +198,12 @@ nav:
       - Core Tools: tools/core-tools.md
       - Reasoning Helpers: tools/reasoning-helpers.md
       - Code & Files: tools/code-and-files.md
+      - bash: tools/bash.md
+      - read_file: tools/read-file.md
+      - edit_file: tools/edit-file.md
+      - write_file: tools/write-file.md
+      - glob_files: tools/glob-files.md
+      - grep_files: tools/grep-files.md
       - Connectors: tools/connectors.md
   - Resources:
       - FAQ: faq.md

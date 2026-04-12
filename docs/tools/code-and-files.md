@@ -9,10 +9,27 @@ Tools that interact with the local filesystem and runtime environment. Use these
 
 | Tool | Tool ID | Purpose |
 |---|---|---|
+| `BashTool` | `bash` | Run bounded shell commands under `project_root` |
+| `FileReadTool` | `read_file` | Read project files with optional line ranges |
+| `EditFileTool` | `edit_file` | Apply exact string replacement patches to existing files |
+| `FileWriteTool` | `write_file` | Create or overwrite project files |
+| `GlobSearchTool` | `glob_files` | Find files by glob pattern under `project_root` |
+| `GrepSearchTool` | `grep_files` | Search file contents with ripgrep or Python fallback |
 | `CodeExecutionTool` | `run_code` | Execute Python or shell code in a sandboxed subprocess |
 | `WorkspaceFilesTool` | `workspace_files` | Read, write, list, and inspect files |
 | `MemoryTool` | `memory` | Store and retrieve persistent memory facts |
 | `ArtifactBuilderTool` | `build_artifact` | Create named artifacts (markdown, JSON, code files) |
+
+The built-in project tools use `project_root="/tmp"` by default. Override this on `Agent` or `DeepAgent` when you want them scoped to a repo checkout instead.
+
+See the dedicated prompt pages for the exact shipped instructions:
+
+- [`bash`](bash.md)
+- [`read_file`](read-file.md)
+- [`edit_file`](edit-file.md)
+- [`write_file`](write-file.md)
+- [`glob_files`](glob-files.md)
+- [`grep_files`](grep-files.md)
 
 ---
 

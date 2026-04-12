@@ -5,6 +5,114 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] — 2026-04-12
+
+**Skills, tools, and runtime power-up.** All 32 tool prompts rewritten with
+decision trees and anti-patterns. Full skill-to-tool linking for all 37
+packaged skills. Automatic iteration boost for skill-driven workflows.
+Expanded bash allowlist (50+ commands). Streaming, chat, and project-building
+examples across 3 notebooks. Comprehensive docstrings across every key module.
+**32 skill tests. All passing.**
+
+### Skills — Full Tool Linking
+
+- **37 skill tool bundles** (up from 10) — every packaged skill now declares
+  the built-in tools it needs. When a skill is selected, the agent auto-
+  attaches the right tools without the caller having to wire them manually.
+- **Shared tool groups** — `_FILE_CORE`, `_CODE_CORE`, `_WEB_CORE` reduce
+  duplication across bundles and make it easy to add new skills.
+- **`validate_tool_bundles()`** — new helper that checks every tool name in
+  `SKILL_TOOL_BUNDLES` against the real builtin map. Catches typos and stale
+  refs at test time.
+- **Category-organised bundles** — web/scraping, code/development, devops,
+  security, writing, research, lead gen, marketing, productivity, media,
+  multi-agent.
+
+### Agent — Iteration Boost & Efficiency
+
+- **`_effective_max_iterations()`** — when skills inject extra tools and
+  `max_iterations` is at the default (4), the runtime auto-boosts to 8 so
+  skill-driven workflows can complete without cutting off early. An explicit
+  override is always respected.
+- **Single skill computation** — `run()` and `stream()` now compute
+  `_selected_skills()` once and pass the result to `_effective_tools()`,
+  `_skill_tool_names()`, and `_effective_max_iterations()`. Previously skills
+  were recomputed up to 3 times per call.
+- **`_effective_tools(selected_skills=)`** — accepts pre-computed skills to
+  avoid redundant registry lookups.
+
+### Tool Prompts — All 32 Upgraded
+
+Every tool's `prompt.py` rewritten with:
+
+- **Decision trees** — "Need to search? → `grep_files`. Need to find a file? → `glob_files`."
+- **Anti-patterns** — "Don't use `cat` when `read_file` is available."
+- **Workflow guidance** — "glob → read → edit → verify"
+- **Cross-tool coordination** — each tool references the others it pairs with.
+
+Upgraded tools: `read_file`, `write_file`, `edit_file`, `grep_files`,
+`glob_files`, `bash`, `run_code`, `web_search`, `open_url`,
+`playwright_browse`, `memory`, `plan_task`, `verify_output`, `sub_agent`,
+`tool_search`, `decompose_problem`, `synthesize_evidence`, `decision_matrix`,
+`build_prompt`, `gmail_search`, `google_calendar`, `google_drive`, `slack`,
+`linear`, `jira`, `notion`, `confluence`, `custom_api`, `ask_user`,
+`human_review`, `workspace_files`, `build_artifact`.
+
+### Documentation
+
+- **Comprehensive docstrings** added to all key modules:
+  `agent.py` (module + class + every method), `builtins.py` (tool catalogue
+  by category), `skills/loader.py` (execution flow diagram),
+  `skills/registry.py` (search scoring weights), `skills/tool_bundles.py`
+  (mapping guide), `deep/deep_agent/factory.py` (skill forwarding).
+- **6 tool doc pages updated** in both `docs/` and `docs-app/` with enhanced
+  prompts: bash, read-file, edit-file, write-file, glob-files, grep-files.
+- **Skills guide updated** — new sections on iteration boost and tool bundle
+  validation.
+- **Notebook 27 rewritten** — 38 cells covering: catalog browse, search, tool
+  bundles, validation, Agent streaming, DeepAgent streaming with verify,
+  multi-turn chat, chat streaming, full project build, web scraping,
+  DeepAgent chat streaming, runtime skill management, coverage check.
+- **Notebook 29** (new) — DeepAgent with skills + memory + verification +
+  reflection + multi-turn chat + sub-agent delegation + streaming.
+- **Notebook 30** (new) — real-world full project build: scaffold FastAPI app,
+  add DevOps config, security audit, web research, iterative chat build.
+- **Skills guide** expanded with 7 real-world examples (full project build,
+  web scraping, portfolio website, security audit, DevOps pipeline, DeepAgent
+  streaming, multi-turn iterative building) plus streaming and chat sections
+  with event type reference table.
+
+### Bash Allowlist Expansion
+
+- **50+ safe commands** added to `BashTool.allowed_command_prefixes`:
+  `mkdir`, `touch`, `cp`, `mv`, `chmod`, `echo`, `grep`, `curl`, `docker`,
+  `docker-compose`, `kubectl`, `terraform`, `aws`, `go`, `cargo`, `npx`,
+  `tsc`, `eslint`, `black`, `isort`, `tree`, `du`, `awk`, `cut`, `tr`,
+  `diff`, `xargs`, `tee`, `printf`, and more.
+- Organised into categories: filesystem, text processing, git, Python,
+  Node/JS, build/run, containers, network, other languages.
+
+### Tests
+
+- **15 new tests** (17 → 32 total in `test_skills_runtime.py`):
+  - `test_agent_boosts_max_iterations_when_skills_are_active`
+  - `test_agent_respects_explicit_max_iterations_override`
+  - `test_agent_no_boost_without_skills`
+  - `test_tool_bundle_names_all_exist_in_builtins`
+  - `test_effective_tools_accepts_precomputed_skills`
+  - `test_all_packaged_skills_have_tool_bundles`
+  - `test_deep_agent_boosts_iterations_via_inner_agent`
+  - `test_agent_chat_session_retains_skills`
+  - `test_agent_chat_session_multi_turn_history`
+  - `test_agent_stream_with_skills_yields_events`
+  - `test_agent_stream_metadata_includes_skills`
+  - `test_deep_agent_chat_retains_skills`
+  - `test_deep_agent_stream_with_skills`
+  - `test_chat_stream_yields_events`
+  - `test_agent_with_memory_store_and_skills`
+
+---
+
 ## [1.0.3] — 2026-04-11
 
 Major feature release. **Super RAG subsystem**, **DeepAgent factory** with
@@ -441,7 +549,7 @@ First stable release. Focused on making the agent loop **observable, interchange
 
 ### Docs & packaging
 
-- **Full MkDocs Material documentation site** at [shipiit.github.io/shipit_agent](https://shipiit.github.io/shipit_agent/)
+- **Full MkDocs Material documentation site** at [docs.shipiit.com](https://docs.shipiit.com/)
 - 16-page docs covering Getting Started, Guides, and Reference
 - `.github/workflows/docs.yml` — auto-deploys docs on every push to `main`
 - `.github/workflows/release.yml` — auto-publishes to PyPI on tag push

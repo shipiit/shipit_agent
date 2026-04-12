@@ -13,12 +13,12 @@
 </p>
 
 <p align="center">
-  <a href="https://shipiit.github.io/shipit_agent/"><strong>📖 Documentation</strong></a> ·
+  <a href="https://docs.shipiit.com/"><strong>📖 Documentation</strong></a> ·
   <a href="https://pypi.org/project/shipit-agent/"><strong>📦 PyPI</strong></a> ·
-  <a href="https://shipiit.github.io/shipit_agent/getting-started/quickstart/">Quick start</a> ·
-  <a href="https://shipiit.github.io/shipit_agent/guides/streaming/">Streaming</a> ·
-  <a href="https://shipiit.github.io/shipit_agent/guides/reasoning/">Reasoning</a> ·
-  <a href="https://shipiit.github.io/shipit_agent/guides/tool-search/">Tool search</a> ·
+  <a href="https://docs.shipiit.com/getting-started/quickstart/">Quick start</a> ·
+  <a href="https://docs.shipiit.com/guides/streaming/">Streaming</a> ·
+  <a href="https://docs.shipiit.com/guides/reasoning/">Reasoning</a> ·
+  <a href="https://docs.shipiit.com/guides/tool-search/">Tool search</a> ·
   <a href="SECURITY.md">Security</a>
 </p>
 
@@ -31,7 +31,7 @@
   <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/pyversions/shipit-agent?style=for-the-badge&color=green" alt="Python versions" /></a>
   <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/dm/shipit-agent?style=for-the-badge&color=purple&label=downloads" alt="Downloads" /></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge" alt="License" /></a>
-  <a href="https://shipiit.github.io/shipit_agent/"><img src="https://img.shields.io/badge/docs-mkdocs--material-483D8B?style=for-the-badge" alt="Docs" /></a>
+  <a href="https://docs.shipiit.com/"><img src="https://img.shields.io/badge/docs-mkdocs--material-483D8B?style=for-the-badge" alt="Docs" /></a>
 </p>
 
 <p align="center">
@@ -298,12 +298,12 @@ playwright install
 
 Long-form documentation:
 
-- 🌐 **[Full documentation site](https://shipiit.github.io/shipit_agent/)** — MkDocs Material, searchable, versioned
-    - [Quick start](https://shipiit.github.io/shipit_agent/getting-started/quickstart/) · [Installation](https://shipiit.github.io/shipit_agent/getting-started/install/) · [Environment setup](https://shipiit.github.io/shipit_agent/getting-started/environment/)
-    - [Streaming events](https://shipiit.github.io/shipit_agent/guides/streaming/) · [Reasoning & thinking](https://shipiit.github.io/shipit_agent/guides/reasoning/) · [Tool search](https://shipiit.github.io/shipit_agent/guides/tool-search/)
-    - [Custom tools](https://shipiit.github.io/shipit_agent/guides/custom-tools/) · [MCP integration](https://shipiit.github.io/shipit_agent/guides/mcp/) · [Sessions & memory](https://shipiit.github.io/shipit_agent/guides/sessions/)
-    - [Architecture](https://shipiit.github.io/shipit_agent/reference/architecture/) · [Event types reference](https://shipiit.github.io/shipit_agent/reference/events/) · [Model adapters](https://shipiit.github.io/shipit_agent/reference/adapters/)
-- [Changelog](https://shipiit.github.io/shipit_agent/changelog/) — full v1.0 release notes
+- 🌐 **[Full documentation site](https://docs.shipiit.com/)** — MkDocs Material, searchable, versioned
+    - [Quick start](https://docs.shipiit.com/getting-started/quickstart/) · [Installation](https://docs.shipiit.com/getting-started/install/) · [Environment setup](https://docs.shipiit.com/getting-started/environment/)
+    - [Streaming events](https://docs.shipiit.com/guides/streaming/) · [Reasoning & thinking](https://docs.shipiit.com/guides/reasoning/) · [Tool search](https://docs.shipiit.com/guides/tool-search/)
+    - [Custom tools](https://docs.shipiit.com/guides/custom-tools/) · [MCP integration](https://docs.shipiit.com/guides/mcp/) · [Sessions & memory](https://docs.shipiit.com/guides/sessions/)
+    - [Architecture](https://docs.shipiit.com/reference/architecture/) · [Event types reference](https://docs.shipiit.com/reference/events/) · [Model adapters](https://docs.shipiit.com/reference/adapters/)
+- [Changelog](https://docs.shipiit.com/changelog/) — full v1.0 release notes
 - [docs.md](docs.md) — legacy flat-markdown docs (kept for offline browsing)
 - [TOOLS.md](TOOLS.md)
 - [SECURITY.md](SECURITY.md)

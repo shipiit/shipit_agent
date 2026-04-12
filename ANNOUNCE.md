@@ -6,7 +6,7 @@ Copy-paste-ready blurbs for announcing **shipit-agent** on each platform. Each o
 
 - **Package:** `shipit-agent`
 - **PyPI:** https://pypi.org/project/shipit-agent/
-- **Docs:** https://shipiit.github.io/shipit_agent/
+- **Docs:** https://docs.shipiit.com/
 - **GitHub:** https://github.com/shipiit/shipit_agent
 - **License:** MIT
 - **Python:** ≥3.11
@@ -54,7 +54,7 @@ Shipit-agent fixes all of these:
   file-backed session/memory/trace stores, native MCP integration
 
 Zero mandatory dependencies in the core. Every LLM SDK is an optional
-extra. 91 tests, MIT licensed, docs at shipiit.github.io/shipit_agent
+extra. 91 tests, MIT licensed, docs at docs.shipiit.com
 
   pip install shipit-agent
 
@@ -131,7 +131,7 @@ for event in agent.stream("Find today's Bitcoin price from two sources and compa
 ## Links
 
 - 📦 PyPI: https://pypi.org/project/shipit-agent/
-- 📖 Docs: https://shipiit.github.io/shipit_agent/
+- 📖 Docs: https://docs.shipiit.com/
 - 💻 GitHub: https://github.com/shipiit/shipit_agent
 
 MIT license, Python 3.11+, 91 tests, full docs, CI-guarded. Feedback and bug reports welcome!
@@ -241,7 +241,7 @@ The runtime is small enough to extend without fighting framework overhead.
 8/ Everything you need:
 
 📦 pip install shipit-agent
-📖 Docs: shipiit.github.io/shipit_agent
+📖 Docs: docs.shipiit.com
 💻 Code: github.com/shipiit/shipit_agent
 📋 PyPI: pypi.org/project/shipit-agent
 
@@ -283,7 +283,7 @@ pip install shipit-agent
 ```
 
 📦 PyPI: https://pypi.org/project/shipit-agent/
-📖 Docs: https://shipiit.github.io/shipit_agent/
+📖 Docs: https://docs.shipiit.com/
 💻 GitHub: https://github.com/shipiit/shipit_agent
 
 Feedback welcome — especially if you've hit any of the same pain points I described above.
@@ -319,7 +319,7 @@ pip install shipit-agent
 ```
 
 📦 https://pypi.org/project/shipit-agent/
-📖 https://shipiit.github.io/shipit_agent/
+📖 https://docs.shipiit.com/
 💻 https://github.com/shipiit/shipit_agent
 
 Any feedback welcome, especially on the DX of the streaming API!
@@ -349,7 +349,7 @@ Zero mandatory deps, 91 tests, MIT, Python 3.11+.
 
 Install: pip install shipit-agent
 PyPI:    https://pypi.org/project/shipit-agent/
-Docs:    https://shipiit.github.io/shipit_agent/
+Docs:    https://docs.shipiit.com/
 GitHub:  https://github.com/shipiit/shipit_agent
 ```
 
@@ -419,7 +419,7 @@ Expect a launch-day bump, then a tail. Sustained growth comes from docs quality,
 Before you post anywhere:
 
 - [ ] `pip install shipit-agent` works in a fresh venv
-- [ ] Docs site is live at https://shipiit.github.io/shipit_agent/
+- [ ] Docs site is live at https://docs.shipiit.com/
 - [ ] README PyPI badges render correctly (green)
 - [ ] v1.0.1 git tag exists and GitHub release page is published
 - [ ] CHANGELOG.md is current

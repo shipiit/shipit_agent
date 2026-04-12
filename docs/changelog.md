@@ -1,5 +1,43 @@
 # Changelog
 
+## v1.0.4 — 2026-04-12
+
+**Skills, tools, and runtime power-up.** All 32 tool prompts rewritten with decision trees and anti-patterns. Full skill-to-tool linking for all 37 packaged skills. Automatic iteration boost for skill-driven workflows. Expanded bash allowlist (50+ commands). Streaming, chat, and project-building examples across 3 notebooks. Comprehensive docstrings across every key module. **32 skill tests. All passing.**
+
+### Skills — Full Tool Linking
+
+- **37 skill tool bundles** (up from 10) — every packaged skill now declares the built-in tools it needs. When a skill is selected, the agent auto-attaches the right tools.
+- **Shared tool groups** (`_FILE_CORE`, `_CODE_CORE`, `_WEB_CORE`) reduce duplication across bundles.
+- **`validate_tool_bundles()`** — new helper that checks every tool name in `SKILL_TOOL_BUNDLES` against the real builtin map.
+
+### Agent — Iteration Boost & Efficiency
+
+- **`_effective_max_iterations()`** — auto-boosts 4 → 8 when skills inject extra tools so skill-driven workflows can complete without cutting off early.
+- **Single skill computation** — `run()` and `stream()` now compute skills once and reuse (previously 3x per call).
+
+### Tool Prompts — All 32 Upgraded
+
+Every tool's `prompt.py` rewritten with decision trees, anti-patterns, workflow guidance, and cross-tool coordination.
+
+### Bash Allowlist Expansion
+
+- **50+ safe commands** added: `mkdir`, `touch`, `cp`, `mv`, `echo`, `grep`, `curl`, `docker`, `kubectl`, `terraform`, `aws`, `go`, `cargo`, `npx`, `tsc`, `eslint`, `black`, `isort`, `tree`, `awk`, `cut`, `diff`, and more.
+
+### Documentation
+
+- Comprehensive docstrings on `agent.py`, `builtins.py`, `skills/loader.py`, `skills/registry.py`, `skills/tool_bundles.py`, `deep_agent/factory.py`.
+- 6 tool doc pages updated with enhanced prompts.
+- Skills guide expanded with 7 real-world examples, streaming sections, chat sessions, and event type reference.
+- **Notebook 27** rewritten (38 cells): streaming, chat streaming, project build, web scraping, DeepAgent chat.
+- **Notebook 29** (new): DeepAgent + skills + memory + verify + reflect + sub-agents + streaming.
+- **Notebook 30** (new): real-world full project build across 6 steps with 5 different skills.
+
+### Tests
+
+- **15 new tests** (17 → 32 total): iteration boost, bundle validation, chat sessions, streaming, chat streaming, memory + skills, DeepAgent chat/stream.
+
+---
+
 ## v1.0.3 — 2026-04-11
 
 Major feature release. **Super RAG subsystem**, **DeepAgent factory** (verify / reflect / goal / sub-agents), **live multi-agent chat REPL** (`shipit chat`), **Agent memory cookbook**, plus deep docs + notebook coverage. **521 unit tests. 19 Bedrock end-to-end smoke tests. All passing.**
@@ -224,7 +262,7 @@ First stable release. Focused on making the agent loop **observable, interchange
 - `.env.example`: expanded with all new env vars documented
 - `notebooks/04_agent_streaming_packets.ipynb`: full rewrite with .env loading, credential visibility printer, and live Markdown updates
 - `README.md`: new v1.0 release section with 8 headline features
-- Full MkDocs Material documentation site at [shipiit.github.io/shipit_agent](https://shipiit.github.io/shipit_agent/)
+- Full MkDocs Material documentation site at [docs.shipiit.com](https://docs.shipiit.com/)
 
 ### Breaking changes
 

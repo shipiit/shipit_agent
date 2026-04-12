@@ -470,6 +470,160 @@ for skill in deep_agent.search_skills("brand")[:5]:
 
 ---
 
+## Streaming with skills
+
+Both `Agent` and `DeepAgent` support `stream()` for real-time event output. Skills work the same way in streaming mode — the agent gets skill prompts and tools, and you see events as they happen.
+
+### Agent streaming
+
+```python
+from shipit_agent import Agent
+from examples.run_multi_tool_agent import build_llm_from_env
+
+llm = build_llm_from_env("bedrock")
+
+agent = Agent.with_builtins(
+    llm=llm,
+    project_root="/tmp",
+    skills=["code-workflow-assistant", "database-architect"],
+    auto_use_skills=True,
+    max_iterations=10,
+)
+
+for event in agent.stream("Debug the slow billing query and suggest index improvements."):
+    if event.type == "tool_called":
+        print(f"  [tool] {event.message}")
+    elif event.type == "tool_completed":
+        print(f"  [done] {event.message}")
+    elif event.type == "step_started":
+        print(f"  [step] iteration {event.payload.get('iteration', '?')}")
+    elif event.type == "run_completed":
+        print(f"\n--- Final output ---")
+        print(event.payload.get("output", ""))
+```
+
+### DeepAgent streaming
+
+```python
+from shipit_agent import DeepAgent
+
+deep_agent = DeepAgent.with_builtins(
+    llm=llm,
+    project_root="/tmp",
+    skills=["devops-automation"],
+    auto_use_skills=False,
+    max_iterations=8,
+)
+
+final_output = ""
+for event in deep_agent.stream(
+    "Create a CI/CD pipeline plan for a FastAPI + PostgreSQL service on AWS ECS."
+):
+    if event.type == "tool_called":
+        print(f"  [tool] {event.message}")
+    elif event.type == "tool_completed":
+        print(f"  [done] {event.message}")
+    elif event.type == "run_completed":
+        final_output = event.payload.get("output", "")
+        print(f"  [finished]")
+
+print(final_output)
+```
+
+Event types you will see:
+
+| Event type | When it fires |
+| --- | --- |
+| `run_started` | Agent loop begins |
+| `step_started` | Each LLM iteration starts |
+| `tool_called` | A tool is invoked |
+| `tool_completed` | A tool finishes |
+| `tool_failed` | A tool errors out |
+| `reasoning_started` / `reasoning_completed` | Model thinking blocks (when supported) |
+| `run_completed` | Final output ready |
+
+---
+
+## Multi-turn chat with skills
+
+Use `chat_session()` (Agent) or `chat()` (DeepAgent) for persistent multi-turn conversations. The agent retains full message history across turns — no clarifying questions needed.
+
+### Agent chat session
+
+```python
+from shipit_agent import Agent
+from shipit_agent.stores import InMemoryMemoryStore
+
+agent = Agent.with_builtins(
+    llm=llm,
+    project_root="/tmp",
+    skills=["database-architect", "code-workflow-assistant"],
+    auto_use_skills=True,
+    memory_store=InMemoryMemoryStore(),
+    max_iterations=10,
+)
+
+chat = agent.chat_session(session_id="billing-debug")
+
+# Turn 1: Provide context
+r1 = chat.send(
+    """
+    I'm working on billing-api (FastAPI + PostgreSQL 15).
+    The GET /api/billing/alerts endpoint joins alerts, tenants,
+    invoices, and users. Currently at 4.8s p95.
+    Help me diagnose the root cause.
+    """
+)
+print(r1.output)
+
+# Turn 2: Follow up — agent remembers everything from turn 1.
+r2 = chat.send("Give me the exact CREATE INDEX statements I should run.")
+print(r2.output)
+
+# Turn 3: Another follow-up.
+r3 = chat.send("How do I deploy these index changes with zero downtime?")
+print(r3.output)
+```
+
+### DeepAgent chat
+
+```python
+from shipit_agent import DeepAgent
+from shipit_agent.stores import InMemoryMemoryStore
+
+deep = DeepAgent.with_builtins(
+    llm=llm,
+    project_root="/tmp",
+    skills=["full-stack-developer", "database-architect"],
+    auto_use_skills=True,
+    memory_store=InMemoryMemoryStore(),
+    max_iterations=10,
+)
+
+chat = deep.chat(session_id="deep-debug-session")
+
+# Turn 1
+r1 = chat.send("Our billing-api alerts endpoint is slow (4.8s). PostgreSQL 15, joins 4 tables.")
+print(r1.output)
+
+# Turn 2 — agent retains context, no re-asking.
+r2 = chat.send("Now show me the query rewrite with the indexes you recommended.")
+print(r2.output)
+```
+
+Key differences:
+
+| Feature | `Agent.chat_session()` | `DeepAgent.chat()` |
+| --- | --- | --- |
+| Method | `chat_session(session_id=...)` | `chat(session_id=...)` |
+| Returns | `AgentChatSession` | `AgentChatSession` |
+| Send | `chat.send(prompt)` | `chat.send(prompt)` |
+| Stream | `chat.stream(prompt)` | `chat.stream(prompt)` |
+| History | `chat.history()` | `chat.history()` |
+| Session store | Auto-created or pass explicitly | Auto-created or pass explicitly |
+
+---
+
 ## Create your own skills
 
 Use the authoring helpers:
@@ -695,18 +849,281 @@ In practice:
 
 ---
 
+## Real-world examples
+
+These examples show skills + tools working together on practical tasks.
+Each skill auto-attaches the right tools — the agent can read/write files,
+run code, search the web, and more without manual tool wiring.
+
+### Build a full project (full-stack-developer)
+
+The `full-stack-developer` skill brings 13 tools including `write_file`,
+`edit_file`, `workspace_files`, `bash`, `run_code`, and `plan_task`.
+The agent can scaffold an entire project from scratch.
+
+```python
+from shipit_agent import Agent
+from shipit_agent.stores import InMemoryMemoryStore
+from examples.run_multi_tool_agent import build_llm_from_env
+
+llm = build_llm_from_env("bedrock")
+
+agent = Agent.with_builtins(
+    llm=llm,
+    project_root="/tmp/my-project",
+    skills=["full-stack-developer"],
+    auto_use_skills=False,
+    memory_store=InMemoryMemoryStore(),
+    max_iterations=15,
+)
+
+result = agent.run(
+    """
+    Create a FastAPI REST API project with the following:
+
+    1. Project structure:
+       - app/main.py (FastAPI app with CORS)
+       - app/models.py (SQLAlchemy models: User, Task)
+       - app/routes/tasks.py (CRUD endpoints for tasks)
+       - app/database.py (SQLite connection)
+       - requirements.txt
+       - README.md
+
+    2. The Task model should have: id, title, description, status, created_at, user_id
+    3. Endpoints: GET /tasks, POST /tasks, GET /tasks/{id}, PUT /tasks/{id}, DELETE /tasks/{id}
+    4. Include proper error handling and status codes
+
+    Create all the files and verify the structure.
+    """
+)
+
+print(f"Skills used: {result.metadata['used_skills']}")
+print(f"Tools injected: {result.metadata['used_skill_tools']}")
+print(result.output)
+```
+
+### Scrape and analyse data (web-scraper-pro)
+
+The `web-scraper-pro` skill brings `web_search`, `open_url`, `playwright_browse`,
+plus file tools to save scraped data.
+
+```python
+agent = Agent.with_builtins(
+    llm=llm,
+    project_root="/tmp/scrape-output",
+    skills=["web-scraper-pro"],
+    auto_use_skills=False,
+    memory_store=InMemoryMemoryStore(),
+    max_iterations=12,
+)
+
+result = agent.run(
+    """
+    Research the top 5 Python web frameworks in 2024.
+    For each framework, find:
+    - GitHub stars count
+    - Latest version
+    - Key differentiator
+
+    Save the results to /tmp/scrape-output/frameworks.json as structured JSON,
+    then create a markdown summary in /tmp/scrape-output/summary.md.
+    """
+)
+
+print(result.output)
+```
+
+### Build a static website (portfolio-website-builder)
+
+The `portfolio-website-builder` skill brings `write_file`, `edit_file`,
+`workspace_files`, `bash`, and `run_code`.
+
+```python
+agent = Agent.with_builtins(
+    llm=llm,
+    project_root="/tmp/portfolio-site",
+    skills=["portfolio-website-builder"],
+    auto_use_skills=False,
+    max_iterations=12,
+)
+
+result = agent.run(
+    """
+    Create a personal portfolio website with:
+    - index.html (responsive landing page with hero section, about, projects, contact)
+    - styles.css (modern design, dark theme, CSS grid layout)
+    - script.js (smooth scrolling, dark/light toggle)
+
+    Use semantic HTML, modern CSS (no frameworks), and vanilla JS.
+    Include 3 sample project cards with placeholder content.
+    """
+)
+
+print(result.output)
+```
+
+### Security audit (security-engineer)
+
+The `security-engineer` skill brings `bash`, `web_search`, `grep_files`,
+`read_file`, `run_code`, and `verify_output` for a thorough audit.
+
+```python
+agent = Agent.with_builtins(
+    llm=llm,
+    project_root="/tmp/my-project",
+    skills=["security-engineer"],
+    auto_use_skills=False,
+    memory_store=InMemoryMemoryStore(),
+    max_iterations=10,
+)
+
+result = agent.run(
+    """
+    Audit the project at /tmp/my-project for common security issues:
+
+    1. Check for hardcoded secrets, API keys, or credentials in source files
+    2. Look for SQL injection vulnerabilities in database queries
+    3. Check for missing input validation on API endpoints
+    4. Review CORS configuration
+    5. Check dependency versions for known CVEs
+
+    Save a security report to /tmp/my-project/SECURITY_REPORT.md with
+    findings ranked by severity (Critical, High, Medium, Low).
+    """
+)
+
+print(result.output)
+```
+
+### DevOps pipeline (devops-automation)
+
+The `devops-automation` skill brings 12 tools including `plan_task`, `verify_output`,
+web tools for docs lookup, and file tools for generating configs.
+
+```python
+agent = Agent.with_builtins(
+    llm=llm,
+    project_root="/tmp/my-project",
+    skills=["devops-automation"],
+    auto_use_skills=False,
+    memory_store=InMemoryMemoryStore(),
+    max_iterations=12,
+)
+
+result = agent.run(
+    """
+    Set up a CI/CD pipeline for a FastAPI + PostgreSQL project:
+
+    1. Create a Dockerfile (multi-stage build, non-root user)
+    2. Create docker-compose.yml (app + postgres + redis)
+    3. Create .github/workflows/ci.yml (lint, test, build, push)
+    4. Create .github/workflows/deploy.yml (deploy to AWS ECS)
+    5. Create a Makefile with common dev commands
+
+    Write all files and verify the Docker build would work.
+    """
+)
+
+print(result.output)
+```
+
+### DeepAgent streaming with skills
+
+Stream events in real time while the agent works through a complex task.
+
+```python
+from shipit_agent import DeepAgent
+from shipit_agent.stores import InMemoryMemoryStore
+
+deep = DeepAgent.with_builtins(
+    llm=llm,
+    project_root="/tmp/stream-demo",
+    skills=["full-stack-developer"],
+    auto_use_skills=False,
+    memory_store=InMemoryMemoryStore(),
+    verify=True,
+    max_iterations=12,
+)
+
+final_output = ""
+for event in deep.stream(
+    """
+    Create a Python CLI tool that takes a GitHub repo URL and generates
+    a project summary. Write it to /tmp/stream-demo/repo_summary.py.
+    Include argument parsing, error handling, and a README.md.
+    """
+):
+    if event.type == "step_started":
+        print(f"  [step {event.payload.get('iteration', '?')}]")
+    elif event.type == "tool_called":
+        print(f"  [tool] {event.message}")
+    elif event.type == "tool_completed":
+        print(f"  [done] {event.message}")
+    elif event.type == "run_completed":
+        final_output = event.payload.get("output", "")
+
+print("\n--- Final output ---")
+print(final_output)
+```
+
+### Multi-turn chat: iterative project building
+
+Use chat sessions to build a project iteratively, turn by turn.
+
+```python
+from shipit_agent import Agent
+from shipit_agent.stores import InMemoryMemoryStore
+
+agent = Agent.with_builtins(
+    llm=llm,
+    project_root="/tmp/chat-project",
+    skills=["full-stack-developer", "database-architect"],
+    auto_use_skills=True,
+    memory_store=InMemoryMemoryStore(),
+    max_iterations=12,
+)
+
+chat = agent.chat_session(session_id="project-build")
+
+# Turn 1: Scaffold
+r1 = chat.send("Create a FastAPI project with a User model and auth endpoints at /tmp/chat-project.")
+print("--- Turn 1: Scaffold ---")
+print(r1.output[:500])
+
+# Turn 2: Add features (agent remembers the project structure)
+r2 = chat.send("Now add a Task model with CRUD endpoints. Tasks belong to users.")
+print("\n--- Turn 2: Add features ---")
+print(r2.output[:500])
+
+# Turn 3: Optimize (agent remembers both models)
+r3 = chat.send("Add database indexes for the queries and create a migration script.")
+print("\n--- Turn 3: Optimize ---")
+print(r3.output[:500])
+
+# Turn 4: Deploy config
+r4 = chat.send("Create a Dockerfile and docker-compose.yml for this project.")
+print("\n--- Turn 4: Deploy ---")
+print(r4.output[:500])
+```
+
+---
+
 ## Examples and notebooks
 
 Relevant notebooks in this repo:
 
-- `notebooks/27_skills_catalog_and_usage.ipynb`
-- `notebooks/28_create_and_use_custom_skills.ipynb`
+- `notebooks/27_skills_catalog_and_usage.ipynb` — catalog browse, tool bundles, memory, multi-turn chat
+- `notebooks/28_create_and_use_custom_skills.ipynb` — custom skill authoring and catalogs
+- `notebooks/29_deep_agent_with_skills.ipynb` — DeepAgent + skills + memory + verification + reflection + sub-agents
 
 These cover:
 
 - fetching all packaged skills
-- attaching prebuilt skills to `Agent`
+- attaching prebuilt skills to `Agent` with memory
 - attaching prebuilt skills to `DeepAgent`
+- multi-turn chat with context retention
+- verification and reflection loops
+- sub-agent delegation with skills
 - creating a new custom skill
 - saving a custom skill catalog
 - using that custom catalog from both agent types

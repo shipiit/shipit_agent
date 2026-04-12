@@ -1,6 +1,6 @@
 site_name: SHIPIT Agent
 site_description: A clean, powerful Python agent library with tools, MCP, streaming events, reasoning capture, and runtime policies.
-site_url: https://shipiit.github.io/shipit_agent/
+site_url: https://docs.shipiit.com/
 site_author: Rahul Raj
 
 repo_name: shipiit/shipit_agent

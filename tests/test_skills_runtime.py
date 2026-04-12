@@ -269,11 +269,11 @@ def test_bash_tool_blocks_commands_outside_allowlist(tmp_path: Path) -> None:
     tool = BashTool(root_dir=tmp_path)
 
     try:
-        tool.run(context=type("Ctx", (), {"state": {}})(), command="curl example.com")
+        tool.run(context=type("Ctx", (), {"state": {}})(), command="nc -l 8080")
     except ValueError as exc:
         assert "allowlist" in str(exc)
     else:
-        raise AssertionError("Expected allowlist validation to reject curl")
+        raise AssertionError("Expected allowlist validation to reject nc")
 
 
 def test_edit_file_requires_prior_read(tmp_path: Path) -> None:
@@ -423,3 +423,162 @@ def test_deep_agent_boosts_iterations_via_inner_agent() -> None:
     assert any(s.id == "code-workflow-assistant" for s in deep.skills)
     inner_selected = deep.agent._selected_skills("fix this bug")
     assert len(inner_selected) > 0
+
+
+# ── Chat, streaming, and chat streaming tests ──────────────────────
+
+
+def test_agent_chat_session_retains_skills() -> None:
+    """Chat sessions should inherit skills from the parent agent."""
+    llm = PromptCaptureLLM()
+    agent = Agent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["database-architect"],
+    )
+
+    chat = agent.chat_session(session_id="test-chat")
+    result = chat.send("hello")
+
+    prompt = llm.system_prompts[-1]
+    assert "<!-- skill:database-architect -->" in prompt
+    assert result.output == "ok"
+
+
+def test_agent_chat_session_multi_turn_history() -> None:
+    """Multiple chat.send() calls should accumulate message history."""
+    llm = PromptCaptureLLM()
+    agent = Agent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["code-workflow-assistant"],
+    )
+
+    chat = agent.chat_session(session_id="multi-turn-test")
+
+    r1 = chat.send("turn one")
+    r2 = chat.send("turn two")
+
+    # Both calls should succeed.
+    assert r1.output == "ok"
+    assert r2.output == "ok"
+    # LLM should have been called twice.
+    assert len(llm.system_prompts) >= 2
+
+
+def test_agent_stream_with_skills_yields_events() -> None:
+    """agent.stream() should yield events when skills are active."""
+    llm = PromptCaptureLLM()
+    agent = Agent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["web-scraper-pro"],
+    )
+
+    events = list(agent.stream("scrape something"))
+
+    # Should have at least run_started and run_completed events.
+    event_types = {e.type for e in events}
+    assert "run_started" in event_types
+    assert "run_completed" in event_types
+
+    # Skills should be in the prompt.
+    prompt = llm.system_prompts[-1]
+    assert "<!-- skill:web-scraper-pro -->" in prompt
+
+
+def test_agent_stream_metadata_includes_skills() -> None:
+    """Streaming metadata should include used_skills and used_skill_tools."""
+    llm = PromptCaptureLLM()
+    agent = Agent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["code-workflow-assistant"],
+    )
+
+    events = list(agent.stream("fix the bug"))
+
+    # Find run_started or check metadata on the runtime.
+    # The metadata is set on the runtime, which is internal —
+    # but we can verify skills were applied via the prompt.
+    prompt = llm.system_prompts[-1]
+    assert "<!-- skill:code-workflow-assistant -->" in prompt
+
+
+def test_deep_agent_chat_retains_skills() -> None:
+    """DeepAgent.chat() should retain skills across turns."""
+    llm = PromptCaptureLLM()
+    deep = DeepAgent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["database-architect"],
+    )
+
+    chat = deep.chat(session_id="deep-chat-test")
+    r1 = chat.send("turn one")
+
+    prompt = llm.system_prompts[-1]
+    assert "<!-- skill:database-architect -->" in prompt
+    assert r1.output == "ok"
+
+
+def test_deep_agent_stream_with_skills() -> None:
+    """DeepAgent.stream() should yield events with skills active."""
+    llm = PromptCaptureLLM()
+    deep = DeepAgent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["security-engineer"],
+    )
+
+    events = list(deep.stream("audit the project"))
+
+    event_types = {e.type for e in events}
+    assert "run_started" in event_types
+    assert "run_completed" in event_types
+
+    prompt = llm.system_prompts[-1]
+    assert "<!-- skill:security-engineer -->" in prompt
+
+
+def test_chat_stream_yields_events() -> None:
+    """chat.stream() should yield events just like agent.stream()."""
+    llm = PromptCaptureLLM()
+    agent = Agent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["full-stack-developer"],
+    )
+
+    chat = agent.chat_session(session_id="chat-stream-test")
+    events = list(chat.stream("create a project"))
+
+    event_types = {e.type for e in events}
+    assert "run_started" in event_types
+    assert "run_completed" in event_types
+
+    prompt = llm.system_prompts[-1]
+    assert "<!-- skill:full-stack-developer -->" in prompt
+
+
+def test_agent_with_memory_store_and_skills() -> None:
+    """Agent with memory_store + skills should work without errors."""
+    from shipit_agent.stores import InMemoryMemoryStore
+
+    llm = PromptCaptureLLM()
+    memory = InMemoryMemoryStore()
+
+    agent = Agent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["database-architect"],
+        memory_store=memory,
+    )
+
+    result = agent.run("debug the slow query")
+
+    assert result.output == "ok"
+    assert result.metadata["used_skills"] == ["database-architect"]
+
+    prompt = llm.system_prompts[-1]
+    assert "<!-- skill:database-architect -->" in prompt

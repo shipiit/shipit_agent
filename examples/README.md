@@ -101,10 +101,10 @@ If you want **everything free**, use:
 
 ## Going deeper
 
-Once you've worked through these examples, the [full documentation](https://shipiit.github.io/shipit_agent/) covers:
+Once you've worked through these examples, the [full documentation](https://docs.shipiit.com/) covers:
 
-- [Streaming events reference](https://shipiit.github.io/shipit_agent/reference/events/) — all 14 event types with payloads
-- [Architecture](https://shipiit.github.io/shipit_agent/reference/architecture/) — how the runtime loop works
-- [Custom tools guide](https://shipiit.github.io/shipit_agent/guides/custom-tools/) — patterns for production tools
-- [MCP integration](https://shipiit.github.io/shipit_agent/guides/mcp/) — attach remote MCP servers
-- [Sessions and memory](https://shipiit.github.io/shipit_agent/guides/sessions/) — persistent state
+- [Streaming events reference](https://docs.shipiit.com/reference/events/) — all 14 event types with payloads
+- [Architecture](https://docs.shipiit.com/reference/architecture/) — how the runtime loop works
+- [Custom tools guide](https://docs.shipiit.com/guides/custom-tools/) — patterns for production tools
+- [MCP integration](https://docs.shipiit.com/guides/mcp/) — attach remote MCP servers
+- [Sessions and memory](https://docs.shipiit.com/guides/sessions/) — persistent state

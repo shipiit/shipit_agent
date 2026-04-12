@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: 📖 Documentation
-    url: https://shipiit.github.io/shipit_agent/
+    url: https://docs.shipiit.com/
     about: Full documentation, guides, and reference. Check here before opening an issue.
   - name: 💬 Discussions
     url: https://github.com/shipiit/shipit_agent/discussions

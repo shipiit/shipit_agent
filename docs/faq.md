@@ -375,7 +375,7 @@ Or one shot: `make ship-it`.
 
 ## Still stuck?
 
-- 📖 [Full documentation](https://shipiit.github.io/shipit_agent/)
+- 📖 [Full documentation](https://docs.shipiit.com/)
 - 🐛 [Open a bug report](https://github.com/shipiit/shipit_agent/issues/new?template=bug_report.yml)
 - 💬 [GitHub Discussions](https://github.com/shipiit/shipit_agent/discussions)
 - 📋 [Tool catalog](tools/index.md)

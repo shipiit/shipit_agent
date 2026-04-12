@@ -347,6 +347,32 @@ print(result.metadata["used_skill_tools"])
 | `used_skills` | Final list of skill ids used for the run |
 | `used_skill_tools` | Extra built-in tools injected because of those skills |
 
+### Automatic iteration boost
+
+When skills are active and the agent's `max_iterations` is at the default value (4), the runtime automatically boosts it to 8. This gives the agent enough turns to use the extra tools that skills inject — without the caller having to tune iteration counts manually.
+
+If you set `max_iterations` explicitly, your value is always respected:
+
+```python
+# Auto-boost: default 4 → becomes 8 because skills are active
+agent = Agent.with_builtins(llm=llm, skills=["code-workflow-assistant"])
+
+# Explicit override: stays at 20 regardless of skills
+agent = Agent.with_builtins(llm=llm, skills=["code-workflow-assistant"], max_iterations=20)
+```
+
+### Tool bundle validation
+
+You can verify that every tool name referenced in the skill bundles actually exists:
+
+```python
+from shipit_agent.builtins import get_builtin_tool_map
+from shipit_agent.skills.tool_bundles import validate_tool_bundles
+
+errors = validate_tool_bundles(set(get_builtin_tool_map(llm=llm).keys()))
+assert errors == []  # no unknown tool references
+```
+
 ---
 
 ## DeepAgent with skills

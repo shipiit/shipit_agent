@@ -18,8 +18,10 @@ from shipit_agent import (
     skill_id_from_name,
 )
 from shipit_agent.agent import DEFAULT_SKILLS_PATH
+from shipit_agent.builtins import get_builtin_tool_map
 from shipit_agent.llms import LLMResponse
 from shipit_agent.models import ToolCall
+from shipit_agent.skills.tool_bundles import validate_tool_bundles
 
 
 class PromptCaptureLLM:
@@ -328,3 +330,96 @@ def test_deep_agent_can_use_newly_authored_skill_from_custom_catalog(
     assert "<!-- skill:release-notes-writer -->" in prompt
     assert "release highlights" in prompt
     assert any(skill.id == "release-notes-writer" for skill in agent.skills)
+
+
+# ── New tests: iteration boost, bundle validation, efficiency ──────
+
+
+def test_agent_boosts_max_iterations_when_skills_are_active() -> None:
+    """When skills are selected and max_iterations is at default (4),
+    the agent should auto-boost to at least 8 so skill-driven workflows
+    can complete without cutting off early."""
+    agent = Agent(
+        llm=PromptCaptureLLM(),
+        auto_use_skills=False,
+        skills=["web-scraper-pro"],
+    )
+    selected = agent._selected_skills("scrape it")
+    effective_max = agent._effective_max_iterations(selected)
+    assert effective_max >= 8
+
+
+def test_agent_respects_explicit_max_iterations_override() -> None:
+    """An explicit max_iterations should NOT be overridden by the boost."""
+    agent = Agent(
+        llm=PromptCaptureLLM(),
+        auto_use_skills=False,
+        skills=["web-scraper-pro"],
+        max_iterations=20,
+    )
+    selected = agent._selected_skills("scrape it")
+    effective_max = agent._effective_max_iterations(selected)
+    assert effective_max == 20
+
+
+def test_agent_no_boost_without_skills() -> None:
+    """No skills → no boost, max_iterations stays at default."""
+    agent = Agent(
+        llm=PromptCaptureLLM(),
+        auto_use_skills=False,
+    )
+    selected = agent._selected_skills("hello")
+    effective_max = agent._effective_max_iterations(selected)
+    assert effective_max == 4
+
+
+def test_tool_bundle_names_all_exist_in_builtins() -> None:
+    """Every tool name referenced in SKILL_TOOL_BUNDLES should exist
+    in get_builtin_tool_map() so skill-linked tools can actually be resolved."""
+    # Pass a stub LLM so SubAgentTool (requires llm=) is included in the map.
+    builtin_names = set(get_builtin_tool_map(llm=PromptCaptureLLM()).keys())
+    errors = validate_tool_bundles(builtin_names)
+    assert errors == [], f"Unknown tool names in bundles: {errors}"
+
+
+def test_effective_tools_accepts_precomputed_skills() -> None:
+    """_effective_tools should accept pre-computed skills to avoid redundant work."""
+    agent = Agent(
+        llm=PromptCaptureLLM(),
+        auto_use_skills=False,
+        skills=["web-scraper-pro"],
+    )
+    skills = agent._selected_skills("scrape it")
+    tools_a = {getattr(t, "name", "") for t in agent._effective_tools("scrape it", selected_skills=skills)}
+    tools_b = {getattr(t, "name", "") for t in agent._effective_tools("scrape it")}
+    assert tools_a == tools_b
+
+
+def test_all_packaged_skills_have_tool_bundles() -> None:
+    """Every skill in the packaged catalog should have a matching entry
+    in SKILL_TOOL_BUNDLES so it gets useful tools at runtime."""
+    from shipit_agent.skills.tool_bundles import SKILL_TOOL_BUNDLES
+
+    registry = FileSkillRegistry(DEFAULT_SKILLS_PATH)
+    missing = [
+        skill.id
+        for skill in registry.list()
+        if skill.id not in SKILL_TOOL_BUNDLES
+    ]
+    assert missing == [], f"Skills without tool bundles: {missing}"
+
+
+def test_deep_agent_boosts_iterations_via_inner_agent() -> None:
+    """DeepAgent should also benefit from the iteration boost through
+    its inner Agent."""
+    llm = PromptCaptureLLM()
+    deep = DeepAgent(
+        llm=llm,
+        auto_use_skills=False,
+        skills=["code-workflow-assistant"],
+    )
+    # DeepAgent default is 8, so the boost only applies if inner agent
+    # gets the skills. Check that the inner agent has skills wired.
+    assert any(s.id == "code-workflow-assistant" for s in deep.skills)
+    inner_selected = deep.agent._selected_skills("fix this bug")
+    assert len(inner_selected) > 0

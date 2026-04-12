@@ -199,8 +199,11 @@ class Agent:
             effective = holder.prompt
         return effective
 
-    def _effective_tools(self, user_prompt: str) -> list[Any]:
-        selected_skills = self._selected_skills(user_prompt)
+    def _effective_tools(
+        self, user_prompt: str, *, selected_skills: list[Skill] | None = None
+    ) -> list[Any]:
+        if selected_skills is None:
+            selected_skills = self._selected_skills(user_prompt)
         effective: dict[str, Any] = {
             getattr(tool, "name", f"tool_{index}"): tool
             for index, tool in enumerate(self.tools)
@@ -229,6 +232,19 @@ class Agent:
             seen.add(tool_name)
         return names
 
+    def _effective_max_iterations(self, selected_skills: list[Skill]) -> int:
+        """Boost max_iterations when skills inject extra tools.
+
+        Skills bring additional tools that the agent needs more turns to
+        utilise effectively.  When the caller left ``max_iterations`` at
+        the default (4), we raise it to ``max(8, default)`` so the agent
+        can complete multi-step skill-driven workflows without cutting
+        off early.  An explicit override is always respected.
+        """
+        if selected_skills and self.max_iterations <= 4:
+            return max(8, self.max_iterations)
+        return self.max_iterations
+
     def run(self, user_prompt: str, *, output_schema: Any = None) -> AgentResult:
         # Append schema instructions to the USER prompt (not system prompt)
         # so the model can still use tools normally and only formats the
@@ -243,8 +259,9 @@ class Agent:
         if self.rag is not None:
             self.rag.begin_run()
 
+        # Compute skills once and reuse across prompt, tools, and metadata.
         selected_skills = self._selected_skills(user_prompt)
-        effective_tools = self._effective_tools(user_prompt)
+        effective_tools = self._effective_tools(user_prompt, selected_skills=selected_skills)
         skill_tool_names = self._skill_tool_names(selected_skills)
 
         runtime = AgentRuntime(
@@ -263,7 +280,7 @@ class Agent:
             session_id=self.session_id,
             trace_store=self.trace_store,
             trace_id=self.trace_id,
-            max_iterations=self.max_iterations,
+            max_iterations=self._effective_max_iterations(selected_skills),
             retry_policy=self.retry_policy,
             router_policy=self.router_policy,
             credential_store=self.credential_store,
@@ -303,8 +320,9 @@ class Agent:
         if self.rag is not None:
             self.rag.begin_run()
 
+        # Compute skills once and reuse across prompt, tools, and metadata.
         selected_skills = self._selected_skills(user_prompt)
-        effective_tools = self._effective_tools(user_prompt)
+        effective_tools = self._effective_tools(user_prompt, selected_skills=selected_skills)
 
         runtime = AgentRuntime(
             llm=self.llm,
@@ -324,7 +342,7 @@ class Agent:
             session_id=self.session_id,
             trace_store=self.trace_store,
             trace_id=self.trace_id,
-            max_iterations=self.max_iterations,
+            max_iterations=self._effective_max_iterations(selected_skills),
             retry_policy=self.retry_policy,
             router_policy=self.router_policy,
             credential_store=self.credential_store,

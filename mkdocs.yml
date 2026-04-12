@@ -198,12 +198,12 @@ nav:
       - Core Tools: tools/core-tools.md
       - Reasoning Helpers: tools/reasoning-helpers.md
       - Code & Files: tools/code-and-files.md
-      - bash: tools/bash.md
-      - read_file: tools/read-file.md
-      - edit_file: tools/edit-file.md
-      - write_file: tools/write-file.md
-      - glob_files: tools/glob-files.md
-      - grep_files: tools/grep-files.md
+      - Bash: tools/bash.md
+      - Read File: tools/read-file.md
+      - Edit File: tools/edit-file.md
+      - Write File: tools/write-file.md
+      - Glob Files: tools/glob-files.md
+      - Grep Files: tools/grep-files.md
       - Connectors: tools/connectors.md
   - Resources:
       - FAQ: faq.md

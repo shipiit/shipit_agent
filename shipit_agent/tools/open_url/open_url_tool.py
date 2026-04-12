@@ -88,50 +88,55 @@ class OpenURLTool:
 
     def _fetch_via_playwright(self, url: str) -> tuple[str, str, dict]:
         """Returns (text, page_title, metadata). Raises on failure."""
-        from playwright.sync_api import sync_playwright  # local import — optional dep
+        from shipit_agent.tools._playwright import run_playwright_sync
 
-        timeout_ms = int(self.timeout * 1000)
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
-            try:
-                context = browser.new_context(
-                    user_agent=self.user_agent,
-                    viewport={"width": 1280, "height": 800},
-                    locale="en-US",
-                )
-                page = context.new_page()
-                response = page.goto(
-                    url, wait_until=self.wait_until, timeout=timeout_ms
-                )
-                status = response.status if response is not None else None
-                if status is not None and status >= 400:
-                    raise RuntimeError(f"HTTP {status} from {url}")
+        def _do_fetch() -> tuple[str, str, dict]:
+            from playwright.sync_api import sync_playwright  # local import — optional dep
 
-                # Prefer visible body text; fall back to full rendered HTML.
+            timeout_ms = int(self.timeout * 1000)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=self.headless)
                 try:
-                    text = page.evaluate(
-                        "() => document.body && document.body.innerText || ''"
+                    context = browser.new_context(
+                        user_agent=self.user_agent,
+                        viewport={"width": 1280, "height": 800},
+                        locale="en-US",
                     )
-                except Exception:
-                    text = ""
-                if not text:
-                    text = _strip_html(page.content())
+                    page = context.new_page()
+                    response = page.goto(
+                        url, wait_until=self.wait_until, timeout=timeout_ms
+                    )
+                    status = response.status if response is not None else None
+                    if status is not None and status >= 400:
+                        raise RuntimeError(f"HTTP {status} from {url}")
 
-                title = ""
-                try:
-                    title = page.title() or ""
-                except Exception:
-                    pass
+                    # Prefer visible body text; fall back to full rendered HTML.
+                    try:
+                        text = page.evaluate(
+                            "() => document.body && document.body.innerText || ''"
+                        )
+                    except Exception:
+                        text = ""
+                    if not text:
+                        text = _strip_html(page.content())
 
-                metadata = {
-                    "fetch_method": "playwright",
-                    "status_code": status,
-                    "final_url": page.url,
-                    "title": title,
-                }
-                return text, title, metadata
-            finally:
-                browser.close()
+                    title = ""
+                    try:
+                        title = page.title() or ""
+                    except Exception:
+                        pass
+
+                    metadata = {
+                        "fetch_method": "playwright",
+                        "status_code": status,
+                        "final_url": page.url,
+                        "title": title,
+                    }
+                    return text, title, metadata
+                finally:
+                    browser.close()
+
+        return run_playwright_sync(_do_fetch)
 
     def _fetch_via_urllib(self, url: str) -> tuple[str, str, dict]:
         """Stdlib fallback. Raises on failure."""

@@ -1,4 +1,27 @@
-"""Skill registries — in-memory and file-backed."""
+"""Skill registries — in-memory and file-backed.
+
+A registry holds :class:`Skill` objects and provides lookup, search,
+and filtering. Two implementations:
+
+- :class:`SkillRegistry` — pure in-memory, suitable for tests or
+  programmatic skill management.
+- :class:`FileSkillRegistry` — loads from a JSON file on disk (the
+  packaged ``skills.json`` or a custom catalog).
+
+The Agent uses the registry to:
+1. Resolve string skill ids → Skill objects (``registry.get(id)``)
+2. Auto-match skills from user prompts (``registry.search(query)``)
+3. List all available skills (``registry.list()``)
+
+Search scoring (in :meth:`SkillRegistry.search`):
+    - Exact substring in name: +10
+    - Exact substring in display_name: +8
+    - Exact substring in trigger_phrases: +6
+    - Exact substring in description: +5
+    - Tag match: +4
+    - Detailed description match: +3
+    - Token overlap (fuzzy): +2 per overlapping token
+"""
 
 from __future__ import annotations
 
@@ -10,12 +33,16 @@ from .skill import Skill
 
 
 class SkillRegistry:
-    """In-memory registry of :class:`Skill` objects."""
+    """In-memory registry of :class:`Skill` objects.
+
+    Supports register, unregister, get, list, search, and iteration.
+    Used as the base for :class:`FileSkillRegistry`.
+    """
 
     def __init__(self) -> None:
         self._skills: dict[str, Skill] = {}
 
-    # ---- mutation --------------------------------------------------------- #
+    # ── mutation ──────────────────────────────────────────────────────
 
     def register(self, skill: Skill) -> None:
         """Add or replace a skill in the registry."""
@@ -25,7 +52,7 @@ class SkillRegistry:
         """Remove a skill by its *id*.  Raises ``KeyError`` if not found."""
         del self._skills[skill_id]
 
-    # ---- lookup ----------------------------------------------------------- #
+    # ── lookup ────────────────────────────────────────────────────────
 
     def get(self, skill_id: str) -> Skill | None:
         """Return a skill by id, or ``None``."""
@@ -49,7 +76,14 @@ class SkillRegistry:
         return [s for s in self._skills.values() if s.featured]
 
     def search(self, query: str) -> list[Skill]:
-        """Fuzzy-match *query* against name, description, tags, and trigger_phrases.
+        """Fuzzy-match *query* against skill metadata fields.
+
+        Scoring weights (see module docstring for full breakdown):
+        - Name/display_name exact match: highest signal
+        - Trigger phrase match: strong signal (authored for matching)
+        - Description match: medium signal
+        - Tag match: medium signal
+        - Token overlap: weak but broad (catches partial matches)
 
         Returns skills sorted by relevance (highest score first).
         """
@@ -59,29 +93,29 @@ class SkillRegistry:
         for skill in self._skills.values():
             score = 0.0
 
-            # exact substring in name is strongest signal
+            # Exact substring in name is strongest signal.
             if query_lower in skill.name.lower():
                 score += 10.0
             if query_lower in skill.display_name.lower():
                 score += 8.0
 
-            # description
+            # Description matches.
             if query_lower in skill.description.lower():
                 score += 5.0
             if query_lower in skill.detailed_description.lower():
                 score += 3.0
 
-            # tags
+            # Tag matches.
             for tag in skill.tags:
                 if query_lower in tag.lower():
                     score += 4.0
 
-            # trigger phrases
+            # Trigger phrase matches (high signal — authored for matching).
             for phrase in skill.trigger_phrases:
                 if query_lower in phrase.lower():
                     score += 6.0
 
-            # individual token overlap for fuzzy matching
+            # Token overlap for fuzzy matching (broad net).
             query_tokens = set(query_lower.split())
             haystack_tokens: set[str] = set()
             for text in [skill.name, skill.display_name, skill.description]:
@@ -101,7 +135,7 @@ class SkillRegistry:
         scored.sort(key=lambda t: t[0], reverse=True)
         return [s for _, s in scored]
 
-    # ---- dunder helpers --------------------------------------------------- #
+    # ── dunder helpers ────────────────────────────────────────────────
 
     def __len__(self) -> int:
         return len(self._skills)
@@ -116,6 +150,9 @@ class SkillRegistry:
 class FileSkillRegistry(SkillRegistry):
     """A :class:`SkillRegistry` backed by a JSON file.
 
+    Loads skills on construction from the JSON file at *path*.
+    Supports saving changes back with :meth:`save`.
+
     Expected file format::
 
         {
@@ -123,7 +160,12 @@ class FileSkillRegistry(SkillRegistry):
             "agents": [ { ... }, { ... }, { ... } ]
         }
 
-    Each entry in ``agents`` is a skill dict (camelCase or snake_case keys).
+    Each entry in ``agents`` is a skill dict (camelCase or snake_case
+    keys — both are accepted by ``Skill.from_dict()``).
+
+    The packaged catalog lives at ``shipit_agent/skills/skills.json``
+    and is loaded automatically by the Agent unless ``skill_source``
+    is overridden.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -132,7 +174,7 @@ class FileSkillRegistry(SkillRegistry):
         if self._path.exists():
             self._load()
 
-    # ---- persistence ------------------------------------------------------ #
+    # ── persistence ───────────────────────────────────────────────────
 
     def _load(self) -> None:
         """Read the JSON file and populate the registry."""

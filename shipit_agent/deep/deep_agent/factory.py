@@ -118,6 +118,12 @@ class DeepAgent:
     hooks: Any = None
     trace_store: Any = None
     credential_store: Any = None
+    # ---- skills (forwarded to inner Agent — see docs/guides/skills.md) ----
+    # All skill fields are passed through to the inner Agent unchanged.
+    # DeepAgent.add_skill() and .search_skills() delegate to the inner Agent.
+    # Skills inject both prompt guidance and tools into the inner Agent's
+    # runtime, so the DeepAgent's LLM sees the skill instructions and can
+    # call the skill-linked tools during execution.
     skill_registry: SkillRegistry | None = None
     skill_source: str | Path | None = DEFAULT_SKILLS_PATH
     auto_use_skills: bool = True

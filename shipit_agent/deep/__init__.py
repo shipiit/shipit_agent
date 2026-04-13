@@ -11,6 +11,13 @@ from .deep_agent import (
     DeepAgent,
     create_deep_agent,
 )
+from .ship_crew import (
+    ShipAgent,
+    ShipCrew,
+    ShipCrewResult,
+    ShipTask,
+    create_ship_crew,
+)
 
 __all__ = [
     "AdaptiveAgent",
@@ -28,9 +35,14 @@ __all__ = [
     "PersistentAgent",
     "ReflectionResult",
     "ReflectiveAgent",
+    "ShipAgent",
+    "ShipCrew",
+    "ShipCrewResult",
+    "ShipTask",
     "Supervisor",
     "SupervisorResult",
     "TestCase",
     "Worker",
     "create_deep_agent",
+    "create_ship_crew",
 ]

@@ -139,6 +139,22 @@ from .rag.chunker import DocumentChunker
 from .rag.embedder import CallableEmbedder, HashingEmbedder
 from .rag.reranker import LLMReranker
 from .rag.search_pipeline import HybridSearchPipeline
+from .notifications import (
+    DiscordNotifier,
+    Notification,
+    NotificationManager,
+    Notifier,
+    SlackNotifier,
+    TelegramNotifier,
+)
+from .costs import (
+    Budget,
+    BudgetExceededError,
+    CostRecord,
+    CostTracker,
+    MODEL_ALIASES,
+    MODEL_PRICING,
+)
 from .tools import (
     AskUserTool,
     ArtifactBuilderTool,
@@ -372,4 +388,18 @@ __all__ = [
     "HashingEmbedder",
     "CallableEmbedder",
     "LLMReranker",
+    # --- Notification Hub -------------------------------------------------
+    "DiscordNotifier",
+    "Notification",
+    "NotificationManager",
+    "Notifier",
+    "SlackNotifier",
+    "TelegramNotifier",
+    # --- Cost Tracking & Budgets ------------------------------------------
+    "Budget",
+    "BudgetExceededError",
+    "CostRecord",
+    "CostTracker",
+    "MODEL_ALIASES",
+    "MODEL_PRICING",
 ]

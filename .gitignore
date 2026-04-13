@@ -55,6 +55,8 @@ connector_creds.json
 *.log
 tmp/
 temp/
+docs/superpowers/
+notebooks/.shipit_traces/
 
 ANNOUNCEMENT_1.0.2.md
 ANNOUNCE.md

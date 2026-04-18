@@ -1,5 +1,111 @@
 # Changelog
 
+## v1.0.5 — 2026-04-18
+
+**Prebuilt agents, multi-agent crews, notifications, and cost tracking.** 40 ready-to-use agent personas. DAG-based ShipCrew orchestration with sequential, parallel, and hierarchical modes. Slack, Discord, and Telegram notification hub. Real-time cost tracking with budget enforcement. 4 new notebooks and expanded regression coverage across the new APIs.
+
+### Prebuilt Agents — 40 Ready-to-Use Personas
+
+- **`shipit_agent.agents` module** — new `AgentDefinition` dataclass and `AgentRegistry` for loading, searching, and composing agent personas.
+- **40 agents across 8 categories**: Architecture (5), Code Quality (6), Security (5), DevOps (5), Testing (5), Planning (4), Research (5), Content (5).
+- **`AgentRegistry.default()`** — loads the built-in `agents.json` in one line.
+- **Search & browse** — `registry.search("security audit")`, `registry.list_by_category("Security")`, `registry.categories()`.
+- **`.shipit/agents/` override** — drop JSON agent files in your project directory; `AgentRegistry.from_directory()` loads them, `registry.merge()` combines with built-ins.
+- **`AgentDefinition.system_prompt()`** — assembles role, goal, backstory, and prompt into a structured system prompt with `# Role`, `# Goal`, `# Background`, `# Instructions` headers.
+- **Serialization** — `to_dict()` (camelCase) and `from_dict()` (accepts both camelCase and snake_case).
+- Each agent has 1,200–1,800 char prompts with methodology, quality standards, and output format.
+
+### ShipCrew — Multi-Agent Crew Orchestration
+
+- **`shipit_agent.deep.ship_crew` package** — new `ShipCrew`, `ShipAgent`, `ShipTask`, `ShipCoordinator`, `ShipCrewResult` classes.
+- **DAG-based task dependencies** — `ShipTask.depends_on` forms a directed acyclic graph. Kahn's algorithm validates no cycles and resolves topological execution order.
+- **Three execution modes**:
+  - `sequential` — tasks run one at a time in topological order.
+  - `parallel` — independent tasks in the same DAG layer run concurrently via `ThreadPoolExecutor`.
+  - `hierarchical` — coordinator LLM dynamically assigns tasks, reviews output, and can request revisions.
+- **Template variable resolution** — `{output_key}` in task descriptions auto-resolves from upstream task outputs. `_SafeFormatMap` ensures missing keys don't crash.
+- **Context variables** — `crew.run(topic="AI", audience="devs")` injects runtime variables into task descriptions.
+- **`ShipAgent.from_registry()`** — build crew agents directly from the prebuilt agent registry.
+- **`create_ship_crew()` factory** — accepts plain dicts or objects; useful for JSON-driven configuration.
+- **Validation** — `crew.validate()` checks missing agents, unknown dependencies, and cyclic DAGs before execution.
+- **Streaming** — `crew.stream()` yields `AgentEvent` for `run_started`, `task_started`, `task_completed`, `task_failed`, `run_completed`.
+- **Error types** — `ShipCrewError`, `CyclicDependencyError`, `MissingAgentError`, `TaskTimeoutError`.
+- **Task features** — `max_retries`, `timeout_seconds`, `context` dict, `output_schema` for structured output.
+- **`ShipCrewResult`** — `output`, `task_results` (per-task outputs by key), `execution_order`, `failed_tasks`, `metadata` (timing).
+
+### Notification Hub — Slack, Discord & Telegram
+
+- **`shipit_agent.notifications` package** — new `NotificationManager`, `Notification`, `SlackNotifier`, `DiscordNotifier`, `TelegramNotifier`.
+- **Slack** — Block Kit webhooks with color-coded severity bars, metadata fields, and timestamps. Uses `urllib.request` — zero external dependencies.
+- **Discord** — rich embeds with color-coded severity, inline metadata fields, and footer. Handles 204 responses correctly.
+- **Telegram** — Bot API with MarkdownV2 formatting, auto-escaped special characters, emoji severity indicators.
+- **`NotificationManager`** — dispatch to multiple channels simultaneously. Filter by `min_severity` and/or `events` list.
+- **`manager.as_hooks()`** — returns `AgentHooks` that auto-notify on `run_started`, `run_completed`, `tool_failed`. Wire into any agent with `hooks=manager.as_hooks("my-agent")`.
+- **Custom templates** — override default message templates per event type. `render_template()` uses safe formatting (missing keys stay as `{key}`).
+- **Severity levels** — `info`, `warning`, `error`, `critical` with numeric ordering for filtering.
+- **`Notifier` protocol** — build custom notifiers (PagerDuty, Teams, SMS) by implementing `async send(notification) -> bool`.
+
+### Cost Tracking & Budgets
+
+- **`shipit_agent.costs` package** — new `CostTracker`, `Budget`, `BudgetExceededError`, `CostRecord`.
+- **`MODEL_PRICING`** — built-in per-million-token pricing for 20+ models: Claude Opus/Sonnet/Haiku 4, GPT-4o/4o-mini/4.1/o3/o4-mini, Gemini 2.5 Pro/Flash, Llama 4 Scout/Maverick, Bedrock model IDs. Includes cache read/write pricing for Anthropic.
+- **`MODEL_ALIASES`** — short names: `"opus"` → `"claude-opus-4"`, `"sonnet"` → `"claude-sonnet-4"`, etc.
+- **`CostTracker.record_call()`** — records an LLM call, computes USD cost, checks budget, and returns a `CostRecord`.
+- **`Budget(max_dollars=5.00, warn_at=0.80)`** — budget enforcement. `BudgetExceededError` raised when exceeded; `on_cost_alert` callback at warning threshold.
+- **`tracker.as_hooks()`** — returns `AgentHooks` for automatic per-call cost tracking. Extracts usage from Anthropic, OpenAI, and Bedrock response objects.
+- **`tracker.breakdown()`** — per-call cost attribution. `tracker.summary()` — full report with totals, budget status, and per-call details.
+- **`tracker.add_model()`** — register custom model pricing at runtime.
+
+### Notebooks
+
+- **Notebook 32** — Prebuilt Agents (27 cells): registry loading, category browsing, search, category statistics, agent inspection, live agent construction, multi-category showcase, serialization, custom definitions, registry merging, `.shipit/agents/` override, ShipCrew integration.
+- **Notebook 33** — ShipCrew Orchestration (28 cells): basic crew, diamond DAG, parallel mode, context variables, hierarchical LLM-driven mode, streaming events, from registry, factory, validation/errors, ShipTask advanced features, crew + cost tracking.
+- **Notebook 34** — Notifications (27 cells): notification data model, all severity levels, Slack Block Kit, Discord embeds, Telegram MarkdownV2, severity comparison, production event examples, multi-channel dispatch, severity/event filtering, real agent demo, custom templates, cost alert integration.
+- **Notebook 35** — Cost Tracking & Budgets (31 cells): pricing table, model comparison, cache savings calculator, per-call tracking, budget enforcement, warning callbacks, breakdown, summary, custom pricing, auto-hooks, streaming + live cost, multi-model tracking.
+
+### Tests
+
+- Expanded regression coverage across the new surfaces:
+  - `test_prebuilt_agents.py` (39 tests): AgentDefinition serialization, system prompt assembly, AgentRegistry loading/search/merge/categories, data integrity validation for all 40 agents.
+  - `test_ship_crew.py` (44 tests): ShipTask resolution/serialization including `output_schema`, ShipAgent construction/delegation/from_registry, ShipCoordinator DAG building/cycle detection/sequential/parallel/hierarchical execution, ShipCrew validation/run/stream/context variables, create_ship_crew factory, error inheritance.
+  - `test_notifications_and_costs.py` (76 tests): Notification model/serialization, severity ordering, template rendering, SlackNotifier Block Kit/send, DiscordNotifier embeds/send, TelegramNotifier MarkdownV2/escaping/send, NotificationManager dispatch/filtering/hooks/custom templates, Budget warn/exceed, BudgetExceededError, CostTracker pricing/recording/breakdown/summary/budget/warnings/hooks/reset, usage/model extraction, MODEL_PRICING completeness, alias resolution.
+
+### New Files
+
+```
+shipit_agent/agents/__init__.py
+shipit_agent/agents/definition.py
+shipit_agent/agents/registry.py
+shipit_agent/agents/agents.json              (40 agent definitions)
+shipit_agent/deep/ship_crew/__init__.py
+shipit_agent/deep/ship_crew/agent.py
+shipit_agent/deep/ship_crew/coordinator.py
+shipit_agent/deep/ship_crew/crew.py
+shipit_agent/deep/ship_crew/errors.py
+shipit_agent/deep/ship_crew/result.py
+shipit_agent/deep/ship_crew/task.py
+shipit_agent/notifications/__init__.py
+shipit_agent/notifications/base.py
+shipit_agent/notifications/discord.py
+shipit_agent/notifications/manager.py
+shipit_agent/notifications/slack.py
+shipit_agent/notifications/telegram.py
+shipit_agent/notifications/templates.py
+shipit_agent/costs/__init__.py
+shipit_agent/costs/budget.py
+shipit_agent/costs/pricing.py
+shipit_agent/costs/tracker.py
+tests/test_prebuilt_agents.py
+tests/test_ship_crew.py
+tests/test_notifications_and_costs.py
+notebooks/32_prebuilt_agents.ipynb
+notebooks/33_ship_crew_orchestration.ipynb
+notebooks/34_notifications.ipynb
+notebooks/35_cost_tracking_and_budgets.ipynb
+```
+
+---
+
 ## v1.0.4 — 2026-04-12
 
 **Skills, tools, and runtime power-up.** All 32 tool prompts rewritten with decision trees and anti-patterns. Full skill-to-tool linking for all 37 packaged skills. Automatic iteration boost for skill-driven workflows. Expanded bash allowlist (50+ commands). Streaming, chat, and project-building examples across 3 notebooks. Comprehensive docstrings across every key module. **32 skill tests. All passing.**

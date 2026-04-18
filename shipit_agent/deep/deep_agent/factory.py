@@ -61,7 +61,7 @@ from typing import Any
 from shipit_agent.agent import DEFAULT_SKILLS_PATH
 from shipit_agent.builtins import get_builtin_tools
 from shipit_agent.chat_session import AgentChatSession
-from shipit_agent.models import AgentEvent, AgentResult
+from shipit_agent.models import AgentEvent, AgentResult, Message
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.skills import Skill, SkillRegistry
 from shipit_agent.stores import InMemorySessionStore, SessionStore
@@ -89,6 +89,8 @@ class DeepAgent:
     name: str = "shipit-deep-agent"
     description: str = "A deep agent that plans, verifies, and uses a workspace."
     prompt: str = DEEP_AGENT_PROMPT
+    metadata: dict[str, Any] = field(default_factory=dict)
+    history: list[Message] = field(default_factory=list)
     extra_tools: list[Any] = field(default_factory=list)
     mcps: list[Any] = field(default_factory=list)
     workspace_root: str = ".shipit_workspace"
@@ -103,6 +105,7 @@ class DeepAgent:
     memory: Any = None
     memory_store: Any = None
     session_store: SessionStore | None = None
+    session_id: str | None = None
     verify: bool = False
     reflect: bool = False
     reflect_threshold: float = 0.8
@@ -117,6 +120,7 @@ class DeepAgent:
     router_policy: RouterPolicy | None = None
     hooks: Any = None
     trace_store: Any = None
+    trace_id: str | None = None
     credential_store: Any = None
     # ---- skills (forwarded to inner Agent — see docs/guides/skills.md) ----
     # All skill fields are passed through to the inner Agent unchanged.
@@ -151,6 +155,8 @@ class DeepAgent:
         prompt: str = DEEP_AGENT_PROMPT,
         name: str = "shipit-deep-agent",
         description: str = "A deep agent that plans, verifies, and uses a workspace.",
+        metadata: dict[str, Any] | None = None,
+        history: list[Message] | None = None,
         extra_tools: list[Any] | None = None,
         mcps: list[Any] | None = None,
         workspace_root: str = ".shipit_workspace",
@@ -161,6 +167,7 @@ class DeepAgent:
         memory: Any = None,
         memory_store: Any = None,
         session_store: SessionStore | None = None,
+        session_id: str | None = None,
         verify: bool = False,
         reflect: bool = False,
         reflect_threshold: float = 0.8,
@@ -174,6 +181,7 @@ class DeepAgent:
         router_policy: RouterPolicy | None = None,
         hooks: Any = None,
         trace_store: Any = None,
+        trace_id: str | None = None,
         credential_store: Any = None,
         skill_registry: SkillRegistry | None = None,
         skill_source: str | Path | None = DEFAULT_SKILLS_PATH,
@@ -189,6 +197,8 @@ class DeepAgent:
             name=name,
             description=description,
             prompt=prompt,
+            metadata=metadata or {},
+            history=list(history or []),
             extra_tools=list(extra_tools or []),
             mcps=list(mcps or []),
             workspace_root=workspace_root,
@@ -199,6 +209,7 @@ class DeepAgent:
             memory=memory,
             memory_store=memory_store,
             session_store=session_store,
+            session_id=session_id,
             verify=verify,
             reflect=reflect,
             reflect_threshold=reflect_threshold,
@@ -212,6 +223,7 @@ class DeepAgent:
             router_policy=router_policy,
             hooks=hooks,
             trace_store=trace_store,
+            trace_id=trace_id,
             credential_store=credential_store,
             skill_registry=skill_registry,
             skill_source=skill_source,
@@ -269,9 +281,11 @@ class DeepAgent:
             "mcps": list(self.mcps),
             "name": self.name,
             "description": self.description,
+            "metadata": dict(self.metadata),
             "rag": self.rag,
             "memory_store": memory_store,
             "session_store": self.session_store,
+            "session_id": self.session_id,
             "max_iterations": self.max_iterations,
             "parallel_tool_execution": self.parallel_tool_execution,
             "context_window_tokens": self.context_window_tokens,
@@ -283,13 +297,15 @@ class DeepAgent:
             "skill_match_limit": self.skill_match_limit,
             "project_root": self.project_root,
         }
-        if history:
-            kwargs["history"] = history
+        combined_history = [*list(self.history), *history]
+        if combined_history:
+            kwargs["history"] = combined_history
         for name, value in (
             ("retry_policy", self.retry_policy),
             ("router_policy", self.router_policy),
             ("hooks", self.hooks),
             ("trace_store", self.trace_store),
+            ("trace_id", self.trace_id),
             ("credential_store", self.credential_store),
         ):
             if value is not None:
@@ -559,6 +575,7 @@ def create_deep_agent(
         # since it still has the full deep-agent toolset itself.
         result = agent.run("Investigate the auth bug, draft a fix, then review.")
     """
+    explicit_extra_tools = list(kwargs.pop("extra_tools", []) or [])
     extra_tools: list[Any] = []
     for tool in tools or []:
         if callable(tool) and not hasattr(tool, "schema"):
@@ -567,6 +584,7 @@ def create_deep_agent(
             extra_tools.append(FunctionTool.from_callable(tool))
         else:
             extra_tools.append(tool)
+    extra_tools.extend(explicit_extra_tools)
 
     factory = DeepAgent.with_builtins if use_builtins else DeepAgent
     return factory(

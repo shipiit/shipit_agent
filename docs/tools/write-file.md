@@ -5,8 +5,8 @@ description: Prompt and reference for the built-in write_file tool.
 
 # Write File
 
-**Class:** `FileWriteTool`  
-**Module:** `shipit_agent.tools.file_write`  
+**Class:** `FileWriteTool`
+**Module:** `shipit_agent.tools.file_write`
 **Tool ID:** `write_file`
 
 Creates or overwrites a file under the configured `project_root`.

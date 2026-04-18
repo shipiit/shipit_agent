@@ -5,8 +5,8 @@ description: A clean, powerful Python agent library with tools, MCP, streaming e
 
 # SHIPIT Agent
 
-!!! tip "v1.0.3 — Super RAG, DeepAgent, live chat REPL"
-    New in 1.0.3: **Super RAG subsystem** (hybrid search, auto-cited sources), **DeepAgent factory** with verify / reflect / goal / sub-agents, **`shipit chat`** live multi-agent terminal REPL, and the **Agent memory cookbook**. 521 unit tests + 19 real-Bedrock end-to-end smoke tests, all passing. See the [changelog](changelog.md).
+!!! tip "v1.0.5 — Prebuilt Agents, ShipCrew, Notifications, Cost Tracking"
+    New in 1.0.5: **40 prebuilt agent personas**, **ShipCrew** DAG orchestration, **Slack/Discord/Telegram notifications**, and **cost tracking with budgets**. See the [changelog](changelog.md) for the verified notebook and test coverage shipped in this repo.
 
 **SHIPIT Agent** is a standalone Python agent library focused on a clean runtime:
 

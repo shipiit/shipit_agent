@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from shipit_agent.llms.base import LLMResponse
@@ -79,6 +80,34 @@ class AnthropicChatLLM:
             )
         return converted
 
+    def _fallback_to_bedrock(
+        self,
+        *,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None,
+        system_prompt: str | None,
+        metadata: dict[str, Any] | None,
+        response_format: dict[str, Any] | None,
+    ) -> LLMResponse:
+        from shipit_agent.llms.litellm_adapter import BedrockChatLLM
+
+        fallback = BedrockChatLLM(
+            model=os.getenv("SHIPIT_BEDROCK_MODEL", "bedrock/openai.gpt-oss-120b-1:0")
+        )
+        response = fallback.complete(
+            messages=messages,
+            tools=tools,
+            system_prompt=system_prompt,
+            metadata=metadata,
+            response_format=response_format,
+        )
+        response.metadata = {
+            **dict(response.metadata),
+            "provider": "bedrock",
+            "fallback_from": "anthropic",
+        }
+        return response
+
     def complete(
         self,
         *,
@@ -91,7 +120,18 @@ class AnthropicChatLLM:
         try:
             import anthropic
         except ImportError as exc:
-            raise RuntimeError("Install `anthropic` to use AnthropicChatLLM.") from exc
+            try:
+                return self._fallback_to_bedrock(
+                    messages=messages,
+                    tools=tools,
+                    system_prompt=system_prompt,
+                    metadata=metadata,
+                    response_format=response_format,
+                )
+            except Exception:
+                raise RuntimeError(
+                    "Install `anthropic` to use AnthropicChatLLM."
+                ) from exc
 
         client = anthropic.Anthropic(api_key=self.api_key, **self.client_kwargs)
 

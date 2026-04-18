@@ -5,8 +5,8 @@ description: Prompt and reference for the built-in read_file tool.
 
 # Read File
 
-**Class:** `FileReadTool`  
-**Module:** `shipit_agent.tools.file_read`  
+**Class:** `FileReadTool`
+**Module:** `shipit_agent.tools.file_read`
 **Tool ID:** `read_file`
 
 Reads a file from the configured `project_root`. The built-in tool defaults to `project_root="/tmp"`.

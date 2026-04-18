@@ -58,6 +58,52 @@ def test_example_build_llm_from_env_supports_vertex_json_credentials(
     assert llm.model == "vertex_ai/gemini-1.5-pro"
 
 
+def test_example_build_llm_from_env_falls_back_to_bedrock_when_anthropic_sdk_missing(
+    monkeypatch,
+) -> None:
+    module = _load_module()
+    monkeypatch.setenv("SHIPIT_LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "demo-key")
+    monkeypatch.setenv("AWS_REGION_NAME", "us-east-1")
+
+    class FakeBedrock:
+        def __init__(self, model):
+            self.model = model
+
+    def broken_anthropic(*args, **kwargs):
+        raise RuntimeError("Install `anthropic` to use AnthropicChatLLM.")
+
+    from shipit_agent.llms import factory as factory_module
+
+    monkeypatch.setattr(factory_module, "AnthropicChatLLM", broken_anthropic)
+    monkeypatch.setattr(factory_module, "BedrockChatLLM", FakeBedrock)
+
+    llm = module.build_llm_from_env()
+    assert isinstance(llm, FakeBedrock)
+    assert llm.model == "bedrock/openai.gpt-oss-120b-1:0"
+
+
+def test_example_build_llm_from_env_keeps_explicit_anthropic_errors(
+    monkeypatch,
+) -> None:
+    module = _load_module()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "demo-key")
+
+    def broken_anthropic(*args, **kwargs):
+        raise RuntimeError("Install `anthropic` to use AnthropicChatLLM.")
+
+    from shipit_agent.llms import factory as factory_module
+
+    monkeypatch.setattr(factory_module, "AnthropicChatLLM", broken_anthropic)
+
+    try:
+        module.build_llm_from_env("anthropic")
+    except RuntimeError as exc:
+        assert "Install `anthropic`" in str(exc)
+    else:
+        raise AssertionError("Expected explicit anthropic provider to keep failing")
+
+
 def test_example_build_llm_from_env_supports_generic_litellm(monkeypatch) -> None:
     module = _load_module()
     monkeypatch.setenv("SHIPIT_LLM_PROVIDER", "litellm")

@@ -55,6 +55,7 @@ Respond with JSON only. Choose ONE action:
 # ShipCoordinator
 # ---------------------------------------------------------------------------
 
+
 class ShipCoordinator:
     """Orchestrates task execution across agents in a ShipCrew.
 
@@ -92,9 +93,7 @@ class ShipCoordinator:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _validate_agents(
-        tasks: list[ShipTask], agents: dict[str, ShipAgent]
-    ) -> None:
+    def _validate_agents(tasks: list[ShipTask], agents: dict[str, ShipAgent]) -> None:
         """Raise ``MissingAgentError`` if any task references an unknown agent."""
         for task in tasks:
             if task.agent not in agents:
@@ -128,9 +127,7 @@ class ShipCoordinator:
                 in_degree[task.name] += 1
 
         # Kahn's algorithm — detect cycles.
-        queue: deque[str] = deque(
-            name for name, deg in in_degree.items() if deg == 0
-        )
+        queue: deque[str] = deque(name for name, deg in in_degree.items() if deg == 0)
         visited = 0
         while queue:
             node = queue.popleft()
@@ -200,9 +197,7 @@ class ShipCoordinator:
 
         # Merge any extra context into the prompt.
         if task.context:
-            context_str = "\n".join(
-                f"- {k}: {v}" for k, v in task.context.items()
-            )
+            context_str = "\n".join(f"- {k}: {v}" for k, v in task.context.items())
             prompt = f"{prompt}\n\nAdditional context:\n{context_str}"
 
         last_error: Exception | None = None
@@ -232,7 +227,9 @@ class ShipCoordinator:
                 ) from last_error
 
         # Unreachable, but keeps type checkers happy.
-        raise ShipCrewError(f"Task '{task.name}' failed: {last_error}")  # pragma: no cover
+        raise ShipCrewError(
+            f"Task '{task.name}' failed: {last_error}"
+        )  # pragma: no cover
 
     # ------------------------------------------------------------------ #
     # Process modes
@@ -265,9 +262,7 @@ class ShipCoordinator:
 
         with ThreadPoolExecutor(max_workers=len(task_layer)) as pool:
             future_to_task = {
-                pool.submit(
-                    self._execute_task, task, dict(outputs), agents
-                ): task
+                pool.submit(self._execute_task, task, dict(outputs), agents): task
                 for task in task_layer
             }
 
@@ -307,9 +302,7 @@ class ShipCoordinator:
                 for n in remaining
             )
             completed_desc = (
-                "\n".join(
-                    f"- {k}: {v[:300]}" for k, v in outputs.items()
-                )
+                "\n".join(f"- {k}: {v[:300]}" for k, v in outputs.items())
                 if outputs
                 else "(None yet)"
             )
@@ -345,9 +338,7 @@ class ShipCoordinator:
             if agent is None:
                 agent = agents[task.agent]
 
-            instructions = decision.get(
-                "instructions", decision.get("feedback", "")
-            )
+            instructions = decision.get("instructions", decision.get("feedback", ""))
             if instructions:
                 combined_outputs = {**outputs, "_instructions": instructions}
             else:
@@ -398,9 +389,7 @@ class ShipCoordinator:
             elif self.process == "parallel":
                 outputs: dict[str, str] = {}
                 for layer in self._layers:
-                    layer_outputs = self._execute_parallel(
-                        layer, self.agents, outputs
-                    )
+                    layer_outputs = self._execute_parallel(layer, self.agents, outputs)
                     outputs.update(layer_outputs)
                     execution_order.extend(t.name for t in layer)
             else:

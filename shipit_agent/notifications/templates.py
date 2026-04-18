@@ -20,16 +20,13 @@ DEFAULT_TEMPLATES: dict[str, str] = {
         "{agent} completed in {duration} | Cost: {cost} | {output_preview}"
     ),
     "tool_failed": "{agent} tool '{tool}' failed: {error}",
-    "cost_alert": (
-        "{agent} has spent {spent} of {budget} budget ({percent}%)"
-    ),
+    "cost_alert": ("{agent} has spent {spent} of {budget} budget ({percent}%)"),
     "checkpoint_saved": "{agent} checkpoint #{step} saved",
     "crew_started": (
         "Crew '{crew}' started with {agent_count} agents, {task_count} tasks"
     ),
     "crew_completed": (
-        "Crew '{crew}' completed in {duration} | "
-        "{completed}/{total} tasks succeeded"
+        "Crew '{crew}' completed in {duration} | " "{completed}/{total} tasks succeeded"
     ),
 }
 
@@ -37,6 +34,7 @@ DEFAULT_TEMPLATES: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Safe renderer
 # ---------------------------------------------------------------------------
+
 
 class _SafeDict(dict[str, Any]):
     """Dict subclass that returns the format key itself for missing keys.

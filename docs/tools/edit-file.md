@@ -5,8 +5,8 @@ description: Prompt and reference for the built-in edit_file tool.
 
 # Edit File
 
-**Class:** `EditFileTool`  
-**Module:** `shipit_agent.tools.edit_file`  
+**Class:** `EditFileTool`
+**Module:** `shipit_agent.tools.edit_file`
 **Tool ID:** `edit_file`
 
 Applies an exact string replacement patch to an existing file under the configured `project_root`.

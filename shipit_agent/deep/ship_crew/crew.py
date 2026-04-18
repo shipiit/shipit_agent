@@ -7,12 +7,12 @@ between them automatically through template variable resolution.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Generator
 
 from .agent import ShipAgent
 from .coordinator import ShipCoordinator
-from .errors import MissingAgentError, ShipCrewError
+from .errors import ShipCrewError
 from .result import ShipCrewResult
 from .task import ShipTask
 
@@ -20,6 +20,7 @@ from .task import ShipTask
 # ---------------------------------------------------------------------------
 # ShipCrew
 # ---------------------------------------------------------------------------
+
 
 @dataclass(slots=True)
 class ShipCrew:
@@ -91,9 +92,7 @@ class ShipCrew:
             # Check dependencies exist.
             for dep in task.depends_on:
                 if dep not in task_names:
-                    errors.append(
-                        f"Task '{task.name}' depends on unknown task '{dep}'"
-                    )
+                    errors.append(f"Task '{task.name}' depends on unknown task '{dep}'")
 
         # Check for cycles by attempting the DAG build.
         try:
@@ -142,7 +141,8 @@ class ShipCrew:
     # ------------------------------------------------------------------ #
 
     def _build_coordinator(
-        self, context_vars: dict[str, Any] | None = None,
+        self,
+        context_vars: dict[str, Any] | None = None,
     ) -> ShipCoordinator:
         """Create a ``ShipCoordinator`` for the current configuration.
 
@@ -223,6 +223,7 @@ class ShipCrew:
 # ---------------------------------------------------------------------------
 # Convenience factory
 # ---------------------------------------------------------------------------
+
 
 def create_ship_crew(
     *,

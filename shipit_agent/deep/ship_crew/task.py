@@ -15,6 +15,7 @@ from typing import Any
 # Safe template resolution
 # ---------------------------------------------------------------------------
 
+
 class _SafeFormatMap(dict):
     """Dict subclass that returns ``{key}`` for missing keys.
 
@@ -29,6 +30,7 @@ class _SafeFormatMap(dict):
 # ---------------------------------------------------------------------------
 # ShipTask
 # ---------------------------------------------------------------------------
+
 
 @dataclass(slots=True)
 class ShipTask:
@@ -101,6 +103,7 @@ class ShipTask:
             "agent": self.agent,
             "depends_on": list(self.depends_on),
             "output_key": self.output_key,
+            "output_schema": self.output_schema,
             "max_retries": self.max_retries,
             "timeout_seconds": self.timeout_seconds,
             "context": dict(self.context),

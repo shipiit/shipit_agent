@@ -5,6 +5,35 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] — 2026-04-18
+
+**Prebuilt agents, multi-agent crews, notifications, and cost tracking.**
+
+### Added
+
+- `shipit_agent.agents` with 40 built-in agent personas across 8 categories.
+- `shipit_agent.deep.ship_crew` with DAG-based `ShipCrew`, `ShipAgent`, `ShipTask`, and `ShipCrewResult`.
+- `shipit_agent.notifications` with `SlackNotifier`, `DiscordNotifier`, `TelegramNotifier`, and `NotificationManager`.
+- `shipit_agent.costs` with `CostTracker`, `Budget`, `BudgetExceededError`, and model pricing tables.
+- Four new notebooks:
+  - `notebooks/32_prebuilt_agents.ipynb`
+  - `notebooks/33_ship_crew_orchestration.ipynb`
+  - `notebooks/34_notifications.ipynb`
+  - `notebooks/35_cost_tracking_and_budgets.ipynb`
+
+### Changed
+
+- Expanded regression coverage for the new APIs in:
+  - `tests/test_prebuilt_agents.py` (39 tests)
+  - `tests/test_ship_crew.py` (44 tests)
+  - `tests/test_notifications_and_costs.py` (76 tests)
+
+### Fixed
+
+- `NotificationManager.as_hooks()` now emits `run_completed` only for final LLM responses and resets state correctly between runs.
+- `ShipTask.to_dict()` now preserves `output_schema`.
+- `ShipAgent.from_registry()` now raises `KeyError` for unknown registry ids as documented.
+
 ## [1.0.4] — 2026-04-12
 
 **Skills, tools, and runtime power-up.** All 32 tool prompts rewritten with
@@ -179,7 +208,7 @@ smoke tests. All passing.**
   `tool_completed.metadata['events']` so UIs render sub-agent activity live.
 
 - **Clean subpackage layout** — `shipit_agent/deep/deep_agent/{prompt,
-  toolset, verification, delegation, factory}.py`.
+toolset, verification, delegation, factory}.py`.
 
 ### Live chat REPL (new)
 
@@ -294,7 +323,7 @@ smoke tests. All passing.**
   `DeepAgent.chat()`, `agents=[...]` sub-agent delegation, `GoalAgent`,
   `ReflectiveAgent`, `AdaptiveAgent`, `Supervisor`, `PersistentAgent`, the
   memory system, and the full-stack composition (`DeepAgent(rag, memory,
-  agents, verify)`). All 19 pass against real Bedrock with
+agents, verify)`). All 19 pass against real Bedrock with
   `bedrock/openai.gpt-oss-120b-1:0`.
 
 ### Changed
@@ -426,17 +455,17 @@ hallucinates `context` as a tool-call argument.
 - **`CHANGELOG.md`** at repo root in [Keep a Changelog](https://keepachangelog.com/) format. Mirrors `docs/changelog.md` but lives where GitHub Releases expects it.
 - **`CONTRIBUTING.md`** at repo root with complete development setup, commit conventions, PR checklist, and step-by-step instructions for adding new LLM adapters and built-in tools.
 - **GitHub issue templates** (`.github/ISSUE_TEMPLATE/`):
-    - `bug_report.yml` — structured bug form with version, OS, provider, repro, traceback fields
-    - `feature_request.yml` — structured feature proposal form with problem-first framing
-    - `config.yml` — disables blank issues, adds contact links to docs, discussions, and security advisories
+  - `bug_report.yml` — structured bug form with version, OS, provider, repro, traceback fields
+  - `feature_request.yml` — structured feature proposal form with problem-first framing
+  - `config.yml` — disables blank issues, adds contact links to docs, discussions, and security advisories
 - **GitHub pull request template** (`.github/PULL_REQUEST_TEMPLATE.md`) with 12-item verification checklist.
 - **Test CI workflow** (`.github/workflows/test.yml`) — runs `pytest -q` on Python 3.11 + 3.12 × Ubuntu + macOS (4 matrix cells). Smoke-tests all 11 LLM adapter imports including `LiteLLMProxyChatLLM` and `VertexAIChatLLM`. Cancels older runs on the same branch via concurrency group.
 - **Gitleaks CI workflow** (`.github/workflows/gitleaks.yml`) — secret scanning on every push and PR via the licensed `gitleaks-action@v2`. Full git history scanned (`fetch-depth: 0`). Uploads SARIF findings to the GitHub Security tab, posts inline comments on PRs, and shows findings in the Actions summary panel.
 - **Pre-commit config** (`.pre-commit-config.yaml`) — local hooks for trailing whitespace, EOF fixer, YAML/TOML validation, merge-conflict detection, private-key detection, `gitleaks v8.21.2`, and `ruff` lint + format. Install with `pre-commit install` after cloning.
 - **Gitleaks allowlist** (`.gitleaks.toml`) — 14 path patterns and 12 regex patterns. Allowlists:
-    - `.env.example`, docs, notebooks, tests (placeholder credentials)
-    - `.shipit_notebooks/`, `.shipit_workspace/`, `sessions/`, `traces/`, `memory.json` (runtime tool outputs that contain scraped HTML like Pushly domainKeys)
-    - Common scraped client-side ID patterns: `pushly(...)`, `UA-xxx`, `G-xxx`, `GTM-xxx`
+  - `.env.example`, docs, notebooks, tests (placeholder credentials)
+  - `.shipit_notebooks/`, `.shipit_workspace/`, `sessions/`, `traces/`, `memory.json` (runtime tool outputs that contain scraped HTML like Pushly domainKeys)
+  - Common scraped client-side ID patterns: `pushly(...)`, `UA-xxx`, `G-xxx`, `GTM-xxx`
 
 ### Changed
 
@@ -469,9 +498,9 @@ First stable release. Focused on making the agent loop **observable, interchange
 
 - `LLMResponse.reasoning_content` field added to carry thinking/reasoning blocks from any provider
 - New `_extract_reasoning()` helper handles three provider shapes:
-    - Flat `reasoning_content` on the response message (OpenAI o-series, `gpt-oss`, DeepSeek R1, Anthropic via LiteLLM)
-    - Anthropic `thinking_blocks[*].thinking` (Claude extended thinking)
-    - `model_dump()` fallback for pydantic dumps
+  - Flat `reasoning_content` on the response message (OpenAI o-series, `gpt-oss`, DeepSeek R1, Anthropic via LiteLLM)
+  - Anthropic `thinking_blocks[*].thinking` (Claude extended thinking)
+  - `model_dump()` fallback for pydantic dumps
 - Runtime emits `reasoning_started` + `reasoning_completed` events whenever reasoning content is non-empty
 - **All three LLM adapters** — `OpenAIChatLLM`, `AnthropicChatLLM`, `LiteLLMChatLLM` / `BedrockChatLLM` — share the extraction helper
 - `OpenAIChatLLM` auto-passes `reasoning_effort="medium"` for reasoning-capable models (`o1*`, `o3*`, `o4*`, `gpt-5*`, `deepseek-r1*`)
@@ -487,11 +516,11 @@ First stable release. Focused on making the agent loop **observable, interchange
 
 ### 🛡️ Bulletproof Bedrock tool pairing
 
-- Planner output is now injected as a `user`-role context message rather than an orphan `role="tool"` message — fixes Bedrock's *"number of toolResult blocks exceeds number of toolUse blocks"* error
+- Planner output is now injected as a `user`-role context message rather than an orphan `role="tool"` message — fixes Bedrock's _"number of toolResult blocks exceeds number of toolUse blocks"_ error
 - Every `response.tool_calls` entry gets a tool-result message unconditionally:
-    - Success → real tool-result
-    - Retry → retries first, then final result or error
-    - Unknown tool → synthetic `"Error: tool X is not registered"` tool-result
+  - Success → real tool-result
+  - Retry → retries first, then final result or error
+  - Unknown tool → synthetic `"Error: tool X is not registered"` tool-result
 - Stable `call_{iteration}_{index}` tool_call_ids round-trip through message metadata
 - Multi-iteration tool loops on Bedrock Claude, gpt-oss, and Anthropic native now work without `modify_params` band-aids
 
@@ -505,9 +534,9 @@ First stable release. Focused on making the agent loop **observable, interchange
 ### 🆕 Vertex AI support
 
 - `VertexAIChatLLM` rewritten with proper Vertex AI credential handling:
-    - `service_account_file="/path/to/sa.json"` — sets `GOOGLE_APPLICATION_CREDENTIALS` so `google-auth` picks it up
-    - `project_id="my-gcp-project"` — injected as `vertex_project` completion kwarg
-    - `location="us-central1"` — injected as `vertex_location` completion kwarg
+  - `service_account_file="/path/to/sa.json"` — sets `GOOGLE_APPLICATION_CREDENTIALS` so `google-auth` picks it up
+  - `project_id="my-gcp-project"` — injected as `vertex_project` completion kwarg
+  - `location="us-central1"` — injected as `vertex_location` completion kwarg
 - `build_llm_from_env('vertex')` reads `SHIPIT_VERTEX_CREDENTIALS_FILE` or `GOOGLE_APPLICATION_CREDENTIALS`, `VERTEXAI_PROJECT` or `GOOGLE_CLOUD_PROJECT`, and `VERTEXAI_LOCATION` or `VERTEX_LOCATION` or `GOOGLE_CLOUD_LOCATION`
 - Clear error messages point at the exact env var you need to set
 

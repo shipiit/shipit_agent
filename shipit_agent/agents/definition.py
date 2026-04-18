@@ -12,6 +12,7 @@ from typing import Any
 # Case-conversion helpers (mirrors shipit_agent.skills.skill)
 # ---------------------------------------------------------------------------
 
+
 def _snake_to_camel(name: str) -> str:
     """Convert snake_case to camelCase."""
     parts = name.split("_")
@@ -27,6 +28,7 @@ def _camel_to_snake(name: str) -> str:
 # ---------------------------------------------------------------------------
 # AgentDefinition
 # ---------------------------------------------------------------------------
+
 
 @dataclass(slots=True)
 class AgentDefinition:
@@ -111,8 +113,6 @@ class AgentDefinition:
             sections.append(f"# Background\n{self.backstory}")
 
         if self.prompt:
-            sections.append(
-                f"# Instructions\n{textwrap.dedent(self.prompt).strip()}"
-            )
+            sections.append(f"# Instructions\n{textwrap.dedent(self.prompt).strip()}")
 
         return "\n\n".join(sections)

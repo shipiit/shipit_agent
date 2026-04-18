@@ -22,9 +22,7 @@ class GrepSearchTool:
         self.name = name
         self.description = description
         self.prompt = prompt or GREP_SEARCH_PROMPT
-        self.prompt_instructions = (
-            "Use this to find symbols, error strings, config keys, query fragments, and code references across the project."
-        )
+        self.prompt_instructions = "Use this to find symbols, error strings, config keys, query fragments, and code references across the project."
 
     def schema(self) -> dict:
         return {
@@ -116,7 +114,9 @@ class GrepSearchTool:
             if glob_pattern and not candidate.match(glob_pattern):
                 continue
             try:
-                lines = candidate.read_text(encoding="utf-8", errors="replace").splitlines()
+                lines = candidate.read_text(
+                    encoding="utf-8", errors="replace"
+                ).splitlines()
             except Exception:
                 continue
             for line_number, line in enumerate(lines, start=1):

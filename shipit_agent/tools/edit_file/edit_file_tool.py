@@ -20,9 +20,7 @@ class EditFileTool:
         self.name = name
         self.description = description
         self.prompt = prompt or EDIT_FILE_PROMPT
-        self.prompt_instructions = (
-            "Use this for surgical edits after reading the file. Prefer exact replacements over full rewrites."
-        )
+        self.prompt_instructions = "Use this for surgical edits after reading the file. Prefer exact replacements over full rewrites."
 
     def schema(self) -> dict:
         return {

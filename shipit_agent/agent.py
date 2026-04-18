@@ -53,11 +53,9 @@ With skills::
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 from shipit_agent.builtins import get_builtin_tool_map, get_builtin_tools
 from shipit_agent.chat_session import AgentChatSession
@@ -78,6 +76,8 @@ from shipit_agent.skills import (
 from shipit_agent.skills.tool_bundles import tool_names_for_skills
 from shipit_agent.stores import MemoryStore, SessionStore
 from shipit_agent.tracing import TraceStore
+
+logger = logging.getLogger(__name__)
 
 # Path to the packaged skills catalog (ships with the library).
 DEFAULT_SKILLS_PATH = Path(__file__).resolve().parent / "skills" / "skills.json"
@@ -137,13 +137,13 @@ class Agent:
     trace_id: str | None = None
 
     # ── runtime tuning ────────────────────────────────────────────────
-    max_iterations: int = 4                  # auto-boosted → 8 when skills are active
+    max_iterations: int = 4  # auto-boosted → 8 when skills are active
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
     parallel_tool_execution: bool = False
     hooks: Any = None
-    context_window_tokens: int = 0           # 0 = no compaction
-    replan_interval: int = 0                 # 0 = no periodic replanning
+    context_window_tokens: int = 0  # 0 = no compaction
+    replan_interval: int = 0  # 0 = no periodic replanning
 
     # ── RAG ───────────────────────────────────────────────────────────
     rag: Any = None
@@ -152,12 +152,12 @@ class Agent:
     project_root: str | Path = "/tmp"
 
     # ── skills (see docs/guides/skills.md) ────────────────────────────
-    skill_registry: SkillRegistry | None = None        # pre-built registry
+    skill_registry: SkillRegistry | None = None  # pre-built registry
     skill_source: str | Path | None = DEFAULT_SKILLS_PATH  # catalog file
-    auto_use_skills: bool = True                       # prompt-based matching
+    auto_use_skills: bool = True  # prompt-based matching
     skills: list[SkillLike] = field(default_factory=list)  # always-on skills
     default_skill_ids: list[str] = field(default_factory=list)
-    skill_match_limit: int = 3                         # max auto-matched
+    skill_match_limit: int = 3  # max auto-matched
 
     # ──────────────────────────────────────────────────────────────────
     # Lifecycle
@@ -466,7 +466,9 @@ class Agent:
 
         # Compute skills once and reuse across prompt, tools, and metadata.
         selected_skills = self._selected_skills(user_prompt)
-        effective_tools = self._effective_tools(user_prompt, selected_skills=selected_skills)
+        effective_tools = self._effective_tools(
+            user_prompt, selected_skills=selected_skills
+        )
         skill_tool_names = self._skill_tool_names(selected_skills)
 
         runtime = AgentRuntime(
@@ -549,7 +551,9 @@ class Agent:
 
         # Compute skills once and reuse across prompt, tools, and metadata.
         selected_skills = self._selected_skills(user_prompt)
-        effective_tools = self._effective_tools(user_prompt, selected_skills=selected_skills)
+        effective_tools = self._effective_tools(
+            user_prompt, selected_skills=selected_skills
+        )
 
         runtime = AgentRuntime(
             llm=self.llm,

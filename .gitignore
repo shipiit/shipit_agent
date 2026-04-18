@@ -45,6 +45,7 @@ pip-wheel-metadata/
 .shipit_checkpoints/
 .shipit_notebook_workspace/
 .shipit_notebooks/
+.smoke_checkpoints/
 memory.json
 sessions/
 traces/
@@ -61,3 +62,4 @@ notebooks/.shipit_traces/
 ANNOUNCEMENT_1.0.2.md
 ANNOUNCE.md
 RELEASE_NOTES_1.0.4.md
+ANNOUNCEMENT_1.0.4.md

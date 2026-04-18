@@ -119,9 +119,7 @@ class TestShipTask:
     # 3
     def test_resolve_description_simple(self):
         """Single template variable is resolved from outputs."""
-        task = ShipTask(
-            name="write", description="Write about {topic}", agent="w"
-        )
+        task = ShipTask(name="write", description="Write about {topic}", agent="w")
         resolved = task.resolve_description({"topic": "AI"})
         assert resolved == "Write about AI"
 
@@ -139,9 +137,7 @@ class TestShipTask:
     # 5
     def test_resolve_description_missing_key(self):
         """Unresolved variables are left as {var} rather than raising."""
-        task = ShipTask(
-            name="t", description="Use {known} and {unknown}", agent="a"
-        )
+        task = ShipTask(name="t", description="Use {known} and {unknown}", agent="a")
         resolved = task.resolve_description({"known": "value"})
         assert resolved == "Use value and {unknown}"
 
@@ -154,6 +150,7 @@ class TestShipTask:
             agent="ag",
             depends_on=["dep"],
             output_key="out",
+            output_schema={"type": "object", "required": ["summary"]},
             max_retries=3,
             timeout_seconds=60,
             context={"key": "val"},
@@ -164,6 +161,10 @@ class TestShipTask:
         assert d["agent"] == "ag"
         assert d["depends_on"] == ["dep"]
         assert d["output_key"] == "out"
+        assert d["output_schema"] == {
+            "type": "object",
+            "required": ["summary"],
+        }
         assert d["max_retries"] == 3
         assert d["timeout_seconds"] == 60
         assert d["context"] == {"key": "val"}
@@ -177,6 +178,7 @@ class TestShipTask:
             "agent": "ag",
             "depends_on": ["dep"],
             "output_key": "out",
+            "output_schema": {"type": "json"},
             "max_retries": 2,
             "timeout_seconds": 120,
             "context": {"k": "v"},
@@ -185,6 +187,7 @@ class TestShipTask:
         assert task.name == "task1"
         assert task.depends_on == ["dep"]
         assert task.output_key == "out"
+        assert task.output_schema == {"type": "json"}
         assert task.max_retries == 2
         assert task.context == {"k": "v"}
 
@@ -208,6 +211,7 @@ class TestShipTask:
             agent="a",
             depends_on=["dep1"],
             output_key="result",
+            output_schema={"type": "markdown"},
             max_retries=5,
             timeout_seconds=999,
             context={"a": 1},
@@ -218,6 +222,7 @@ class TestShipTask:
         assert restored.agent == original.agent
         assert restored.depends_on == original.depends_on
         assert restored.output_key == original.output_key
+        assert restored.output_schema == original.output_schema
         assert restored.max_retries == original.max_retries
         assert restored.timeout_seconds == original.timeout_seconds
         assert restored.context == original.context
@@ -291,6 +296,12 @@ class TestShipAgent:
         assert agent.role  # should have a role
         assert agent.agent is not None  # underlying Agent is built
 
+    # 15
+    def test_from_registry_missing(self):
+        """Missing registry ids raise KeyError."""
+        with pytest.raises(KeyError, match="missing-agent"):
+            ShipAgent.from_registry("missing-agent", SimpleEchoLLM())
+
 
 # ===========================================================================
 # SHIP COORDINATOR
@@ -332,9 +343,7 @@ class TestShipCoordinator:
             ShipTask(name="t1", description="d1", agent="a"),
             ShipTask(name="t2", description="d2", agent="b"),
         ]
-        coord = ShipCoordinator(
-            llm=SimpleEchoLLM(), agents=agents, tasks=tasks
-        )
+        coord = ShipCoordinator(llm=SimpleEchoLLM(), agents=agents, tasks=tasks)
         # All tasks in one layer (no dependencies).
         assert len(coord._layers) == 1
         layer_names = {t.name for t in coord._layers[0]}
@@ -350,9 +359,7 @@ class TestShipCoordinator:
             ShipTask(name="B", description="d", agent="a", depends_on=["A"]),
             ShipTask(name="C", description="d", agent="a", depends_on=["B"]),
         ]
-        coord = ShipCoordinator(
-            llm=SimpleEchoLLM(), agents=agents, tasks=tasks
-        )
+        coord = ShipCoordinator(llm=SimpleEchoLLM(), agents=agents, tasks=tasks)
         assert len(coord._layers) == 3
         assert coord._layers[0][0].name == "A"
         assert coord._layers[1][0].name == "B"
@@ -367,13 +374,9 @@ class TestShipCoordinator:
             ShipTask(name="A", description="d", agent="a"),
             ShipTask(name="B", description="d", agent="a", depends_on=["A"]),
             ShipTask(name="C", description="d", agent="a", depends_on=["A"]),
-            ShipTask(
-                name="D", description="d", agent="a", depends_on=["B", "C"]
-            ),
+            ShipTask(name="D", description="d", agent="a", depends_on=["B", "C"]),
         ]
-        coord = ShipCoordinator(
-            llm=SimpleEchoLLM(), agents=agents, tasks=tasks
-        )
+        coord = ShipCoordinator(llm=SimpleEchoLLM(), agents=agents, tasks=tasks)
         assert len(coord._layers) == 3
         # Layer 0: A
         assert [t.name for t in coord._layers[0]] == ["A"]
@@ -393,9 +396,7 @@ class TestShipCoordinator:
             ShipTask(name="B", description="d", agent="a", depends_on=["A"]),
         ]
         with pytest.raises(CyclicDependencyError):
-            ShipCoordinator(
-                llm=SimpleEchoLLM(), agents=agents, tasks=tasks
-            )
+            ShipCoordinator(llm=SimpleEchoLLM(), agents=agents, tasks=tasks)
 
     # 20
     def test_build_dag_unknown_dep(self):
@@ -403,14 +404,10 @@ class TestShipCoordinator:
         agent = self._make_agent("a")
         agents = {"a": agent}
         tasks = [
-            ShipTask(
-                name="t1", description="d", agent="a", depends_on=["ghost"]
-            ),
+            ShipTask(name="t1", description="d", agent="a", depends_on=["ghost"]),
         ]
         with pytest.raises(ShipCrewError, match="ghost"):
-            ShipCoordinator(
-                llm=SimpleEchoLLM(), agents=agents, tasks=tasks
-            )
+            ShipCoordinator(llm=SimpleEchoLLM(), agents=agents, tasks=tasks)
 
     # 21
     def test_execute_sequential(self):
@@ -428,9 +425,7 @@ class TestShipCoordinator:
                 depends_on=["t1"],
             ),
         ]
-        coord = ShipCoordinator(
-            llm=SimpleEchoLLM(), agents=agents, tasks=tasks
-        )
+        coord = ShipCoordinator(llm=SimpleEchoLLM(), agents=agents, tasks=tasks)
         result = coord.run()
         assert "result_B" in result.output
         assert result.task_results["t1"] == "result_A"
@@ -497,9 +492,7 @@ class TestShipCoordinator:
         """run() returns a ShipCrewResult with the correct structure."""
         agents = {"a": self._make_agent("a", response="final")}
         tasks = [ShipTask(name="t1", description="d", agent="a")]
-        coord = ShipCoordinator(
-            llm=SimpleEchoLLM(), agents=agents, tasks=tasks
-        )
+        coord = ShipCoordinator(llm=SimpleEchoLLM(), agents=agents, tasks=tasks)
         result = coord.run()
         assert isinstance(result, ShipCrewResult)
         assert result.output == "final"
@@ -512,9 +505,7 @@ class TestShipCoordinator:
         """stream() yields run_started, task events, and run_completed."""
         agents = {"a": self._make_agent("a", response="streamed")}
         tasks = [ShipTask(name="t1", description="d", agent="a")]
-        coord = ShipCoordinator(
-            llm=SimpleEchoLLM(), agents=agents, tasks=tasks
-        )
+        coord = ShipCoordinator(llm=SimpleEchoLLM(), agents=agents, tasks=tasks)
         events = list(coord.stream())
         event_types = [e.type for e in events]
         assert event_types[0] == "run_started"

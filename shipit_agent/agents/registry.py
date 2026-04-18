@@ -13,6 +13,7 @@ from .definition import AgentDefinition
 # Registry
 # ---------------------------------------------------------------------------
 
+
 class AgentRegistry:
     """An indexed collection of :class:`AgentDefinition` objects.
 
@@ -86,14 +87,16 @@ class AgentRegistry:
         scored: list[tuple[int, AgentDefinition]] = []
 
         for agent in self._agents.values():
-            haystack = " ".join([
-                agent.id,
-                agent.name,
-                agent.role,
-                agent.goal,
-                agent.category,
-                " ".join(agent.tags),
-            ]).lower()
+            haystack = " ".join(
+                [
+                    agent.id,
+                    agent.name,
+                    agent.role,
+                    agent.goal,
+                    agent.category,
+                    " ".join(agent.tags),
+                ]
+            ).lower()
 
             hits = sum(1 for t in tokens if t in haystack)
             if hits > 0:

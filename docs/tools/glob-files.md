@@ -5,8 +5,8 @@ description: Prompt and reference for the built-in glob_files tool.
 
 # Glob Files
 
-**Class:** `GlobSearchTool`  
-**Module:** `shipit_agent.tools.glob_search`  
+**Class:** `GlobSearchTool`
+**Module:** `shipit_agent.tools.glob_search`
 **Tool ID:** `glob_files`
 
 Finds project files by path pattern under the configured `project_root`.

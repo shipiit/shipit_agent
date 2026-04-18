@@ -8,7 +8,6 @@ against the built-in agents.json shipped with the package.
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -20,6 +19,7 @@ from shipit_agent.agents.registry import AgentRegistry
 # =========================================================================== #
 # Helpers
 # =========================================================================== #
+
 
 def _make_agent(**overrides) -> AgentDefinition:
     """Create an AgentDefinition with sensible defaults, overridable per-field."""
@@ -46,6 +46,7 @@ def _make_agent(**overrides) -> AgentDefinition:
 # =========================================================================== #
 # TestAgentDefinition
 # =========================================================================== #
+
 
 class TestAgentDefinition:
     """Unit tests for the AgentDefinition dataclass."""
@@ -104,9 +105,20 @@ class TestAgentDefinition:
 
         # All expected camelCase keys present
         expected_keys = {
-            "id", "name", "role", "goal", "backstory", "model",
-            "tools", "skills", "maxIterations", "prompt",
-            "category", "tags", "version", "author",
+            "id",
+            "name",
+            "role",
+            "goal",
+            "backstory",
+            "model",
+            "tools",
+            "skills",
+            "maxIterations",
+            "prompt",
+            "category",
+            "tags",
+            "version",
+            "author",
         }
         assert set(d.keys()) == expected_keys
 
@@ -232,6 +244,7 @@ class TestAgentDefinition:
 # =========================================================================== #
 # TestAgentRegistry
 # =========================================================================== #
+
 
 class TestAgentRegistry:
     """Tests for AgentRegistry loading, lookup, search, and composition."""
@@ -363,7 +376,12 @@ class TestAgentRegistry:
     def test_load_from_file(self, tmp_path: Path) -> None:
         """load() reads a JSON array file and creates a valid registry."""
         agents_data = [
-            {"id": "alpha", "name": "Alpha Agent", "role": "helper", "category": "Test"},
+            {
+                "id": "alpha",
+                "name": "Alpha Agent",
+                "role": "helper",
+                "category": "Test",
+            },
             {"id": "beta", "name": "Beta Agent", "role": "checker", "category": "Test"},
         ]
         json_file = tmp_path / "custom_agents.json"
@@ -379,7 +397,11 @@ class TestAgentRegistry:
     def test_from_directory(self, tmp_path: Path) -> None:
         """from_directory() reads individual .json files from a directory."""
         for agent_id in ("gamma", "delta"):
-            data = {"id": agent_id, "name": f"{agent_id.title()} Agent", "role": "worker"}
+            data = {
+                "id": agent_id,
+                "name": f"{agent_id.title()} Agent",
+                "role": "worker",
+            }
             (tmp_path / f"{agent_id}.json").write_text(
                 json.dumps(data), encoding="utf-8"
             )
@@ -420,6 +442,7 @@ class TestAgentRegistry:
 # TestAgentDefinitionIntegrity
 # =========================================================================== #
 
+
 class TestAgentDefinitionIntegrity:
     """Data-integrity checks against every agent in the built-in registry.
 
@@ -450,13 +473,17 @@ class TestAgentDefinitionIntegrity:
             assert agent.role, f"Agent {agent.id!r} has an empty role"
 
     # 34 ------------------------------------------------------------------- #
-    def test_all_agents_have_prompt(self, default_agents: list[AgentDefinition]) -> None:
+    def test_all_agents_have_prompt(
+        self, default_agents: list[AgentDefinition]
+    ) -> None:
         """Every agent must have a non-empty prompt."""
         for agent in default_agents:
             assert agent.prompt, f"Agent {agent.id!r} has an empty prompt"
 
     # 35 ------------------------------------------------------------------- #
-    def test_all_agents_have_category(self, default_agents: list[AgentDefinition]) -> None:
+    def test_all_agents_have_category(
+        self, default_agents: list[AgentDefinition]
+    ) -> None:
         """Every agent must have a non-empty category."""
         for agent in default_agents:
             assert agent.category, f"Agent {agent.id!r} has an empty category"
@@ -471,17 +498,25 @@ class TestAgentDefinitionIntegrity:
     def test_no_duplicate_ids(self, default_agents: list[AgentDefinition]) -> None:
         """All agent IDs in the built-in registry must be unique."""
         ids = [a.id for a in default_agents]
-        assert len(ids) == len(set(ids)), f"Duplicate IDs found: {[x for x in ids if ids.count(x) > 1]}"
+        assert len(ids) == len(
+            set(ids)
+        ), f"Duplicate IDs found: {[x for x in ids if ids.count(x) > 1]}"
 
     # 38 ------------------------------------------------------------------- #
-    def test_system_prompt_non_empty(self, default_agents: list[AgentDefinition]) -> None:
+    def test_system_prompt_non_empty(
+        self, default_agents: list[AgentDefinition]
+    ) -> None:
         """Every agent's system_prompt() must return non-empty content."""
         for agent in default_agents:
             prompt = agent.system_prompt()
             assert prompt.strip(), f"Agent {agent.id!r} has an empty system_prompt()"
 
     # 39 ------------------------------------------------------------------- #
-    def test_all_categories_represented(self, default_agents: list[AgentDefinition]) -> None:
+    def test_all_categories_represented(
+        self, default_agents: list[AgentDefinition]
+    ) -> None:
         """The built-in agents should span at least 6 distinct categories."""
         categories = {a.category for a in default_agents if a.category}
-        assert len(categories) >= 6, f"Only {len(categories)} categories found: {categories}"
+        assert (
+            len(categories) >= 6
+        ), f"Only {len(categories)} categories found: {categories}"

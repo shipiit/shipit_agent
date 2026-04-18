@@ -12,7 +12,6 @@ Keep tool names in sync with the default names in each tool class
 
 from __future__ import annotations
 
-from typing import Any
 
 from .skill import Skill
 
@@ -33,7 +32,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "write_file",
         "run_code",
     ],
-
     # ── code / development ─────────────────────────────────────────
     "code-workflow-assistant": [
         *_CODE_CORE,
@@ -66,7 +64,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "plan_task",
         "verify_output",
     ],
-
     # ── devops / security ──────────────────────────────────────────
     "devops-automation": [
         *_CODE_CORE,
@@ -91,7 +88,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "run_code",
         "plan_task",
     ],
-
     # ��─ website / frontend ─────────────────────────────────────────
     "portfolio-website-builder": [
         *_CODE_CORE,
@@ -109,7 +105,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "build_artifact",
         "plan_task",
     ],
-
     # ── writing / docs ─────────────────────────────────────────────
     "technical-writer": [
         *_FILE_CORE,
@@ -123,7 +118,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "grep_files",
         "verify_output",
     ],
-
     # ── research / intelligence ────────────────────────────────────
     "startup-idea-scout": [
         *_WEB_CORE,
@@ -148,7 +142,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "run_code",
         "synthesize_evidence",
     ],
-
     # ── lead gen / sales ───────────────────────────────────────────
     "google-maps-lead-finder": [
         *_WEB_CORE,
@@ -176,7 +169,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "run_code",
         "synthesize_evidence",
     ],
-
     # ── marketing / social ─────────────────────────────────────────
     "marketing-advisor": [
         *_WEB_CORE,
@@ -204,7 +196,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "run_code",
         "build_artifact",
     ],
-
     # ── productivity / connectors ──────────────────────────────────
     "gmail-and-calendar-agent": [
         "gmail_search",
@@ -235,7 +226,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "build_artifact",
         "verify_output",
     ],
-
     # ── media / creative ───────────────────────────────────────────
     "ugc-video-ad-agent": [
         *_WEB_CORE,
@@ -264,7 +254,6 @@ SKILL_TOOL_BUNDLES: dict[str, list[str]] = {
         "write_file",
         "run_code",
     ],
-
     # ── multi-agent / product ──────────────────────────────────────
     "multi-agent-manager": [
         *_CODE_CORE,

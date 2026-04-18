@@ -8,7 +8,7 @@ the pricing table, enforces budgets, and integrates with
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable
 
@@ -195,9 +195,7 @@ class CostTracker:
         prices = self._pricing.get(resolved)
 
         if prices is None:
-            logger.warning(
-                "No pricing data for model '%s' — cost will be $0.00", model
-            )
+            logger.warning("No pricing data for model '%s' — cost will be $0.00", model)
             return 0.0
 
         per_million = 1_000_000.0
@@ -227,9 +225,7 @@ class CostTracker:
             result["budget"] = {
                 "max_dollars": self._budget.max_dollars,
                 "warn_at": self._budget.warn_at,
-                "remaining": round(
-                    self._budget.max_dollars - self._total_cost, 6
-                ),
+                "remaining": round(self._budget.max_dollars - self._total_cost, 6),
                 "percent_used": round(
                     (self._total_cost / self._budget.max_dollars) * 100, 2
                 )
@@ -313,9 +309,7 @@ class CostTracker:
                     or usage.get("completion_tokens", 0),
                     cache_read_tokens=usage.get("cache_read_input_tokens", 0)
                     or usage.get("cache_read_tokens", 0),
-                    cache_write_tokens=usage.get(
-                        "cache_creation_input_tokens", 0
-                    )
+                    cache_write_tokens=usage.get("cache_creation_input_tokens", 0)
                     or usage.get("cache_write_tokens", 0),
                 )
 
@@ -346,9 +340,7 @@ class CostTracker:
                 (self._total_cost / self._budget.max_dollars) * 100,
             )
             if self._on_cost_alert:
-                self._on_cost_alert(
-                    self._total_cost, self._budget.max_dollars
-                )
+                self._on_cost_alert(self._total_cost, self._budget.max_dollars)
 
 
 # ---------------------------------------------------------------------------
@@ -403,8 +395,6 @@ def _extract_model(response: Any) -> str | None:
         return str(response.model)
     if hasattr(response, "metadata") and isinstance(response.metadata, dict):
         return response.metadata.get("model")
-    if hasattr(response, "raw_response") and hasattr(
-        response.raw_response, "model"
-    ):
+    if hasattr(response, "raw_response") and hasattr(response.raw_response, "model"):
         return str(response.raw_response.model)
     return None

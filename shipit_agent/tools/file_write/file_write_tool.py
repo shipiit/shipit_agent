@@ -19,9 +19,7 @@ class FileWriteTool:
         self.name = name
         self.description = description
         self.prompt = prompt or FILE_WRITE_PROMPT
-        self.prompt_instructions = (
-            "Use this to create or update project files when the task requires direct file output."
-        )
+        self.prompt_instructions = "Use this to create or update project files when the task requires direct file output."
 
     def schema(self) -> dict:
         return {

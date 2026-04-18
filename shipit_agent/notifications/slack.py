@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 
 # Slack attachment colour mapped to notification severity.
 _SEVERITY_COLOURS: dict[str, str] = {
-    "info": "#3498db",       # blue
-    "warning": "#f1c40f",    # yellow
-    "error": "#e74c3c",      # red
-    "critical": "#992d22",   # dark red
+    "info": "#3498db",  # blue
+    "warning": "#f1c40f",  # yellow
+    "error": "#e74c3c",  # red
+    "critical": "#992d22",  # dark red
 }
 
 
@@ -67,9 +67,7 @@ class SlackNotifier:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.send_sync, notification)
 
-    async def send_batch(
-        self, notifications: list[Notification]
-    ) -> list[bool]:
+    async def send_batch(self, notifications: list[Notification]) -> list[bool]:
         """Send several notifications sequentially."""
         return [await self.send(n) for n in notifications]
 

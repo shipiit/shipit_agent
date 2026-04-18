@@ -5,8 +5,8 @@ description: Prompt and reference for the built-in grep_files tool.
 
 # Grep Files
 
-**Class:** `GrepSearchTool`  
-**Module:** `shipit_agent.tools.grep_search`  
+**Class:** `GrepSearchTool`
+**Module:** `shipit_agent.tools.grep_search`
 **Tool ID:** `grep_files`
 
 Searches repository contents under the configured `project_root`, using ripgrep when available and a Python fallback otherwise.

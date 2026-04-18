@@ -9,9 +9,6 @@ from shipit_agent import (
     EditFileTool,
     FileSkillRegistry,
     FileReadTool,
-    FileWriteTool,
-    GlobSearchTool,
-    GrepSearchTool,
     Skill,
     SkillCatalog,
     create_skill,
@@ -390,7 +387,10 @@ def test_effective_tools_accepts_precomputed_skills() -> None:
         skills=["web-scraper-pro"],
     )
     skills = agent._selected_skills("scrape it")
-    tools_a = {getattr(t, "name", "") for t in agent._effective_tools("scrape it", selected_skills=skills)}
+    tools_a = {
+        getattr(t, "name", "")
+        for t in agent._effective_tools("scrape it", selected_skills=skills)
+    }
     tools_b = {getattr(t, "name", "") for t in agent._effective_tools("scrape it")}
     assert tools_a == tools_b
 
@@ -402,9 +402,7 @@ def test_all_packaged_skills_have_tool_bundles() -> None:
 
     registry = FileSkillRegistry(DEFAULT_SKILLS_PATH)
     missing = [
-        skill.id
-        for skill in registry.list()
-        if skill.id not in SKILL_TOOL_BUNDLES
+        skill.id for skill in registry.list() if skill.id not in SKILL_TOOL_BUNDLES
     ]
     assert missing == [], f"Skills without tool bundles: {missing}"
 
@@ -496,7 +494,7 @@ def test_agent_stream_metadata_includes_skills() -> None:
         skills=["code-workflow-assistant"],
     )
 
-    events = list(agent.stream("fix the bug"))
+    list(agent.stream("fix the bug"))
 
     # Find run_started or check metadata on the runtime.
     # The metadata is set on the runtime, which is internal —

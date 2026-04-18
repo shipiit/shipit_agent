@@ -27,9 +27,7 @@ class BashTool:
         self.name = name
         self.description = description
         self.prompt = prompt or BASH_PROMPT
-        self.prompt_instructions = (
-            "Use this for bounded shell inspection, test runs, and local developer workflows."
-        )
+        self.prompt_instructions = "Use this for bounded shell inspection, test runs, and local developer workflows."
         self.default_timeout = default_timeout
         self.max_timeout = max_timeout
         self.allowed_command_prefixes = list(

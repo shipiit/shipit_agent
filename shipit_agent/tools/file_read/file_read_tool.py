@@ -21,9 +21,7 @@ class FileReadTool:
         self.description = description
         self.max_chars = max_chars
         self.prompt = prompt or FILE_READ_PROMPT
-        self.prompt_instructions = (
-            "Use this to inspect source files, config files, logs, and artifacts in the local project."
-        )
+        self.prompt_instructions = "Use this to inspect source files, config files, logs, and artifacts in the local project."
 
     def schema(self) -> dict:
         return {
@@ -69,8 +67,7 @@ class FileReadTool:
         start_index = start_line - 1
         sliced = lines[start_index : start_index + max_lines]
         numbered = "\n".join(
-            f"{start_index + index + 1:>5}: {line}"
-            for index, line in enumerate(sliced)
+            f"{start_index + index + 1:>5}: {line}" for index, line in enumerate(sliced)
         )
         if len(numbered) > self.max_chars:
             numbered = numbered[: self.max_chars].rstrip() + "\n...[truncated]"

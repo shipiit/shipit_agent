@@ -103,7 +103,6 @@ def get_builtin_tool_map(
         ),
         OpenURLTool(),
         PlaywrightBrowserTool(),
-
         # ── file operations ───────────────────────────────────────
         BashTool(root_dir=project_root),
         FileReadTool(root_dir=project_root),
@@ -111,11 +110,9 @@ def get_builtin_tool_map(
         FileWriteTool(root_dir=project_root),
         GlobSearchTool(root_dir=project_root),
         GrepSearchTool(root_dir=project_root),
-
         # ── interaction ───────────────────────────────────────────
         AskUserTool(),
         HumanReviewTool(),
-
         # ── planning & reasoning ──────────────────────────────────
         MemoryTool(),
         PlannerTool(),
@@ -125,12 +122,10 @@ def get_builtin_tool_map(
         PromptTool(),
         VerifierTool(),
         ToolSearchTool(),
-
         # ── building ──────────────────────────────────────────────
         ArtifactBuilderTool(),
         WorkspaceFilesTool(root_dir=workspace_root),
         CodeExecutionTool(workspace_root=f"{workspace_root}/code_execution"),
-
         # ── connectors (SaaS integrations) ────────────────────────
         GmailTool(),
         GoogleCalendarTool(),

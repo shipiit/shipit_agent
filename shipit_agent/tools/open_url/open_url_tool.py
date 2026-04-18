@@ -91,7 +91,9 @@ class OpenURLTool:
         from shipit_agent.tools._playwright import run_playwright_sync
 
         def _do_fetch() -> tuple[str, str, dict]:
-            from playwright.sync_api import sync_playwright  # local import — optional dep
+            from playwright.sync_api import (
+                sync_playwright,
+            )  # local import — optional dep
 
             timeout_ms = int(self.timeout * 1000)
             with sync_playwright() as p:

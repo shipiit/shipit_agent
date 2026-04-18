@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Callable
+from typing import Any
 
 from shipit_agent.hooks import AgentHooks
 
@@ -81,9 +81,7 @@ class NotificationManager:
             try:
                 ok = await notifier.send(notification)
             except Exception:
-                logger.exception(
-                    "Notifier '%s' raised during send", notifier.name
-                )
+                logger.exception("Notifier '%s' raised during send", notifier.name)
                 ok = False
             results[notifier.name] = ok
 
@@ -115,7 +113,7 @@ class NotificationManager:
         """Create :class:`AgentHooks` that auto-notify on agent events.
 
         The hooks capture ``run_started`` (inferred from the first LLM
-        call), ``run_completed`` (via ``on_after_llm``), and
+        call), ``run_completed`` (on the final LLM response), and
         ``tool_failed`` (via ``on_after_tool``).
 
         Args:
@@ -131,9 +129,7 @@ class NotificationManager:
                 prompt_preview = ""
                 # Try to extract the last user message as a preview.
                 for msg in reversed(messages):
-                    content = (
-                        msg.content if hasattr(msg, "content") else str(msg)
-                    )
+                    content = msg.content if hasattr(msg, "content") else str(msg)
                     if content:
                         prompt_preview = content[:120]
                         break
@@ -154,8 +150,11 @@ class NotificationManager:
 
         hooks.on_before_llm(_before_llm)
 
-        # -- after LLM: emit run_completed ---------------------------
+        # -- after LLM: emit run_completed on the final response -----
         def _after_llm(response: Any) -> None:
+            if getattr(response, "tool_calls", None):
+                return
+
             duration = "n/a"
             if self._run_start is not None:
                 elapsed = time.monotonic() - self._run_start
@@ -182,7 +181,7 @@ class NotificationManager:
 
             note = Notification(
                 event="run_completed",
-                title=f"{agent_name} — LLM Call Completed",
+                title=f"{agent_name} — Run Completed",
                 message=rendered,
                 severity="info",
                 metadata={
@@ -192,6 +191,7 @@ class NotificationManager:
                 },
             )
             self.notify_sync(note)
+            self._run_start = None
 
         hooks.on_after_llm(_after_llm)
 

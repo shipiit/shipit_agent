@@ -12,6 +12,8 @@ from shipit_agent.deep import (
 from shipit_agent.deep.deep_agent.toolset import deep_tool_set, merge_tools
 from shipit_agent.deep.deep_agent.verification import verify_text
 from shipit_agent.llms import SimpleEchoLLM
+from shipit_agent.models import Message
+from shipit_agent.stores import InMemorySessionStore
 from shipit_agent.tools.base import Tool, ToolContext, ToolOutput
 
 
@@ -147,6 +149,25 @@ def test_deep_agent_tunable_parameters_propagate():
     assert agent.agent.context_window_tokens == 200_000
 
 
+def test_deep_agent_accepts_agent_style_session_and_trace_fields() -> None:
+    store = InMemorySessionStore()
+    seed = [Message(role="user", content="Earlier message")]
+    agent = DeepAgent(
+        llm=SimpleEchoLLM(),
+        session_store=store,
+        session_id="deep-session",
+        trace_id="deep-trace",
+        metadata={"source": "api"},
+        history=seed,
+    )
+
+    assert agent.agent.session_store is store
+    assert agent.agent.session_id == "deep-session"
+    assert agent.agent.trace_id == "deep-trace"
+    assert agent.agent.metadata["source"] == "api"
+    assert any(message.content == "Earlier message" for message in agent.agent.history)
+
+
 # ---------------------------------------------------------------------------
 # verification + reflection + goal modes
 # ---------------------------------------------------------------------------
@@ -220,6 +241,32 @@ def test_create_deep_agent_passes_through_power_flags():
     assert agent.verify is True
     assert agent.reflect is False
     assert agent.max_iterations == 12
+
+
+def test_create_deep_agent_merges_tools_and_extra_tools_without_conflict():
+    class ExtraTool:
+        name = "extra"
+        description = "extra"
+        prompt_instructions = ""
+
+        def schema(self):
+            return {"name": "extra"}
+
+        def run(self, context, **_):  # pragma: no cover
+            return ToolOutput(text="x")
+
+    def my_tool(name: str) -> str:
+        return f"hi {name}"
+
+    agent = create_deep_agent(
+        llm=SimpleEchoLLM(),
+        tools=[my_tool],
+        extra_tools=[ExtraTool()],
+    )
+
+    tool_names = {t.name for t in agent.tools}
+    assert "my_tool" in tool_names
+    assert "extra" in tool_names
 
 
 # ---------------------------------------------------------------------------

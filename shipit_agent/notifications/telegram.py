@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 # Emoji prefix for each severity level.
 _SEVERITY_EMOJI: dict[str, str] = {
-    "info": "\u2139\ufe0f",       # information
-    "warning": "\u26a0\ufe0f",    # warning
-    "error": "\u274c",            # cross mark
-    "critical": "\U0001f6a8",     # rotating light
+    "info": "\u2139\ufe0f",  # information
+    "warning": "\u26a0\ufe0f",  # warning
+    "error": "\u274c",  # cross mark
+    "critical": "\U0001f6a8",  # rotating light
 }
 
 # Characters that must be escaped in Telegram MarkdownV2.
@@ -62,17 +62,13 @@ class TelegramNotifier:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.send_sync, notification)
 
-    async def send_batch(
-        self, notifications: list[Notification]
-    ) -> list[bool]:
+    async def send_batch(self, notifications: list[Notification]) -> list[bool]:
         """Send several notifications sequentially."""
         return [await self.send(n) for n in notifications]
 
     def send_sync(self, notification: Notification) -> bool:
         """Blocking send — useful when no event loop is running."""
-        url = (
-            f"{self._BASE_URL}/bot{self._bot_token}/sendMessage"
-        )
+        url = f"{self._BASE_URL}/bot{self._bot_token}/sendMessage"
         text = self._format_markdown(notification)
         payload: dict[str, Any] = {
             "chat_id": self._chat_id,
@@ -128,9 +124,7 @@ class TelegramNotifier:
         if notification.metadata:
             lines.append("")  # blank line
             for key, value in notification.metadata.items():
-                lines.append(
-                    f"*{self._escape(str(key))}:* {self._escape(str(value))}"
-                )
+                lines.append(f"*{self._escape(str(key))}:* {self._escape(str(value))}")
 
         # Footer.
         ts = self._escape(notification.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC"))

@@ -61,9 +61,7 @@ class DiscordNotifier:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.send_sync, notification)
 
-    async def send_batch(
-        self, notifications: list[Notification]
-    ) -> list[bool]:
+    async def send_batch(self, notifications: list[Notification]) -> list[bool]:
         """Send several notifications sequentially."""
         return [await self.send(n) for n in notifications]
 

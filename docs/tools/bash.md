@@ -5,8 +5,8 @@ description: Prompt and reference for the built-in bash tool.
 
 # Bash
 
-**Class:** `BashTool`  
-**Module:** `shipit_agent.tools.bash`  
+**Class:** `BashTool`
+**Module:** `shipit_agent.tools.bash`
 **Tool ID:** `bash`
 
 Runs a bounded shell command from the configured `project_root`. The built-in tool defaults to `project_root="/tmp"` unless you override it on `Agent` or `DeepAgent`.

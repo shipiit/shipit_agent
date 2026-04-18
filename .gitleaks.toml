@@ -46,6 +46,9 @@ paths = [
     '''^build/.*''',
     '''^site/.*''',
     '''\.egg-info/.*''',
+
+    # Generated cache/plugin artifacts
+    '''^\.cache/.*''',
 ]
 
 # Allow obvious placeholder patterns used in docs and examples

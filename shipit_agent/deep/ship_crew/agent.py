@@ -129,6 +129,8 @@ class ShipAgent:
 
         registry = AgentRegistry.default()
         definition = registry.get(agent_id)
+        if definition is None:
+            raise KeyError(f"Unknown agent registry id: {agent_id}")
 
         agent = Agent.with_builtins(
             llm=llm,

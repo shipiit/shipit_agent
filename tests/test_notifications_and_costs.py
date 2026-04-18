@@ -15,7 +15,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 from datetime import datetime
 from types import SimpleNamespace
@@ -420,7 +419,7 @@ class TestNotificationManager:
         notification = _make_notification()
 
         results = asyncio.run(manager.notify(notification))
-        assert results == {"mock": True, "mock": True}
+        assert list(results.values()) == [True]
         assert len(n1.sent) == 1
         assert len(n2.sent) == 1
 
@@ -444,9 +443,7 @@ class TestNotificationManager:
     def test_event_filter(self) -> None:
         """Only specified events are dispatched."""
         n = MockNotifier()
-        manager = NotificationManager(
-            notifiers=[n], events=["run_started"]
-        )
+        manager = NotificationManager(notifiers=[n], events=["run_started"])
 
         started = _make_notification(event="run_started")
         completed = _make_notification(event="run_completed")
@@ -483,6 +480,71 @@ class TestNotificationManager:
         manager = NotificationManager(notifiers=[MockNotifier()])
         hooks = manager.as_hooks(agent_name="test-agent")
         assert isinstance(hooks, AgentHooks)
+
+    def test_hooks_use_custom_templates(self) -> None:
+        """Hook-generated notifications respect manager template overrides."""
+        notifier = MockNotifier()
+        manager = NotificationManager(
+            notifiers=[notifier],
+            templates={
+                "run_started": "START {agent}: {prompt_preview}",
+                "run_completed": "DONE {agent} in {duration}",
+            },
+        )
+        hooks = manager.as_hooks(agent_name="test-agent")
+
+        hooks.run_before_llm([SimpleNamespace(content="inspect repo")], [])
+        hooks.run_after_llm(
+            SimpleNamespace(content="all done", tool_calls=[], usage={})
+        )
+
+        assert notifier.sent[0].message == "START test-agent: inspect repo"
+        assert notifier.sent[1].message.startswith("DONE test-agent in ")
+
+    def test_hooks_only_emit_run_completed_on_final_llm_response(self) -> None:
+        """Intermediate tool-calling turns should not emit run_completed."""
+        notifier = MockNotifier()
+        manager = NotificationManager(notifiers=[notifier])
+        hooks = manager.as_hooks(agent_name="test-agent")
+
+        hooks.run_before_llm([SimpleNamespace(content="ship it")], [])
+        hooks.run_after_llm(
+            SimpleNamespace(
+                content="Calling tool",
+                tool_calls=[SimpleNamespace(name="search", arguments={})],
+            )
+        )
+
+        assert [note.event for note in notifier.sent] == ["run_started"]
+
+        hooks.run_after_llm(
+            SimpleNamespace(content="Final answer", tool_calls=[], usage={})
+        )
+
+        assert [note.event for note in notifier.sent] == [
+            "run_started",
+            "run_completed",
+        ]
+
+    def test_hooks_reset_run_state_between_runs(self) -> None:
+        """Reusing the same manager should emit a fresh start/completion pair."""
+        notifier = MockNotifier()
+        manager = NotificationManager(notifiers=[notifier])
+        hooks = manager.as_hooks(agent_name="test-agent")
+
+        hooks.run_before_llm([SimpleNamespace(content="first")], [])
+        hooks.run_after_llm(SimpleNamespace(content="done", tool_calls=[], usage={}))
+        hooks.run_before_llm([SimpleNamespace(content="second")], [])
+        hooks.run_after_llm(
+            SimpleNamespace(content="done again", tool_calls=[], usage={})
+        )
+
+        assert [note.event for note in notifier.sent] == [
+            "run_started",
+            "run_completed",
+            "run_started",
+            "run_completed",
+        ]
 
     def test_should_notify_respects_severity(self) -> None:
         """_should_notify filters by min_severity correctly."""
@@ -724,7 +786,9 @@ class TestCostTracker:
         """Custom model pricing is used after add_model()."""
         t = CostTracker()
         t.add_model("my-custom-model", {"input": 1.0, "output": 2.0})
-        cost = t.calculate_cost("my-custom-model", input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = t.calculate_cost(
+            "my-custom-model", input_tokens=1_000_000, output_tokens=1_000_000
+        )
         assert cost == pytest.approx(3.0)
 
     def test_reset_clears_everything(self) -> None:
@@ -740,7 +804,9 @@ class TestCostTracker:
         """BudgetExceededError raised when budget is exceeded."""
         t = CostTracker(budget=Budget(max_dollars=0.001))
         with pytest.raises(BudgetExceededError) as exc_info:
-            t.record_call("claude-sonnet-4", input_tokens=1_000_000, output_tokens=1_000_000)
+            t.record_call(
+                "claude-sonnet-4", input_tokens=1_000_000, output_tokens=1_000_000
+            )
         assert exc_info.value.spent > 0.001
 
     def test_budget_warning_emitted_once(self) -> None:
@@ -757,7 +823,9 @@ class TestCostTracker:
         )
         # 5 calls x ~$18 = ~$90 -> should trigger warning once
         for _ in range(5):
-            t.record_call("claude-sonnet-4", input_tokens=1_000_000, output_tokens=1_000_000)
+            t.record_call(
+                "claude-sonnet-4", input_tokens=1_000_000, output_tokens=1_000_000
+            )
 
         assert len(alerts) == 1
 
@@ -773,7 +841,9 @@ class TestCostTracker:
             on_cost_alert=on_alert,
         )
         # One call costs ~$18, well below $800 threshold
-        t.record_call("claude-sonnet-4", input_tokens=1_000_000, output_tokens=1_000_000)
+        t.record_call(
+            "claude-sonnet-4", input_tokens=1_000_000, output_tokens=1_000_000
+        )
         assert len(alerts) == 0
 
     def test_as_hooks_returns_hooks(self) -> None:
@@ -782,12 +852,43 @@ class TestCostTracker:
         hooks = t.as_hooks(model_name="claude-sonnet-4")
         assert isinstance(hooks, AgentHooks)
 
+    def test_as_hooks_records_usage_from_response(self) -> None:
+        """after_llm hook records usage into the tracker."""
+        t = CostTracker()
+        hooks = t.as_hooks()
+        response = SimpleNamespace(
+            model="gpt-4o-mini",
+            usage={"input_tokens": 1000, "output_tokens": 250},
+        )
+
+        hooks.run_before_llm([], [])
+        hooks.run_after_llm(response)
+
+        assert t.total_cost > 0
+        assert t.summary()["total_calls"] == 1
+        assert t.breakdown()[0]["model"] == "gpt-4o-mini"
+
+    def test_as_hooks_uses_explicit_model_name_override(self) -> None:
+        """Explicit model_name takes precedence over response metadata."""
+        t = CostTracker()
+        hooks = t.as_hooks(model_name="claude-sonnet-4")
+        response = SimpleNamespace(
+            model="gpt-4o-mini",
+            usage={"input_tokens": 1000, "output_tokens": 250},
+        )
+
+        hooks.run_after_llm(response)
+
+        assert t.breakdown()[0]["model"] == "claude-sonnet-4"
+
     def test_no_budget_no_error(self) -> None:
         """No budget set -> no error regardless of spend."""
         t = CostTracker()
         # Record many expensive calls — should not raise
         for _ in range(10):
-            t.record_call("claude-opus-4", input_tokens=1_000_000, output_tokens=1_000_000)
+            t.record_call(
+                "claude-opus-4", input_tokens=1_000_000, output_tokens=1_000_000
+            )
         assert t.total_cost > 0
 
 
@@ -896,6 +997,6 @@ class TestModelPricing:
     def test_aliases_resolve(self) -> None:
         """All aliases map to valid pricing keys."""
         for alias, canonical in MODEL_ALIASES.items():
-            assert canonical in MODEL_PRICING, (
-                f"Alias '{alias}' -> '{canonical}' not found in MODEL_PRICING"
-            )
+            assert (
+                canonical in MODEL_PRICING
+            ), f"Alias '{alias}' -> '{canonical}' not found in MODEL_PRICING"

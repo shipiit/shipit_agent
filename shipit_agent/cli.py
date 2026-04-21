@@ -78,6 +78,21 @@ def main(argv: list[str] | None = None) -> int:
 
         return chat_main(argv[1:])
 
+    # Route long-running / daemon / queue subcommands to their module.
+    if argv and argv[0] in ("autopilot", "daemon", "queue"):
+        from shipit_agent.cli_autopilot import (
+            run_autopilot_cli,
+            run_daemon_cli,
+            run_queue_cli,
+        )
+
+        dispatch = {
+            "autopilot": run_autopilot_cli,
+            "daemon": run_daemon_cli,
+            "queue": run_queue_cli,
+        }
+        return dispatch[argv[0]](argv[1:])
+
     parser = build_parser()
     args = parser.parse_args(argv)
 

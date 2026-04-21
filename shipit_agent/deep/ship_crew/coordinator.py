@@ -476,7 +476,10 @@ class ShipCoordinator:
                         payload={
                             "task": task.name,
                             "output_key": task.output_key,
-                            "output": output[:500],
+                            # Emit the full output — truncating here cripples
+                            # UIs that show each task's result, and the
+                            # downstream consumer can truncate as needed.
+                            "output": output,
                         },
                     )
 
@@ -503,7 +506,7 @@ class ShipCoordinator:
             type="run_completed",
             message="Crew completed",
             payload={
-                "output": final_output[:500],
+                "output": final_output,
                 "execution_order": execution_order,
                 "failed_tasks": failed,
                 "elapsed_seconds": round(elapsed, 2),

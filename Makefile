@@ -309,6 +309,15 @@ tag: ## Create + push the git tag for CURRENT_VERSION (uses gh under the hood)
 changelog-show: ## Print the CHANGELOG section for CURRENT_VERSION
 	@$(PYTHON) scripts/extract_changelog_section.py $(CURRENT_VERSION)
 
+
+release:
+	@printf "$(BLUE)→$(RESET) Creating GitHub Release v$(CURRENT_VERSION)...\n"
+	@gh release create v$(CURRENT_VERSION) \
+		--title "v$(CURRENT_VERSION)" \
+		--notes-file <(python scripts/extract_changelog_section.py $(CURRENT_VERSION)) \
+		--latest \
+		$(DIST_DIR)/*
+		
 .PHONY: github-release
 github-release: build-check ## Create a GitHub Release for CURRENT_VERSION (notes from CHANGELOG, attaches dist/*)
 	@if ! command -v gh >/dev/null 2>&1; then \

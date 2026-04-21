@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 import time
@@ -51,6 +52,7 @@ class BashTool:
                 "mv",
                 "ln",
                 "chmod",
+                "cd",
                 # ── text processing ───────────────────────────────
                 "cat",
                 "head",
@@ -91,6 +93,18 @@ class BashTool:
                 "npx",
                 "yarn",
                 "pnpm",
+                "bun",
+                "bunx",
+                "vite",
+                "vitest",
+                "tsx",
+                "ts-node",
+                "next",
+                "nuxt",
+                "astro",
+                "turbo",
+                "nx",
+                "poetry",
                 "tsc",
                 "eslint",
                 "prettier",
@@ -191,14 +205,18 @@ class BashTool:
         for blocked in self.blocked_substrings:
             if blocked in lowered:
                 raise ValueError(f"Blocked shell command pattern: {blocked}")
-        first = shlex.split(normalized)[0]
-        if not any(
-            first == prefix or first.startswith(f"{prefix}/")
-            for prefix in self.allowed_command_prefixes
-        ):
-            raise ValueError(
-                f"Command '{first}' is not in the allowlist for the bash tool"
-            )
+        for segment in re.split(r"\s*(?:&&|\|\||;|\|)\s*", normalized):
+            stripped = segment.strip()
+            if not stripped:
+                continue
+            first = shlex.split(stripped)[0]
+            if not any(
+                first == prefix or first.startswith(f"{prefix}/")
+                for prefix in self.allowed_command_prefixes
+            ):
+                raise ValueError(
+                    f"Command '{first}' is not in the allowlist for the bash tool"
+                )
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         command = str(kwargs.get("command", ""))

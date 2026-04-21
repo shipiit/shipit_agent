@@ -273,6 +273,21 @@ def test_bash_tool_blocks_commands_outside_allowlist(tmp_path: Path) -> None:
         raise AssertionError("Expected allowlist validation to reject nc")
 
 
+def test_bash_tool_allows_cd_then_allowed_command(tmp_path: Path) -> None:
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "package.json").write_text('{"name":"demo"}\n', encoding="utf-8")
+
+    tool = BashTool(root_dir=tmp_path)
+    result = tool.run(
+        context=type("Ctx", (), {"state": {}})(),
+        command="cd frontend && pwd",
+    )
+
+    assert "exit_code: 0" in result.text
+    assert str(frontend) in result.metadata["stdout"]
+
+
 def test_edit_file_requires_prior_read(tmp_path: Path) -> None:
     target = tmp_path / "notes.txt"
     target.write_text("hello world\n", encoding="utf-8")

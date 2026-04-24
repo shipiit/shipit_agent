@@ -66,6 +66,18 @@ every agent at their own proxy URL + key in three fields.
     LiteLLM proxy with URL + key**), the direct renderer, an agent with
     the tool, and the Autopilot artifact ingest path.
   - Regenerator script `notebooks/_nb46_builder.py`.
+- **Python 3.13 and 3.14 support:**
+  - Added `Programming Language :: Python :: 3.13` and `:: 3.14`
+    classifiers to `pyproject.toml`; `requires-python = ">=3.11"` already
+    covered them, but the classifiers make the support discoverable on
+    PyPI.
+  - CI matrix expanded to `['3.11', '3.12', '3.13', '3.14']` on
+    `ubuntu-latest` and `macos-latest`.
+  - Replaced the two remaining `datetime.utcnow()` call sites
+    (`costs.tracker.CostRecord`, `notifications.base.Notification`) with
+    `datetime.now(timezone.utc)`. `utcnow()` emits a DeprecationWarning
+    in 3.12+ and will be removed — the swap is forward-compatible and
+    behaviourally identical.
 
 ### Changed
 

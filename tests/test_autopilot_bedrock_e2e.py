@@ -127,7 +127,10 @@ class _BedrockStepAgent:
         # Map LiteLLM usage → Autopilot's expected shape.
         total = int(
             usage.get("total_tokens")
-            or (int(usage.get("prompt_tokens", 0)) + int(usage.get("completion_tokens", 0)))
+            or (
+                int(usage.get("prompt_tokens", 0))
+                + int(usage.get("completion_tokens", 0))
+            )
             or 0
         )
         met = [self._criterion_met(c, content) for c in self.goal.success_criteria]
@@ -158,16 +161,23 @@ class _BedrockStepAgent:
 
 
 def _bedrock_autopilot(
-    tmp_path: Path, bedrock_llm: Any, *,
-    goal: Goal, budget: BudgetPolicy | None = None, **kw: Any,
+    tmp_path: Path,
+    bedrock_llm: Any,
+    *,
+    goal: Goal,
+    budget: BudgetPolicy | None = None,
+    **kw: Any,
 ) -> Autopilot:
     return Autopilot(
         llm=bedrock_llm,
         goal=goal,
         checkpoint_dir=tmp_path,
-        budget=budget or BudgetPolicy(
-            max_iterations=2, max_seconds=45,
-            max_tokens=10_000, max_dollars=0.20,
+        budget=budget
+        or BudgetPolicy(
+            max_iterations=2,
+            max_seconds=45,
+            max_tokens=10_000,
+            max_dollars=0.20,
             max_tool_calls=50,
         ),
         agent_factory=lambda *, llm, goal, **_: _BedrockStepAgent(llm=llm, goal=goal),
@@ -206,8 +216,9 @@ def test_dollar_usage_accumulates(tmp_path: Path, bedrock_llm: Any) -> None:
     result = auto.run(run_id="bedrock-dollars")
 
     assert result.usage["tokens"] > 0
-    assert 0.0 <= result.usage["dollars"] < 0.20, \
-        f"dollar usage {result.usage['dollars']} outside safe range"
+    assert (
+        0.0 <= result.usage["dollars"] < 0.20
+    ), f"dollar usage {result.usage['dollars']} outside safe range"
 
 
 # ─────────────────────── streaming ───────────────────────
@@ -243,9 +254,16 @@ def test_resume_is_cumulative(tmp_path: Path, bedrock_llm: Any) -> None:
         success_criteria=["Output contains ready"],
     )
     first = _bedrock_autopilot(
-        tmp_path, bedrock_llm, goal=goal,
-        budget=BudgetPolicy(max_iterations=1, max_seconds=30, max_tokens=5_000,
-                            max_dollars=0.10, max_tool_calls=50),
+        tmp_path,
+        bedrock_llm,
+        goal=goal,
+        budget=BudgetPolicy(
+            max_iterations=1,
+            max_seconds=30,
+            max_tokens=5_000,
+            max_dollars=0.10,
+            max_tool_calls=50,
+        ),
     )
     r1 = first.run(run_id="bedrock-resume")
     assert r1.iterations >= 1
@@ -253,9 +271,16 @@ def test_resume_is_cumulative(tmp_path: Path, bedrock_llm: Any) -> None:
     assert prior_tokens > 0
 
     second = _bedrock_autopilot(
-        tmp_path, bedrock_llm, goal=goal,
-        budget=BudgetPolicy(max_iterations=3, max_seconds=30, max_tokens=10_000,
-                            max_dollars=0.20, max_tool_calls=50),
+        tmp_path,
+        bedrock_llm,
+        goal=goal,
+        budget=BudgetPolicy(
+            max_iterations=3,
+            max_seconds=30,
+            max_tokens=10_000,
+            max_dollars=0.20,
+            max_tool_calls=50,
+        ),
     )
     r2 = second.resume("bedrock-resume")
     assert r2.iterations > r1.iterations
@@ -295,7 +320,9 @@ def test_critic_runs_against_bedrock(tmp_path: Path, bedrock_llm: Any) -> None:
         success_criteria=["Output contains hello"],
     )
     auto = _bedrock_autopilot(
-        tmp_path, bedrock_llm, goal=goal,
+        tmp_path,
+        bedrock_llm,
+        goal=goal,
         critic=Critic(confidence_threshold=0.5),
     )
     result = auto.run(run_id="bedrock-critic")
@@ -313,10 +340,16 @@ def test_fanout_across_small_batch(tmp_path: Path, bedrock_llm: Any) -> None:
     """Fan-out with two items exercises the ThreadPoolExecutor, child
     budget scaling, and result aggregation — all against a real LLM."""
     auto = _bedrock_autopilot(
-        tmp_path, bedrock_llm,
+        tmp_path,
+        bedrock_llm,
         goal=Goal(objective="parent", success_criteria=["done"]),
-        budget=BudgetPolicy(max_iterations=2, max_seconds=60, max_tokens=20_000,
-                            max_dollars=0.25, max_tool_calls=50),
+        budget=BudgetPolicy(
+            max_iterations=2,
+            max_seconds=60,
+            max_tokens=20_000,
+            max_dollars=0.25,
+            max_tool_calls=50,
+        ),
     )
     result = auto.fanout(
         items=["one", "two"],

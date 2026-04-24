@@ -24,7 +24,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from pathlib import Path
 from typing import Any
 
 from shipit_agent.askuser_channel import all_entries, pending_questions, write_answer
@@ -38,18 +37,44 @@ from shipit_agent.scheduler_daemon import SchedulerDaemon
 
 
 def run_autopilot_cli(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="shipit autopilot", description="Run a long-running Autopilot goal.")
-    p.add_argument("objective", nargs="?", help="The goal objective. Required unless --resume.")
-    p.add_argument("--criteria", action="append", default=[], help="One success criterion (repeatable).")
+    p = argparse.ArgumentParser(
+        prog="shipit autopilot", description="Run a long-running Autopilot goal."
+    )
+    p.add_argument(
+        "objective", nargs="?", help="The goal objective. Required unless --resume."
+    )
+    p.add_argument(
+        "--criteria",
+        action="append",
+        default=[],
+        help="One success criterion (repeatable).",
+    )
     p.add_argument("--run-id", default=None, help="Stable id for checkpoint/resume.")
-    p.add_argument("--resume", action="store_true", help="Continue the given --run-id from its checkpoint.")
-    p.add_argument("--max-hours", type=float, default=None, help="Override wall-clock cap (hours).")
-    p.add_argument("--max-tools", type=int, default=None, help="Override tool-call cap.")
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue the given --run-id from its checkpoint.",
+    )
+    p.add_argument(
+        "--max-hours", type=float, default=None, help="Override wall-clock cap (hours)."
+    )
+    p.add_argument(
+        "--max-tools", type=int, default=None, help="Override tool-call cap."
+    )
     p.add_argument("--max-tokens", type=int, default=None, help="Override token cap.")
-    p.add_argument("--max-dollars", type=float, default=None, help="Override dollar cap.")
-    p.add_argument("--heartbeat", type=float, default=60.0, help="Heartbeat interval seconds (default 60).")
+    p.add_argument(
+        "--max-dollars", type=float, default=None, help="Override dollar cap."
+    )
+    p.add_argument(
+        "--heartbeat",
+        type=float,
+        default=60.0,
+        help="Heartbeat interval seconds (default 60).",
+    )
     p.add_argument("--format", choices=["tui", "jsonl", "plain"], default="tui")
-    p.add_argument("--checkpoint-dir", default=None, help="Override checkpoint directory.")
+    p.add_argument(
+        "--checkpoint-dir", default=None, help="Override checkpoint directory."
+    )
     args = p.parse_args(argv)
 
     if not args.resume and not args.objective:
@@ -57,7 +82,10 @@ def run_autopilot_cli(argv: list[str]) -> int:
 
     llm = _resolve_llm()
     if llm is None:
-        print("Error: set SHIPIT_LLM=<provider> (openai|anthropic|bedrock|ollama|groq|gemini).", file=sys.stderr)
+        print(
+            "Error: set SHIPIT_LLM=<provider> (openai|anthropic|bedrock|ollama|groq|gemini).",
+            file=sys.stderr,
+        )
         return 2
 
     autopilot = Autopilot(
@@ -78,10 +106,23 @@ def run_autopilot_cli(argv: list[str]) -> int:
 
 
 def run_daemon_cli(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="shipit daemon", description="Run the Autopilot goal queue daemon.")
-    p.add_argument("--tick", type=float, default=5.0, help="Seconds between queue scans (default 5).")
-    p.add_argument("--queue", default=None, help="Queue file path (default ~/.shipit_agent/autopilot-queue.json).")
-    p.add_argument("--once", action="store_true", help="Drain one pending goal then exit.")
+    p = argparse.ArgumentParser(
+        prog="shipit daemon", description="Run the Autopilot goal queue daemon."
+    )
+    p.add_argument(
+        "--tick",
+        type=float,
+        default=5.0,
+        help="Seconds between queue scans (default 5).",
+    )
+    p.add_argument(
+        "--queue",
+        default=None,
+        help="Queue file path (default ~/.shipit_agent/autopilot-queue.json).",
+    )
+    p.add_argument(
+        "--once", action="store_true", help="Drain one pending goal then exit."
+    )
     args = p.parse_args(argv)
 
     llm_factory = _resolve_llm_factory()
@@ -113,9 +154,20 @@ def run_answer_cli(argv: list[str]) -> int:
         prog="shipit answer",
         description="Answer an Autopilot run's outstanding ask_user_async question.",
     )
-    p.add_argument("run_id", help="The Autopilot run id whose question you're answering.")
-    p.add_argument("answer", nargs="?", help="The answer text. Omit to list pending questions instead.")
-    p.add_argument("--index", type=int, default=None, help="Which pending question (by index) to answer.")
+    p.add_argument(
+        "run_id", help="The Autopilot run id whose question you're answering."
+    )
+    p.add_argument(
+        "answer",
+        nargs="?",
+        help="The answer text. Omit to list pending questions instead.",
+    )
+    p.add_argument(
+        "--index",
+        type=int,
+        default=None,
+        help="Which pending question (by index) to answer.",
+    )
     args = p.parse_args(argv)
 
     pending = pending_questions(args.run_id)
@@ -128,9 +180,12 @@ def run_answer_cli(argv: list[str]) -> int:
         for i, entry in enumerate(all_entries(args.run_id)):
             tag = "ANSWERED" if entry.answered() else "PENDING "
             print(f"[{i:02d}] {tag}  {entry.question}")
-            if entry.context:        print(f"          context: {entry.context}")
-            if entry.choices:        print(f"          choices: {', '.join(entry.choices)}")
-            if entry.answered():     print(f"          answer:  {entry.answer}")
+            if entry.context:
+                print(f"          context: {entry.context}")
+            if entry.choices:
+                print(f"          choices: {', '.join(entry.choices)}")
+            if entry.answered():
+                print(f"          answer:  {entry.answer}")
         return 0
 
     if not pending:
@@ -139,7 +194,7 @@ def run_answer_cli(argv: list[str]) -> int:
 
     ok = write_answer(args.run_id, args.answer, index=args.index)
     if not ok:
-        print(f"Could not record answer — index out of range or already answered.")
+        print("Could not record answer — index out of range or already answered.")
         return 1
     print(
         f"Answer recorded for run_id={args.run_id}. "
@@ -149,7 +204,9 @@ def run_answer_cli(argv: list[str]) -> int:
 
 
 def run_queue_cli(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="shipit queue", description="Manage the Autopilot goal queue.")
+    p = argparse.ArgumentParser(
+        prog="shipit queue", description="Manage the Autopilot goal queue."
+    )
     sub = p.add_subparsers(dest="action", required=True)
 
     add = sub.add_parser("add", help="Add a goal to the queue.")
@@ -170,8 +227,10 @@ def run_queue_cli(argv: list[str]) -> int:
 
     if args.action == "add":
         budget = {}
-        if args.max_seconds is not None: budget["max_seconds"] = args.max_seconds
-        if args.max_tools is not None:   budget["max_tool_calls"] = args.max_tools
+        if args.max_seconds is not None:
+            budget["max_seconds"] = args.max_seconds
+        if args.max_tools is not None:
+            budget["max_tool_calls"] = args.max_tools
         daemon.enqueue(
             run_id=args.run_id,
             objective=args.objective,
@@ -196,10 +255,14 @@ def run_queue_cli(argv: list[str]) -> int:
 
 def _build_budget(args: argparse.Namespace) -> BudgetPolicy:
     budget = BudgetPolicy()
-    if args.max_hours is not None:   budget.max_seconds = max(60.0, args.max_hours * 3600)
-    if args.max_tools is not None:   budget.max_tool_calls = max(1, args.max_tools)
-    if args.max_tokens is not None:  budget.max_tokens = max(1000, args.max_tokens)
-    if args.max_dollars is not None: budget.max_dollars = max(0.1, args.max_dollars)
+    if args.max_hours is not None:
+        budget.max_seconds = max(60.0, args.max_hours * 3600)
+    if args.max_tools is not None:
+        budget.max_tool_calls = max(1, args.max_tools)
+    if args.max_tokens is not None:
+        budget.max_tokens = max(1000, args.max_tokens)
+    if args.max_dollars is not None:
+        budget.max_dollars = max(0.1, args.max_dollars)
     return budget
 
 
@@ -214,19 +277,30 @@ def _resolve_llm() -> Any | None:
     try:
         if name in ("openai", "oai"):
             from shipit_agent.llms import OpenAIChat
+
             return OpenAIChat(model=os.environ.get("SHIPIT_MODEL", "gpt-4o-mini"))
         if name in ("anthropic", "claude"):
             from shipit_agent.llms import AnthropicChat
-            return AnthropicChat(model=os.environ.get("SHIPIT_MODEL", "claude-sonnet-4-5"))
+
+            return AnthropicChat(
+                model=os.environ.get("SHIPIT_MODEL", "claude-sonnet-4-5")
+            )
         if name == "bedrock":
             from shipit_agent.llms import BedrockChat
-            return BedrockChat(model=os.environ.get("SHIPIT_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"))
+
+            return BedrockChat(
+                model=os.environ.get(
+                    "SHIPIT_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                )
+            )
         if name == "ollama":
             from shipit_agent.llms import OllamaChat
+
             return OllamaChat(model=os.environ.get("SHIPIT_MODEL", "llama3.3"))
         # Default / fallback — the in-process echo LLM is safe to use
         # without any credentials and is useful for dry-running the loop.
         from shipit_agent.llms import SimpleEchoLLM
+
         return SimpleEchoLLM()
     except Exception as err:  # noqa: BLE001
         print(f"[warn] could not resolve LLM={name!r}: {err}", file=sys.stderr)

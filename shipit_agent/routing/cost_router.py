@@ -27,6 +27,7 @@ from shipit_agent.models import Message
 
 class DifficultyTier(str, Enum):
     """Three-tier classification the router picks between."""
+
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
@@ -42,19 +43,22 @@ class Tier:
 
     llm: Any
     price_per_1k: float = 0.0
-    name: str = ""            # display-only, e.g. "haiku" / "sonnet" / "opus"
+    name: str = ""  # display-only, e.g. "haiku" / "sonnet" / "opus"
 
 
 @dataclass(slots=True)
 class SpendReport:
     """Aggregated cost/savings across a session of `router.route()` calls."""
+
     tier_counts: dict[str, int] = field(default_factory=dict)
     estimated_dollars_spent: float = 0.0
     estimated_dollars_if_hardest: float = 0.0
 
     @property
     def savings(self) -> float:
-        return max(0.0, self.estimated_dollars_if_hardest - self.estimated_dollars_spent)
+        return max(
+            0.0, self.estimated_dollars_if_hardest - self.estimated_dollars_spent
+        )
 
     @property
     def savings_pct(self) -> float:
@@ -78,17 +82,43 @@ class SpendReport:
 @dataclass(slots=True)
 class DifficultySignals:
     """Config for the default difficulty classifier."""
+
     hard_substrings: tuple[str, ...] = (
-        "refactor", "architect", "design", "plan", "review", "audit", "investig",
-        "debug", "root cause", "optimise", "optimize", "migrate", "security",
-        "threat model", "consolidate", "reconcile", "summarise this codebase",
+        "refactor",
+        "architect",
+        "design",
+        "plan",
+        "review",
+        "audit",
+        "investig",
+        "debug",
+        "root cause",
+        "optimise",
+        "optimize",
+        "migrate",
+        "security",
+        "threat model",
+        "consolidate",
+        "reconcile",
+        "summarise this codebase",
     )
     medium_substrings: tuple[str, ...] = (
-        "write", "implement", "add", "fix", "build", "create", "generate",
-        "draft", "compose", "edit", "update", "search", "find",
+        "write",
+        "implement",
+        "add",
+        "fix",
+        "build",
+        "create",
+        "generate",
+        "draft",
+        "compose",
+        "edit",
+        "update",
+        "search",
+        "find",
     )
-    long_prompt_chars: int = 500        # prompts longer than this → bump to hard
-    medium_prompt_chars: int = 120      # prompts longer than this → bump to medium
+    long_prompt_chars: int = 500  # prompts longer than this → bump to hard
+    medium_prompt_chars: int = 120  # prompts longer than this → bump to medium
     code_block_triggers_medium: bool = True
 
 
@@ -153,7 +183,9 @@ class CostRouter:
             DifficultyTier.MEDIUM: medium,
             DifficultyTier.HARD: hard,
         }
-        self.difficulty_fn = difficulty_fn or (lambda p: classify_difficulty(p, signals=signals))
+        self.difficulty_fn = difficulty_fn or (
+            lambda p: classify_difficulty(p, signals=signals)
+        )
         self.force_tier = force_tier
         self.report = SpendReport()
 
@@ -164,7 +196,7 @@ class CostRouter:
             return self.force_tier
         try:
             return self.difficulty_fn(prompt)
-        except Exception:      # noqa: BLE001 — never let classification raise
+        except Exception:  # noqa: BLE001 — never let classification raise
             return DifficultyTier.MEDIUM
 
     def route(self, prompt: str) -> tuple[Any, DifficultyTier]:
@@ -197,27 +229,36 @@ class CostRouter:
     # ── accounting ──────────────────────────────────────────────
 
     def _record(self, tier: DifficultyTier, response: Any) -> None:
-        self.report.tier_counts[tier.value] = self.report.tier_counts.get(tier.value, 0) + 1
+        self.report.tier_counts[tier.value] = (
+            self.report.tier_counts.get(tier.value, 0) + 1
+        )
         usage = getattr(response, "usage", None) if response is not None else None
         if not isinstance(usage, dict):
             return
         total = int(usage.get("total_tokens", 0) or 0)
         if total <= 0:
-            total = int(usage.get("prompt_tokens", 0) or 0) + int(usage.get("completion_tokens", 0) or 0)
+            total = int(usage.get("prompt_tokens", 0) or 0) + int(
+                usage.get("completion_tokens", 0) or 0
+            )
         if total <= 0:
             return
 
-        self.report.estimated_dollars_spent += (total / 1000.0) * self.tiers[tier].price_per_1k
-        self.report.estimated_dollars_if_hardest += (
-            (total / 1000.0) * self.tiers[DifficultyTier.HARD].price_per_1k
-        )
+        self.report.estimated_dollars_spent += (total / 1000.0) * self.tiers[
+            tier
+        ].price_per_1k
+        self.report.estimated_dollars_if_hardest += (total / 1000.0) * self.tiers[
+            DifficultyTier.HARD
+        ].price_per_1k
 
     @staticmethod
     def _prompt_from_messages(messages: list[Message]) -> str:
         # Prefer the last user message; fall back to the concat of all
         # user messages. Tolerate dicts too (tests pass them sometimes).
-        def _role(m: Any) -> str: return getattr(m, "role", None) or m.get("role", "")
-        def _content(m: Any) -> str: return getattr(m, "content", None) or m.get("content", "")
+        def _role(m: Any) -> str:
+            return getattr(m, "role", None) or m.get("role", "")
+
+        def _content(m: Any) -> str:
+            return getattr(m, "content", None) or m.get("content", "")
 
         users = [_content(m) for m in messages if _role(m) == "user"]
         if users:

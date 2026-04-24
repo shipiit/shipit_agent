@@ -6,10 +6,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 from shipit_agent.autopilot import (
-    Autopilot, AutopilotResult, BudgetPolicy, FanoutResult,
+    Autopilot,
+    AutopilotResult,
+    BudgetPolicy,
 )
 from shipit_agent.autopilot.fanout import _rollup_status, _scale_budget, _slug
 from shipit_agent.deep.goal_agent import Goal
@@ -20,7 +21,9 @@ class _FakeResult:
     output: str = "child-output"
     goal_status: str = "completed"
     criteria_met: list[bool] = field(default_factory=lambda: [True])
-    metadata: dict[str, Any] = field(default_factory=lambda: {"usage": {"total_tokens": 5}})
+    metadata: dict[str, Any] = field(
+        default_factory=lambda: {"usage": {"total_tokens": 5}}
+    )
 
 
 class _TinyAgent:
@@ -37,7 +40,9 @@ class _TinyAgent:
 
 
 class _FlakyAgent:
-    def __init__(self, *, goal: Any, **_: Any) -> None: self.goal = goal
+    def __init__(self, *, goal: Any, **_: Any) -> None:
+        self.goal = goal
+
     def run(self) -> _FakeResult:
         if "fail" in self.goal.objective:
             raise RuntimeError("simulated")
@@ -54,8 +59,13 @@ class TestHelpers:
         assert _slug("") == "item"
 
     def test_scale_budget_halves(self) -> None:
-        parent = BudgetPolicy(max_seconds=1000, max_tool_calls=100, max_tokens=10_000,
-                              max_dollars=10.0, max_iterations=20)
+        parent = BudgetPolicy(
+            max_seconds=1000,
+            max_tool_calls=100,
+            max_tokens=10_000,
+            max_dollars=10.0,
+            max_iterations=20,
+        )
         child = _scale_budget(parent, 0.5)
         assert child.max_seconds == 500
         assert child.max_tool_calls == 50
@@ -64,8 +74,13 @@ class TestHelpers:
         assert child.max_iterations == 10
 
     def test_scale_budget_preserves_none(self) -> None:
-        parent = BudgetPolicy(max_seconds=None, max_tool_calls=None, max_tokens=None,
-                              max_dollars=None, max_iterations=None)
+        parent = BudgetPolicy(
+            max_seconds=None,
+            max_tool_calls=None,
+            max_tokens=None,
+            max_dollars=None,
+            max_iterations=None,
+        )
         child = _scale_budget(parent, 0.5)
         assert child.max_seconds is None
         assert child.max_tool_calls is None
@@ -149,8 +164,10 @@ class TestFanoutSync:
 
     def test_custom_aggregator(self, tmp_path: Path) -> None:
         autopilot = _make_parent(tmp_path)
+
         def joiner(children: list[AutopilotResult]) -> str:
             return " | ".join(c.output for c in children)
+
         r = autopilot.fanout(
             items=["x", "y"],
             objective_template="Do {item}",
@@ -165,9 +182,13 @@ class TestFanoutStream:
 
     def test_emits_started_and_result(self, tmp_path: Path) -> None:
         autopilot = _make_parent(tmp_path)
-        events = list(autopilot.fanout_stream(
-            items=["a", "b"], objective_template="t {item}", max_parallel=2,
-        ))
+        events = list(
+            autopilot.fanout_stream(
+                items=["a", "b"],
+                objective_template="t {item}",
+                max_parallel=2,
+            )
+        )
         kinds = [e["kind"] for e in events]
         assert kinds[0] == "autopilot.fanout_started"
         assert kinds[-1] == "autopilot.fanout_result"

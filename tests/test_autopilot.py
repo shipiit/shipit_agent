@@ -9,9 +9,6 @@ streaming events — in milliseconds with no network.
 from __future__ import annotations
 
 import json
-import os
-import sys
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -20,11 +17,9 @@ import pytest
 
 from shipit_agent.autopilot import (
     Autopilot,
-    AutopilotResult,
     BudgetPolicy,
     BudgetUsage,
     coerce_event,
-    default_heartbeat_stderr,
 )
 from shipit_agent.deep.goal_agent import Goal
 from shipit_agent.scheduler_daemon import SchedulerDaemon
@@ -39,7 +34,9 @@ class FakeResult:
     output: str = "done"
     goal_status: str = "unknown"
     criteria_met: list[bool] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=lambda: {"usage": {"total_tokens": 50}})
+    metadata: dict[str, Any] = field(
+        default_factory=lambda: {"usage": {"total_tokens": 50}}
+    )
 
 
 class StubAgent:
@@ -48,7 +45,9 @@ class StubAgent:
     def __init__(self, *, criteria: int, complete_on: int = -1) -> None:
         self.criteria = criteria
         self.calls = 0
-        self.complete_on = complete_on  # iteration (1-based) when it flips to "completed"
+        self.complete_on = (
+            complete_on  # iteration (1-based) when it flips to "completed"
+        )
 
     def run(self) -> FakeResult:
         self.calls += 1
@@ -84,7 +83,13 @@ class TestBudgetPolicy:
         assert b.max_dollars and b.max_dollars <= 20
 
     def test_each_axis_trips_independently(self) -> None:
-        b = BudgetPolicy(max_seconds=10, max_tool_calls=5, max_tokens=100, max_dollars=1.0, max_iterations=3)
+        b = BudgetPolicy(
+            max_seconds=10,
+            max_tool_calls=5,
+            max_tokens=100,
+            max_dollars=1.0,
+            max_iterations=3,
+        )
         assert b.exceeded(BudgetUsage(seconds=1)) == (False, "")
         ok, why = b.exceeded(BudgetUsage(seconds=11))
         assert ok and "wall-clock" in why
@@ -98,8 +103,13 @@ class TestBudgetPolicy:
         assert ok and "iteration" in why
 
     def test_none_disables_axis(self) -> None:
-        b = BudgetPolicy(max_seconds=None, max_tool_calls=None, max_tokens=None,
-                         max_dollars=None, max_iterations=None)
+        b = BudgetPolicy(
+            max_seconds=None,
+            max_tool_calls=None,
+            max_tokens=None,
+            max_dollars=None,
+            max_iterations=None,
+        )
         assert b.exceeded(BudgetUsage(seconds=10_000, tool_calls=5000)) == (False, "")
 
 
@@ -111,7 +121,8 @@ class TestAutopilotRun:
         goal = Goal(objective="Do thing", success_criteria=["c1", "c2", "c3"])
         factory = StubFactory(criteria=3)
         a = Autopilot(
-            llm=None, goal=goal,
+            llm=None,
+            goal=goal,
             checkpoint_dir=tmp_path,
             budget=BudgetPolicy(max_iterations=10, max_seconds=30),
             agent_factory=factory,
@@ -125,7 +136,8 @@ class TestAutopilotRun:
         goal = Goal(objective="x", success_criteria=["c1", "c2", "c3"])
         factory = StubFactory(criteria=3)
         a = Autopilot(
-            llm=None, goal=goal,
+            llm=None,
+            goal=goal,
             checkpoint_dir=tmp_path,
             budget=BudgetPolicy(max_iterations=2, max_seconds=30),
             agent_factory=factory,
@@ -136,26 +148,38 @@ class TestAutopilotRun:
 
     def test_refuses_to_overwrite_existing_checkpoint(self, tmp_path: Path) -> None:
         goal = Goal(objective="x", success_criteria=["c1"])
-        a = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                      agent_factory=StubFactory(criteria=1),
-                      budget=BudgetPolicy(max_iterations=5))
+        a = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=StubFactory(criteria=1),
+            budget=BudgetPolicy(max_iterations=5),
+        )
         a.run(run_id="dup")
         with pytest.raises(FileExistsError):
             a.run(run_id="dup")
 
     def test_resume_picks_up_iteration_count(self, tmp_path: Path) -> None:
         goal = Goal(objective="x", success_criteria=["c1", "c2"])
-        a = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                      agent_factory=StubFactory(criteria=2),
-                      budget=BudgetPolicy(max_iterations=1))
+        a = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=StubFactory(criteria=2),
+            budget=BudgetPolicy(max_iterations=1),
+        )
         first = a.run(run_id="resumable")
         # 2 criteria, but max_iterations=1 → we expect partial
         assert first.status in ("partial", "halted")
         assert first.iterations >= 1
 
-        a2 = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                       agent_factory=StubFactory(criteria=2),
-                       budget=BudgetPolicy(max_iterations=5))
+        a2 = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=StubFactory(criteria=2),
+            budget=BudgetPolicy(max_iterations=5),
+        )
         second = a2.resume("resumable")
         assert second.iterations > first.iterations
 
@@ -163,19 +187,30 @@ class TestAutopilotRun:
         goal = Goal(objective="x", success_criteria=["c1", "c2", "c3"])
         factory = StubFactory(criteria=3)
         factory.shared.complete_on = 1
-        a = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                      agent_factory=factory, budget=BudgetPolicy(max_iterations=10))
+        a = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=factory,
+            budget=BudgetPolicy(max_iterations=10),
+        )
         r = a.run(run_id="short")
         assert r.iterations == 1
         assert "completion" in r.halt_reason
 
     def test_exception_sets_failed_status(self, tmp_path: Path) -> None:
         class Boom:
-            def run(self): raise RuntimeError("boom")
+            def run(self):
+                raise RuntimeError("boom")
+
         goal = Goal(objective="x", success_criteria=["c1"])
-        a = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                      agent_factory=lambda **_: Boom(),
-                      budget=BudgetPolicy(max_iterations=3))
+        a = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=lambda **_: Boom(),
+            budget=BudgetPolicy(max_iterations=3),
+        )
         r = a.run(run_id="fail")
         assert r.status == "failed"
         assert "RuntimeError" in r.halt_reason
@@ -187,9 +222,13 @@ class TestAutopilotRun:
 class TestAutopilotStream:
     def test_stream_yields_events_until_result(self, tmp_path: Path) -> None:
         goal = Goal(objective="x", success_criteria=["c1", "c2"])
-        a = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                      agent_factory=StubFactory(criteria=2),
-                      budget=BudgetPolicy(max_iterations=5))
+        a = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=StubFactory(criteria=2),
+            budget=BudgetPolicy(max_iterations=5),
+        )
         events = list(a.stream(run_id="s1"))
         kinds = [e["kind"] for e in events]
         assert kinds[0] == "autopilot.run_started"
@@ -198,18 +237,26 @@ class TestAutopilotStream:
 
     def test_stream_emits_budget_exceeded(self, tmp_path: Path) -> None:
         goal = Goal(objective="x", success_criteria=["c1", "c2", "c3"])
-        a = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                      agent_factory=StubFactory(criteria=3),
-                      budget=BudgetPolicy(max_iterations=1))
+        a = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=StubFactory(criteria=3),
+            budget=BudgetPolicy(max_iterations=1),
+        )
         events = list(a.stream(run_id="s2"))
         kinds = [e["kind"] for e in events]
         assert "autopilot.budget_exceeded" in kinds
 
     def test_result_event_carries_status_and_usage(self, tmp_path: Path) -> None:
         goal = Goal(objective="x", success_criteria=["c1"])
-        a = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                      agent_factory=StubFactory(criteria=1),
-                      budget=BudgetPolicy(max_iterations=5))
+        a = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=StubFactory(criteria=1),
+            budget=BudgetPolicy(max_iterations=5),
+        )
         events = list(a.stream(run_id="s3"))
         final = events[-1]
         assert final["status"] == "completed"
@@ -230,7 +277,10 @@ class TestEventCoercion:
 
     def test_wraps_agent_event_shape(self) -> None:
         class E:
-            type = "tool_called"; message = "bash"; payload = {"cmd": "ls"}
+            type = "tool_called"
+            message = "bash"
+            payload = {"cmd": "ls"}
+
         ev = coerce_event(E())
         assert ev["kind"] == "autopilot.tool_called"
         assert ev["payload"] == {"cmd": "ls"}
@@ -244,15 +294,22 @@ class TestCheckpointSafety:
         # Autopilot should save a checkpoint before the exception propagates,
         # so a subsequent resume sees the partial state.
         call_count = {"n": 0}
+
         class Flaky:
             def run(self):
                 call_count["n"] += 1
-                if call_count["n"] == 2: raise RuntimeError("simulated crash")
+                if call_count["n"] == 2:
+                    raise RuntimeError("simulated crash")
                 return FakeResult(criteria_met=[True, False])
+
         goal = Goal(objective="x", success_criteria=["c1", "c2"])
-        a = Autopilot(llm=None, goal=goal, checkpoint_dir=tmp_path,
-                      agent_factory=lambda **_: Flaky(),
-                      budget=BudgetPolicy(max_iterations=10))
+        a = Autopilot(
+            llm=None,
+            goal=goal,
+            checkpoint_dir=tmp_path,
+            agent_factory=lambda **_: Flaky(),
+            budget=BudgetPolicy(max_iterations=10),
+        )
         r = a.run(run_id="flaky")
         assert r.status == "failed"
 
@@ -291,13 +348,28 @@ class TestSchedulerDaemon:
 
 
 class TestLiveRenderer:
-    def test_plain_render_captures_iteration_and_result(self, capsys: pytest.CaptureFixture) -> None:
+    def test_plain_render_captures_iteration_and_result(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
         events = [
-            {"kind": "autopilot.run_started", "run_id": "r", "goal": {"objective": "o"}},
-            {"kind": "autopilot.iteration", "iteration": 1, "criteria_met": [True],
-             "usage": {"seconds": 2, "tool_calls": 3, "tokens": 100}, "summary": "ok"},
-            {"kind": "autopilot.result", "status": "completed", "iterations": 1,
-             "usage": {"seconds": 2, "tool_calls": 3, "tokens": 100}},
+            {
+                "kind": "autopilot.run_started",
+                "run_id": "r",
+                "goal": {"objective": "o"},
+            },
+            {
+                "kind": "autopilot.iteration",
+                "iteration": 1,
+                "criteria_met": [True],
+                "usage": {"seconds": 2, "tool_calls": 3, "tokens": 100},
+                "summary": "ok",
+            },
+            {
+                "kind": "autopilot.result",
+                "status": "completed",
+                "iterations": 1,
+                "usage": {"seconds": 2, "tool_calls": 3, "tokens": 100},
+            },
         ]
         result = render_stream(events, fmt="plain")
         out = capsys.readouterr().out
@@ -319,16 +391,25 @@ class TestLiveRenderer:
 class TestSpecialistRoster:
     def test_seven_new_specialist_ids_present(self) -> None:
         from shipit_agent.agents import _specialists_patch  # noqa: F401
-        data = json.loads((
-            Path(__file__).parent.parent / "shipit_agent" / "agents" / "agents.json"
-        ).read_text())
+
+        data = json.loads(
+            (
+                Path(__file__).parent.parent / "shipit_agent" / "agents" / "agents.json"
+            ).read_text()
+        )
         ids = {a["id"] for a in data}
         for expected in [
-            "generalist-developer", "debugger", "design-reviewer",
-            "product-manager", "sales-outreach", "customer-success", "marketing-writer",
+            "generalist-developer",
+            "debugger",
+            "design-reviewer",
+            "product-manager",
+            "sales-outreach",
+            "customer-success",
+            "marketing-writer",
         ]:
             assert expected in ids, f"specialist {expected} missing from agents.json"
 
     def test_patch_is_idempotent(self) -> None:
         from shipit_agent.agents._specialists_patch import apply_patch
-        assert apply_patch() == 0        # second invocation adds nothing
+
+        assert apply_patch() == 0  # second invocation adds nothing

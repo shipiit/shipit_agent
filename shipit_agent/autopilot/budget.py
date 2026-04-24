@@ -33,20 +33,38 @@ class BudgetPolicy:
     def exceeded(self, usage: "BudgetUsage") -> tuple[bool, str]:
         """Return ``(True, reason)`` if any cap has been breached."""
         if self.max_seconds and usage.seconds > self.max_seconds:
-            return True, f"wall-clock limit reached: {usage.seconds:.0f}s > {self.max_seconds:.0f}s"
+            return (
+                True,
+                f"wall-clock limit reached: {usage.seconds:.0f}s > {self.max_seconds:.0f}s",
+            )
         if self.max_tool_calls and usage.tool_calls > self.max_tool_calls:
-            return True, f"tool-call limit reached: {usage.tool_calls} > {self.max_tool_calls}"
+            return (
+                True,
+                f"tool-call limit reached: {usage.tool_calls} > {self.max_tool_calls}",
+            )
         if self.max_tokens and usage.tokens > self.max_tokens:
             return True, f"token limit reached: {usage.tokens} > {self.max_tokens}"
         if self.max_dollars and usage.dollars > self.max_dollars:
-            return True, f"dollar limit reached: ${usage.dollars:.2f} > ${self.max_dollars:.2f}"
+            return (
+                True,
+                f"dollar limit reached: ${usage.dollars:.2f} > ${self.max_dollars:.2f}",
+            )
         if self.max_iterations and usage.iterations > self.max_iterations:
-            return True, f"iteration limit reached: {usage.iterations} > {self.max_iterations}"
+            return (
+                True,
+                f"iteration limit reached: {usage.iterations} > {self.max_iterations}",
+            )
         return False, ""
 
-    def would_exceed_after(self, usage: "BudgetUsage", *, extra_seconds: float = 0.0,
-                           extra_tokens: int = 0, extra_dollars: float = 0.0,
-                           extra_tool_calls: int = 0) -> tuple[bool, str]:
+    def would_exceed_after(
+        self,
+        usage: "BudgetUsage",
+        *,
+        extra_seconds: float = 0.0,
+        extra_tokens: int = 0,
+        extra_dollars: float = 0.0,
+        extra_tool_calls: int = 0,
+    ) -> tuple[bool, str]:
         """Check whether adding projected overhead to ``usage`` *would*
         trip a cap. Used for pre-iteration gating — skip the next step
         when we know it'd blow the budget before it starts.
@@ -64,6 +82,7 @@ class BudgetPolicy:
         """Return the remaining headroom on each axis, or ``None`` when
         the axis is disabled. Useful for progress events and ETAs.
         """
+
         def _sub(cap: float | int | None, used: float | int) -> float | int | None:
             if not cap:
                 return None

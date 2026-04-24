@@ -135,7 +135,8 @@ def autopilot_fanout(
             with lock:
                 failed_ids.append(run_id)
             return AutopilotResult(
-                run_id=run_id, status="failed",
+                run_id=run_id,
+                status="failed",
                 halt_reason=f"child exception: {type(err).__name__}: {err}",
             )
 
@@ -192,7 +193,7 @@ def autopilot_fanout_stream(
     yield {
         "kind": "autopilot.fanout_started",
         "parent_run_id": prid,
-        "items": [str(i) for i in items][:50],            # cap to keep event size sane
+        "items": [str(i) for i in items][:50],  # cap to keep event size sane
         "total": len(items),
         # `asdict` works with slots=True; accessing __dict__ does not.
         "child_budget": asdict(child_budget),
@@ -201,8 +202,10 @@ def autopilot_fanout_stream(
 
     if not items:
         result = FanoutResult(
-            parent_run_id=prid, objective_template=objective_template,
-            status="completed", aggregated_output="(no items)",
+            parent_run_id=prid,
+            objective_template=objective_template,
+            status="completed",
+            aggregated_output="(no items)",
             wall_seconds=0.0,
         )
         yield {"kind": "autopilot.fanout_result", **result.to_dict()}
@@ -235,7 +238,8 @@ def autopilot_fanout_stream(
         except Exception as err:  # noqa: BLE001
             failed.append(run_id)
             return idx, AutopilotResult(
-                run_id=run_id, status="failed",
+                run_id=run_id,
+                status="failed",
                 halt_reason=f"child exception: {type(err).__name__}: {err}",
             )
 
@@ -260,7 +264,8 @@ def autopilot_fanout_stream(
     yield {
         "kind": "autopilot.fanout_result",
         **FanoutResult(
-            parent_run_id=prid, objective_template=objective_template,
+            parent_run_id=prid,
+            objective_template=objective_template,
             status=status,
             children=[r.to_dict() for r in children_out],
             aggregated_output=aggregated,
@@ -332,5 +337,5 @@ def _slug(item: Any) -> str:
 
 
 # Attach the methods onto Autopilot so callers can do `autopilot.fanout(...)`.
-Autopilot.fanout = autopilot_fanout                  # type: ignore[attr-defined]
-Autopilot.fanout_stream = autopilot_fanout_stream    # type: ignore[attr-defined]
+Autopilot.fanout = autopilot_fanout  # type: ignore[attr-defined]
+Autopilot.fanout_stream = autopilot_fanout_stream  # type: ignore[attr-defined]

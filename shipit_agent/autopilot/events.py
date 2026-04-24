@@ -44,7 +44,9 @@ def looks_like_tool_event(item: Any) -> bool:
     """True if the item is an AgentEvent-shape whose type is tool-related."""
     if isinstance(item, dict):
         t = item.get("type") or item.get("event_type") or item.get("kind", "")
-        return any(s in str(t) for s in ("tool_called", "tool_completed", "tool_failed"))
+        return any(
+            s in str(t) for s in ("tool_called", "tool_completed", "tool_failed")
+        )
     t = getattr(item, "type", None) or getattr(item, "event_type", None)
     return t in {"tool_called", "tool_completed", "tool_failed"}
 

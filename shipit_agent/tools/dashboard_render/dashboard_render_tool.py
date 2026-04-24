@@ -143,11 +143,13 @@ class DashboardRenderTool:
             export_path.write_text(html_doc, encoding="utf-8")
             artifact["path"] = str(export_path)
 
-        context.state.setdefault("artifacts", []).append({
-            "name": artifact_name,
-            "content": html_doc,
-            "media_type": "text/html",
-        })
+        context.state.setdefault("artifacts", []).append(
+            {
+                "name": artifact_name,
+                "content": html_doc,
+                "media_type": "text/html",
+            }
+        )
 
         return ToolOutput(
             text=(

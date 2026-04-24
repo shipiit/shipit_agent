@@ -7,10 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 from shipit_agent.autopilot import (
-    Autopilot, ArtifactCollector, BudgetPolicy, AutopilotResult,
+    Autopilot,
+    ArtifactCollector,
+    BudgetPolicy,
 )
 from shipit_agent.autopilot.artifacts import Artifact, _iter_fences, _slug
 from shipit_agent.deep.goal_agent import Goal
@@ -21,7 +22,9 @@ class _FakeResult:
     output: str = ""
     goal_status: str = "unknown"
     criteria_met: list[bool] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=lambda: {"usage": {"total_tokens": 10}})
+    metadata: dict[str, Any] = field(
+        default_factory=lambda: {"usage": {"total_tokens": 10}}
+    )
 
 
 class _OutputStub:
@@ -83,7 +86,12 @@ class TestArtifactCollectorUnit:
     def test_ingest_tool_metadata_single(self) -> None:
         col = ArtifactCollector()
         added = col.ingest_tool_metadata(
-            {"artifact": True, "kind": "file", "name": "out.csv", "content": "a,b\n1,2\n"},
+            {
+                "artifact": True,
+                "kind": "file",
+                "name": "out.csv",
+                "content": "a,b\n1,2\n",
+            },
             iteration=2,
         )
         assert len(added) == 1 and added[0].kind == "file" and added[0].iteration == 2
@@ -124,7 +132,9 @@ class TestArtifactCollectorUnit:
 
 
 class TestAutopilotArtifacts:
-    def _autopilot(self, tmp_path: Path, outputs: list[str], *, artifacts: Any = True) -> Autopilot:
+    def _autopilot(
+        self, tmp_path: Path, outputs: list[str], *, artifacts: Any = True
+    ) -> Autopilot:
         stub = _OutputStub(outputs)
         return Autopilot(
             llm=None,

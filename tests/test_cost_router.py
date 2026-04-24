@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
@@ -19,32 +18,41 @@ from shipit_agent.routing import (
 
 
 class TestClassifier:
-    @pytest.mark.parametrize("prompt", [
-        "Hi",
-        "What day is it?",
-        "Say hello.",
-        "",
-    ])
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "Hi",
+            "What day is it?",
+            "Say hello.",
+            "",
+        ],
+    )
     def test_easy_by_default(self, prompt: str) -> None:
         assert classify_difficulty(prompt) == DifficultyTier.EASY
 
-    @pytest.mark.parametrize("prompt", [
-        "write a quick helper function",
-        "create a new endpoint",
-        "search the codebase for todos",
-        "fix the typo in the README",
-    ])
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "write a quick helper function",
+            "create a new endpoint",
+            "search the codebase for todos",
+            "fix the typo in the README",
+        ],
+    )
     def test_medium_when_verb_is_action(self, prompt: str) -> None:
         assert classify_difficulty(prompt) == DifficultyTier.MEDIUM
 
-    @pytest.mark.parametrize("prompt", [
-        "Please refactor the auth module",
-        "Architect the migration plan",
-        "Do a security audit",
-        "Investigate why the test flakes",
-        "Plan the rollout",
-        "Optimise the query",
-    ])
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "Please refactor the auth module",
+            "Architect the migration plan",
+            "Do a security audit",
+            "Investigate why the test flakes",
+            "Plan the rollout",
+            "Optimise the query",
+        ],
+    )
     def test_hard_when_high_effort_verb_present(self, prompt: str) -> None:
         assert classify_difficulty(prompt) == DifficultyTier.HARD
 
@@ -75,9 +83,11 @@ class _StubLLM:
 
     def complete(self, messages, **kwargs):  # noqa: ANN001
         self.calls += 1
-        return _FakeResponse(content=f"{self.label}:{self.calls}", usage={"total_tokens": self.tokens})
+        return _FakeResponse(
+            content=f"{self.label}:{self.calls}", usage={"total_tokens": self.tokens}
+        )
 
-    def stream(self, messages, **kwargs):     # noqa: ANN001
+    def stream(self, messages, **kwargs):  # noqa: ANN001
         # Produce two events — the inner loop doesn't inspect them.
         self.calls += 1
         yield {"type": "text", "content": f"{self.label}-0"}
@@ -87,9 +97,9 @@ class _StubLLM:
 @pytest.fixture
 def router() -> CostRouter:
     return CostRouter(
-        easy=Tier(llm=_StubLLM("haiku"),  price_per_1k=0.25, name="haiku"),
-        medium=Tier(llm=_StubLLM("sonnet"), price_per_1k=3.0,  name="sonnet"),
-        hard=Tier(llm=_StubLLM("opus"),    price_per_1k=15.0, name="opus"),
+        easy=Tier(llm=_StubLLM("haiku"), price_per_1k=0.25, name="haiku"),
+        medium=Tier(llm=_StubLLM("sonnet"), price_per_1k=3.0, name="sonnet"),
+        hard=Tier(llm=_StubLLM("opus"), price_per_1k=15.0, name="opus"),
     )
 
 
@@ -108,7 +118,9 @@ class TestCostRouter:
         # Three different-difficulty prompts → three different LLMs called.
         router.complete([{"role": "user", "content": "Hi"}])
         router.complete([{"role": "user", "content": "write a function"}])
-        router.complete([{"role": "user", "content": "Please refactor the auth module"}])
+        router.complete(
+            [{"role": "user", "content": "Please refactor the auth module"}]
+        )
         assert router.report.tier_counts == {"easy": 1, "medium": 1, "hard": 1}
 
     def test_savings_report_accurate(self, router: CostRouter) -> None:
@@ -134,6 +146,7 @@ class TestCostRouter:
     def test_custom_difficulty_fn_overrides_heuristic(self) -> None:
         def always_easy(_p: str) -> DifficultyTier:
             return DifficultyTier.EASY
+
         router = CostRouter(
             easy=Tier(llm=_StubLLM("h")),
             medium=Tier(llm=_StubLLM("s")),
@@ -145,6 +158,7 @@ class TestCostRouter:
     def test_exception_in_classifier_falls_back_to_medium(self) -> None:
         def boom(_p: str) -> DifficultyTier:
             raise RuntimeError("down")
+
         router = CostRouter(
             easy=Tier(llm=_StubLLM("h")),
             medium=Tier(llm=_StubLLM("s")),
@@ -157,10 +171,14 @@ class TestCostRouter:
         # LLM response without a usage dict — router must still return it.
         class _NoUsage:
             def complete(self, messages, **kw):  # noqa: ANN001
-                class R: content = "ok"
+                class R:
+                    content = "ok"
+
                 return R()
-            def stream(self, messages, **kw):    # noqa: ANN001
+
+            def stream(self, messages, **kw):  # noqa: ANN001
                 yield {"type": "text", "content": "x"}
+
         router.tiers[DifficultyTier.EASY].llm = _NoUsage()
         r = router.complete([{"role": "user", "content": "Hi"}])
         assert r.content == "ok"
@@ -176,6 +194,7 @@ class TestCostRouter:
         class Msg:
             role: str
             content: str
+
         router.complete([Msg(role="user", content="refactor this")])
         assert router.report.tier_counts.get("hard") == 1
 

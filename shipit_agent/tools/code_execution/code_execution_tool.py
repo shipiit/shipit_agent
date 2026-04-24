@@ -189,7 +189,9 @@ class CodeExecutionTool:
 
         if sandbox:
             command, cwd = build_sandbox_command(
-                language, script_path, workspace_root,
+                language,
+                script_path,
+                workspace_root,
                 allow_network=allow_network,
                 image=str(override_image) if override_image else None,
             )
@@ -236,10 +238,9 @@ class CodeExecutionTool:
                 "script_path": str(script_path),
                 "workspace_root": str(workspace_root.resolve()),
                 "sandbox": sandbox,
-                "sandbox_image": override_image if sandbox and override_image else (
-                    self.SANDBOX_IMAGES.get(language) if sandbox else None
-                ),
+                "sandbox_image": override_image
+                if sandbox and override_image
+                else (self.SANDBOX_IMAGES.get(language) if sandbox else None),
                 "sandbox_network": allow_network if sandbox else False,
             },
         )
-

@@ -14,33 +14,33 @@ from typing import Final
 # Per-language Docker images. Small, official, trivially pullable.
 # Users can override per call with the `image` kwarg.
 SANDBOX_IMAGES: Final[dict[str, str]] = {
-    "python":     "python:3.11-slim",
-    "bash":       "alpine:3.20",
-    "sh":         "alpine:3.20",
-    "zsh":        "alpine:3.20",
+    "python": "python:3.11-slim",
+    "bash": "alpine:3.20",
+    "sh": "alpine:3.20",
+    "zsh": "alpine:3.20",
     "javascript": "node:22-alpine",
     "typescript": "node:22-slim",
-    "ruby":       "ruby:3.3-alpine",
-    "php":        "php:8.3-cli-alpine",
-    "perl":       "perl:5.40-slim",
-    "lua":        "alpine:3.20",
-    "r":          "r-base:4.4.1",
+    "ruby": "ruby:3.3-alpine",
+    "php": "php:8.3-cli-alpine",
+    "perl": "perl:5.40-slim",
+    "lua": "alpine:3.20",
+    "r": "r-base:4.4.1",
 }
 
 # Per-language argv INSIDE the container. The file path inside is
 # appended by :func:`build_sandbox_command` when needed.
 SANDBOX_CMDS: Final[dict[str, list[str]]] = {
-    "python":     ["python3"],
-    "bash":       ["sh"],
-    "sh":         ["sh"],
-    "zsh":        ["sh"],
+    "python": ["python3"],
+    "bash": ["sh"],
+    "sh": ["sh"],
+    "zsh": ["sh"],
     "javascript": ["node"],
-    "typescript": ["sh", "-c"],    # rebuilt dynamically — needs tsx install
-    "ruby":       ["ruby"],
-    "php":        ["php"],
-    "perl":       ["perl"],
-    "lua":        ["lua"],
-    "r":          ["Rscript"],
+    "typescript": ["sh", "-c"],  # rebuilt dynamically — needs tsx install
+    "ruby": ["ruby"],
+    "php": ["php"],
+    "perl": ["perl"],
+    "lua": ["lua"],
+    "r": ["Rscript"],
 }
 
 
@@ -72,19 +72,27 @@ def build_sandbox_command(
     if language == "typescript":
         # Install tsx on first run — slow path, only used for untrusted ts.
         inside_cmd = [
-            "sh", "-c",
+            "sh",
+            "-c",
             f"npm install -g --silent tsx >/dev/null 2>&1 && tsx {inside}",
         ]
     else:
         inside_cmd = [*SANDBOX_CMDS.get(language, ["sh"]), inside]
 
     argv: list[str] = [
-        "docker", "run", "--rm", "-i",
-        "--network", "bridge" if allow_network else "none",
+        "docker",
+        "run",
+        "--rm",
+        "-i",
+        "--network",
+        "bridge" if allow_network else "none",
         "--read-only",
-        "--tmpfs", "/tmp:rw,size=64m",
-        "-v", f"{workspace}:/work:ro",
-        "-w", "/work",
+        "--tmpfs",
+        "/tmp:rw,size=64m",
+        "-v",
+        f"{workspace}:/work:ro",
+        "-w",
+        "/work",
         chosen,
         *inside_cmd,
     ]

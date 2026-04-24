@@ -34,11 +34,11 @@ from typing import Any, Callable, Iterable
 class Artifact:
     """A structured deliverable produced during an Autopilot run."""
 
-    kind: str                                   # e.g. "code", "markdown", "table", "file", "answer"
-    name: str                                   # short id — filename, section title, etc.
-    content: str                                # the actual payload (trimmed to a cap)
-    language: str | None = None                 # when kind=="code": "python", "ts", etc.
-    iteration: int = 0                          # which autopilot iteration produced it
+    kind: str  # e.g. "code", "markdown", "table", "file", "answer"
+    name: str  # short id — filename, section title, etc.
+    content: str  # the actual payload (trimmed to a cap)
+    language: str | None = None  # when kind=="code": "python", "ts", etc.
+    iteration: int = 0  # which autopilot iteration produced it
     created_at: float = field(default_factory=time.time)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -53,7 +53,7 @@ class ArtifactCollector:
     threads, wrap calls in a lock or use one collector per child.
     """
 
-    MAX_CONTENT_CHARS = 64_000                  # cap per artifact to avoid giant blobs
+    MAX_CONTENT_CHARS = 64_000  # cap per artifact to avoid giant blobs
 
     def __init__(
         self,
@@ -94,16 +94,21 @@ class ArtifactCollector:
         if len(content) > self.MAX_CONTENT_CHARS:
             content = content[: self.MAX_CONTENT_CHARS] + "\n…(truncated)"
         artifact = Artifact(
-            kind=kind, name=name, content=content,
-            language=language, iteration=iteration,
+            kind=kind,
+            name=name,
+            content=content,
+            language=language,
+            iteration=iteration,
             metadata=dict(metadata or {}),
         )
         self._items.append(artifact)
         if self.persist_dir:
             self._persist(artifact)
         if self._on_add:
-            try: self._on_add(artifact)
-            except Exception: pass      # never let a callback kill the run
+            try:
+                self._on_add(artifact)
+            except Exception:
+                pass  # never let a callback kill the run
         return artifact
 
     def extract_from_output(self, text: str, *, iteration: int) -> list[Artifact]:
@@ -118,10 +123,15 @@ class ArtifactCollector:
         added: list[Artifact] = []
         for i, (language, body) in enumerate(_iter_fences(text)):
             name = f"iter{iteration}-block{i+1}{_ext(language)}"
-            added.append(self.add(
-                kind="code", name=name, content=body,
-                language=language, iteration=iteration,
-            ))
+            added.append(
+                self.add(
+                    kind="code",
+                    name=name,
+                    content=body,
+                    language=language,
+                    iteration=iteration,
+                )
+            )
 
         # If the remaining non-fenced text reads like a doc (starts with '#'
         # and is substantial), capture it as a markdown artifact.
@@ -129,13 +139,19 @@ class ArtifactCollector:
         if non_fenced.startswith("#") and len(non_fenced) > 200:
             title = non_fenced.split("\n", 1)[0].lstrip("# ").strip()[:80]
             name = f"iter{iteration}-{_slug(title) or 'doc'}.md"
-            added.append(self.add(
-                kind="markdown", name=name, content=non_fenced,
-                iteration=iteration,
-            ))
+            added.append(
+                self.add(
+                    kind="markdown",
+                    name=name,
+                    content=non_fenced,
+                    iteration=iteration,
+                )
+            )
         return added
 
-    def ingest_tool_metadata(self, tool_metadata: Any, iteration: int) -> list[Artifact]:
+    def ingest_tool_metadata(
+        self, tool_metadata: Any, iteration: int
+    ) -> list[Artifact]:
         """If a tool result declared `artifact=True`, collect it.
 
         Expected shape: ``{"artifact": True, "kind": "...", "name": "...",
@@ -160,8 +176,11 @@ class ArtifactCollector:
             content=str(meta.get("content", "")),
             language=meta.get("language"),
             iteration=iteration,
-            metadata={k: v for k, v in meta.items()
-                      if k not in {"artifact", "kind", "name", "content", "language"}},
+            metadata={
+                k: v
+                for k, v in meta.items()
+                if k not in {"artifact", "kind", "name", "content", "language"}
+            },
         )
 
     def _persist(self, a: Artifact) -> None:
@@ -171,7 +190,7 @@ class ArtifactCollector:
         try:
             path.write_text(json.dumps(a.to_dict(), indent=2))
         except OSError:
-            pass                        # best-effort — disk errors shouldn't stop the run
+            pass  # best-effort — disk errors shouldn't stop the run
 
 
 # ── helpers ─────────────────────────────────────────────────────
@@ -179,14 +198,39 @@ class ArtifactCollector:
 
 _FENCE_RE = re.compile(r"```([a-zA-Z0-9_\-+.]*)\n([\s\S]*?)\n```", re.MULTILINE)
 _LANG_EXT = {
-    "python": ".py", "py": ".py", "ts": ".ts", "typescript": ".ts",
-    "js": ".js", "javascript": ".js", "jsx": ".jsx", "tsx": ".tsx",
-    "sh": ".sh", "bash": ".sh", "zsh": ".sh", "shell": ".sh",
-    "rs": ".rs", "rust": ".rs", "go": ".go", "golang": ".go",
-    "ruby": ".rb", "rb": ".rb", "java": ".java", "kt": ".kt", "kotlin": ".kt",
-    "sql": ".sql", "yaml": ".yml", "yml": ".yml", "toml": ".toml", "json": ".json",
-    "html": ".html", "css": ".css", "md": ".md", "markdown": ".md",
-    "swift": ".swift", "cpp": ".cpp", "c": ".c",
+    "python": ".py",
+    "py": ".py",
+    "ts": ".ts",
+    "typescript": ".ts",
+    "js": ".js",
+    "javascript": ".js",
+    "jsx": ".jsx",
+    "tsx": ".tsx",
+    "sh": ".sh",
+    "bash": ".sh",
+    "zsh": ".sh",
+    "shell": ".sh",
+    "rs": ".rs",
+    "rust": ".rs",
+    "go": ".go",
+    "golang": ".go",
+    "ruby": ".rb",
+    "rb": ".rb",
+    "java": ".java",
+    "kt": ".kt",
+    "kotlin": ".kt",
+    "sql": ".sql",
+    "yaml": ".yml",
+    "yml": ".yml",
+    "toml": ".toml",
+    "json": ".json",
+    "html": ".html",
+    "css": ".css",
+    "md": ".md",
+    "markdown": ".md",
+    "swift": ".swift",
+    "cpp": ".cpp",
+    "c": ".c",
 }
 
 

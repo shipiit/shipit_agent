@@ -18,13 +18,20 @@ from .prompt import COMPUTER_USE_PROMPT
 
 
 TAKE_SCREENSHOT_ACTIONS = frozenset({"screenshot", "capture"})
-_ACTIONS = frozenset({
-    "screenshot", "capture",
-    "mouse_move", "move",
-    "click", "drag",
-    "scroll", "type", "key",
-    "wait",
-})
+_ACTIONS = frozenset(
+    {
+        "screenshot",
+        "capture",
+        "mouse_move",
+        "move",
+        "click",
+        "drag",
+        "scroll",
+        "type",
+        "key",
+        "wait",
+    }
+)
 
 
 class ComputerUseTool:
@@ -79,8 +86,15 @@ class ComputerUseTool:
                         "dx": {"type": "integer", "default": 0},
                         "dy": {"type": "integer", "default": 0},
                         "text": {"type": "string"},
-                        "keys": {"type": "string", "description": 'Chord like "cmd+shift+4".'},
-                        "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"},
+                        "keys": {
+                            "type": "string",
+                            "description": 'Chord like "cmd+shift+4".',
+                        },
+                        "button": {
+                            "type": "string",
+                            "enum": ["left", "right", "middle"],
+                            "default": "left",
+                        },
                         "double": {"type": "boolean", "default": False},
                         "seconds": {"type": "number"},
                         "filename": {"type": "string"},
@@ -111,7 +125,9 @@ class ComputerUseTool:
         try:
             return self._dispatch(backend, action, kwargs)
         except BackendError as err:
-            return ToolOutput(text=f"Error: {err}", metadata={"ok": False, "action": action})
+            return ToolOutput(
+                text=f"Error: {err}", metadata={"ok": False, "action": action}
+            )
         except Exception as err:  # noqa: BLE001
             return ToolOutput(
                 text=f"Error: unhandled {type(err).__name__}: {err}",
@@ -120,7 +136,9 @@ class ComputerUseTool:
 
     # ── action dispatch ──────────────────────────────────────────
 
-    def _dispatch(self, backend: Any, action: str, kwargs: dict[str, Any]) -> ToolOutput:
+    def _dispatch(
+        self, backend: Any, action: str, kwargs: dict[str, Any]
+    ) -> ToolOutput:
         if action in TAKE_SCREENSHOT_ACTIONS:
             return self._screenshot(backend, kwargs)
 
@@ -132,11 +150,16 @@ class ComputerUseTool:
         if action == "click":
             x, y = self._require_xy(kwargs)
             backend.click(
-                x, y,
+                x,
+                y,
                 button=str(kwargs.get("button", "left")),
                 double=bool(kwargs.get("double", False)),
             )
-            return self._ok(backend, action, {"x": x, "y": y, "button": kwargs.get("button", "left")})
+            return self._ok(
+                backend,
+                action,
+                {"x": x, "y": y, "button": kwargs.get("button", "left")},
+            )
 
         if action == "drag":
             x, y = self._require_xy(kwargs)
@@ -148,19 +171,27 @@ class ComputerUseTool:
         if action == "scroll":
             x, y = self._require_xy(kwargs)
             backend.scroll(x, y, int(kwargs.get("dx", 0)), int(kwargs.get("dy", 0)))
-            return self._ok(backend, action, {"dx": kwargs.get("dx", 0), "dy": kwargs.get("dy", 0)})
+            return self._ok(
+                backend, action, {"dx": kwargs.get("dx", 0), "dy": kwargs.get("dy", 0)}
+            )
 
         if action == "type":
             text = str(kwargs.get("text", ""))
             if not text:
-                return ToolOutput(text="Error: 'text' is required for action=type.", metadata={"ok": False})
+                return ToolOutput(
+                    text="Error: 'text' is required for action=type.",
+                    metadata={"ok": False},
+                )
             backend.type_text(text)
             return self._ok(backend, action, {"len": len(text)})
 
         if action == "key":
             keys = str(kwargs.get("keys", "")).strip()
             if not keys:
-                return ToolOutput(text="Error: 'keys' is required for action=key.", metadata={"ok": False})
+                return ToolOutput(
+                    text="Error: 'keys' is required for action=key.",
+                    metadata={"ok": False},
+                )
             backend.key(keys)
             return self._ok(backend, action, {"keys": keys})
 
@@ -169,7 +200,9 @@ class ComputerUseTool:
             time.sleep(max(0.0, min(60.0, seconds)))
             return self._ok(backend, action, {"seconds": seconds})
 
-        return ToolOutput(text=f"Error: unroutable action {action!r}.", metadata={"ok": False})
+        return ToolOutput(
+            text=f"Error: unroutable action {action!r}.", metadata={"ok": False}
+        )
 
     # ── helpers ─────────────────────────────────────────────────
 
@@ -187,16 +220,19 @@ class ComputerUseTool:
             "path": str(path),
             "platform": backend.platform,
         }
-        if kwargs.get("vision", True):     # on by default; opt-out with vision=False
+        if kwargs.get("vision", True):  # on by default; opt-out with vision=False
             try:
                 import base64
+
                 raw = path.read_bytes()
                 if raw:
                     # Cap at ~4 MB to avoid blowing up the model context
                     # when an agent takes many screenshots in one run.
                     if len(raw) <= 4_000_000:
                         vision_meta["vision"] = True
-                        vision_meta["image_base64"] = base64.b64encode(raw).decode("ascii")
+                        vision_meta["image_base64"] = base64.b64encode(raw).decode(
+                            "ascii"
+                        )
                         vision_meta["media_type"] = "image/png"
                     else:
                         vision_meta["vision"] = False

@@ -63,7 +63,11 @@ def _render_metrics(section: dict[str, Any]) -> str:
     cells: list[str] = []
     for item in section.get("items", []) or []:
         value = _esc(item.get("value"))
-        value_cls = "metric-value small" if len(str(item.get("value") or "")) > 6 else "metric-value"
+        value_cls = (
+            "metric-value small"
+            if len(str(item.get("value") or "")) > 6
+            else "metric-value"
+        )
         value_color = f"color:{_color(item.get('color'))}" if item.get("color") else ""
         cells.append(
             f'<div class="metric">'
@@ -134,7 +138,7 @@ def _render_cards(section: dict[str, Any]) -> str:
                 f'<div class="trait-row">'
                 f'<div class="trait-dot" style="background:{dot}"></div>'
                 f'<div class="trait-text">{label_html}{text}</div>'
-                f'</div>'
+                f"</div>"
             )
         cards.append(
             f'<div class="card">'
@@ -207,7 +211,7 @@ def _render_chart(section: dict[str, Any], chart_id: str) -> str:
     return (
         f'<div class="chart-wrap">'
         f'<canvas id="{chart_id}" role="img" aria-label="{_esc(summary)}">{_esc(summary)}</canvas>'
-        f'</div>'
+        f"</div>"
     )
 
 
@@ -237,28 +241,34 @@ def _chart_config(section: dict[str, Any]) -> dict[str, Any]:
         "type": kind,
         "data": {
             "labels": labels,
-            "datasets": [{
-                "label": str(section.get("series_label") or "value"),
-                "data": data,
-                "borderColor": color,
-                "backgroundColor": color + "14",
-                "borderWidth": 2,
-                "pointBackgroundColor": color,
-                "pointRadius": 4,
-                "fill": True,
-                "tension": 0.35,
-            }],
+            "datasets": [
+                {
+                    "label": str(section.get("series_label") or "value"),
+                    "data": data,
+                    "borderColor": color,
+                    "backgroundColor": color + "14",
+                    "borderWidth": 2,
+                    "pointBackgroundColor": color,
+                    "pointRadius": 4,
+                    "fill": True,
+                    "tension": 0.35,
+                }
+            ],
         },
         "options": {
             "responsive": True,
             "maintainAspectRatio": False,
             "plugins": {"legend": {"display": False}},
             "scales": {
-                "x": {"grid": {"color": "rgba(136,135,128,0.15)"},
-                      "ticks": {"color": "#888", "font": {"size": 11}}},
-                "y": {"beginAtZero": True,
-                      "grid": {"color": "rgba(136,135,128,0.15)"},
-                      "ticks": {"color": "#888", "font": {"size": 11}}},
+                "x": {
+                    "grid": {"color": "rgba(136,135,128,0.15)"},
+                    "ticks": {"color": "#888", "font": {"size": 11}},
+                },
+                "y": {
+                    "beginAtZero": True,
+                    "grid": {"color": "rgba(136,135,128,0.15)"},
+                    "ticks": {"color": "#888", "font": {"size": 11}},
+                },
             },
         },
     }
@@ -288,7 +298,9 @@ def render_dashboard(spec: dict[str, Any]) -> str:
         if stype in ("line_chart", "bar_chart", "chart"):
             chart_id = f"chart_{i}"
             chart_configs.append((chart_id, _chart_config(section)))
-            body_parts.append(f'<div class="sec">{header}{_render_chart(section, chart_id)}</div>')
+            body_parts.append(
+                f'<div class="sec">{header}{_render_chart(section, chart_id)}</div>'
+            )
             continue
 
         renderer = _SECTION_RENDERERS.get(stype)
@@ -300,13 +312,13 @@ def render_dashboard(spec: dict[str, Any]) -> str:
     script = ""
     if chart_configs:
         inits = "".join(
-            f'var c{i}=document.getElementById({json.dumps(cid)});'
-            f'if(c{i}&&window.Chart){{new Chart(c{i},{json.dumps(cfg)});}}'
+            f"var c{i}=document.getElementById({json.dumps(cid)});"
+            f"if(c{i}&&window.Chart){{new Chart(c{i},{json.dumps(cfg)});}}"
             for i, (cid, cfg) in enumerate(chart_configs)
         )
         script = (
             '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>'
-            f'<script>{inits}</script>'
+            f"<script>{inits}</script>"
         )
 
     return (

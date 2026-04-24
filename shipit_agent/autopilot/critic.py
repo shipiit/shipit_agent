@@ -31,7 +31,7 @@ class CriticVerdict:
     """Output of one critic pass over an iteration's result."""
 
     criteria_met: list[bool] = field(default_factory=list)
-    confidence: float = 0.0                     # 0..1
+    confidence: float = 0.0  # 0..1
     suggestions: list[str] = field(default_factory=list)
     reasoning: str = ""
 
@@ -105,10 +105,12 @@ class Critic:
         if llm is None:
             return CriticVerdict()
 
-        prompt = self._build_prompt(objective=objective, criteria=criteria, output=output)
+        prompt = self._build_prompt(
+            objective=objective, criteria=criteria, output=output
+        )
         try:
             raw = self._complete(llm, prompt)
-        except Exception:        # noqa: BLE001 — never let a critic error kill a run
+        except Exception:  # noqa: BLE001 — never let a critic error kill a run
             return CriticVerdict(reasoning="critic raised; skipped.")
 
         verdict = self._parse(raw, n_criteria=len(criteria))
@@ -146,10 +148,13 @@ class Critic:
         """
         try:
             from shipit_agent.models import Message
-            resp = llm.complete(messages=[
-                Message(role="system", content=self.system_prompt),
-                Message(role="user", content=prompt),
-            ])
+
+            resp = llm.complete(
+                messages=[
+                    Message(role="system", content=self.system_prompt),
+                    Message(role="user", content=prompt),
+                ]
+            )
             # LLMResponse.content is canonical on this repo; fall back to str().
             return getattr(resp, "content", None) or str(resp)
         except AttributeError:

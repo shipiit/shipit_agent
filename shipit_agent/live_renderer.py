@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 from typing import Any, Iterable, TextIO
 
 # ANSI helpers kept tiny — skip the chalk-ish libraries.
@@ -61,7 +60,7 @@ def render_stream(
     renderer = {
         "jsonl": _render_jsonl,
         "plain": lambda ev, w: _render_tui(ev, w, use_color=False),
-        "tui":   lambda ev, w: _render_tui(ev, w, use_color=use_color),
+        "tui": lambda ev, w: _render_tui(ev, w, use_color=use_color),
     }.get(fmt, _render_jsonl)
 
     for ev in events:
@@ -70,7 +69,7 @@ def render_stream(
             result = ev
         try:
             out.flush()
-        except Exception:   # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pass
 
     return result
@@ -92,7 +91,7 @@ def _render_tui(ev: dict[str, Any], out: TextIO, *, use_color: bool) -> None:
         obj = goal.get("objective", "(no objective)")
         resuming = " (resumed)" if ev.get("resuming") else ""
         out.write(c("cyan", f"\n┌── Autopilot ── {ev.get('run_id')}{resuming}\n"))
-        out.write(c("cyan", "│ ") + c("bold", f"Goal: ") + obj + "\n")
+        out.write(c("cyan", "│ ") + c("bold", "Goal: ") + obj + "\n")
         criteria = goal.get("success_criteria") or []
         for i, crit in enumerate(criteria, 1):
             out.write(c("dim", f"│   {i}. {crit}\n"))
@@ -118,8 +117,11 @@ def _render_tui(ev: dict[str, Any], out: TextIO, *, use_color: bool) -> None:
             c("cyan", "│ ")
             + c("green", "✓ iter ")
             + str(ev.get("iteration"))
-            + c("dim", f" — {score} criteria · {usage.get('tool_calls', 0)} tools · "
-                        f"{usage.get('seconds', 0):.0f}s · {usage.get('tokens', 0)} tok\n")
+            + c(
+                "dim",
+                f" — {score} criteria · {usage.get('tool_calls', 0)} tools · "
+                f"{usage.get('seconds', 0):.0f}s · {usage.get('tokens', 0)} tok\n",
+            )
         )
         summary = (ev.get("summary") or "").strip().split("\n", 1)[0]
         if summary:
@@ -129,13 +131,21 @@ def _render_tui(ev: dict[str, Any], out: TextIO, *, use_color: bool) -> None:
     if kind == "autopilot.heartbeat":
         usage = ev.get("usage", {}) or {}
         met = f"{ev.get('criteria_satisfied_count', 0)}/{ev.get('criteria_total', 0)}"
-        out.write(c("cyan", "│ ") + c("magenta", "♥ heartbeat") + c("dim",
-            f" iter={ev.get('iteration')} criteria={met} "
-            f"t={usage.get('seconds', 0):.0f}s\n"))
+        out.write(
+            c("cyan", "│ ")
+            + c("magenta", "♥ heartbeat")
+            + c(
+                "dim",
+                f" iter={ev.get('iteration')} criteria={met} "
+                f"t={usage.get('seconds', 0):.0f}s\n",
+            )
+        )
         return
 
     if kind == "autopilot.budget_exceeded":
-        out.write(c("cyan", "│ ") + c("red", "⛔ budget: ") + str(ev.get("reason", "")) + "\n")
+        out.write(
+            c("cyan", "│ ") + c("red", "⛔ budget: ") + str(ev.get("reason", "")) + "\n"
+        )
         return
 
     if kind == "autopilot.criteria_satisfied":
@@ -143,19 +153,34 @@ def _render_tui(ev: dict[str, Any], out: TextIO, *, use_color: bool) -> None:
         return
 
     if kind == "autopilot.stream_fallback":
-        out.write(c("cyan", "│ ") + c("yellow", "↪ stream fallback: ")
-                  + str(ev.get("error", "")) + "\n")
+        out.write(
+            c("cyan", "│ ")
+            + c("yellow", "↪ stream fallback: ")
+            + str(ev.get("error", ""))
+            + "\n"
+        )
         return
 
     if kind == "autopilot.result":
         status = str(ev.get("status", "unknown"))
-        color_name = {"completed": "green", "partial": "yellow", "halted": "yellow", "failed": "red"}.get(status, "dim")
+        color_name = {
+            "completed": "green",
+            "partial": "yellow",
+            "halted": "yellow",
+            "failed": "red",
+        }.get(status, "dim")
         usage = ev.get("usage", {}) or {}
-        out.write(c("cyan", "└── result: ") + c(color_name, status.upper()) + c("dim",
-            f" · {ev.get('iterations')} iters · "
-            f"{usage.get('tool_calls', 0)} tools · "
-            f"{usage.get('seconds', 0):.0f}s · "
-            f"{usage.get('tokens', 0)} tok\n"))
+        out.write(
+            c("cyan", "└── result: ")
+            + c(color_name, status.upper())
+            + c(
+                "dim",
+                f" · {ev.get('iterations')} iters · "
+                f"{usage.get('tool_calls', 0)} tools · "
+                f"{usage.get('seconds', 0):.0f}s · "
+                f"{usage.get('tokens', 0)} tok\n",
+            )
+        )
         reason = ev.get("halt_reason")
         if reason:
             out.write(c("dim", f"   halt: {reason}\n"))
@@ -179,13 +204,19 @@ def _should_color(override: bool | None, out: TextIO) -> bool:
 
 def _env_says_no_color() -> bool:
     import os
+
     return "NO_COLOR" in os.environ or os.environ.get("TERM") == "dumb"
 
 
 def _color(enabled: bool):
     palette = {
-        "bold": BOLD, "dim": DIM, "cyan": CYAN,
-        "green": GREEN, "yellow": YELLOW, "red": RED, "magenta": MAGENTA,
+        "bold": BOLD,
+        "dim": DIM,
+        "cyan": CYAN,
+        "green": GREEN,
+        "yellow": YELLOW,
+        "red": RED,
+        "magenta": MAGENTA,
     }
     if not enabled:
         return lambda _name, text: text
@@ -210,5 +241,5 @@ def _short_payload(payload: Any) -> str:
 def _safe_default(v: Any) -> Any:
     try:
         return str(v)
-    except Exception:   # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return "<unserializable>"

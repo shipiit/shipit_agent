@@ -7,16 +7,13 @@ tool's behavior without external dependencies.
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any
-from unittest import mock
 
 import pytest
 
 from shipit_agent.tools.base import ToolContext
-from shipit_agent.tools.computer_use import ComputerUseTool, TAKE_SCREENSHOT_ACTIONS
+from shipit_agent.tools.computer_use import ComputerUseTool
 from shipit_agent.tools.hubspot import HubspotTool
 from shipit_agent.tools.research_brief import ResearchBriefTool
 
@@ -35,18 +32,28 @@ class _FakeBackend:
     def screenshot(self, path: Path) -> Path:
         if self.fail_screenshot:
             from shipit_agent.tools.computer_use.backends import BackendError
+
             raise BackendError("backend missing")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"fake-png")
         self.calls.append(("screenshot", (path,), {}))
         return path
 
-    def move(self, x: int, y: int) -> None: self.calls.append(("move", (x, y), {}))
-    def click(self, x: int, y: int, **kw: Any) -> None: self.calls.append(("click", (x, y), kw))
+    def move(self, x: int, y: int) -> None:
+        self.calls.append(("move", (x, y), {}))
+
+    def click(self, x: int, y: int, **kw: Any) -> None:
+        self.calls.append(("click", (x, y), kw))
+
     def drag(self, x: int, y: int, to_x: int, to_y: int) -> None:
         self.calls.append(("drag", (x, y, to_x, to_y), {}))
-    def type_text(self, text: str) -> None: self.calls.append(("type_text", (text,), {}))
-    def key(self, keys: str) -> None: self.calls.append(("key", (keys,), {}))
+
+    def type_text(self, text: str) -> None:
+        self.calls.append(("type_text", (text,), {}))
+
+    def key(self, keys: str) -> None:
+        self.calls.append(("key", (keys,), {}))
+
     def scroll(self, x: int, y: int, dx: int, dy: int) -> None:
         self.calls.append(("scroll", (x, y, dx, dy), {}))
 
@@ -62,12 +69,24 @@ def fake_backend(monkeypatch: pytest.MonkeyPatch) -> _FakeBackend:
 
 
 class TestComputerUseTool:
-    def _ctx(self) -> ToolContext: return ToolContext(prompt="test")
+    def _ctx(self) -> ToolContext:
+        return ToolContext(prompt="test")
 
     def test_schema_has_all_actions(self) -> None:
         tool = ComputerUseTool()
-        actions = tool.schema()["function"]["parameters"]["properties"]["action"]["enum"]
-        for a in ["screenshot", "click", "mouse_move", "type", "key", "scroll", "drag", "wait"]:
+        actions = tool.schema()["function"]["parameters"]["properties"]["action"][
+            "enum"
+        ]
+        for a in [
+            "screenshot",
+            "click",
+            "mouse_move",
+            "type",
+            "key",
+            "scroll",
+            "drag",
+            "wait",
+        ]:
             assert a in actions
 
     def test_rejects_unknown_action(self, tmp_path: Path) -> None:
@@ -76,33 +95,45 @@ class TestComputerUseTool:
         assert "unsupported action" in out.text
         assert out.metadata["ok"] is False
 
-    def test_screenshot_writes_file(self, fake_backend: _FakeBackend, tmp_path: Path) -> None:
+    def test_screenshot_writes_file(
+        self, fake_backend: _FakeBackend, tmp_path: Path
+    ) -> None:
         tool = ComputerUseTool(output_dir=tmp_path)
         out = tool.run(self._ctx(), action="screenshot")
         assert out.metadata["ok"] is True
         path = Path(out.metadata["path"])
         assert path.exists() and path.read_bytes() == b"fake-png"
 
-    def test_click_delegates_to_backend(self, fake_backend: _FakeBackend, tmp_path: Path) -> None:
+    def test_click_delegates_to_backend(
+        self, fake_backend: _FakeBackend, tmp_path: Path
+    ) -> None:
         tool = ComputerUseTool(output_dir=tmp_path)
-        out = tool.run(self._ctx(), action="click", x=100, y=200, button="right", double=True)
+        out = tool.run(
+            self._ctx(), action="click", x=100, y=200, button="right", double=True
+        )
         assert out.metadata["ok"] is True
         assert fake_backend.calls[-1][0] == "click"
         assert fake_backend.calls[-1][2] == {"button": "right", "double": True}
 
-    def test_missing_xy_errors_cleanly(self, fake_backend: _FakeBackend, tmp_path: Path) -> None:
+    def test_missing_xy_errors_cleanly(
+        self, fake_backend: _FakeBackend, tmp_path: Path
+    ) -> None:
         tool = ComputerUseTool(output_dir=tmp_path)
         out = tool.run(self._ctx(), action="click")  # no x/y
         assert out.metadata["ok"] is False
         assert "x" in out.text and "y" in out.text
 
-    def test_type_requires_text(self, fake_backend: _FakeBackend, tmp_path: Path) -> None:
+    def test_type_requires_text(
+        self, fake_backend: _FakeBackend, tmp_path: Path
+    ) -> None:
         tool = ComputerUseTool(output_dir=tmp_path)
         out = tool.run(self._ctx(), action="type")
         assert out.metadata["ok"] is False
         assert "text" in out.text
 
-    def test_wait_does_not_call_backend(self, fake_backend: _FakeBackend, tmp_path: Path) -> None:
+    def test_wait_does_not_call_backend(
+        self, fake_backend: _FakeBackend, tmp_path: Path
+    ) -> None:
         tool = ComputerUseTool(output_dir=tmp_path)
         tool.run(self._ctx(), action="wait", seconds=0.01)
         assert not fake_backend.calls
@@ -126,13 +157,20 @@ class TestComputerUseTool:
 class _MockHTTPResp:
     def __init__(self, body: dict[str, Any]) -> None:
         self._body = json.dumps(body).encode("utf-8")
-    def __enter__(self) -> "_MockHTTPResp": return self
-    def __exit__(self, *a: Any) -> None: pass
-    def read(self, _n: int = -1) -> bytes: return self._body
+
+    def __enter__(self) -> "_MockHTTPResp":
+        return self
+
+    def __exit__(self, *a: Any) -> None:
+        pass
+
+    def read(self, _n: int = -1) -> bytes:
+        return self._body
 
 
 class TestHubspotTool:
-    def _ctx(self) -> ToolContext: return ToolContext(prompt="test")
+    def _ctx(self) -> ToolContext:
+        return ToolContext(prompt="test")
 
     def test_missing_token_fails_cleanly(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("HUBSPOT_TOKEN", raising=False)
@@ -141,14 +179,38 @@ class TestHubspotTool:
         assert out.metadata["ok"] is False
         assert "HUBSPOT_TOKEN" in out.text
 
-    def test_search_contacts_formats_results(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        responses = iter([
-            _MockHTTPResp({"results": [
-                {"id": "1", "properties": {"email": "a@x.com", "firstname": "A", "lastname": "B"}},
-                {"id": "2", "properties": {"email": "c@y.com", "firstname": "C", "lastname": "D"}},
-            ]})
-        ])
-        monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_kw: next(responses))
+    def test_search_contacts_formats_results(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        responses = iter(
+            [
+                _MockHTTPResp(
+                    {
+                        "results": [
+                            {
+                                "id": "1",
+                                "properties": {
+                                    "email": "a@x.com",
+                                    "firstname": "A",
+                                    "lastname": "B",
+                                },
+                            },
+                            {
+                                "id": "2",
+                                "properties": {
+                                    "email": "c@y.com",
+                                    "firstname": "C",
+                                    "lastname": "D",
+                                },
+                            },
+                        ]
+                    }
+                )
+            ]
+        )
+        monkeypatch.setattr(
+            "urllib.request.urlopen", lambda *_a, **_kw: next(responses)
+        )
         tool = HubspotTool(token="fake")
         out = tool.run(self._ctx(), action="search_contacts", query="a")
         assert out.metadata["ok"] is True
@@ -171,14 +233,17 @@ class TestHubspotTool:
 
 
 class TestResearchBriefTool:
-    def _ctx(self) -> ToolContext: return ToolContext(prompt="test")
+    def _ctx(self) -> ToolContext:
+        return ToolContext(prompt="test")
 
     def test_empty_query_errors(self) -> None:
         tool = ResearchBriefTool()
         out = tool.run(self._ctx(), query="")
         assert out.metadata["ok"] is False
 
-    def test_formats_brief_with_fake_sources(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_formats_brief_with_fake_sources(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         fake_html = (
             '<a rel="nofollow" class="result__a" href="https://a.com">Alpha site</a>'
             '<a class="result__snippet" href="">alpha snippet text</a>'
@@ -202,9 +267,12 @@ class TestResearchBriefTool:
 
     def test_net_error_surfaces_cleanly(self, monkeypatch: pytest.MonkeyPatch) -> None:
         tool = ResearchBriefTool()
+
         def _boom(_u: str) -> str:
             from shipit_agent.tools.research_brief.research_brief_tool import _NetError
+
             raise _NetError("DNS failure")
+
         monkeypatch.setattr(tool, "_fetch", _boom)
         out = tool.run(self._ctx(), query="x")
         assert out.metadata["ok"] is False

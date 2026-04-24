@@ -15,9 +15,6 @@ These are the guarantees that let an Autopilot survive a 24-hour run:
 from __future__ import annotations
 
 import json
-import os
-import signal
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -48,9 +45,15 @@ class _Result:
 class _CountingAgent:
     """Inner agent that counts invocations and returns a preset token/cost shape."""
 
-    def __init__(self, *, criteria: int, tokens_per_call: int = 100,
-                 model: str = "gpt-4o-mini", cost_usd: float | None = None,
-                 stop_after: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        criteria: int,
+        tokens_per_call: int = 100,
+        model: str = "gpt-4o-mini",
+        cost_usd: float | None = None,
+        stop_after: int | None = None,
+    ) -> None:
         self.criteria = criteria
         self.tokens_per_call = tokens_per_call
         self.model = model
@@ -71,7 +74,11 @@ class _CountingAgent:
         }
         if self.cost_usd is not None:
             meta["cost_usd"] = self.cost_usd
-        status = "completed" if self.stop_after and self.calls >= self.stop_after else "in_progress"
+        status = (
+            "completed"
+            if self.stop_after and self.calls >= self.stop_after
+            else "in_progress"
+        )
         return _Result(
             output=f"step-{self.calls}",
             goal_status=status,
@@ -80,15 +87,16 @@ class _CountingAgent:
         )
 
 
-def _autopilot(tmp_path: Path, *, agent: Any, budget: BudgetPolicy | None = None,
-               **kw: Any) -> Autopilot:
+def _autopilot(
+    tmp_path: Path, *, agent: Any, budget: BudgetPolicy | None = None, **kw: Any
+) -> Autopilot:
     return Autopilot(
         llm=None,
         goal=Goal(objective="hardening", success_criteria=["a"]),
         checkpoint_dir=tmp_path,
         budget=budget or BudgetPolicy(max_iterations=3, max_seconds=60),
         agent_factory=lambda **_: agent,
-        install_signal_handlers=False,     # tests don't own the signal table
+        install_signal_handlers=False,  # tests don't own the signal table
         **kw,
     )
 
@@ -106,15 +114,19 @@ class TestFullUsagePersistence:
         store.save(
             "rt",
             goal={"objective": "x", "success_criteria": ["a"], "max_steps": None},
-            usage=BudgetUsage(seconds=123.4, tool_calls=7, tokens=500,
-                              dollars=0.42, iterations=3),
+            usage=BudgetUsage(
+                seconds=123.4, tool_calls=7, tokens=500, dollars=0.42, iterations=3
+            ),
             step_outputs=[{"iteration": 1}],
             output="hello",
         )
         loaded = store.load("rt")
         assert loaded["usage"] == {
-            "seconds": 123.4, "tool_calls": 7, "tokens": 500,
-            "dollars": 0.42, "iterations": 3,
+            "seconds": 123.4,
+            "tool_calls": 7,
+            "tokens": 500,
+            "dollars": 0.42,
+            "iterations": 3,
         }
         restored = CheckpointStore.usage_from_payload(loaded)
         assert restored.seconds == 123.4
@@ -128,15 +140,22 @@ class TestFullUsagePersistence:
         # ``iterations`` at the top level must still load — users don't
         # restart their runs just because the library upgraded.
         path = tmp_path / "old.json"
-        path.write_text(json.dumps({
-            "run_id": "old", "goal": {}, "iterations": 4,
-            "step_outputs": [], "output": "resumed",
-        }))
+        path.write_text(
+            json.dumps(
+                {
+                    "run_id": "old",
+                    "goal": {},
+                    "iterations": 4,
+                    "step_outputs": [],
+                    "output": "resumed",
+                }
+            )
+        )
         store = CheckpointStore(tmp_path)
         loaded = store.load("old")
         restored = CheckpointStore.usage_from_payload(loaded)
         assert restored.iterations == 4
-        assert restored.dollars == 0.0     # absent field → 0, no crash
+        assert restored.dollars == 0.0  # absent field → 0, no crash
 
     def test_resume_carries_wall_clock_cumulatively(self, tmp_path: Path) -> None:
         """A run that spent 50 seconds should resume with usage.seconds
@@ -154,10 +173,16 @@ class TestFullUsagePersistence:
         )
         # Budget of 2s total — with cumulative seconds we trip instantly.
         auto = Autopilot(
-            llm=None, goal=Goal(objective="x", success_criteria=["a"]),
+            llm=None,
+            goal=Goal(objective="x", success_criteria=["a"]),
             checkpoint_dir=tmp_path,
-            budget=BudgetPolicy(max_seconds=2.0, max_iterations=100, max_tokens=0,
-                                max_dollars=0, max_tool_calls=0),
+            budget=BudgetPolicy(
+                max_seconds=2.0,
+                max_iterations=100,
+                max_tokens=0,
+                max_dollars=0,
+                max_tool_calls=0,
+            ),
             agent_factory=lambda **_: _CountingAgent(criteria=1),
             install_signal_handlers=False,
         )
@@ -198,8 +223,10 @@ class TestDollarTracking:
 
     def test_pricing_table_lookup_for_known_model(self, tmp_path: Path) -> None:
         agent = _CountingAgent(
-            criteria=1, tokens_per_call=10_000,
-            model="gpt-4o-mini", stop_after=1,
+            criteria=1,
+            tokens_per_call=10_000,
+            model="gpt-4o-mini",
+            stop_after=1,
         )
         auto = _autopilot(tmp_path, agent=agent)
         r = auto.run(run_id="cost-2")
@@ -234,7 +261,8 @@ class TestSignalStop:
 
         agent = _CountingAgent(criteria=10, stop_after=None)
         auto = _autopilot(
-            tmp_path, agent=agent,
+            tmp_path,
+            agent=agent,
             budget=BudgetPolicy(max_iterations=100, max_seconds=60),
         )
         # Stopping before the run starts means iteration 1 completes,
@@ -255,11 +283,12 @@ class TestHeartbeatProgress:
         interval hasn't elapsed yet."""
         seen: list[dict[str, Any]] = []
         auto = Autopilot(
-            llm=None, goal=Goal(objective="x", success_criteria=["a"]),
+            llm=None,
+            goal=Goal(objective="x", success_criteria=["a"]),
             checkpoint_dir=tmp_path,
             budget=BudgetPolicy(max_iterations=1, max_seconds=30),
             agent_factory=lambda **_: _CountingAgent(criteria=1, stop_after=1),
-            heartbeat_every_seconds=9999,        # effectively disables interval
+            heartbeat_every_seconds=9999,  # effectively disables interval
             on_heartbeat=seen.append,
             install_signal_handlers=False,
         )
@@ -277,7 +306,8 @@ class TestHeartbeatProgress:
 class TestStreamEnrichment:
     def test_iteration_event_has_remaining(self, tmp_path: Path) -> None:
         auto = Autopilot(
-            llm=None, goal=Goal(objective="x", success_criteria=["a"]),
+            llm=None,
+            goal=Goal(objective="x", success_criteria=["a"]),
             checkpoint_dir=tmp_path,
             budget=BudgetPolicy(max_iterations=3, max_dollars=1.0, max_seconds=60),
             agent_factory=lambda **_: _CountingAgent(criteria=1, stop_after=1),
@@ -304,8 +334,11 @@ class TestBudgetProjection:
 
     def test_remaining_reports_disabled_axes_as_none(self) -> None:
         policy = BudgetPolicy(
-            max_seconds=100, max_tool_calls=None,
-            max_tokens=None, max_dollars=None, max_iterations=None,
+            max_seconds=100,
+            max_tool_calls=None,
+            max_tokens=None,
+            max_dollars=None,
+            max_iterations=None,
         )
         rem = policy.remaining(BudgetUsage(seconds=25))
         assert rem["seconds"] == 75

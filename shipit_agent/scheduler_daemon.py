@@ -31,7 +31,6 @@ want. That way the daemon module is import-safe in any environment.
 from __future__ import annotations
 
 import json
-import os
 import signal
 import time
 from dataclasses import asdict, dataclass, field
@@ -42,7 +41,6 @@ from shipit_agent.autopilot import (
     Autopilot,
     AutopilotResult,
     BudgetPolicy,
-    default_heartbeat_stderr,
 )
 from shipit_agent.deep.goal_agent import Goal
 
@@ -53,7 +51,7 @@ class QueueEntry:
     objective: str
     success_criteria: list[str] = field(default_factory=list)
     budget: dict[str, Any] = field(default_factory=dict)
-    status: str = "pending"             # pending | running | done | failed | halted
+    status: str = "pending"  # pending | running | done | failed | halted
     created_at: float = 0.0
     started_at: float | None = None
     finished_at: float | None = None
@@ -82,7 +80,7 @@ class SchedulerDaemon:
         llm_factory: LlmFactory,
         queue_path: str | Path | None = None,
         tick_seconds: float = 5.0,
-        heartbeat_every_ticks: int = 60,      # ~5 min at 5s tick
+        heartbeat_every_ticks: int = 60,  # ~5 min at 5s tick
         on_heartbeat: Callable[[dict[str, Any]], None] | None = None,
         tools: list[Any] | None = None,
         mcps: list[Any] | None = None,
@@ -114,7 +112,9 @@ class SchedulerDaemon:
     ) -> QueueEntry:
         entries = self._load_queue()
         if any(e.run_id == run_id for e in entries):
-            raise ValueError(f"A task with run_id={run_id!r} already exists in the queue.")
+            raise ValueError(
+                f"A task with run_id={run_id!r} already exists in the queue."
+            )
         entry = QueueEntry(
             run_id=run_id,
             objective=objective,
@@ -159,7 +159,7 @@ class SchedulerDaemon:
                 on_heartbeat=self.on_heartbeat,
             )
             result = autopilot.run(run_id=entry.run_id)
-        except Exception as err:       # noqa: BLE001
+        except Exception as err:  # noqa: BLE001
             entry.status = "failed"
             entry.finished_at = time.time()
             entry.result = {"status": "failed", "error": f"{type(err).__name__}: {err}"}
@@ -192,7 +192,11 @@ class SchedulerDaemon:
             else:
                 idle_ticks = 0
 
-            if self.on_heartbeat and idle_ticks > 0 and idle_ticks % self.heartbeat_every_ticks == 0:
+            if (
+                self.on_heartbeat
+                and idle_ticks > 0
+                and idle_ticks % self.heartbeat_every_ticks == 0
+            ):
                 entries = self._load_queue()
                 pending = [e for e in entries if e.status == "pending"]
                 self.on_heartbeat(

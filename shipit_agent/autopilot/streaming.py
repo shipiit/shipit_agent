@@ -113,9 +113,10 @@ def autopilot_stream(
             if self.artifacts is not None:
                 try:
                     new_artifacts = self.artifacts.extract_from_output(
-                        final_output, iteration=usage.iterations,
+                        final_output,
+                        iteration=usage.iterations,
                     )
-                except Exception:   # noqa: BLE001
+                except Exception:  # noqa: BLE001
                     new_artifacts = []
                 for a in new_artifacts:
                     # Artifact.to_dict() carries its own `kind` ("code",
@@ -144,12 +145,14 @@ def autopilot_stream(
                     criteria_met = list(verdict.criteria_met)
                 self._stash_critic_suggestions(verdict)
 
-            step_outputs.append({
-                "iteration": usage.iterations,
-                "status": getattr(result, "goal_status", "unknown"),
-                "criteria_met": criteria_met,
-                "summary": final_output[:500],
-            })
+            step_outputs.append(
+                {
+                    "iteration": usage.iterations,
+                    "status": getattr(result, "goal_status", "unknown"),
+                    "criteria_met": criteria_met,
+                    "summary": final_output[:500],
+                }
+            )
             yield {
                 "kind": "autopilot.iteration",
                 "iteration": usage.iterations,
@@ -174,55 +177,95 @@ def autopilot_stream(
                 }
                 yield hb
                 if self.on_heartbeat:
-                    try: self.on_heartbeat(hb)
-                    except Exception: pass
+                    try:
+                        self.on_heartbeat(hb)
+                    except Exception:
+                        pass
                 last_hb = now
 
             if criteria_met and all(criteria_met):
                 halt_reason = "all criteria satisfied"
-                yield {"kind": "autopilot.criteria_satisfied", "criteria_met": criteria_met}
+                yield {
+                    "kind": "autopilot.criteria_satisfied",
+                    "criteria_met": criteria_met,
+                }
                 break
             if self.critic is not None and self.critic.should_terminate(verdict):
                 halt_reason = "critic confirmed satisfaction"
-                yield {"kind": "autopilot.criteria_satisfied", "criteria_met": criteria_met, "by_critic": True}
+                yield {
+                    "kind": "autopilot.criteria_satisfied",
+                    "criteria_met": criteria_met,
+                    "by_critic": True,
+                }
                 break
             if getattr(result, "goal_status", None) == "completed":
                 halt_reason = "inner agent reported completion"
                 break
 
             self.checkpoints.save(
-                rid, goal=self.goal_dict(), usage=usage,
-                step_outputs=step_outputs, output=final_output,
+                rid,
+                goal=self.goal_dict(),
+                usage=usage,
+                step_outputs=step_outputs,
+                output=final_output,
             )
     except KeyboardInterrupt:
         halt_reason = "interrupted by user (SIGINT)"
-    except Exception as err:    # noqa: BLE001
+    except Exception as err:  # noqa: BLE001
         halt_reason = f"exception: {type(err).__name__}: {err}"
         self.checkpoints.save(
-            rid, goal=self.goal_dict(), usage=usage,
-            step_outputs=step_outputs, output=final_output,
+            rid,
+            goal=self.goal_dict(),
+            usage=usage,
+            step_outputs=step_outputs,
+            output=final_output,
         )
         yield {
             "kind": "autopilot.result",
-            **_to_dict(self, rid, "failed", criteria_met, usage, final_output, halt_reason, step_outputs),
+            **_to_dict(
+                self,
+                rid,
+                "failed",
+                criteria_met,
+                usage,
+                final_output,
+                halt_reason,
+                step_outputs,
+            ),
         }
         return
 
     self.checkpoints.save(
-        rid, goal=self.goal_dict(), usage=usage,
-        step_outputs=step_outputs, output=final_output,
+        rid,
+        goal=self.goal_dict(),
+        usage=usage,
+        step_outputs=step_outputs,
+        output=final_output,
     )
     status = self._classify_status(criteria_met)
     yield {
         "kind": "autopilot.result",
-        **_to_dict(self, rid, status, criteria_met, usage, final_output, halt_reason, step_outputs),
+        **_to_dict(
+            self,
+            rid,
+            status,
+            criteria_met,
+            usage,
+            final_output,
+            halt_reason,
+            step_outputs,
+        ),
     }
 
 
 def _to_dict(
     autopilot: Autopilot,
-    run_id: str, status: str, criteria_met: list[bool],
-    usage: BudgetUsage, output: str, halt_reason: str,
+    run_id: str,
+    status: str,
+    criteria_met: list[bool],
+    usage: BudgetUsage,
+    output: str,
+    halt_reason: str,
     step_outputs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Build the final `autopilot.result` payload, including artifacts +
@@ -235,11 +278,13 @@ def _to_dict(
     if last is not None:
         verdict_dict = last.to_dict()
     return AutopilotResult(
-        run_id=run_id, status=status,
+        run_id=run_id,
+        status=status,
         criteria_met=criteria_met,
         iterations=usage.iterations,
         usage=usage.to_dict(),
-        output=output, halt_reason=halt_reason,
+        output=output,
+        halt_reason=halt_reason,
         step_outputs=step_outputs,
         artifacts=artifacts,
         critic_verdict=verdict_dict,

@@ -79,9 +79,9 @@ def test_autopilot_tour_notebooks_use_current_api() -> None:
         code = _join_code_cells(path)
         # The tour notebooks should ALWAYS load prebuilt agents via the
         # bundled default registry.
-        assert "AgentRegistry.default()" in code, (
-            f"{path.name} must call AgentRegistry.default() to reach bundled agents"
-        )
+        assert (
+            "AgentRegistry.default()" in code
+        ), f"{path.name} must call AgentRegistry.default() to reach bundled agents"
         # Empty-arg construction of AgentRegistry is the footgun — it
         # builds an empty registry whose .get() returns None.
         assert "AgentRegistry()" not in code, (

@@ -26,7 +26,7 @@ class AskUserAsyncTool:
     description = (
         "Pause an Autopilot run to ask the user a clarifying question — "
         "non-blocking; the run halts into awaiting_user and resumes once "
-        "the user answers via `shipit answer <run_id> \"...\"`."
+        'the user answers via `shipit answer <run_id> "..."`.'
     )
     prompt_instructions = ASK_USER_ASYNC_PROMPT
 
@@ -67,7 +67,9 @@ class AskUserAsyncTool:
         # otherwise raise TypeError when both are supplied.
         question = str(kwargs.get("question", "")).strip()
         if not question:
-            return ToolOutput(text="Error: `question` is required.", metadata={"ok": False})
+            return ToolOutput(
+                text="Error: `question` is required.", metadata={"ok": False}
+            )
 
         run_id = _resolve_run_id(ctx)
         entry = ask_question(
@@ -87,11 +89,11 @@ class AskUserAsyncTool:
                 f"  {entry.question}\n\n"
                 f"The run will halt into status='awaiting_user'. "
                 f"End your turn now; Autopilot will resume after the user replies via "
-                f"`shipit answer {run_id} \"...\"`."
+                f'`shipit answer {run_id} "..."`.'
             ),
             metadata={
                 "ok": True,
-                "awaiting_user": True,          # ← the sentinel Autopilot watches
+                "awaiting_user": True,  # ← the sentinel Autopilot watches
                 "run_id": run_id,
                 "question": entry.question,
                 "context": entry.context,

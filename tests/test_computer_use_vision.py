@@ -13,16 +13,22 @@ from shipit_agent.tools.computer_use import ComputerUseTool
 
 class _FakeBackend:
     """Writes a fixed byte string as the "PNG" so we can assert on b64."""
+
     def __init__(self, payload: bytes = b"\x89PNG\r\n\x1a\n-fake-png-bytes-") -> None:
         self.platform = "test"
         self.payload = payload
+
     def screenshot(self, path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(self.payload)
         return path
+
     # Methods the tool may delegate to but aren't needed for these tests.
-    def click(self, *a: Any, **kw: Any) -> None: pass
-    def move(self, *a: Any, **kw: Any) -> None: pass
+    def click(self, *a: Any, **kw: Any) -> None:
+        pass
+
+    def move(self, *a: Any, **kw: Any) -> None:
+        pass
 
 
 @pytest.fixture
@@ -50,7 +56,10 @@ def ctx() -> ToolContext:
 
 class TestVisionDefault:
     def test_screenshot_includes_base64_by_default(
-        self, tool: ComputerUseTool, fake_backend: _FakeBackend, ctx: ToolContext,
+        self,
+        tool: ComputerUseTool,
+        fake_backend: _FakeBackend,
+        ctx: ToolContext,
     ) -> None:
         out = tool.run(ctx, action="screenshot")
         assert out.metadata["ok"] is True
@@ -58,11 +67,15 @@ class TestVisionDefault:
         assert out.metadata["media_type"] == "image/png"
         # Base64 of the raw payload.
         import base64
+
         expected = base64.b64encode(fake_backend.payload).decode("ascii")
         assert out.metadata["image_base64"] == expected
 
     def test_text_still_reports_saved_path(
-        self, tool: ComputerUseTool, fake_backend: _FakeBackend, ctx: ToolContext,
+        self,
+        tool: ComputerUseTool,
+        fake_backend: _FakeBackend,
+        ctx: ToolContext,
     ) -> None:
         out = tool.run(ctx, action="screenshot")
         assert out.text.startswith("Screenshot saved: ")
@@ -74,7 +87,10 @@ class TestVisionDefault:
 
 class TestVisionOptOut:
     def test_vision_false_omits_base64(
-        self, tool: ComputerUseTool, fake_backend: _FakeBackend, ctx: ToolContext,
+        self,
+        tool: ComputerUseTool,
+        fake_backend: _FakeBackend,
+        ctx: ToolContext,
     ) -> None:
         out = tool.run(ctx, action="screenshot", vision=False)
         assert "image_base64" not in out.metadata
@@ -83,7 +99,10 @@ class TestVisionOptOut:
 
 class TestSizeCap:
     def test_refuses_to_embed_giant_png(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ctx: ToolContext,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        ctx: ToolContext,
     ) -> None:
         # 5 MB — over the 4 MB cap.
         big = b"\x89PNG" + b"x" * (5 * 1024 * 1024)

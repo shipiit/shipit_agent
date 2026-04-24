@@ -59,9 +59,16 @@ class ResearchBriefTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query":       {"type": "string", "description": "Research topic / question."},
+                        "query": {
+                            "type": "string",
+                            "description": "Research topic / question.",
+                        },
                         "max_sources": {"type": "integer", "default": 5},
-                        "deep":        {"type": "boolean", "default": False, "description": "Fetch each source for a deeper summary."},
+                        "deep": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Fetch each source for a deeper summary.",
+                        },
                     },
                     "required": ["query"],
                 },
@@ -71,7 +78,9 @@ class ResearchBriefTool:
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
         query = str(kwargs.get("query", "")).strip()
         if not query:
-            return ToolOutput(text="Error: `query` is required.", metadata={"ok": False})
+            return ToolOutput(
+                text="Error: `query` is required.", metadata={"ok": False}
+            )
         max_sources = max(1, min(10, int(kwargs.get("max_sources", 5))))
         deep = bool(kwargs.get("deep", False))
 
@@ -80,7 +89,7 @@ class ResearchBriefTool:
         except _NetError as err:
             return ToolOutput(
                 text=f"Error: could not search ({err}). "
-                     "If you have an API-backed web_search tool, prefer it.",
+                "If you have an API-backed web_search tool, prefer it.",
                 metadata={"ok": False},
             )
 
@@ -93,7 +102,9 @@ class ResearchBriefTool:
                     continue
 
         brief = _format_brief(query, sources)
-        return ToolOutput(text=brief, metadata={"ok": True, "sources": [s.url for s in sources]})
+        return ToolOutput(
+            text=brief, metadata={"ok": True, "sources": [s.url for s in sources]}
+        )
 
     # ── search + fetch ──────────────────────────────────────────
 

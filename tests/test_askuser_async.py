@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -17,7 +16,7 @@ from shipit_agent.askuser_channel import (
     pending_questions,
     write_answer,
 )
-from shipit_agent.autopilot import Autopilot, BudgetPolicy, AutopilotResult
+from shipit_agent.autopilot import Autopilot, BudgetPolicy
 from shipit_agent.deep.goal_agent import Goal
 from shipit_agent.tools.ask_user_async import AskUserAsyncTool
 from shipit_agent.tools.base import ToolContext
@@ -40,7 +39,9 @@ class TestChannelPrimitives:
         assert ch.entries == []
 
     def test_ask_then_load_roundtrip(self) -> None:
-        ask_question("run-1", "Which backend?", context="Need answer today", choices=["A", "B"])
+        ask_question(
+            "run-1", "Which backend?", context="Need answer today", choices=["A", "B"]
+        )
         ch = load("run-1")
         assert len(ch.entries) == 1
         assert ch.entries[0].question == "Which backend?"
@@ -60,9 +61,9 @@ class TestChannelPrimitives:
     def test_answer_preserves_previous_entries(self) -> None:
         ask_question("run-1", "Q1")
         ask_question("run-1", "Q2")
-        write_answer("run-1", "A2")              # answers the latest
+        write_answer("run-1", "A2")  # answers the latest
         entries = all_entries("run-1")
-        assert entries[0].answered() is False    # Q1 still open
+        assert entries[0].answered() is False  # Q1 still open
         assert entries[1].answer == "A2"
 
     def test_answer_by_index(self) -> None:
@@ -90,7 +91,9 @@ class TestChannelPrimitives:
 
 class TestAskUserAsyncTool:
     def test_rejects_empty_question(self) -> None:
-        out = AskUserAsyncTool().run(ToolContext(prompt="demo", state={"autopilot_run_id": "r"}))
+        out = AskUserAsyncTool().run(
+            ToolContext(prompt="demo", state={"autopilot_run_id": "r"})
+        )
         assert "required" in out.text
 
     def test_queues_the_question(self) -> None:
@@ -123,19 +126,26 @@ class _Result:
     output: str = "ok"
     goal_status: str = "in_progress"
     criteria_met: list[bool] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=lambda: {"usage": {"total_tokens": 50}})
+    metadata: dict[str, Any] = field(
+        default_factory=lambda: {"usage": {"total_tokens": 50}}
+    )
 
 
 class _QuietAgent:
     def __init__(self, outs: list[str]) -> None:
-        self.outs = outs; self.n = 0
+        self.outs = outs
+        self.n = 0
+
     def run(self) -> _Result:
-        i = min(self.n, len(self.outs) - 1); self.n += 1
+        i = min(self.n, len(self.outs) - 1)
+        self.n += 1
         return _Result(output=self.outs[i], criteria_met=[False])
 
 
 class TestAutopilotIntegration:
-    def test_halts_into_awaiting_user_when_question_queued(self, tmp_path: Path) -> None:
+    def test_halts_into_awaiting_user_when_question_queued(
+        self, tmp_path: Path
+    ) -> None:
         rid = "ap-1"
         autopilot = Autopilot(
             llm=None,

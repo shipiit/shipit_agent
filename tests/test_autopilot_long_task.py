@@ -57,8 +57,14 @@ class _ProgressAgent:
     — so test assertions can compute expected totals exactly.
     """
 
-    def __init__(self, *, criteria: int, tokens: int = 100,
-                 cost_usd: float = 0.001, stop_after: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        criteria: int,
+        tokens: int = 100,
+        cost_usd: float = 0.001,
+        stop_after: int | None = None,
+    ) -> None:
         self.criteria = criteria
         self.tokens = tokens
         self.cost_usd = cost_usd
@@ -68,18 +74,25 @@ class _ProgressAgent:
     def run(self) -> _Result:
         self.calls += 1
         met = [i < self.calls for i in range(self.criteria)]
-        status = "completed" if (self.stop_after and self.calls >= self.stop_after) else "in_progress"
+        status = (
+            "completed"
+            if (self.stop_after and self.calls >= self.stop_after)
+            else "in_progress"
+        )
         return _Result(
             output=f"step-{self.calls}",
             goal_status=status,
             criteria_met=met,
-            metadata={"cost_usd": self.cost_usd,
-                      "usage": {"total_tokens": self.tokens}},
+            metadata={
+                "cost_usd": self.cost_usd,
+                "usage": {"total_tokens": self.tokens},
+            },
         )
 
 
-def _autopilot(tmp_path: Path, *, agent: Any, budget: BudgetPolicy,
-               **kw: Any) -> Autopilot:
+def _autopilot(
+    tmp_path: Path, *, agent: Any, budget: BudgetPolicy, **kw: Any
+) -> Autopilot:
     return Autopilot(
         llm=None,
         goal=Goal(objective="long", success_criteria=["done"]),
@@ -102,13 +115,17 @@ class TestManyIterations:
         # criteria=0 → an empty criteria_met list keeps the "all
         # criteria met" short-circuit inactive, so the loop runs
         # until the iteration budget trips.
-        agent = _ProgressAgent(criteria=0, tokens=50, cost_usd=0.0005,
-                               stop_after=None)
+        agent = _ProgressAgent(criteria=0, tokens=50, cost_usd=0.0005, stop_after=None)
         auto = _autopilot(
-            tmp_path, agent=agent,
-            budget=BudgetPolicy(max_iterations=500, max_seconds=60,
-                                max_tokens=10_000_000, max_dollars=100.0,
-                                max_tool_calls=None),
+            tmp_path,
+            agent=agent,
+            budget=BudgetPolicy(
+                max_iterations=500,
+                max_seconds=60,
+                max_tokens=10_000_000,
+                max_dollars=100.0,
+                max_tool_calls=None,
+            ),
         )
         result = auto.run(run_id="many")
         # We hit the iteration cap, not seconds.
@@ -123,10 +140,15 @@ class TestManyIterations:
         don't blow up a long-running process' RSS."""
         agent = _ProgressAgent(criteria=0, tokens=10, stop_after=None)
         auto = _autopilot(
-            tmp_path, agent=agent,
-            budget=BudgetPolicy(max_iterations=50, max_seconds=30,
-                                max_tokens=None, max_dollars=None,
-                                max_tool_calls=None),
+            tmp_path,
+            agent=agent,
+            budget=BudgetPolicy(
+                max_iterations=50,
+                max_seconds=30,
+                max_tokens=None,
+                max_dollars=None,
+                max_tool_calls=None,
+            ),
         )
         result = auto.run(run_id="bounded")
         # Every summary is truncated at 500 chars even if the underlying
@@ -165,7 +187,8 @@ class TestCrashResumeChain:
                 budget=BudgetPolicy(
                     max_iterations=iters_per_segment * (segment + 1),
                     max_seconds=30,
-                    max_tokens=None, max_dollars=None,
+                    max_tokens=None,
+                    max_dollars=None,
                     max_tool_calls=None,
                 ),
                 agent_factory=lambda a=agent, **_: a,
@@ -205,6 +228,7 @@ class TestSignalHaltMidRun:
         class _SleepyAgent:
             def __init__(self) -> None:
                 self.calls = 0
+
             def run(self) -> _Result:
                 self.calls += 1
                 time.sleep(0.05)
@@ -218,9 +242,13 @@ class TestSignalHaltMidRun:
             llm=None,
             goal=Goal(objective="sig", success_criteria=["c"]),
             checkpoint_dir=tmp_path,
-            budget=BudgetPolicy(max_iterations=200, max_seconds=10,
-                                max_tokens=None, max_dollars=None,
-                                max_tool_calls=None),
+            budget=BudgetPolicy(
+                max_iterations=200,
+                max_seconds=10,
+                max_tokens=None,
+                max_dollars=None,
+                max_tool_calls=None,
+            ),
             agent_factory=lambda **_: _SleepyAgent(),
             install_signal_handlers=True,
         )
@@ -265,10 +293,15 @@ class TestMidRunCorruption:
         (tmp_path / "bad.json").write_text("not valid json{{{")
 
         auto = _autopilot(
-            tmp_path, agent=_ProgressAgent(criteria=1, stop_after=1),
-            budget=BudgetPolicy(max_iterations=2, max_seconds=30,
-                                max_tokens=None, max_dollars=None,
-                                max_tool_calls=None),
+            tmp_path,
+            agent=_ProgressAgent(criteria=1, stop_after=1),
+            budget=BudgetPolicy(
+                max_iterations=2,
+                max_seconds=30,
+                max_tokens=None,
+                max_dollars=None,
+                max_tool_calls=None,
+            ),
         )
         result = auto.resume("bad")
 
@@ -289,7 +322,9 @@ class TestLargeFanout:
 
     def test_fifty_children_all_accounted_for(self, tmp_path: Path) -> None:
         class _Instant:
-            def __init__(self, *, goal: Any, **_: Any) -> None: self.goal = goal
+            def __init__(self, *, goal: Any, **_: Any) -> None:
+                self.goal = goal
+
             def run(self) -> _Result:
                 return _Result(
                     output=f"done:{self.goal.objective}",
@@ -302,9 +337,13 @@ class TestLargeFanout:
             llm=None,
             goal=Goal(objective="parent", success_criteria=["p"]),
             checkpoint_dir=tmp_path,
-            budget=BudgetPolicy(max_iterations=10, max_seconds=120,
-                                max_tokens=10_000_000, max_dollars=5.0,
-                                max_tool_calls=None),
+            budget=BudgetPolicy(
+                max_iterations=10,
+                max_seconds=120,
+                max_tokens=10_000_000,
+                max_dollars=5.0,
+                max_tool_calls=None,
+            ),
             agent_factory=lambda *, goal, **_: _Instant(goal=goal),
             install_signal_handlers=False,
         )
@@ -377,9 +416,11 @@ def test_bedrock_soak_for_requested_duration(tmp_path: Path) -> None:
             self.goal = goal
 
         def run(self) -> _Result:
-            resp = self.llm.complete(messages=[
-                Message(role="user", content="Reply with just the word 'alive'."),
-            ])
+            resp = self.llm.complete(
+                messages=[
+                    Message(role="user", content="Reply with just the word 'alive'."),
+                ]
+            )
             content = resp.content or ""
             usage = resp.usage or {}
             return _Result(
@@ -390,13 +431,16 @@ def test_bedrock_soak_for_requested_duration(tmp_path: Path) -> None:
                     "model": model,
                     "usage": {
                         "prompt_tokens": int(usage.get("prompt_tokens", 0) or 0),
-                        "completion_tokens": int(usage.get("completion_tokens", 0) or 0),
+                        "completion_tokens": int(
+                            usage.get("completion_tokens", 0) or 0
+                        ),
                         "total_tokens": int(usage.get("total_tokens", 0) or 0),
                     },
                 },
             )
 
     hb_count = {"n": 0}
+
     def _hb(_payload: dict[str, Any]) -> None:
         hb_count["n"] += 1
 

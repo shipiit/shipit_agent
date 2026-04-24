@@ -16,7 +16,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,15 +27,31 @@ class BackendError(RuntimeError):
 @dataclass(slots=True)
 class Backend:
     """Common contract; subclasses override the methods they support."""
+
     platform: str
 
-    def screenshot(self, path: Path) -> Path: raise BackendError("screenshot not implemented")
-    def click(self, x: int, y: int, *, button: str = "left", double: bool = False) -> None: raise BackendError("click not implemented")
-    def move(self, x: int, y: int) -> None: raise BackendError("move not implemented")
-    def drag(self, x: int, y: int, to_x: int, to_y: int) -> None: raise BackendError("drag not implemented")
-    def type_text(self, text: str) -> None: raise BackendError("type_text not implemented")
-    def key(self, keys: str) -> None: raise BackendError("key not implemented")
-    def scroll(self, x: int, y: int, dx: int, dy: int) -> None: raise BackendError("scroll not implemented")
+    def screenshot(self, path: Path) -> Path:
+        raise BackendError("screenshot not implemented")
+
+    def click(
+        self, x: int, y: int, *, button: str = "left", double: bool = False
+    ) -> None:
+        raise BackendError("click not implemented")
+
+    def move(self, x: int, y: int) -> None:
+        raise BackendError("move not implemented")
+
+    def drag(self, x: int, y: int, to_x: int, to_y: int) -> None:
+        raise BackendError("drag not implemented")
+
+    def type_text(self, text: str) -> None:
+        raise BackendError("type_text not implemented")
+
+    def key(self, keys: str) -> None:
+        raise BackendError("key not implemented")
+
+    def scroll(self, x: int, y: int, dx: int, dy: int) -> None:
+        raise BackendError("scroll not implemented")
 
 
 # ─────────────────────── macOS ───────────────────────
@@ -55,7 +70,9 @@ class MacBackend(Backend):
             raise BackendError("screencapture produced no file.")
         return path
 
-    def click(self, x: int, y: int, *, button: str = "left", double: bool = False) -> None:
+    def click(
+        self, x: int, y: int, *, button: str = "left", double: bool = False
+    ) -> None:
         if self._cliclick:
             verb = {"left": "c", "right": "rc", "middle": "c"}.get(button, "c")
             if double:
@@ -68,22 +85,23 @@ class MacBackend(Backend):
 
     def move(self, x: int, y: int) -> None:
         if not self._cliclick:
-            raise BackendError("cliclick required for move (install: brew install cliclick)")
+            raise BackendError(
+                "cliclick required for move (install: brew install cliclick)"
+            )
         _run([self._cliclick, f"m:{x},{y}"])
 
     def drag(self, x: int, y: int, to_x: int, to_y: int) -> None:
         if not self._cliclick:
-            raise BackendError("cliclick required for drag (install: brew install cliclick)")
+            raise BackendError(
+                "cliclick required for drag (install: brew install cliclick)"
+            )
         _run([self._cliclick, f"dd:{x},{y}", f"du:{to_x},{to_y}"])
 
     def type_text(self, text: str) -> None:
         if self._cliclick:
             _run([self._cliclick, "w:50", f"t:{text}"])
             return
-        script = (
-            'tell application "System Events" to keystroke '
-            + _apple_quote(text)
-        )
+        script = 'tell application "System Events" to keystroke ' + _apple_quote(text)
         _run(["osascript", "-e", script])
 
     def key(self, keys: str) -> None:
@@ -95,10 +113,14 @@ class MacBackend(Backend):
         mods = []
         final_key = parts[-1]
         for m in parts[:-1]:
-            if m in ("cmd", "command"): mods.append("command down")
-            elif m in ("opt", "option", "alt"): mods.append("option down")
-            elif m in ("shift",): mods.append("shift down")
-            elif m in ("ctrl", "control"): mods.append("control down")
+            if m in ("cmd", "command"):
+                mods.append("command down")
+            elif m in ("opt", "option", "alt"):
+                mods.append("option down")
+            elif m in ("shift",):
+                mods.append("shift down")
+            elif m in ("ctrl", "control"):
+                mods.append("control down")
         quoted = _apple_quote(final_key if len(final_key) == 1 else f'"{final_key}"')
         using = " using {" + ", ".join(mods) + "}" if mods else ""
         if len(final_key) == 1:
@@ -129,7 +151,9 @@ class LinuxBackend(Backend):
 
     def screenshot(self, path: Path) -> Path:
         if not self._shot:
-            raise BackendError("scrot or imagemagick 'import' required (apt install scrot).")
+            raise BackendError(
+                "scrot or imagemagick 'import' required (apt install scrot)."
+            )
         path.parent.mkdir(parents=True, exist_ok=True)
         if self._shot.endswith("scrot"):
             _run([self._shot, "-z", str(path)])
@@ -139,7 +163,9 @@ class LinuxBackend(Backend):
             raise BackendError("screenshot produced no file.")
         return path
 
-    def click(self, x: int, y: int, *, button: str = "left", double: bool = False) -> None:
+    def click(
+        self, x: int, y: int, *, button: str = "left", double: bool = False
+    ) -> None:
         self._require_xdotool()
         b = {"left": "1", "right": "3", "middle": "2"}.get(button, "1")
         args = [self._xdotool, "mousemove", str(x), str(y), "click"]
@@ -216,7 +242,9 @@ def _run(cmd: list[str], *, timeout: float = 15.0) -> None:
     except FileNotFoundError as err:
         raise BackendError(f"{cmd[0]} not found: {err}") from err
     except subprocess.CalledProcessError as err:
-        raise BackendError(f"{cmd[0]} exit {err.returncode}: {err.stderr.decode('utf-8', 'ignore')[:200]}") from err
+        raise BackendError(
+            f"{cmd[0]} exit {err.returncode}: {err.stderr.decode('utf-8', 'ignore')[:200]}"
+        ) from err
     except subprocess.TimeoutExpired as err:
         raise BackendError(f"{cmd[0]} timed out after {timeout}s") from err
 
@@ -230,12 +258,27 @@ def _apple_quote(s: str) -> str:
 # listed falls back to keystroke semantics — for more obscure keys the
 # caller should install cliclick.
 _MAC_KEYS = {
-    "return": 36, "enter": 36, "tab": 48, "space": 49, "delete": 51, "escape": 53,
-    "up": 126, "down": 125, "left": 123, "right": 124,
-    "pageup": 116, "pagedown": 121, "home": 115, "end": 119,
+    "return": 36,
+    "enter": 36,
+    "tab": 48,
+    "space": 49,
+    "delete": 51,
+    "escape": 53,
+    "up": 126,
+    "down": 125,
+    "left": 123,
+    "right": 124,
+    "pageup": 116,
+    "pagedown": 121,
+    "home": 115,
+    "end": 119,
 }
+
+
 def _mac_key_code(name: str) -> int:
     code = _MAC_KEYS.get(name.lower())
     if code is None:
-        raise BackendError(f"unknown key '{name}' (supported: {', '.join(sorted(_MAC_KEYS))})")
+        raise BackendError(
+            f"unknown key '{name}' (supported: {', '.join(sorted(_MAC_KEYS))})"
+        )
     return code

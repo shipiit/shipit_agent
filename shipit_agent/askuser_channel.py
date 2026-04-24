@@ -32,7 +32,10 @@ from typing import Any
 
 def channel_dir() -> Path:
     """Directory where ask/answer files live. Created on first access."""
-    root = Path(os.environ.get("SHIPIT_ASKUSER_DIR") or (Path.home() / ".shipit_agent" / "askuser"))
+    root = Path(
+        os.environ.get("SHIPIT_ASKUSER_DIR")
+        or (Path.home() / ".shipit_agent" / "askuser")
+    )
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -66,6 +69,7 @@ class AskEntry:
 @dataclass(slots=True)
 class AskChannel:
     """Serialized form written to disk."""
+
     run_id: str
     entries: list[AskEntry] = field(default_factory=list)
 
@@ -95,7 +99,7 @@ def save(channel: AskChannel) -> None:
     path = channel_file(channel.run_id)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(channel.to_dict(), indent=2))
-    tmp.replace(path)           # atomic rename — never corrupt on crash
+    tmp.replace(path)  # atomic rename — never corrupt on crash
 
 
 def ask_question(
@@ -124,7 +128,8 @@ def write_answer(run_id: str, answer: str, *, index: int | None = None) -> bool:
     if not channel.entries:
         return False
     candidates = [
-        (i, e) for i, e in enumerate(channel.entries)
+        (i, e)
+        for i, e in enumerate(channel.entries)
         if (index is None or i == index) and not e.answered()
     ]
     if not candidates:
@@ -154,8 +159,10 @@ def all_entries(run_id: str) -> list[AskEntry]:
 def clear(run_id: str) -> None:
     """Delete the channel file — useful for test cleanup or reset."""
     path = channel_file(run_id)
-    try: path.unlink()
-    except FileNotFoundError: pass
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
 
 
 # ─────────────────────── helpers ───────────────────────
@@ -164,5 +171,6 @@ def clear(run_id: str) -> None:
 def _safe(run_id: str) -> str:
     """Slug a run_id into a safe filename (defensive against path traversal)."""
     import re
+
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", run_id.strip())
     return cleaned.strip("-.") or "run"

@@ -30,7 +30,9 @@ API = "https://api.hubapi.com"
 
 class HubspotTool:
     name = "hubspot_ops"
-    description = "HubSpot CRM v3 — search/get/create contacts, companies, deals; attach notes."
+    description = (
+        "HubSpot CRM v3 — search/get/create contacts, companies, deals; attach notes."
+    )
     prompt_instructions = (
         "Call hubspot_ops with one action at a time. For writes (create/add_note) "
         "remember to pass the correct object_type for note attachment."
@@ -53,15 +55,30 @@ class HubspotTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "action": {"type": "string", "enum": [
-                            "search_contacts", "search_companies", "search_deals",
-                            "get_contact", "get_company", "get_deal",
-                            "create_contact", "create_deal",
-                            "add_note", "list_owners",
-                        ]},
-                        "query": {"type": "string", "description": "Free-text search query."},
+                        "action": {
+                            "type": "string",
+                            "enum": [
+                                "search_contacts",
+                                "search_companies",
+                                "search_deals",
+                                "get_contact",
+                                "get_company",
+                                "get_deal",
+                                "create_contact",
+                                "create_deal",
+                                "add_note",
+                                "list_owners",
+                            ],
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Free-text search query.",
+                        },
                         "object_id": {"type": "string"},
-                        "object_type": {"type": "string", "enum": ["contact", "company", "deal"]},
+                        "object_type": {
+                            "type": "string",
+                            "enum": ["contact", "company", "deal"],
+                        },
                         "properties": {"type": "object"},
                         "note": {"type": "string"},
                         "limit": {"type": "integer", "default": 10},
@@ -83,12 +100,16 @@ class HubspotTool:
         try:
             if action in ("search_contacts", "search_companies", "search_deals"):
                 obj = action.split("_", 1)[1][:-1]
-                return self._search(obj, kwargs.get("query", ""), int(kwargs.get("limit", 10)))
+                return self._search(
+                    obj, kwargs.get("query", ""), int(kwargs.get("limit", 10))
+                )
             if action in ("get_contact", "get_company", "get_deal"):
                 obj = action.split("_", 1)[1]
                 oid = str(kwargs.get("object_id", ""))
                 if not oid:
-                    return ToolOutput(text="Error: object_id is required.", metadata={"ok": False})
+                    return ToolOutput(
+                        text="Error: object_id is required.", metadata={"ok": False}
+                    )
                 return self._get(obj, oid)
             if action == "create_contact":
                 return self._create("contact", kwargs.get("properties") or {})
@@ -100,7 +121,9 @@ class HubspotTool:
                 return self._list_owners()
         except HubspotError as err:
             return ToolOutput(text=f"Error: {err}", metadata={"ok": False})
-        return ToolOutput(text=f"Error: unknown action {action!r}.", metadata={"ok": False})
+        return ToolOutput(
+            text=f"Error: unknown action {action!r}.", metadata={"ok": False}
+        )
 
     # ── concrete actions ────────────────────────────────────────
 
@@ -109,7 +132,10 @@ class HubspotTool:
         data = self._request("POST", f"/crm/v3/objects/{obj}s/search", body=body)
         results = data.get("results") or []
         lines = [f"{obj} {r.get('id')} — {self._summary(obj, r)}" for r in results]
-        return ToolOutput(text="\n".join(lines) or "(no results)", metadata={"ok": True, "count": len(results)})
+        return ToolOutput(
+            text="\n".join(lines) or "(no results)",
+            metadata={"ok": True, "count": len(results)},
+        )
 
     def _get(self, obj: str, oid: str) -> ToolOutput:
         data = self._request("GET", f"/crm/v3/objects/{obj}s/{oid}")
@@ -117,16 +143,26 @@ class HubspotTool:
 
     def _create(self, obj: str, properties: dict[str, Any]) -> ToolOutput:
         if not properties:
-            return ToolOutput(text="Error: properties object is required.", metadata={"ok": False})
-        data = self._request("POST", f"/crm/v3/objects/{obj}s", body={"properties": properties})
-        return ToolOutput(text=f"Created {obj} {data.get('id')}.", metadata={"ok": True, "id": data.get("id")})
+            return ToolOutput(
+                text="Error: properties object is required.", metadata={"ok": False}
+            )
+        data = self._request(
+            "POST", f"/crm/v3/objects/{obj}s", body={"properties": properties}
+        )
+        return ToolOutput(
+            text=f"Created {obj} {data.get('id')}.",
+            metadata={"ok": True, "id": data.get("id")},
+        )
 
     def _add_note(self, kwargs: dict[str, Any]) -> ToolOutput:
         note = str(kwargs.get("note", "")).strip()
         oid = str(kwargs.get("object_id", ""))
         obj_type = str(kwargs.get("object_type", ""))
         if not note or not oid or not obj_type:
-            return ToolOutput(text="Error: note, object_id, and object_type required.", metadata={"ok": False})
+            return ToolOutput(
+                text="Error: note, object_id, and object_type required.",
+                metadata={"ok": False},
+            )
 
         # v3 notes: create Note, then associate with target via /associations.
         body = {
@@ -135,16 +171,27 @@ class HubspotTool:
         note_data = self._request("POST", "/crm/v3/objects/notes", body=body)
         note_id = note_data.get("id")
         if note_id:
-            self._request("PUT",
+            self._request(
+                "PUT",
                 f"/crm/v3/objects/notes/{note_id}/associations/{obj_type}s/{oid}/note_to_{obj_type}",
-                body={})
-        return ToolOutput(text=f"Added note {note_id} to {obj_type} {oid}.", metadata={"ok": True, "note_id": note_id})
+                body={},
+            )
+        return ToolOutput(
+            text=f"Added note {note_id} to {obj_type} {oid}.",
+            metadata={"ok": True, "note_id": note_id},
+        )
 
     def _list_owners(self) -> ToolOutput:
         data = self._request("GET", "/crm/v3/owners?limit=100")
         owners = data.get("results") or []
-        lines = [f"{o.get('id')} — {o.get('email')} ({o.get('firstName','')} {o.get('lastName','')})" for o in owners]
-        return ToolOutput(text="\n".join(lines) or "(no owners)", metadata={"ok": True, "count": len(owners)})
+        lines = [
+            f"{o.get('id')} — {o.get('email')} ({o.get('firstName','')} {o.get('lastName','')})"
+            for o in owners
+        ]
+        return ToolOutput(
+            text="\n".join(lines) or "(no owners)",
+            metadata={"ok": True, "count": len(owners)},
+        )
 
     @staticmethod
     def _summary(obj: str, r: dict[str, Any]) -> str:

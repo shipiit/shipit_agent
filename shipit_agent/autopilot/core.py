@@ -108,7 +108,9 @@ class Autopilot:
 
     # ── public API ───────────────────────────────────────────────
 
-    def run(self, run_id: str | None = None, *, resume: bool = False) -> AutopilotResult:
+    def run(
+        self, run_id: str | None = None, *, resume: bool = False
+    ) -> AutopilotResult:
         """Execute the goal loop synchronously; returns an AutopilotResult.
 
         Pass ``resume=True`` to pick up from an existing checkpoint. Without
@@ -142,7 +144,12 @@ class Autopilot:
         if resume and pending_questions(rid):
             halt_reason = "awaiting user answer (ask_user_async)"
             return self._make_awaiting_result(
-                rid, usage, criteria_met, final_output, halt_reason, step_outputs,
+                rid,
+                usage,
+                criteria_met,
+                final_output,
+                halt_reason,
+                step_outputs,
             )
 
         with self._signal_guard():
@@ -161,7 +168,9 @@ class Autopilot:
                         break
 
                     result = self._build_inner_agent().run()
-                    final_output = getattr(result, "output", final_output) or final_output
+                    final_output = (
+                        getattr(result, "output", final_output) or final_output
+                    )
                     criteria_met = list(getattr(result, "criteria_met", criteria_met))
                     usage.tool_calls += self._count_tool_calls(result)
                     iteration_tokens = self._count_tokens(result)
@@ -171,8 +180,10 @@ class Autopilot:
                     # Artifact extraction — best-effort, never fail the run on it.
                     if self.artifacts is not None:
                         try:
-                            self.artifacts.extract_from_output(final_output, iteration=usage.iterations)
-                        except Exception:   # noqa: BLE001
+                            self.artifacts.extract_from_output(
+                                final_output, iteration=usage.iterations
+                            )
+                        except Exception:  # noqa: BLE001
                             pass
 
                     # Critic loop — if the verdict says all criteria met with
@@ -192,34 +203,42 @@ class Autopilot:
                         # short-circuit the loop.
                         if (
                             any(latest_verdict.criteria_met)
-                            and latest_verdict.confidence >= self.critic.confidence_threshold
+                            and latest_verdict.confidence
+                            >= self.critic.confidence_threshold
                         ):
                             criteria_met = list(latest_verdict.criteria_met)
                         self._stash_critic_suggestions(latest_verdict)
                     else:
                         latest_verdict = CriticVerdict()
 
-                    step_outputs.append({
-                        "iteration": usage.iterations,
-                        "status": getattr(result, "goal_status", "unknown"),
-                        "criteria_met": criteria_met,
-                        "summary": final_output[:500],
-                    })
+                    step_outputs.append(
+                        {
+                            "iteration": usage.iterations,
+                            "status": getattr(result, "goal_status", "unknown"),
+                            "criteria_met": criteria_met,
+                            "summary": final_output[:500],
+                        }
+                    )
 
                     now = time.monotonic()
                     # Emit a heartbeat on iteration 1 OR after the interval
                     # elapses — without the iter-1 path, a long first step
                     # looks indistinguishable from a hang.
                     if self.on_heartbeat and (
-                        usage.iterations == 1 or (now - last_hb) >= self.heartbeat_every_seconds
+                        usage.iterations == 1
+                        or (now - last_hb) >= self.heartbeat_every_seconds
                     ):
-                        self._emit_heartbeat(usage, criteria_met, step_outputs[-1]["summary"])
+                        self._emit_heartbeat(
+                            usage, criteria_met, step_outputs[-1]["summary"]
+                        )
                         last_hb = now
 
                     if criteria_met and all(criteria_met):
                         halt_reason = "all criteria satisfied"
                         break
-                    if self.critic is not None and self.critic.should_terminate(latest_verdict):
+                    if self.critic is not None and self.critic.should_terminate(
+                        latest_verdict
+                    ):
                         halt_reason = "critic confirmed satisfaction"
                         break
                     if getattr(result, "goal_status", None) == "completed":
@@ -230,32 +249,55 @@ class Autopilot:
                         # channel. Halt cleanly so the scheduler can park the run.
                         halt_reason = "awaiting user answer (ask_user_async)"
                         self.checkpoints.save(
-                            rid, goal=self.goal_dict(), usage=usage,
-                            step_outputs=step_outputs, output=final_output,
+                            rid,
+                            goal=self.goal_dict(),
+                            usage=usage,
+                            step_outputs=step_outputs,
+                            output=final_output,
                         )
                         return self._make_awaiting_result(
-                            rid, usage, criteria_met, final_output, halt_reason, step_outputs,
+                            rid,
+                            usage,
+                            criteria_met,
+                            final_output,
+                            halt_reason,
+                            step_outputs,
                         )
 
                     self.checkpoints.save(
-                        rid, goal=self.goal_dict(), usage=usage,
-                        step_outputs=step_outputs, output=final_output,
+                        rid,
+                        goal=self.goal_dict(),
+                        usage=usage,
+                        step_outputs=step_outputs,
+                        output=final_output,
                     )
             except KeyboardInterrupt:
                 halt_reason = "interrupted by user (SIGINT)"
             except Exception as err:  # noqa: BLE001
                 halt_reason = f"exception: {type(err).__name__}: {err}"
                 self.checkpoints.save(
-                    rid, goal=self.goal_dict(), usage=usage,
-                    step_outputs=step_outputs, output=final_output,
+                    rid,
+                    goal=self.goal_dict(),
+                    usage=usage,
+                    step_outputs=step_outputs,
+                    output=final_output,
                 )
                 return self._make_result(
-                    rid, "failed", criteria_met, usage, final_output, halt_reason, step_outputs
+                    rid,
+                    "failed",
+                    criteria_met,
+                    usage,
+                    final_output,
+                    halt_reason,
+                    step_outputs,
                 )
 
         self.checkpoints.save(
-            rid, goal=self.goal_dict(), usage=usage,
-            step_outputs=step_outputs, output=final_output,
+            rid,
+            goal=self.goal_dict(),
+            usage=usage,
+            step_outputs=step_outputs,
+            output=final_output,
         )
         status = self._classify_status(criteria_met)
         return self._make_result(
@@ -278,13 +320,19 @@ class Autopilot:
     def _build_inner_agent(self) -> Any:
         if self.agent_factory is not None:
             return self.agent_factory(
-                llm=self.llm, goal=self.goal,
-                tools=self.tools, mcps=self.mcps, **self.agent_kwargs,
+                llm=self.llm,
+                goal=self.goal,
+                tools=self.tools,
+                mcps=self.mcps,
+                **self.agent_kwargs,
             )
         return GoalAgent(
-            llm=self.llm, tools=list(self.tools),
-            mcps=list(self.mcps), goal=self.goal,
-            use_builtins=self.use_builtins, **self.agent_kwargs,
+            llm=self.llm,
+            tools=list(self.tools),
+            mcps=list(self.mcps),
+            goal=self.goal,
+            use_builtins=self.use_builtins,
+            **self.agent_kwargs,
         )
 
     @staticmethod
@@ -307,7 +355,9 @@ class Autopilot:
                 total = usage.get("total_tokens")
                 if isinstance(total, int):
                     return total
-                return int(usage.get("prompt_tokens", 0)) + int(usage.get("completion_tokens", 0))
+                return int(usage.get("prompt_tokens", 0)) + int(
+                    usage.get("completion_tokens", 0)
+                )
         return 0
 
     def _count_dollars(self, result: Any, iteration_tokens: int) -> float:
@@ -336,8 +386,12 @@ class Autopilot:
         input_tok = 0
         output_tok = 0
         if isinstance(usage, dict):
-            input_tok = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
-            output_tok = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+            input_tok = int(
+                usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+            )
+            output_tok = int(
+                usage.get("completion_tokens") or usage.get("output_tokens") or 0
+            )
 
         if model and (input_tok or output_tok):
             dollars = _lookup_dollars(model, input_tok, output_tok)
@@ -375,7 +429,7 @@ class Autopilot:
         }
         try:
             self.on_heartbeat(payload)
-        except Exception:   # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pass
 
     def _stash_critic_suggestions(self, verdict: CriticVerdict) -> None:
@@ -394,42 +448,62 @@ class Autopilot:
             self.agent_kwargs.pop("_critic_injected_prompt", None)
             return
         from .critic import inject_suggestions_into_prompt
-        base = self.agent_kwargs.get("prompt") or "You are a helpful assistant. Complete the task thoroughly."
+
+        base = (
+            self.agent_kwargs.get("prompt")
+            or "You are a helpful assistant. Complete the task thoroughly."
+        )
         self.agent_kwargs["prompt"] = inject_suggestions_into_prompt(base, verdict)
         self.agent_kwargs["_critic_injected_prompt"] = True
 
     def _make_awaiting_result(
         self,
-        run_id: str, usage: BudgetUsage, criteria_met: list[bool],
-        output: str, halt_reason: str, step_outputs: list[dict[str, Any]],
+        run_id: str,
+        usage: BudgetUsage,
+        criteria_met: list[bool],
+        output: str,
+        halt_reason: str,
+        step_outputs: list[dict[str, Any]],
     ) -> AutopilotResult:
         """Short-circuit factory for the `awaiting_user` halt status."""
         return AutopilotResult(
-            run_id=run_id, status="awaiting_user",
+            run_id=run_id,
+            status="awaiting_user",
             goal=self.goal_dict(),
             criteria_met=criteria_met,
             iterations=usage.iterations,
             usage=usage.to_dict(),
-            output=output, halt_reason=halt_reason,
+            output=output,
+            halt_reason=halt_reason,
             step_outputs=step_outputs,
-            artifacts=[a.to_dict() for a in self.artifacts.all()] if self.artifacts else [],
+            artifacts=[a.to_dict() for a in self.artifacts.all()]
+            if self.artifacts
+            else [],
         )
 
     def _make_result(
         self,
-        run_id: str, status: str, criteria_met: list[bool],
-        usage: BudgetUsage, output: str, halt_reason: str,
+        run_id: str,
+        status: str,
+        criteria_met: list[bool],
+        usage: BudgetUsage,
+        output: str,
+        halt_reason: str,
         step_outputs: list[dict[str, Any]],
     ) -> AutopilotResult:
         verdict = getattr(self, "_last_verdict", None)
         return AutopilotResult(
-            run_id=run_id, status=status,
+            run_id=run_id,
+            status=status,
             criteria_met=criteria_met,
             iterations=usage.iterations,
             usage=usage.to_dict(),
-            output=output, halt_reason=halt_reason,
+            output=output,
+            halt_reason=halt_reason,
             step_outputs=step_outputs,
-            artifacts=[a.to_dict() for a in self.artifacts.all()] if self.artifacts else [],
+            artifacts=[a.to_dict() for a in self.artifacts.all()]
+            if self.artifacts
+            else [],
             critic_verdict=verdict.to_dict() if verdict else {},
         )
 
@@ -463,6 +537,7 @@ class Autopilot:
             # can't be bound from worker threads, and fan-out runs
             # children inside a ThreadPoolExecutor.
             import threading
+
             if threading.current_thread() is not threading.main_thread():
                 return
             for sig_name in ("SIGTERM", "SIGHUP"):
@@ -501,7 +576,7 @@ def _lookup_dollars(model: str, input_tokens: int, output_tokens: int) -> float:
     """
     try:
         from shipit_agent.costs.pricing import MODEL_PRICING
-    except Exception:       # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return 0.0
 
     prices = _resolve_pricing(model, MODEL_PRICING)
@@ -515,7 +590,9 @@ def _lookup_dollars(model: str, input_tokens: int, output_tokens: int) -> float:
     )
 
 
-def _resolve_pricing(model: str, table: dict[str, dict[str, float]]) -> dict[str, float] | None:
+def _resolve_pricing(
+    model: str, table: dict[str, dict[str, float]]
+) -> dict[str, float] | None:
     """Find a pricing row that best matches a model id.
 
     Handles Bedrock-style prefixes (``bedrock/anthropic.claude-…``) and

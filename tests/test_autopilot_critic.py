@@ -7,10 +7,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 from shipit_agent.autopilot import (
-    Autopilot, BudgetPolicy, Critic, CriticVerdict, AutopilotResult,
+    Autopilot,
+    BudgetPolicy,
+    Critic,
+    CriticVerdict,
 )
 from shipit_agent.autopilot.critic import inject_suggestions_into_prompt
 from shipit_agent.deep.goal_agent import Goal
@@ -39,38 +41,59 @@ class _JsonLLM:
 
 class TestCriticUnit:
     def test_parses_clean_json(self) -> None:
-        llm = _JsonLLM([json.dumps({
-            "criteria_met": [True, False, True],
-            "confidence": 0.8,
-            "suggestions": ["do X"],
-            "reasoning": "because",
-        })])
+        llm = _JsonLLM(
+            [
+                json.dumps(
+                    {
+                        "criteria_met": [True, False, True],
+                        "confidence": 0.8,
+                        "suggestions": ["do X"],
+                        "reasoning": "because",
+                    }
+                )
+            ]
+        )
         c = Critic(llm=llm)
-        v = c.review(objective="o", criteria=["a","b","c"], output="...")
+        v = c.review(objective="o", criteria=["a", "b", "c"], output="...")
         assert v.criteria_met == [True, False, True]
         assert v.confidence == 0.8
         assert v.suggestions == ["do X"]
 
     def test_pads_short_criteria_to_length(self) -> None:
         llm = _JsonLLM([json.dumps({"criteria_met": [True], "confidence": 0.9})])
-        v = Critic(llm=llm).review(objective="o", criteria=["a","b","c"], output="...")
+        v = Critic(llm=llm).review(
+            objective="o", criteria=["a", "b", "c"], output="..."
+        )
         assert v.criteria_met == [True, False, False]
 
     def test_trims_long_criteria_to_length(self) -> None:
-        llm = _JsonLLM([json.dumps({"criteria_met": [True, True, True, True], "confidence": 0.9})])
-        v = Critic(llm=llm).review(objective="o", criteria=["a","b"], output="...")
+        llm = _JsonLLM(
+            [json.dumps({"criteria_met": [True, True, True, True], "confidence": 0.9})]
+        )
+        v = Critic(llm=llm).review(objective="o", criteria=["a", "b"], output="...")
         assert v.criteria_met == [True, True]
 
     def test_tolerates_fenced_json(self) -> None:
-        fenced = "```json\n" + json.dumps({
-            "criteria_met": [True], "confidence": 0.9, "suggestions": [], "reasoning": ""
-        }) + "\n```"
-        v = Critic(llm=_JsonLLM([fenced])).review(objective="o", criteria=["a"], output="...")
+        fenced = (
+            "```json\n"
+            + json.dumps(
+                {
+                    "criteria_met": [True],
+                    "confidence": 0.9,
+                    "suggestions": [],
+                    "reasoning": "",
+                }
+            )
+            + "\n```"
+        )
+        v = Critic(llm=_JsonLLM([fenced])).review(
+            objective="o", criteria=["a"], output="..."
+        )
         assert v.criteria_met == [True]
 
     def test_garbage_returns_zero_confidence_empty_verdict(self) -> None:
         v = Critic(llm=_JsonLLM(["total garbage, no json here"])).review(
-            objective="o", criteria=["a","b"], output="..."
+            objective="o", criteria=["a", "b"], output="..."
         )
         assert v.confidence == 0.0
         assert v.criteria_met == [False, False]
@@ -82,21 +105,42 @@ class TestCriticUnit:
 
     def test_should_terminate_gate(self) -> None:
         c = Critic(confidence_threshold=0.8)
-        assert c.should_terminate(CriticVerdict(criteria_met=[True], confidence=0.9)) is True
-        assert c.should_terminate(CriticVerdict(criteria_met=[True], confidence=0.5)) is False
-        assert c.should_terminate(CriticVerdict(criteria_met=[False], confidence=1.0)) is False
+        assert (
+            c.should_terminate(CriticVerdict(criteria_met=[True], confidence=0.9))
+            is True
+        )
+        assert (
+            c.should_terminate(CriticVerdict(criteria_met=[True], confidence=0.5))
+            is False
+        )
+        assert (
+            c.should_terminate(CriticVerdict(criteria_met=[False], confidence=1.0))
+            is False
+        )
 
     def test_max_suggestions_capped(self) -> None:
-        llm = _JsonLLM([json.dumps({
-            "criteria_met": [False], "confidence": 0.9,
-            "suggestions": [f"s{i}" for i in range(50)], "reasoning": "",
-        })])
-        v = Critic(llm=llm, max_suggestions=3).review(objective="o", criteria=["a"], output="...")
+        llm = _JsonLLM(
+            [
+                json.dumps(
+                    {
+                        "criteria_met": [False],
+                        "confidence": 0.9,
+                        "suggestions": [f"s{i}" for i in range(50)],
+                        "reasoning": "",
+                    }
+                )
+            ]
+        )
+        v = Critic(llm=llm, max_suggestions=3).review(
+            objective="o", criteria=["a"], output="..."
+        )
         assert v.suggestions == ["s0", "s1", "s2"]
 
     def test_llm_exception_returns_skipped_verdict(self) -> None:
         class _Boom:
-            def complete(self, messages): raise RuntimeError("down")
+            def complete(self, messages):
+                raise RuntimeError("down")
+
         v = Critic(llm=_Boom()).review(objective="o", criteria=["a"], output="...")
         assert v.confidence == 0.0
         assert "skipped" in v.reasoning
@@ -104,7 +148,8 @@ class TestCriticUnit:
     def test_inject_suggestions_into_prompt(self) -> None:
         base = "You are helpful."
         out = inject_suggestions_into_prompt(
-            base, CriticVerdict(suggestions=["add tests", "reduce scope"]),
+            base,
+            CriticVerdict(suggestions=["add tests", "reduce scope"]),
         )
         assert "add tests" in out and "reduce scope" in out
         # No change when there are no suggestions.
@@ -119,13 +164,16 @@ class _FakeResult:
     output: str = "iter-output"
     goal_status: str = "in_progress"
     criteria_met: list[bool] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=lambda: {"usage": {"total_tokens": 10}})
+    metadata: dict[str, Any] = field(
+        default_factory=lambda: {"usage": {"total_tokens": 10}}
+    )
 
 
 class _ShortAgent:
     def __init__(self, outputs: list[str]) -> None:
         self.outputs = outputs
         self.n = 0
+
     def run(self) -> _FakeResult:
         i = min(self.n, len(self.outputs) - 1)
         self.n += 1
@@ -143,10 +191,18 @@ class TestAutopilotCriticIntegration:
         critic is 'should terminate = True' without the vector hitting 1.0.
         Either halt outcome counts as a successful critic short-circuit.
         """
-        llm = _JsonLLM([json.dumps({
-            "criteria_met": [True, True], "confidence": 0.9,
-            "suggestions": [], "reasoning": "looks good",
-        })])
+        llm = _JsonLLM(
+            [
+                json.dumps(
+                    {
+                        "criteria_met": [True, True],
+                        "confidence": 0.9,
+                        "suggestions": [],
+                        "reasoning": "looks good",
+                    }
+                )
+            ]
+        )
         autopilot = Autopilot(
             llm=None,
             goal=Goal(objective="x", success_criteria=["a", "b"]),
@@ -157,17 +213,28 @@ class TestAutopilotCriticIntegration:
         )
         result = autopilot.run(run_id="critic-1")
         assert result.status == "completed"
-        assert "satisfied" in result.halt_reason.lower() or "critic" in result.halt_reason.lower()
+        assert (
+            "satisfied" in result.halt_reason.lower()
+            or "critic" in result.halt_reason.lower()
+        )
         # Verdict preserved for downstream consumers.
         assert result.critic_verdict.get("confidence") == 0.9
         # The critic flipped the flags — inner agent returned [False].
         assert result.criteria_met == [True, True]
 
     def test_low_confidence_does_not_terminate(self, tmp_path: Path) -> None:
-        llm = _JsonLLM([json.dumps({
-            "criteria_met": [True], "confidence": 0.3,
-            "suggestions": ["tighten the wording"], "reasoning": "iffy",
-        })])
+        llm = _JsonLLM(
+            [
+                json.dumps(
+                    {
+                        "criteria_met": [True],
+                        "confidence": 0.3,
+                        "suggestions": ["tighten the wording"],
+                        "reasoning": "iffy",
+                    }
+                )
+            ]
+        )
         autopilot = Autopilot(
             llm=None,
             goal=Goal(objective="x", success_criteria=["a"]),
@@ -181,10 +248,18 @@ class TestAutopilotCriticIntegration:
         assert "critic" not in result.halt_reason.lower()
 
     def test_stream_emits_critic_events(self, tmp_path: Path) -> None:
-        llm = _JsonLLM([json.dumps({
-            "criteria_met": [True], "confidence": 0.9,
-            "suggestions": [], "reasoning": "",
-        })])
+        llm = _JsonLLM(
+            [
+                json.dumps(
+                    {
+                        "criteria_met": [True],
+                        "confidence": 0.9,
+                        "suggestions": [],
+                        "reasoning": "",
+                    }
+                )
+            ]
+        )
         autopilot = Autopilot(
             llm=None,
             goal=Goal(objective="x", success_criteria=["a"]),

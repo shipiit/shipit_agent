@@ -16,13 +16,19 @@ OUT = HERE / "46_dashboard_render_tool_and_litellm.ipynb"
 
 
 def md(text: str) -> dict:
-    return {"cell_type": "markdown", "metadata": {}, "source": text.splitlines(keepends=True)}
+    return {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": text.splitlines(keepends=True),
+    }
 
 
 def code(text: str) -> dict:
     return {
-        "cell_type": "code", "metadata": {},
-        "execution_count": None, "outputs": [],
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
         "source": text.splitlines(keepends=True),
     }
 
@@ -42,7 +48,6 @@ CELLS: list[dict] = [
         "3. How **Autopilot** automatically surfaces the rendered HTML as an artifact via "
         "`ArtifactCollector.ingest_tool_metadata` — no glue code.\n"
     ),
-
     # ── setup ──────────────────────────────────────────────────────
     md("## Setup"),
     code(
@@ -62,7 +67,6 @@ CELLS: list[dict] = [
         "WORKSPACE.mkdir(parents=True, exist_ok=True)\n"
         "print('workspace:', WORKSPACE)\n"
     ),
-
     # ── section 1: pick a model ────────────────────────────────────
     md(
         "## 1 · Pick a model\n"
@@ -134,7 +138,6 @@ CELLS: list[dict] = [
         "llm = SimpleEchoLLM()\n"
         "print('llm:', type(llm).__name__)\n"
     ),
-
     # ── section 2: render_dashboard directly ───────────────────────
     md(
         "## 2 · Render a dashboard directly (no LLM)\n"
@@ -246,14 +249,13 @@ CELLS: list[dict] = [
         "out_path.write_text(html_doc, encoding='utf-8')\n"
         "print(f'wrote {out_path} — {len(html_doc):,} chars, {len(spec[\"sections\"])} sections')\n"
     ),
-
     # ── section 3: agent drives the tool ───────────────────────────
     md(
         "## 3 · Agent drives the tool\n"
         "\n"
         "The `DashboardRenderTool` exposes a JSON-schema function that any "
         "Agent can call. A model that's been handed this tool and a user "
-        "prompt like _\"show me my finance future as a dashboard\"_ will "
+        'prompt like _"show me my finance future as a dashboard"_ will '
         "call it with the right spec shape.\n"
         "\n"
         "With `SimpleEchoLLM` as the model the agent won't actually invoke "
@@ -307,7 +309,6 @@ CELLS: list[dict] = [
         "print(out.text)\n"
         "print('path:', out.metadata.get('path'))\n"
     ),
-
     # ── section 4: autopilot picks it up ───────────────────────────
     md(
         "## 4 · Autopilot surfaces it as an artifact automatically\n"
@@ -326,7 +327,6 @@ CELLS: list[dict] = [
         "for a in collector.all():\n"
         "    print(f'{a.kind:<6} {a.name:<30} {len(a.content):>6,} chars')\n"
     ),
-
     # ── closing ───────────────────────────────────────────────────
     md(
         "## Where to go next\n"
@@ -349,7 +349,11 @@ def main() -> None:
     notebook = {
         "cells": CELLS,
         "metadata": {
-            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3",
+            },
             "language_info": {"name": "python"},
         },
         "nbformat": 4,

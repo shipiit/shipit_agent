@@ -31,6 +31,7 @@ parallelism outside the agent layer.
 
 from __future__ import annotations
 
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field  # asdict used for event payloads
@@ -320,9 +321,6 @@ def _rollup_status(statuses: list[str]) -> str:
     if all(s == "failed" for s in statuses):
         return "failed"
     return "partial"
-
-
-import re
 
 
 def _slug(item: Any) -> str:

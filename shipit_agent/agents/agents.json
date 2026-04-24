@@ -1050,7 +1050,9 @@
       "grep_search",
       "glob_search",
       "bash",
-      "run_tests"
+      "run_tests",
+      "run_code",
+      "ask_user_async"
     ],
     "skills": [],
     "maxIterations": 40,
@@ -1077,7 +1079,9 @@
       "glob_search",
       "bash",
       "run_tests",
-      "edit_file"
+      "edit_file",
+      "run_code",
+      "ask_user_async"
     ],
     "skills": [],
     "maxIterations": 40,
@@ -1103,7 +1107,10 @@
       "grep_search",
       "playwright_browser",
       "open_url",
-      "web_search"
+      "web_search",
+      "computer_use",
+      "run_code",
+      "ask_user_async"
     ],
     "skills": [],
     "maxIterations": 20,
@@ -1130,7 +1137,10 @@
       "web_search",
       "notion",
       "linear",
-      "write_file"
+      "write_file",
+      "research_brief",
+      "run_code",
+      "ask_user_async"
     ],
     "skills": [],
     "maxIterations": 20,
@@ -1157,7 +1167,10 @@
       "open_url",
       "hubspot_ops",
       "gmail",
-      "write_file"
+      "write_file",
+      "research_brief",
+      "run_code",
+      "ask_user_async"
     ],
     "skills": [],
     "maxIterations": 15,
@@ -1186,7 +1199,9 @@
       "linear",
       "notion",
       "read_file",
-      "write_file"
+      "write_file",
+      "run_code",
+      "ask_user_async"
     ],
     "skills": [],
     "maxIterations": 15,
@@ -1213,7 +1228,10 @@
       "open_url",
       "read_file",
       "write_file",
-      "notion"
+      "notion",
+      "research_brief",
+      "run_code",
+      "ask_user_async"
     ],
     "skills": [],
     "maxIterations": 15,

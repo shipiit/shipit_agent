@@ -162,21 +162,27 @@ class BedrockChatLLM(LiteLLMChatLLM):
     def __init__(
         self, model: str = "bedrock/openai.gpt-oss-120b-1:0", **completion_kwargs: Any
     ) -> None:
-        # Bedrock requires strict tool_use/tool_result id pairing. The shipit_agent
-        # Message model doesn't carry tool-call IDs, so we let litellm patch the
-        # request on our behalf (inserts dummy assistant turns + filler tool_results
-        # where needed). Without this, Bedrock rejects multi-step tool runs with
-        # "Expected toolResult blocks ... for Ids: <uuid>".
-        completion_kwargs.setdefault("modify_params", True)
+        # Bedrock's Anthropic path requires strict tool_use/tool_result id
+        # pairing. The shipit_agent Message model doesn't carry tool-call IDs,
+        # so we let litellm patch the request on our behalf (inserts dummy
+        # assistant turns + filler tool_results where needed). Without this,
+        # Bedrock-Claude rejects multi-step tool runs with "Expected
+        # toolResult blocks ... for Ids: <uuid>".
+        #
+        # Other Bedrock model families (Nova, Titan, Llama, Mistral) reject
+        # `modify_params` as a malformed input — so only apply it for
+        # Anthropic-on-Bedrock. Same story for the global flag.
+        is_anthropic = "anthropic" in model.lower() or "claude" in model.lower()
+        if is_anthropic:
+            completion_kwargs.setdefault("modify_params", True)
         super().__init__(model=model, **completion_kwargs)
-        # Also set the global flag as a belt-and-braces measure — some litellm
-        # code paths consult litellm.modify_params directly rather than kwargs.
-        try:
-            import litellm  # type: ignore
+        if is_anthropic:
+            try:
+                import litellm  # type: ignore
 
-            litellm.modify_params = True
-        except Exception:
-            pass
+                litellm.modify_params = True
+            except Exception:
+                pass
 
 
 class GeminiChatLLM(LiteLLMChatLLM):

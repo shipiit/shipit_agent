@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from shipit_agent.askuser_channel import all_entries, pending_questions, write_answer
 from shipit_agent.autopilot import Autopilot, BudgetPolicy, default_heartbeat_stderr
 from shipit_agent.deep.goal_agent import Goal
 from shipit_agent.live_renderer import render_stream
@@ -103,6 +104,47 @@ def run_daemon_cli(argv: list[str]) -> int:
         return 0 if result.status in ("completed", "partial") else 1
 
     daemon.run_forever()
+    return 0
+
+
+def run_answer_cli(argv: list[str]) -> int:
+    """Answer an outstanding ask_user_async question — the async reply path."""
+    p = argparse.ArgumentParser(
+        prog="shipit answer",
+        description="Answer an Autopilot run's outstanding ask_user_async question.",
+    )
+    p.add_argument("run_id", help="The Autopilot run id whose question you're answering.")
+    p.add_argument("answer", nargs="?", help="The answer text. Omit to list pending questions instead.")
+    p.add_argument("--index", type=int, default=None, help="Which pending question (by index) to answer.")
+    args = p.parse_args(argv)
+
+    pending = pending_questions(args.run_id)
+
+    if args.answer is None:
+        # Status mode — show pending + answered history.
+        if not all_entries(args.run_id):
+            print(f"(no questions recorded for run_id={args.run_id})")
+            return 0
+        for i, entry in enumerate(all_entries(args.run_id)):
+            tag = "ANSWERED" if entry.answered() else "PENDING "
+            print(f"[{i:02d}] {tag}  {entry.question}")
+            if entry.context:        print(f"          context: {entry.context}")
+            if entry.choices:        print(f"          choices: {', '.join(entry.choices)}")
+            if entry.answered():     print(f"          answer:  {entry.answer}")
+        return 0
+
+    if not pending:
+        print(f"No pending question on run_id={args.run_id}.")
+        return 1
+
+    ok = write_answer(args.run_id, args.answer, index=args.index)
+    if not ok:
+        print(f"Could not record answer — index out of range or already answered.")
+        return 1
+    print(
+        f"Answer recorded for run_id={args.run_id}. "
+        f"Resume with: shipit autopilot --resume --run-id {args.run_id}"
+    )
     return 0
 
 

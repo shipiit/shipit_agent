@@ -84,6 +84,11 @@ class ComputerUseTool:
                         "double": {"type": "boolean", "default": False},
                         "seconds": {"type": "number"},
                         "filename": {"type": "string"},
+                        "vision": {
+                            "type": "boolean",
+                            "description": "When action=screenshot, include the PNG as image content so a vision-capable LLM can actually see what's on screen. Default true; pass false to save bytes.",
+                            "default": True,
+                        },
                     },
                     "required": ["action"],
                 },
@@ -172,9 +177,40 @@ class ComputerUseTool:
         name = kwargs.get("filename") or f"shot-{int(time.time())}.png"
         target = self.output_dir / str(name)
         path = backend.screenshot(target)
+
+        # Vision feedback — attach the PNG to tool output so the runtime
+        # can wrap it as image content on the NEXT user message.
+        # Adapters that don't support images fall back to just seeing
+        # the filepath in text (identical to the previous behavior).
+        vision_meta: dict[str, Any] = {
+            "ok": True,
+            "path": str(path),
+            "platform": backend.platform,
+        }
+        if kwargs.get("vision", True):     # on by default; opt-out with vision=False
+            try:
+                import base64
+                raw = path.read_bytes()
+                if raw:
+                    # Cap at ~4 MB to avoid blowing up the model context
+                    # when an agent takes many screenshots in one run.
+                    if len(raw) <= 4_000_000:
+                        vision_meta["vision"] = True
+                        vision_meta["image_base64"] = base64.b64encode(raw).decode("ascii")
+                        vision_meta["media_type"] = "image/png"
+                    else:
+                        vision_meta["vision"] = False
+                        vision_meta["vision_skip_reason"] = (
+                            f"png too large ({len(raw)} bytes) — pass vision=False "
+                            "or use a smaller capture area"
+                        )
+            except OSError as err:
+                vision_meta["vision"] = False
+                vision_meta["vision_skip_reason"] = f"could not read PNG: {err}"
+
         return ToolOutput(
             text=f"Screenshot saved: {path}",
-            metadata={"ok": True, "path": str(path), "platform": backend.platform},
+            metadata=vision_meta,
         )
 
     @staticmethod

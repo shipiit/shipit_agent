@@ -5,6 +5,111 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] — 2026-04-24
+
+**Bulletproof 24-hour Autopilot, dashboard renderer tool, and LiteLLM-proxy
+plug-in.** The long-running runtime is now hardened for multi-day jobs:
+cumulative budgets across resume, SIGTERM-safe shutdown, dollar tracking
+wired end-to-end, corrupt-checkpoint quarantine. New `render_dashboard` tool
+turns a JSON spec into a Claude-Desktop-style HTML one-pager (metrics, chart,
+timeline, cards, verdict). Full LiteLLM proxy support so companies can point
+every agent at their own proxy URL + key in three fields.
+
+### Added
+
+- **`Autopilot` — bulletproof for 24-hour runs:**
+  - `CheckpointStore.save()` now writes the full `BudgetUsage` (seconds,
+    tool calls, tokens, dollars, iterations) and schema version. A crash
+    at hour 12 → resume for another 12 trips a 24-hour cap exactly at
+    hour 24.
+  - `CheckpointStore.load()` quarantines corrupt JSON as
+    `<run_id>.corrupted.<timestamp>.json` instead of silently dropping it.
+  - `CheckpointStore.usage_from_payload()` helper handles both v1 and v2
+    checkpoint schemas transparently.
+  - Dollar accounting: `usage.dollars` accumulates from LLM response
+    metadata using `shipit_agent.costs.pricing`, with Bedrock / LiteLLM
+    prefix handling and a coarse fallback estimate for unpriced models.
+  - `Autopilot(..., install_signal_handlers=True)` (default) installs
+    `SIGTERM` / `SIGHUP` handlers so `systemd stop` / `launchd stop`
+    halt cleanly with one final checkpoint. Opt out with
+    `install_signal_handlers=False` (tests / worker threads).
+  - `Autopilot.request_stop(reason)` — thread-safe external halt for
+    daemons and UIs; the loop exits at the next iteration boundary.
+  - First-iteration heartbeat so a slow first step never looks like a
+    hang.
+  - `BudgetPolicy.remaining(usage)` and `would_exceed_after(...)` for
+    pre-iteration projection and UI ETA bars.
+  - `autopilot.iteration` / `autopilot.heartbeat` events now carry a
+    `remaining` per-axis dict.
+- **`shipit_agent.tools.dashboard_render` package:**
+  - `DashboardRenderTool` — renders metric tiles, line / bar charts,
+    ranked bars, event timelines, trait cards, lifestyle grids, phase
+    stacks, callouts, and verdict boxes from a structured spec.
+  - Produces a standalone HTML document (inline CSS; Chart.js via CDN
+    only when a chart section is present). All user strings are
+    HTML-escaped; colors pass through a hex allow-list to prevent
+    CSS injection.
+  - Returns `{'artifact': True, 'kind': 'file', 'name', 'content'}`
+    metadata so `ArtifactCollector.ingest_tool_metadata` surfaces the
+    rendered dashboard as an Autopilot artifact with zero glue code.
+  - `render_dashboard(spec)` helper for direct (no-LLM) rendering.
+  - Path-traversal on `export` is neutralised — the file is always
+    written inside the workspace root.
+- **LiteLLM proxy — bring your own URL + key:**
+  - `BedrockChatLLM` now only injects `modify_params=True` for Anthropic
+    models; Nova, Titan, Llama, and Mistral on Bedrock work without the
+    previous "extraneous key [modify_params]" error.
+  - `AgentRegistry.all()` — convenience alias for `list_all()` so the
+    `.all()` idiom works.
+- **Notebook 46 — `46_dashboard_render_tool_and_litellm.ipynb`:**
+  - Covers LLM-provider choice (Bedrock / LiteLLM direct / **self-hosted
+    LiteLLM proxy with URL + key**), the direct renderer, an agent with
+    the tool, and the Autopilot artifact ingest path.
+  - Regenerator script `notebooks/_nb46_builder.py`.
+
+### Changed
+
+- Notebooks 44 and 45 now call `AgentRegistry.default()` (bundled agents)
+  and `AgentDefinition.max_iterations` (snake_case field). Previous
+  snapshots called `AgentRegistry()` (empty) and `.maxIterations`
+  (nonexistent attribute).
+- `Autopilot.stream()` path updated alongside `run()` for the same
+  cumulative-usage / SIGTERM / dollar-tracking / `remaining` payload.
+
+### Tests
+
+- `tests/test_autopilot_hardening.py` — 14 tests covering full-usage
+  persistence, v1 checkpoint back-compat, corruption quarantine, dollar
+  tracking (explicit / pricing / disabled), SIGTERM stop, first-iter
+  heartbeat, `remaining` payload, and pre-iteration budget projection.
+- `tests/test_autopilot_long_task.py` — 6 compressed-time simulations
+  (many iterations, 5-crash resume chain, SIGTERM mid-run, mid-run
+  corruption recovery, 50-child fan-out) + 1 opt-in Bedrock soak
+  gated on `SHIPIT_AUTOPILOT_SOAK=<seconds>`.
+- `tests/test_autopilot_bedrock_e2e.py` — 7 end-to-end tests against a
+  real Bedrock LLM (`SHIPIT_BEDROCK_E2E=1`), covering run / stream /
+  resume cumulative / artifacts / critic / fan-out.
+- `tests/test_dashboard_render.py` — 20 tests covering every section
+  type, HTML escaping, color allow-list, chart config, export +
+  traversal guard, `ArtifactCollector` ingest, and a realistic
+  full-spec life-vision dashboard.
+- `tests/test_notebook_assets.py` — locks the current notebook-44/45
+  API usage so the fixes can't regress.
+
+### Fixed
+
+- A resumed Autopilot previously reset wall-clock, tokens, tool-calls
+  and dollars to zero — only iteration count survived the checkpoint.
+  A 12-hour crash plus a 12-hour resume would run 24 hours under a
+  "24-hour" cap even though the cap should have fired. Now the full
+  usage round-trips through the checkpoint.
+- `usage.dollars` was never incremented, so `max_dollars` budgets
+  could only trip when a caller set them to zero. Dollars now flow
+  from provider `usage` metadata through the pricing table.
+- `BedrockChatLLM` could not drive non-Anthropic Bedrock models because
+  the adapter always injected `modify_params=True`, which Nova / Llama
+  / Mistral reject.
+
 ## [1.0.5] — 2026-04-18
 
 **Prebuilt agents, multi-agent crews, notifications, and cost tracking.**

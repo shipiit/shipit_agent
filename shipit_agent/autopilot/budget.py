@@ -1,4 +1,13 @@
-"""Budget gates that halt an Autopilot run before it overruns."""
+"""Budget gates that halt an Autopilot run before it overruns.
+
+The policy is deliberately multi-axis: one run can blow through tokens
+long before it runs out of wall-clock, or vice versa. Every axis trips
+independently so the halt reason always pinpoints which limit was hit.
+
+For 24-hour runs the axes that matter most are ``max_seconds`` and
+``max_dollars``; ``max_iterations`` is the safety net that protects
+against a degenerate loop that makes no progress.
+"""
 
 from __future__ import annotations
 
@@ -34,6 +43,39 @@ class BudgetPolicy:
         if self.max_iterations and usage.iterations > self.max_iterations:
             return True, f"iteration limit reached: {usage.iterations} > {self.max_iterations}"
         return False, ""
+
+    def would_exceed_after(self, usage: "BudgetUsage", *, extra_seconds: float = 0.0,
+                           extra_tokens: int = 0, extra_dollars: float = 0.0,
+                           extra_tool_calls: int = 0) -> tuple[bool, str]:
+        """Check whether adding projected overhead to ``usage`` *would*
+        trip a cap. Used for pre-iteration gating — skip the next step
+        when we know it'd blow the budget before it starts.
+        """
+        projected = BudgetUsage(
+            seconds=usage.seconds + extra_seconds,
+            tool_calls=usage.tool_calls + extra_tool_calls,
+            tokens=usage.tokens + extra_tokens,
+            dollars=usage.dollars + extra_dollars,
+            iterations=usage.iterations,
+        )
+        return self.exceeded(projected)
+
+    def remaining(self, usage: "BudgetUsage") -> dict[str, float | int | None]:
+        """Return the remaining headroom on each axis, or ``None`` when
+        the axis is disabled. Useful for progress events and ETAs.
+        """
+        def _sub(cap: float | int | None, used: float | int) -> float | int | None:
+            if not cap:
+                return None
+            return max(0, cap - used)
+
+        return {
+            "seconds": _sub(self.max_seconds, usage.seconds),
+            "tool_calls": _sub(self.max_tool_calls, usage.tool_calls),
+            "tokens": _sub(self.max_tokens, usage.tokens),
+            "dollars": _sub(self.max_dollars, usage.dollars),
+            "iterations": _sub(self.max_iterations, usage.iterations),
+        }
 
 
 @dataclass(slots=True)

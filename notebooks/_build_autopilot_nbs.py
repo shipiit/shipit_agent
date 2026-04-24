@@ -938,6 +938,270 @@ print(f\"mega result: {mega_result.status}, {len(mega_result.children)} children
 ])
 
 
+NB_45 = notebook("1.0.6 extras — CostRouter, non-blocking ask_user, vision, sandbox, specialists that run code", [
+    md("# 45 — v1.0.6 extras · cost router · async ask_user · vision · sandbox · specialists-as-developers\n\nThe second half of v1.0.6 — five additional primitives that compose with the Autopilot core from the first half (notebooks 37–44). Each one composes with Autopilot, the critic, fan-out, and artifacts — no special wiring.\n\n1. **CostRouter** — classify each turn as easy / medium / hard, route to the cheapest adequate model. 50–70% spend cut on long runs.\n2. **Non-blocking `ask_user_async`** — halt cleanly into `awaiting_user`, resume when the user answers via `shipit answer <run_id> \"...\"`.\n3. **Vision on `computer_use`** — screenshots now carry their PNG bytes as base64 metadata so a vision-capable LLM can actually *see* what's on screen.\n4. **Docker sandbox on `code_execution`** — `sandbox=True` runs untrusted snippets in an ephemeral container with `--network none` + read-only rootfs.\n5. **Specialists that run + test code** — every role specialist (developer, debugger, designer, PM, sales, CS, marketing) now ships with `run_code` + `ask_user_async`. Pass a `workspace_root` at call-time to point them at your project.\n"),
+    code(BOOTSTRAP),
+    md("## 1. CostRouter — stop paying Opus prices for trivial turns\n\nDrop-in LLM adapter. Classifies each turn and routes to the right tier. Works with every Autopilot feature untouched."),
+    code("""from shipit_agent.routing import CostRouter, Tier
+
+cheap  = build_llm_from_env(\"bedrock\")   # e.g. Llama 4 Scout
+medium = build_llm_from_env(\"bedrock\")   # swap to Sonnet 4.5 in real use
+big    = build_llm_from_env(\"bedrock\")   # swap to Opus / Llama 405B
+
+router = CostRouter(
+    easy=Tier(llm=cheap,  price_per_1k=0.25, name=\"scout\"),
+    medium=Tier(llm=medium, price_per_1k=3.0, name=\"sonnet\"),
+    hard=Tier(llm=big,    price_per_1k=15.0, name=\"opus\"),
+)
+
+# Route three prompts of different difficulty — no LLM call on the router itself.
+for prompt in [
+    \"Hi\",
+    \"Write a Python function that returns the n-th Fibonacci.\",
+    \"Audit the authentication middleware for OWASP A01 issues.\",
+]:
+    _, tier = router.route(prompt)
+    print(f\"  {tier.value:<6} ← {prompt[:60]}\")
+"""),
+    md("Pair it with Autopilot — router IS the LLM, so nothing else changes."),
+    code("""from shipit_agent.autopilot import Autopilot, BudgetPolicy
+from shipit_agent.deep import Goal
+
+autopilot = Autopilot(
+    llm=router,                                      # ← the router
+    goal=Goal(
+        objective=\"Explain the Python GIL with a snippet.\",
+        success_criteria=[\"Two paragraphs\", \"A Python snippet\"],
+    ),
+    budget=BudgetPolicy(max_iterations=3, max_seconds=180),
+)
+# autopilot.run(run_id='gil-with-router')
+print(\"Router has a built-in SpendReport:\", router.report.to_dict())
+"""),
+    md("## 2. Non-blocking `ask_user_async`\n\nAsk a question mid-run without blocking the loop. Autopilot halts into `awaiting_user`; the user answers at their own pace; resume picks up where it left off."),
+    code("""from shipit_agent.tools.ask_user_async import AskUserAsyncTool
+from shipit_agent.tools.base import ToolContext
+
+tool = AskUserAsyncTool()
+out = tool.run(
+    ToolContext(prompt=\"demo\", state={\"autopilot_run_id\": \"demo-run-1\"}),
+    question=\"Which cloud provider should I target — AWS, GCP, or Azure?\",
+    context=\"The repo has no cloud config yet.\",
+    choices=[\"AWS\", \"GCP\", \"Azure\"],
+)
+print(out.text)
+"""),
+    md("Answer from the CLI:\n\n```bash\nshipit answer demo-run-1 \"AWS\"\n```\n\nOr programmatically:"),
+    code("""from shipit_agent.askuser_channel import pending_questions, write_answer
+
+# The question above is now on disk — one-liner to inspect:
+for q in pending_questions(\"demo-run-1\"):
+    print(\"  pending:\", q.question)
+
+# Simulate the user answering:
+write_answer(\"demo-run-1\", \"AWS\")
+print(\"  pending now:\", pending_questions(\"demo-run-1\"))
+"""),
+    md("Autopilot automatically halts and resumes around `ask_user_async` — the integration is in the runtime, no wiring needed in your code."),
+    md("## 3. Vision on `computer_use`\n\nEvery screenshot now carries base64 PNG bytes + media type — a vision-capable LLM can actually see the screen. Pass `vision=False` to opt out for large captures."),
+    code("""from shipit_agent.tools.computer_use import ComputerUseTool
+from shipit_agent.tools.base import ToolContext
+
+computer = ComputerUseTool()
+# `vision=True` is default — same call signature as before, richer metadata.
+# Skipped in the notebook because screencapture isn't installed in this env —
+# inspect the metadata shape:
+print(\"metadata keys on a screenshot action:\", [
+    \"ok\", \"path\", \"platform\", \"vision\", \"image_base64\", \"media_type\",
+])
+"""),
+    md("## 4. Docker sandbox for `code_execution`\n\nSafe by default — runs the snippet in a disposable container with `--network none` and a read-only rootfs. Gracefully degrades when docker isn't on PATH."),
+    code("""from shipit_agent.tools.code_execution import CodeExecutionTool
+from shipit_agent.tools.base import ToolContext
+
+code_tool = CodeExecutionTool()
+# Sandboxed Python — runs inside python:3.11-slim, no network.
+out = code_tool.run(
+    ToolContext(prompt=\"demo\"),
+    language=\"python\",
+    code=\"print('hello from the sandbox')\",
+    sandbox=True,
+    # sandbox=True + network=False is the default; network=True to opt in.
+)
+print(out.text[:400])
+"""),
+    md("Pin a specific image or point at your own project path:"),
+    code("""import tempfile, os
+workspace = tempfile.mkdtemp(prefix=\"shipit-notebook-\")
+
+out = code_tool.run(
+    ToolContext(prompt=\"demo\"),
+    language=\"typescript\",
+    code=\"const x: number = 42; console.log(x * 2);\",
+    sandbox=True,
+    image=\"node:22-slim\",      # override the default TS image
+    workspace_root=workspace,    # point at wherever the user wants work done
+)
+print(out.text[:400])
+"""),
+    md("## 5. Specialists that run + test code\n\nEvery role specialist now ships with `run_code` + `ask_user_async`. Developer + debugger can reproduce bugs and verify fixes; sales/CS/PM/marketing can script light automations; design-reviewer can drive a browser via `computer_use`."),
+    code("""from shipit_agent import Agent
+from shipit_agent.agents import AgentRegistry
+from shipit_agent.tools.code_execution import CodeExecutionTool
+from shipit_agent.tools.ask_user_async import AskUserAsyncTool
+
+registry = AgentRegistry()
+dev_def = registry.get(\"generalist-developer\")
+print(f\"developer tools: {dev_def.tools}\")
+
+dev = Agent(
+    llm=llm,
+    prompt=dev_def.prompt,
+    tools=[CodeExecutionTool(), AskUserAsyncTool()],
+    max_iterations=dev_def.maxIterations or 40,
+    name=dev_def.name,
+)
+print(f\"ready: {dev.name} can now run + test code end-to-end.\")
+"""),
+    md("### Per-call workspace path\n\nEvery `run_code` call accepts `workspace_root` — the user can pass their own project directory so the specialist works inside the real codebase rather than the shared default."),
+    code("""# Inside your app — send the specialist at the project you're reviewing.
+result = code_tool.run(
+    ToolContext(prompt=\"demo\"),
+    language=\"python\",
+    code=\"import sys; print(sys.version); print('in:', __import__('os').getcwd())\",
+    workspace_root=workspace,         # ← user-chosen path
+    sandbox=False,                    # sandbox=True still supported here
+)
+print(result.text[:400])
+print(\"metadata.workspace_root:\", result.metadata[\"workspace_root\"])
+"""),
+    md("## The full power stack — router + autopilot + critic + artifacts + async ask + sandbox\n\nOne Autopilot with everything wired. Budget-bounded, crash-safe, streaming, cost-optimised, safe-by-default execution."),
+    code("""from shipit_agent.autopilot import Autopilot, BudgetPolicy, Critic, ArtifactCollector
+from shipit_agent.deep import Goal
+
+power = Autopilot(
+    llm=router,                                      # cost-routed
+    goal=Goal(
+        objective=\"Review src/api/users.py for SQL injection, include a fix snippet.\",
+        success_criteria=[
+            \"Identifies at least one vulnerable call site\",
+            \"Shows a parameterized-query fix\",
+            \"Notes whether tests exist for it\",
+        ],
+    ),
+    budget=BudgetPolicy(max_seconds=900, max_iterations=6, max_dollars=3.0),
+    critic=Critic(confidence_threshold=0.8),        # reflection loop
+    artifacts=ArtifactCollector(),                  # deliverables
+    tools=[CodeExecutionTool(), AskUserAsyncTool()], # real run + async ask
+)
+print(\"ready to .run(run_id='auth-audit-demo') when you want it.\")
+"""),
+    md("## 6. Live streaming with *everything* wired\n\nThe full stack in one loop: router picks a tier, the critic reflects, artifacts drop as they appear, async ask_user halts on demand, `autopilot.stream()` narrates. Drop this into a web UI and you get a Claude-Desktop-grade dashboard in minutes."),
+    code("""from shipit_agent.autopilot import Autopilot, BudgetPolicy, Critic, ArtifactCollector
+from shipit_agent.deep import Goal
+from shipit_agent.tools.ask_user_async import AskUserAsyncTool
+from shipit_agent.tools.code_execution import CodeExecutionTool
+from shipit_agent.live_renderer import render_stream
+
+composed = Autopilot(
+    llm=router,                                  # cost-routed
+    goal=Goal(
+        objective=\"Write a Python fib(n) and verify it against a 10-element list.\",
+        success_criteria=[
+            \"A `def fib` appears in a code fence\",
+            \"Prints 10 Fibonacci numbers\",
+            \"Exit code 0 from the verification run\",
+        ],
+    ),
+    budget=BudgetPolicy(max_iterations=4, max_seconds=180),
+    critic=Critic(confidence_threshold=0.8),
+    artifacts=ArtifactCollector(),
+    tools=[CodeExecutionTool(), AskUserAsyncTool()],
+)
+
+# Observe every event live — this is what a web dashboard would render.
+for ev in composed.stream(run_id=\"composed-demo-1\"):
+    kind = ev[\"kind\"]
+    if kind == \"autopilot.iteration\":
+        met = ev[\"criteria_met\"]
+        u = ev[\"usage\"]
+        print(f\"  iter {ev['iteration']} · {sum(met)}/{len(met)} criteria · \"
+              f\"{u['seconds']:.0f}s · {u['tool_calls']} tools · {u['tokens']} tok\")
+    elif kind == \"autopilot.artifact\":
+        print(f\"  [artifact] {ev['artifact_kind']:<9} {ev['name']}\")
+    elif kind == \"autopilot.critic\":
+        print(f\"  [critic]   confidence={ev.get('confidence'):.2f}\")
+    elif kind == \"autopilot.result\":
+        print(f\"  [done]     status={ev['status']} halt={ev['halt_reason']}\")
+"""),
+    md("### Rendering the stream in the terminal\n\n`render_stream()` formats the same events as a pretty live feed — three modes: `tui` (colored), `jsonl` (machine-readable), `plain` (CI-safe)."),
+    code("""fresh = Autopilot(
+    llm=router,
+    goal=Goal(
+        objective=\"Explain list vs tuple in Python in two paragraphs with one code snippet.\",
+        success_criteria=[\"Two paragraphs\", \"One snippet\"],
+    ),
+    budget=BudgetPolicy(max_iterations=3, max_seconds=120),
+    artifacts=True,
+)
+final = render_stream(fresh.stream(run_id=\"list-vs-tuple\"), fmt=\"plain\")
+print(f\"\\nfinal status: {final and final.get('status')}\")
+"""),
+    md("### JSONL stream — pipe into jq, Kafka, or any log sink"),
+    code("""import io, json
+
+buf = io.StringIO()
+another = Autopilot(
+    llm=router,
+    goal=Goal(objective=\"2+2?\", success_criteria=[\"The answer is 4\"]),
+    budget=BudgetPolicy(max_iterations=2, max_seconds=60),
+)
+render_stream(another.stream(run_id=\"jsonl-demo\"), fmt=\"jsonl\", out=buf)
+
+# Every line is valid JSON — machine-readable, durable log.
+for line in buf.getvalue().strip().split(\"\\n\")[:5]:
+    ev = json.loads(line)
+    print(f\"  {ev['kind']}\")
+"""),
+    md("### Parallel fan-out with live per-child events"),
+    code("""parent = Autopilot(
+    llm=router,
+    goal=Goal(objective=\"batch-tour\", success_criteria=[\"done\"]),
+    budget=BudgetPolicy(max_seconds=300, max_iterations=3, max_tool_calls=20, max_dollars=3.0),
+)
+for ev in parent.fanout_stream(
+    items=[\"threading\", \"asyncio\", \"multiprocessing\"],
+    objective_template=\"Summarize Python's {item} module in two sentences.\",
+    criteria_template=[\"Mentions a typical use case\"],
+    max_parallel=3, child_budget_frac=0.3,
+):
+    if ev[\"kind\"] == \"autopilot.fanout_child\":
+        print(f\"  [child {ev['item_index']}]  {ev['status']:<10}  iters={ev['iterations']}\")
+    elif ev[\"kind\"] == \"autopilot.fanout_result\":
+        print(f\"  [done]  status={ev['status']}  {len(ev['children'])} children\")
+"""),
+    md("## 7. A specialist that writes + runs + tests + asks\n\nEvery role specialist now ships with `run_code` + `ask_user_async` in its tool list. Developer is shown here; the pattern is identical for debugger, design-reviewer, PM, sales, CS, marketing."),
+    code("""from shipit_agent import Agent
+from shipit_agent.agents import AgentRegistry
+
+registry = AgentRegistry()
+dev_def = registry.get(\"generalist-developer\")
+
+dev = Agent(
+    llm=router,
+    prompt=dev_def.prompt,
+    tools=[CodeExecutionTool(), AskUserAsyncTool()],
+    max_iterations=dev_def.maxIterations or 40,
+    name=dev_def.name,
+)
+print(f\"{dev.name} ready. Tools:\")
+for t in dev.tools:
+    print(f\"  · {t.name}\")
+"""),
+    md("## Summary\n\n- **CostRouter** — cheap model for easy turns, big for hard.\n- **`ask_user_async`** — non-blocking mid-run clarifications.\n- **Vision** — screenshots with base64 PNG; LLM can actually see.\n- **Sandbox** — Docker-isolated `run_code` with network-off / read-only rootfs.\n- **Specialists** — every role can run + test code + pause for user input.\n- **Live streaming** — `autopilot.stream()` + `render_stream()` + `fanout_stream()` — everything observable.\n\n863 tests. Bedrock Llama default throughout. Ship it."),
+])
+
+
 NOTEBOOKS: dict[str, dict[str, Any]] = {
     "37_autopilot_quickstart.ipynb":                   NB_37,
     "38_autopilot_live_streaming.ipynb":                NB_38,
@@ -947,6 +1211,7 @@ NOTEBOOKS: dict[str, dict[str, Any]] = {
     "42_power_tools_computer_use_hubspot_research.ipynb": NB_42,
     "43_fanout_critic_artifacts.ipynb":                 NB_43,
     "44_complete_tour.ipynb":                           NB_44,
+    "45_cost_router_async_ask_vision_sandbox.ipynb":    NB_45,
 }
 
 

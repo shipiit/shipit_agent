@@ -1,5 +1,62 @@
 # Changelog
 
+## v1.0.6 — 2026-04-24
+
+**Bulletproof 24-hour Autopilot, AI-driven dashboard renderer, LiteLLM proxy.** `Autopilot` is hardened for multi-day runs: cumulative budgets across resume, SIGTERM-safe shutdown, end-to-end dollar tracking, corrupt-checkpoint quarantine. New `DashboardRenderTool` lets an agent pick the right section shape (metrics / chart / timeline / cards / phases / verdict) for any one-pager question and emit a self-contained HTML artifact. First-class LiteLLM-proxy support so any company can plug every agent into their own proxy in three fields.
+
+### Autopilot — Bulletproof For 24-Hour Runs
+
+- **Cumulative budgets across resume** — every field of `BudgetUsage` (seconds, tool calls, tokens, dollars, iterations) persists in the checkpoint. A run that crashes at hour 12 and resumes for another 12 trips a 24-hour cap exactly at hour 24, not hour 36.
+- **Dollar tracking wired end-to-end** — `usage.dollars` accumulates from LLM response metadata via `shipit_agent.costs.pricing`, with Bedrock / LiteLLM prefix handling plus a coarse fallback for unpriced models. `max_dollars` budgets actually fire.
+- **Signal-safe shutdown** — `SIGTERM` / `SIGHUP` are caught alongside `SIGINT`. `systemd stop` / `launchd stop` halt cleanly with one final checkpoint. `autopilot.request_stop(reason)` is a thread-safe external halt for daemons / UIs.
+- **Corrupt-checkpoint quarantine** — a JSON parse error during `load()` renames the bad file to `<run_id>.corrupted.<timestamp>.json` instead of silently dropping state. Operators can forensic-inspect later.
+- **First-iteration heartbeat + `remaining` payload on every event** — slow first steps never look like hangs; iteration / heartbeat events carry per-axis headroom so UIs can render ETA bars.
+- **Pre-iteration budget projection** — `BudgetPolicy.would_exceed_after(...)` + `BudgetPolicy.remaining(usage)` helpers.
+- **`CheckpointStore.usage_from_payload()`** — back-compat helper that loads both schema v1 (iterations only) and v2 (full `BudgetUsage`) transparently.
+
+### Dashboard Render Tool — The Agent Picks The Shape
+
+- **`shipit_agent.tools.dashboard_render` package** with `DashboardRenderTool` and a `render_dashboard(spec)` helper.
+- The agent composes the dashboard from these section types: `metrics`, `line_chart`, `bar_chart`, `bars`, `timeline`, `cards`, `lifestyle_grid`, `phases`, `callout`, `verdict`.
+- **Self-contained HTML output** — inline CSS; Chart.js via CDN only when a chart section is present. Renders in any browser or email client.
+- **Security defaults** — all user strings HTML-escaped, colors filtered through a hex allow-list (no CSS injection), path-traversal on `export` neutralised.
+- **Zero-glue artifact flow** — tool returns `{'artifact': True, 'kind': 'file', 'name': 'xxx.html', 'content': '...'}`, which `ArtifactCollector.ingest_tool_metadata` picks up. An `Autopilot(..., artifacts=True)` run that calls this tool auto-captures the rendered HTML.
+
+### LiteLLM Proxy — Bring Your Own URL + Key
+
+- **Three fields** (`model`, `api_base`, `api_key`) point every `Agent`, `Autopilot`, and `ShipCrew` at a self-hosted LiteLLM proxy.
+- Three equivalent paths to wire it: factory (`build_llm_from_settings`), direct class (`LiteLLMProxyChatLLM`), or purely env vars (`SHIPIT_LITELLM_API_BASE` + `SHIPIT_LITELLM_API_KEY` + `SHIPIT_LITELLM_MODEL`).
+- Factory auto-detects proxy mode when `api_base` is set; falls back to direct `LiteLLMChatLLM` when it isn't.
+- **`BedrockChatLLM`** now only injects `modify_params=True` for Anthropic on Bedrock; Nova, Titan, Llama, Mistral, and `openai.gpt-oss-120b` on Bedrock work without the prior "extraneous key" rejection.
+
+### Notebook 46 — Runnable Walk-Through
+
+- **`notebooks/46_dashboard_render_tool_and_litellm.ipynb`** — pick an LLM (Bedrock / LiteLLM direct / LiteLLM proxy with your URL + key) → `render_dashboard(spec)` → Agent with the tool → Autopilot artifact ingest.
+- Executes clean with 0 cell errors; writes `life_vision.html` + `finance-one-pager-fy26.html` under `notebooks/_dashboard_workspace/`.
+- Regenerated via `notebooks/_nb46_builder.py`.
+
+### Tests — +41 New, All Passing
+
+- `tests/test_autopilot_hardening.py` — 14 tests for full-usage persistence, v1 back-compat, corruption quarantine, dollar tracking (explicit / pricing / disabled), SIGTERM stop, first-iter heartbeat, `remaining` payload, pre-iteration projection.
+- `tests/test_autopilot_long_task.py` — 6 compressed-time simulations (hundreds of iterations, 5-crash resume chain, SIGTERM mid-run, mid-run corruption recovery, 50-child fan-out) + 1 opt-in Bedrock soak gated on `SHIPIT_AUTOPILOT_SOAK=<seconds>`.
+- `tests/test_autopilot_bedrock_e2e.py` — 7 real-Bedrock E2E tests (`SHIPIT_BEDROCK_E2E=1`) covering run, stream, resume-cumulative, dollars, artifacts, critic, fan-out.
+- `tests/test_dashboard_render.py` — 20 tests across every section type, escaping, color allow-list, chart config, export + traversal guard, `ArtifactCollector` ingest, and a realistic full-spec life-vision dashboard.
+- `tests/test_notebook_assets.py` — locks the current notebook-44/45 API usage so the recent fixes can't regress.
+
+### Fixed
+
+- A resumed Autopilot previously reset wall-clock, tokens, tool-calls, and dollars to zero — only iteration count survived the checkpoint.
+- `usage.dollars` was never incremented, so `max_dollars` budgets never fired.
+- `BedrockChatLLM` could not drive non-Anthropic Bedrock models because the adapter always injected `modify_params=True`.
+
+### Upgrade
+
+```bash
+pip install --upgrade shipit-agent==1.0.6
+```
+
+No breaking changes. Checkpoints written by 1.0.5 load transparently via the v1-compat path.
+
 ## v1.0.5 — 2026-04-18
 
 **Prebuilt agents, multi-agent crews, notifications, and cost tracking.** 40 ready-to-use agent personas. DAG-based ShipCrew orchestration with sequential, parallel, and hierarchical modes. Slack, Discord, and Telegram notification hub. Real-time cost tracking with budget enforcement. 4 new notebooks and expanded regression coverage across the new APIs.

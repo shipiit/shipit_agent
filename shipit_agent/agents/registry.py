@@ -114,6 +114,10 @@ class AgentRegistry:
         """Return every registered agent, sorted by id."""
         return sorted(self._agents.values(), key=lambda a: a.id)
 
+    def all(self) -> list[AgentDefinition]:
+        """Alias for :meth:`list_all` — matches the common ``.all()`` idiom."""
+        return self.list_all()
+
     def categories(self) -> list[str]:
         """Return a sorted list of unique category names."""
         return sorted({a.category for a in self._agents.values() if a.category})

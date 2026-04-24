@@ -12,6 +12,7 @@ import time
 from typing import Any, Iterator
 
 from .budget import BudgetUsage
+from .checkpoint import CheckpointStore
 from .core import Autopilot
 from .critic import CriticVerdict
 from .events import coerce_event
@@ -30,7 +31,7 @@ def autopilot_stream(
       - ``autopilot.run_started``       {"run_id","goal","resuming"}
       - ``autopilot.iteration``          {"iteration","usage","criteria_met","summary"}
       - ``autopilot.tool``               passthrough from inner agent
-      - ``autopilot.heartbeat``          {"iteration","usage","criteria_satisfied_count"...}
+      - ``autopilot.heartbeat``          {"iteration","usage","remaining","criteria_satisfied_count"...}
       - ``autopilot.budget_exceeded``    {"reason","usage"}
       - ``autopilot.criteria_satisfied`` {"criteria_met"}
       - ``autopilot.stream_fallback``    {"error"} — inner stream broke; ran sync
@@ -43,10 +44,13 @@ def autopilot_stream(
         )
     prior = self.checkpoints.load(rid) if resume else {}
 
-    usage = BudgetUsage(iterations=int(prior.get("iterations", 0)))
+    # Restore the FULL BudgetUsage so token/dollar/seconds caps stay
+    # cumulative across a resume. See core.Autopilot.run for the why.
+    usage = CheckpointStore.usage_from_payload(prior)
+    prior_seconds = usage.seconds
     step_outputs: list[dict[str, Any]] = list(prior.get("step_outputs", []))
-    started = time.monotonic()
-    last_hb = started
+    started = time.monotonic() - prior_seconds
+    last_hb = time.monotonic()
     halt_reason = ""
     final_output = str(prior.get("output", ""))
     criteria_met = [False] * len(self.goal.success_criteria)
@@ -73,6 +77,10 @@ def autopilot_stream(
                 }
                 break
 
+            if self._stop_requested:
+                halt_reason = self._stop_requested
+                break
+
             inner = self._build_inner_agent()
             result: Any = None
 
@@ -96,7 +104,9 @@ def autopilot_stream(
             final_output = getattr(result, "output", final_output) or final_output
             criteria_met = list(getattr(result, "criteria_met", criteria_met))
             usage.tool_calls += self._count_tool_calls(result)
-            usage.tokens += self._count_tokens(result)
+            iteration_tokens = self._count_tokens(result)
+            usage.tokens += iteration_tokens
+            usage.dollars += self._count_dollars(result, iteration_tokens)
 
             # Surface artifacts extracted this iteration.
             new_artifacts: list[Any] = []
@@ -144,16 +154,20 @@ def autopilot_stream(
                 "kind": "autopilot.iteration",
                 "iteration": usage.iterations,
                 "usage": usage.to_dict(),
+                "remaining": self.budget.remaining(usage),
                 "criteria_met": criteria_met,
                 "summary": step_outputs[-1]["summary"],
             }
 
             now = time.monotonic()
-            if (now - last_hb) >= self.heartbeat_every_seconds:
+            # Emit on iteration 1 OR after the interval so users see the
+            # run is alive even when the very first step is slow.
+            if usage.iterations == 1 or (now - last_hb) >= self.heartbeat_every_seconds:
                 hb = {
                     "kind": "autopilot.heartbeat",
                     "iteration": usage.iterations,
                     "usage": usage.to_dict(),
+                    "remaining": self.budget.remaining(usage),
                     "criteria_met": criteria_met,
                     "criteria_satisfied_count": sum(1 for c in criteria_met if c),
                     "criteria_total": len(criteria_met),

@@ -51,6 +51,128 @@
   <img src="https://img.shields.io/badge/Custom%20API-supported-gray?style=flat-square" alt="Custom" />
 </p>
 
+## 🚀 What's new in 1.0.6
+
+**SHIPIT Agent 1.0.6** makes **Autopilot bulletproof for 24-hour runs**, ships a new **`render_dashboard` tool** for Claude-Desktop-style HTML one-pagers, and locks in **first-class LiteLLM-proxy support** so any company can plug every agent into their own LiteLLM deployment in three fields. **904 unit tests. 7 opt-in Bedrock end-to-end tests. 1 opt-in soak test. All passing.**
+
+### Autopilot — bulletproof for 24-hour runs
+
+```python
+from shipit_agent import Autopilot, BudgetPolicy, Goal
+
+autopilot = Autopilot(
+    llm=llm,
+    goal=Goal(
+        objective="Audit every PR merged in the last 24 hours for security regressions",
+        success_criteria=["No high-severity finding", "Report under 2 pages"],
+    ),
+    # Cumulative across resume — seconds, tokens, dollars, tool calls all persist.
+    budget=BudgetPolicy(max_seconds=24 * 3600, max_dollars=5.0),
+    artifacts=True,   # HTML dashboards / code / markdown surface as artifacts.
+)
+
+# Crash at hour 12? Just resume — the 24-hour cap still fires at hour 24.
+result = autopilot.run(run_id="nightly-audit")
+# result = autopilot.resume("nightly-audit")          # picks up with full state
+```
+
+What's hardened:
+
+- **Cumulative budgets across resume** — every field of `BudgetUsage` (seconds, tool calls, tokens, dollars, iterations) persists in the checkpoint.
+- **Dollar tracking wired end-to-end** — `max_dollars` actually fires instead of always reading `$0`, with pricing lookup for Bedrock / LiteLLM model prefixes.
+- **SIGTERM / SIGHUP handler** — `systemd stop` / `launchd stop` halt cleanly with one final checkpoint; `autopilot.request_stop(reason)` is a thread-safe external halt for daemons and UIs.
+- **Corrupt-checkpoint quarantine** — a JSON parse error during `load()` moves the bad file to `<run_id>.corrupted.<ts>.json` instead of silently dropping it.
+- **First-iteration heartbeat + `remaining` payload on every event** — slow first steps never look like hangs; UIs can render live ETA bars.
+
+### `render_dashboard` — one tool, the agent picks the shape
+
+Hand `DashboardRenderTool` to any `Agent` and ask for a dashboard. The **model** decides which section types to use (metrics, charts, timeline, cards, phases, verdict, …) for the question being asked — you don't hand-author the spec.
+
+```python
+from shipit_agent import Agent
+from shipit_agent.tools.dashboard_render import DashboardRenderTool
+
+agent = Agent(
+    llm=llm,                                    # Bedrock / OpenAI / Anthropic / LiteLLM — any
+    tools=[DashboardRenderTool()],
+    prompt=(
+        "You are a visual reporting assistant. When the user asks for a "
+        "dashboard, one-pager, or visual summary, call render_dashboard "
+        "with the section types that fit the question."
+    ),
+)
+
+# Examples — the SAME agent, different dashboards:
+agent.run("Make a Q2-FY26 sales dashboard for the board: MRR, growth chart, top customers, risk callouts.")
+agent.run("Give me a product-launch readiness one-pager: checklist, owner cards, go/no-go verdict.")
+agent.run("Compile a 10-year town climate summary: temperature line, rainfall bars, drought years timeline.")
+agent.run("Market-entry brief for Vietnam: market metrics, competition cards, 4-phase go-to-market plan.")
+```
+
+What the agent can assemble:
+
+| Section | Good for |
+| --- | --- |
+| `metrics` | KPI tiles (2 / 3 / 4 columns) — label + value + sub |
+| `line_chart` / `bar_chart` | Time series, growth, comparisons |
+| `bars` | Ranked percentage bars (market share, scores, risk) |
+| `timeline` | Dated milestones, rollout plans, incident sequences |
+| `cards` | Side-by-side comparison cards (options, competitors, options) |
+| `lifestyle_grid` | 3-column icon tiles for at-a-glance categories |
+| `phases` | Vertical phase stacks with colored left border |
+| `callout` | Single-highlight notes the reader should not miss |
+| `verdict` | Green summary box with `**bold**` emphasis |
+
+Output is a **single self-contained HTML document** — inline CSS, Chart.js via CDN only when a chart section exists, all user strings escaped, colors filtered through a hex allow-list.
+
+When handed to an `Autopilot` with `artifacts=True`, the rendered HTML surfaces automatically as a collected artifact — no glue code. You can also call the renderer directly (`render_dashboard(spec)`) when you already have the numbers and just want the HTML.
+
+### LiteLLM proxy — bring your own URL + key
+
+Companies running a self-hosted LiteLLM proxy point every `Agent`, `Autopilot`, and `ShipCrew` at it with three fields:
+
+```python
+from shipit_agent.llms import build_llm_from_settings
+
+llm = build_llm_from_settings({
+    "provider": "litellm",
+    "model": "gpt-4o-mini",                           # whatever your proxy routes
+    "api_base": "https://litellm.my-company.internal",
+    "api_key": "sk-proxy-abc123...",
+}, provider="litellm")
+```
+
+Or imperatively:
+
+```python
+from shipit_agent.llms import LiteLLMProxyChatLLM
+
+llm = LiteLLMProxyChatLLM(
+    model="gpt-4o-mini",
+    api_base="https://litellm.my-company.internal",
+    api_key="sk-proxy-abc123...",
+)
+```
+
+Or purely via environment variables — the factory auto-detects proxy mode when `SHIPIT_LITELLM_API_BASE` is set. See [`guides/litellm-proxy`](https://docs.shipiit.com/guides/litellm-proxy/) for the full story.
+
+### End-to-end example — Bedrock, 24h-safe, with dashboard artifact
+
+```bash
+# Run the Bedrock end-to-end tests against a real LLM.
+SHIPIT_BEDROCK_E2E=1 \
+SHIPIT_BEDROCK_E2E_MODEL=bedrock/openai.gpt-oss-120b-1:0 \
+  pytest tests/test_autopilot_bedrock_e2e.py
+
+# Soak test — drive a real Bedrock Autopilot for N seconds, prove it survives.
+SHIPIT_AUTOPILOT_SOAK=300 \
+  pytest tests/test_autopilot_long_task.py::test_bedrock_soak_for_requested_duration
+```
+
+See [notebook 46](notebooks/46_dashboard_render_tool_and_litellm.ipynb) for an end-to-end walk-through: pick an LLM (Bedrock / LiteLLM direct / LiteLLM proxy) → `render_dashboard` → Agent with the tool → Autopilot artifact ingest.
+
+---
+
 ## 🚀 What's new in 1.0.3
 
 **SHIPIT Agent 1.0.3** ships **Super RAG**, the **DeepAgent factory**, a **live multi-agent chat REPL**, and an **Agent memory cookbook**. **521 unit tests. 19 Bedrock end-to-end smoke tests. All passing.**

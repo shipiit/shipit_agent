@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shipit-agent"
-version = "1.0.6"
+version = "1.0.7"
 description = "A clean, powerful agent runtime with tools, MCP support, profiles, and streaming events."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -49,6 +49,19 @@ ollama = ["ollama>=0.3.0"]
 
 # --- Tools / browser ---------------------------------------------------------
 playwright = ["playwright>=1.45.0"]
+pdf = ["pypdf>=4.0"]
+
+# --- SQL tool ----------------------------------------------------------------
+# No database drivers — install what you need (psycopg2-binary, pymysql,
+# snowflake-sqlalchemy, google-cloud-bigquery + sqlalchemy-bigquery, etc).
+sql = ["sqlalchemy>=2.0"]
+
+# --- Tracing exporters -------------------------------------------------------
+langsmith = []
+otel = [
+  "opentelemetry-api>=1.25",
+  "opentelemetry-sdk>=1.25",
+]
 
 # --- Super RAG ---------------------------------------------------------------
 # Embedders

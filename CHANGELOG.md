@@ -5,6 +5,143 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] — 2026-04-24
+
+**Agents for every role.** 12 new tools and 9 new persona specialists
+turn shipit-agent into a framework that ships agents for developers,
+designers, sales reps, PMs, data analysts, finance, customer support,
+and recruiters — not just code-slinging agents. **1190 unit tests.
+286 new in this release. All passing.**
+
+### Added — Core tools (everyone benefits)
+
+- **`GitHubTool`** — first-class GitHub connector: search / get / create
+  issues, pull requests, reviews (APPROVE / REQUEST_CHANGES / COMMENT),
+  file contents, GitHub Actions workflow runs. Supports github.com and
+  GitHub Enterprise (set `base_url` on the credential record).
+  Rate-limit aware (403 + `X-RateLimit-Remaining: 0` → structured
+  `error="rate_limited"` with `retry_after_epoch`).
+- **`GitLabTool`** — GitLab v4 REST: issues, merge requests, file
+  contents, CI pipelines (list / retry / cancel). Supports gitlab.com
+  and self-hosted GitLab. Handles URL-encoded project paths.
+- **`SQLTool`** — SQLAlchemy-backed multi-dialect tool covering
+  PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, MSSQL,
+  Oracle, and anything else SQLAlchemy supports. Read-only by default;
+  writes gated behind `allow_writes=True`. `query`, `execute`,
+  `list_tables`, `describe_table`, `schema_summary`. Write guard uses a
+  case-insensitive keyword denylist over the first 500 non-whitespace
+  chars. Row cap + JSON-safe serialization of dates / decimals / bytes.
+- **`VisionTool`** — image → text via any vision-capable LLM (Claude,
+  GPT-4o, Gemini, Bedrock Claude, LiteLLM). Accepts filesystem paths,
+  URLs, data-URLs, or raw base64; auto-resolves each shape. Pairs
+  naturally with `ComputerUseTool` (screenshot → analyse).
+- **`PDFTool`** — extract text, per-page content, and metadata from
+  local files or URLs. Page-range parsing (`"1-3,5,7-9"`), char caps
+  with truncation markers, clean error taxonomy (`pypdf_missing`,
+  `file_not_found`, `url_fetch_failed`, `pdf_parse_error`).
+- **Observability exporters** — new
+  `shipit_agent.tracing_exporters` package:
+  - `LangSmithExporter` — batches spans and POSTs to the LangSmith
+    runs API. Stdlib-only transport; silent on network failures.
+  - `OpenTelemetryExporter` — converts `AgentEvent` to OTel spans via
+    the standard OTel Python SDK, so users can route to any OTLP
+    backend (Datadog, Grafana, Honeycomb, …).
+
+### Added — Persona SaaS connectors
+
+- **`FigmaTool`** — read files, nodes, rendered images, comments, team
+  projects, and components. `X-Figma-Token` auth header (not Bearer).
+  Post / resolve comments. Designer workflows.
+- **`SalesforceTool`** — SOQL / SOSL queries, read
+  accounts / opportunities / contacts, create / update records,
+  `log_activity` (always enabled) vs full record writes (gated behind
+  `allow_writes=True`). 401 maps to `error="auth_expired"` so token
+  refresh is explicit.
+- **`StripeTool`** — list / get customers, charges, subscriptions,
+  invoices, prices, products. Read-heavy by default; `create_customer`
+  and `cancel_subscription` gated by `allow_writes`. Basic-auth header
+  (Stripe's `key:` pattern). Form-urlencoded bodies for POST/DELETE.
+  Test-vs-live mode surfaced in `metadata`.
+- **`GoogleSheetsTool`** — `get_values`, `update_values`,
+  `append_values`, `clear_values`, `batch_get`, `get_metadata`,
+  `create_spreadsheet`, `add_sheet`. A1-notation ranges URL-encoded;
+  suffixes (`:append`, `:clear`, `:batchUpdate`) applied after
+  encoding. Dual rate-limit detection (429 + 403+quota-reason).
+- **`ZendeskTool`** — search / get / list tickets; create / update /
+  close (gated); `add_comment` (always enabled for triage);
+  `list_macros` + `apply_macro` preview; user search. Basic-auth with
+  the email+token pattern.
+- **`LinkedInSearchTool`** — intentionally **read-only**. Profile /
+  company lookup, people / company search, company-employee
+  enumeration. Three auth modes (Bearer, custom-header for RapidAPI,
+  query-param). Four layers of write-free enforcement (fixed enum
+  tuple + keyword denylist + runtime defensive check + GET-only
+  methods). No DMs, no connection requests, no automation.
+
+### Added — Specialist personas (`agents.json`)
+
+Nine new entries — total roster now 56:
+
+- **`code-reviewer-bot`** — autonomous PR reviewer (github + read_file + grep_files + vision).
+- **`release-engineer`** — cut releases on a repeatable cadence (github + bash + slack).
+- **`figma-designer`** — design review + handoff (figma + vision + render_dashboard).
+- **`sales-rep`** — lead enrichment + outreach drafting (salesforce + linkedin_search + gmail).
+- **`account-executive`** — pipeline reviews + account health (salesforce + linkedin_search + sql).
+- **`sales-ops`** — funnel instrumentation + data-quality audits (salesforce + sql + google_sheets).
+- **`recruiter`** — sourcing + candidate tracking (linkedin_search + google_sheets + pdf).
+- **`finance-analyst`** — month-end close + cash-flow one-pagers (stripe + pdf + sql + render_dashboard).
+- **`customer-support-agent`** — ticket triage + incident detection (zendesk + vision + slack).
+
+### Added — Notebooks (persona walk-throughs)
+
+- `47_pm_pr_digest.ipynb` — nightly PR digest across multiple repos.
+- `48_designer_figma_review.ipynb` — Figma file → design review dashboard.
+- `49_sales_lead_enrichment.ipynb` — Salesforce lead + LinkedIn enrichment + outreach draft.
+- `50_manager_sheets_kpis.ipynb` — Google Sheets KPIs → weekly dashboard.
+- `51_support_zendesk_triage.ipynb` — ticket triage with screenshot reading.
+- `52_analyst_sql_to_dashboard.ipynb` — SQL question → chart dashboard (real SQLite).
+- `53_finance_stripe_pdf_cashflow.ipynb` — Stripe + PDF contracts → cash-flow one-pager.
+
+Each notebook ships with its `_nb<N>_builder.py` and executes clean
+with zero cell errors using stubbed API calls so CI / first-time users
+don't need credentials to see the flow.
+
+### Added — Optional dependency extras
+
+New `[project.optional-dependencies]` groups in `pyproject.toml`:
+
+- `pdf = ["pypdf>=4.0"]`
+- `sql = ["sqlalchemy>=2.0"]` (install drivers separately — `psycopg2-binary`, `pymysql`, `snowflake-sqlalchemy`, `sqlalchemy-bigquery`, …)
+- `langsmith = []` (stdlib-only — no extra deps)
+- `otel = ["opentelemetry-api>=1.25", "opentelemetry-sdk>=1.25"]`
+
+### Changed
+
+- `CapabilitiesGrid` / `AutopilotShowcase` landing-page components
+  bumped to v1.0.7 with the new specialist count and the "Agents for
+  every role" framing. New `AgentsForEveryRoleSection` +
+  `ToolMatrix107` landing sections visualise the persona roster and
+  the 12 new tools.
+- Docs — six new reference pages under
+  `docs-app/content/source/tools/` (github, gitlab, vision, sql, pdf)
+  and a new guide `docs-app/content/source/guides/connecting-saas.md`
+  that documents the full credential-setup flow for all 15 connectors
+  (Gmail / Drive / Calendar / Sheets · Slack · Linear · Jira ·
+  Confluence · Notion · HubSpot · GitHub · GitLab · Figma · Salesforce
+  · Stripe · Zendesk · LinkedIn). Plus
+  `docs-app/content/source/guides/observability-exports.md`. Mkdocs
+  nav updated.
+
+### Tests
+
+- `tests/test_github_tool.py` (29), `test_gitlab_tool.py` (26),
+  `test_vision_tool.py` (21), `test_sql_tool.py` (46),
+  `test_pdf_tool.py` (23), `test_tracing_exporters.py` (15),
+  `test_figma_tool.py` (17), `test_salesforce_tool.py` (22),
+  `test_stripe_tool.py` (24), `test_google_sheets_tool.py` (21),
+  `test_zendesk_tool.py` (23), `test_linkedin_tool.py` (19).
+- 286 new tests total. **1190 passing, 8 skipped (gated Bedrock + soak), 0 regressions.**
+
 ## [1.0.6] — 2026-04-24
 
 **Bulletproof 24-hour Autopilot, dashboard renderer tool, and LiteLLM-proxy

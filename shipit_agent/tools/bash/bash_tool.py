@@ -4,11 +4,36 @@ import re
 import shlex
 import subprocess
 import time
+import uuid
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
 from .prompt import BASH_PROMPT
+
+# Patterns that signal a long-running / never-exits-cleanly process
+# (dev servers, watchers, REPLs, etc.). When the LLM tries to run one of
+# these in the foreground we'd just sit there until subprocess.run hits its
+# timeout and kills the whole agent. Detect them up front and either
+# (a) auto-background them with logs piped to a file the LLM can tail, or
+# (b) refuse with a clear message so the model picks a non-blocking path.
+_LONG_RUNNING_PATTERNS = (
+    re.compile(r"\bnpm\s+(run\s+)?(dev|start|serve|watch)\b"),
+    re.compile(r"\bnpm\s+run\s+\S+:(dev|watch|serve)\b"),
+    re.compile(r"\b(yarn|pnpm|bun)\s+(dev|start|serve|watch)\b"),
+    re.compile(r"\bvite(\s+(dev|preview))?\b(?!\s+build)"),
+    re.compile(r"\bnext\s+(dev|start)\b"),
+    re.compile(r"\b(nodemon|tsc\s+--watch|webpack\s+(serve|--watch))\b"),
+    re.compile(r"\b(uvicorn|gunicorn|hypercorn|fastapi\s+dev|flask\s+run)\b"),
+    re.compile(r"\bpython\s+-m\s+http\.server\b"),
+    re.compile(r"\brails\s+(s|server)\b"),
+    re.compile(r"\bdocker\s+compose\s+up\b(?!\s+-d)"),
+    re.compile(r"\btail\s+-f\b"),
+)
+
+
+def _is_long_running(command: str) -> bool:
+    return any(p.search(command) for p in _LONG_RUNNING_PATTERNS)
 
 
 class BashTool:
@@ -184,6 +209,17 @@ class BashTool:
                             "type": "string",
                             "description": "Optional relative working directory under the project root",
                         },
+                        "background": {
+                            "type": "boolean",
+                            "description": (
+                                "Run the command detached, write logs to a file, "
+                                "and return immediately. Use for dev servers, "
+                                "watchers, and other commands that don't exit. "
+                                "Common long-running commands (npm run dev, "
+                                "next dev, vite, uvicorn, etc.) are auto-detected "
+                                "and backgrounded even if this flag isn't set."
+                            ),
+                        },
                     },
                     "required": ["command"],
                 },
@@ -226,6 +262,9 @@ class BashTool:
             self.max_timeout,
         )
         cwd = self._resolve_dir(kwargs.get("working_directory"))
+        background = bool(kwargs.get("background"))
+        if background or _is_long_running(command):
+            return self._run_background(command, cwd)
         started_at = time.monotonic()
         completed = subprocess.run(
             ["/bin/bash", "-lc", command],
@@ -255,5 +294,54 @@ class BashTool:
                 "stdout": completed.stdout,
                 "stderr": completed.stderr,
                 "duration_seconds": round(duration, 4),
+            },
+        )
+
+    def _run_background(self, command: str, cwd: Path) -> ToolOutput:
+        """Spawn a long-running command detached, log to a file the LLM can tail.
+
+        We never block on the process — `subprocess.Popen` returns immediately
+        and the agent continues. The LLM gets the log path back so it can
+        `tail -n 50 <log>` to verify the server came up. This is the only sane
+        way to handle dev servers / watchers from a tool that has a hard
+        timeout above it.
+        """
+        log_dir = self.root_dir / ".shipit" / "bash_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"bg_{int(time.time())}_{uuid.uuid4().hex[:6]}.log"
+        with open(log_path, "wb") as log_file:
+            process = subprocess.Popen(
+                ["/bin/bash", "-lc", command],
+                cwd=str(cwd),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        # Brief settle so the very first line of output (binding port, syntax
+        # error, etc.) makes it into the log before we read it back.
+        time.sleep(2.0)
+        early_output = ""
+        try:
+            early_output = log_path.read_text(errors="replace")[-2000:]
+        except OSError:
+            pass
+        rel_log = log_path.relative_to(self.root_dir)
+        lines = [
+            f"Started in background (pid {process.pid}).",
+            f"Log file: {rel_log}",
+            "Tail it with: tail -n 50 " + str(rel_log),
+            "",
+            "Early output:",
+            early_output or "(no output yet)",
+        ]
+        return ToolOutput(
+            text="\n".join(lines),
+            metadata={
+                "command": command,
+                "cwd": str(cwd),
+                "background": True,
+                "pid": process.pid,
+                "log_path": str(rel_log),
+                "early_output": early_output,
             },
         )

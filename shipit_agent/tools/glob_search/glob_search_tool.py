@@ -52,9 +52,24 @@ class GlobSearchTool:
         }
 
     def _resolve(self, relative_path: str | None) -> Path:
-        candidate = (self.root_dir / (relative_path or ".")).resolve()
-        if self.root_dir not in candidate.parents and candidate != self.root_dir:
-            raise ValueError("Path escapes project root")
+        # Accept either a relative path (joined to root_dir) or an
+        # absolute path that already lives inside root_dir. Use
+        # is_relative_to() instead of "in parents" so symlinked
+        # workspace roots (/tmp -> /private/tmp on macOS, .shipit
+        # workspaces) don't trip a false "escapes project root" when
+        # the LLM passes back the absolute path the engagement created.
+        rel = relative_path or "."
+        candidate_path = Path(rel)
+        if candidate_path.is_absolute():
+            candidate = candidate_path.resolve()
+        else:
+            candidate = (self.root_dir / candidate_path).resolve()
+        try:
+            candidate.relative_to(self.root_dir)
+        except ValueError:
+            raise ValueError(
+                f"Path escapes project root: {candidate} is not under {self.root_dir}"
+            ) from None
         return candidate
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
@@ -65,10 +80,13 @@ class GlobSearchTool:
             Path(match).resolve()
             for match in glob.glob(str(base / pattern), recursive=True)
         )
+        # Use is_relative_to so symlinked workspace roots (/tmp -> /private/tmp
+        # on macOS) don't drop legitimate matches when the symlink isn't on
+        # the parents chain. _resolve already enforces containment.
         filtered = [
             str(match.relative_to(self.root_dir))
             for match in matches
-            if self.root_dir in match.parents or match == self.root_dir
+            if match.is_relative_to(self.root_dir)
         ][:limit]
         return ToolOutput(
             text="\n".join(filtered) if filtered else "No matching files found.",

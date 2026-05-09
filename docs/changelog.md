@@ -1,5 +1,62 @@
 # Changelog
 
+## v1.0.7 — 2026-04-24
+
+**Agents for every role.** 12 new tools and 9 new persona specialists turn shipit-agent into a framework that ships agents for developers, designers, sales reps, PMs, data analysts, finance, customer support, and recruiters — not just code-slinging agents.
+
+### Core Tools — Everyone Benefits
+
+- **`GitHubTool`** — 16 actions covering issues, pull requests, reviews (APPROVE / REQUEST_CHANGES / COMMENT), file contents, and GitHub Actions workflow runs. github.com + GitHub Enterprise. Rate-limit aware with structured `retry_after_epoch` payload.
+- **`GitLabTool`** — 16 actions for issues, merge requests, file contents, and CI pipelines. Self-hosted + gitlab.com.
+- **`SQLTool`** — SQLAlchemy-backed. Works with PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, MSSQL, Oracle. Read-safe by default; mutations gated by `allow_writes=True`. 46 tests.
+- **`VisionTool`** — image → text via any vision-capable LLM (Claude, GPT-4o, Gemini, Bedrock Claude, LiteLLM). Accepts filesystem paths, URLs, data-URLs, or raw base64.
+- **`PDFTool`** — extract text, per-page content, metadata from PDFs (local or URL). Page-range parsing, char caps, clean error taxonomy.
+- **`LangSmithExporter` + `OpenTelemetryExporter`** — ship every agent's trace to LangSmith or any OTLP backend (Datadog, Grafana, Honeycomb).
+
+### Persona SaaS Connectors
+
+- **`FigmaTool`** — files, nodes, rendered images, comments, team projects, component libraries.
+- **`SalesforceTool`** — SOQL/SOSL queries, accounts/opportunities/contacts, safe `log_activity` + gated full writes.
+- **`StripeTool`** — customers, charges, subscriptions, invoices, products. Read-heavy by default. Test/live mode detection.
+- **`GoogleSheetsTool`** — read/write cells, ranges, formulas, sheet structure. A1-notation with proper URL encoding.
+- **`ZendeskTool`** — ticket search/create/update/close, `add_comment` always enabled for triage, macro preview.
+- **`LinkedInSearchTool`** — **strictly read-only**. Profile + company lookup + search. Four layers of write-free enforcement.
+
+### Nine New Specialist Personas
+
+- **`code-reviewer-bot`**, **`release-engineer`** — GitHub-powered dev ops.
+- **`figma-designer`** — design review + handoff via Figma + Vision.
+- **`sales-rep`**, **`account-executive`**, **`sales-ops`** — Salesforce + LinkedIn + SQL.
+- **`recruiter`** — sourcing + candidate tracking via LinkedIn + Sheets + PDF.
+- **`finance-analyst`** — Stripe + PDF + SQL + dashboard rendering.
+- **`customer-support-agent`** — Zendesk + Vision + Slack.
+
+Total specialists in `agents.json` now 56.
+
+### Seven Persona Walk-Through Notebooks
+
+- `47_pm_pr_digest` — nightly PR digest across repos
+- `48_designer_figma_review` — Figma → design-review dashboard
+- `49_sales_lead_enrichment` — Salesforce + LinkedIn → personalised outreach
+- `50_manager_sheets_kpis` — Google Sheets → weekly dashboard
+- `51_support_zendesk_triage` — ticket triage with screenshot reading
+- `52_analyst_sql_to_dashboard` — SQL → dashboard (real SQLite)
+- `53_finance_stripe_pdf_cashflow` — Stripe + PDF contracts → cash-flow one-pager
+
+Each runs clean with 0 cell errors using stubbed API responses — no credentials needed to see the flow.
+
+### Tests
+
+286 new tests across 12 new test files. **1190 passing, 8 skipped (gated Bedrock E2E + soak), 0 regressions.**
+
+### Upgrade
+
+```bash
+pip install --upgrade shipit-agent==1.0.7
+```
+
+No breaking changes. Optional extras for new deps: `pip install 'shipit-agent[pdf,sql,otel]'`.
+
 ## v1.0.6 — 2026-04-24
 
 **Bulletproof 24-hour Autopilot, AI-driven dashboard renderer, LiteLLM proxy.** `Autopilot` is hardened for multi-day runs: cumulative budgets across resume, SIGTERM-safe shutdown, end-to-end dollar tracking, corrupt-checkpoint quarantine. New `DashboardRenderTool` lets an agent pick the right section shape (metrics / chart / timeline / cards / phases / verdict) for any one-pager question and emit a self-contained HTML artifact. First-class LiteLLM-proxy support so any company can plug every agent into their own proxy in three fields.
@@ -28,6 +85,12 @@
 - Three equivalent paths to wire it: factory (`build_llm_from_settings`), direct class (`LiteLLMProxyChatLLM`), or purely env vars (`SHIPIT_LITELLM_API_BASE` + `SHIPIT_LITELLM_API_KEY` + `SHIPIT_LITELLM_MODEL`).
 - Factory auto-detects proxy mode when `api_base` is set; falls back to direct `LiteLLMChatLLM` when it isn't.
 - **`BedrockChatLLM`** now only injects `modify_params=True` for Anthropic on Bedrock; Nova, Titan, Llama, Mistral, and `openai.gpt-oss-120b` on Bedrock work without the prior "extraneous key" rejection.
+
+### Python 3.13 + 3.14 Support
+
+- Added `Programming Language :: Python :: 3.13` and `:: 3.14` classifiers to `pyproject.toml`. `requires-python = ">=3.11"` already let 3.13 / 3.14 installs succeed; the classifiers make the support discoverable on PyPI.
+- CI matrix expanded to `['3.11', '3.12', '3.13', '3.14']` on `ubuntu-latest` and `macos-latest` (`.github/workflows/test.yml`).
+- `datetime.utcnow()` replaced with `datetime.now(timezone.utc)` in `costs.tracker.CostRecord` and `notifications.base.Notification`. `utcnow()` has been deprecation-warned since 3.12 and will be removed — this is a forward-compatible swap with identical behaviour.
 
 ### Notebook 46 — Runnable Walk-Through
 

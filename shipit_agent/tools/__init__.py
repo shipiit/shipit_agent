@@ -1,17 +1,23 @@
 from .ask_user import AskUserTool
+from .ask_user_async import AskUserAsyncTool
 from .artifact_builder import ArtifactBuilderTool
 from .bash import BashTool
 from .base import Tool, ToolContext, ToolOutput
 from .code_execution import CodeExecutionTool
 from .confluence import ConfluenceTool
 from .custom_api import CustomAPITool
+from .dashboard_render import DashboardRenderTool
 from .decision_matrix import DecisionMatrixTool
 from .edit_file import EditFileTool
 from .evidence_synthesis import EvidenceSynthesisTool
 from .function import FunctionTool
 from .file_read import FileReadTool
 from .file_write import FileWriteTool
+from .figma import FigmaTool
+from .github import GitHubTool
+from .gitlab import GitLabTool
 from .gmail import GmailTool
+from .google_sheets import GoogleSheetsTool
 from .glob_search import GlobSearchTool
 from .google_calendar import GoogleCalendarTool
 from .google_drive import GoogleDriveTool
@@ -19,19 +25,26 @@ from .grep_search import GrepSearchTool
 from .human_review import HumanReviewTool
 from .jira import JiraTool
 from .linear import LinearTool
+from .linkedin import LinkedInSearchTool
 from .memory import MemoryTool
 from .notion import NotionTool
 from .open_url import OpenURLTool
+from .pdf import PDFTool
 from .playwright_browser import PlaywrightBrowserTool
 from .planner import PlannerTool
 from .prompt import PromptTool
+from .salesforce import SalesforceTool
 from .slack import SlackTool
+from .sql import SQLTool
+from .stripe import StripeTool
 from .sub_agent import SubAgentTool
 from .thought_decomposition import ThoughtDecompositionTool
 from .tool_search import ToolSearchTool
 from .verifier import VerifierTool
+from .vision import VisionTool
 from .webhook_payload import WebhookPayloadTool
 from .workspace_files import WorkspaceFilesTool
+from .zendesk import ZendeskTool
 from .web_search import DuckDuckGoSearchProvider, SearchProvider, WebSearchTool
 from .web_search import (
     BraveSearchProvider,
@@ -43,6 +56,7 @@ from .web_search import (
 
 __all__ = [
     "AskUserTool",
+    "AskUserAsyncTool",
     "ArtifactBuilderTool",
     "BashTool",
     "BraveSearchProvider",
@@ -50,6 +64,7 @@ __all__ = [
     "CodeExecutionTool",
     "ConfluenceTool",
     "CustomAPITool",
+    "DashboardRenderTool",
     "DecisionMatrixTool",
     "DuckDuckGoSearchProvider",
     "EditFileTool",
@@ -57,24 +72,33 @@ __all__ = [
     "FileReadTool",
     "FileWriteTool",
     "FunctionTool",
+    "FigmaTool",
+    "GitHubTool",
+    "GitLabTool",
     "GmailTool",
     "GlobSearchTool",
     "GoogleCalendarTool",
     "GoogleDriveTool",
+    "GoogleSheetsTool",
     "GrepSearchTool",
     "HumanReviewTool",
     "JiraTool",
     "LinearTool",
+    "LinkedInSearchTool",
     "MemoryTool",
     "NotionTool",
     "OpenURLTool",
+    "PDFTool",
     "PlaywrightBrowserTool",
     "PlaywrightSearchProvider",
     "PlannerTool",
     "PromptTool",
+    "SalesforceTool",
     "SearchProvider",
     "SerperSearchProvider",
     "SlackTool",
+    "SQLTool",
+    "StripeTool",
     "SubAgentTool",
     "TavilySearchProvider",
     "ThoughtDecompositionTool",
@@ -83,7 +107,9 @@ __all__ = [
     "ToolContext",
     "ToolOutput",
     "VerifierTool",
+    "VisionTool",
     "WebSearchTool",
     "WebhookPayloadTool",
     "WorkspaceFilesTool",
+    "ZendeskTool",
 ]

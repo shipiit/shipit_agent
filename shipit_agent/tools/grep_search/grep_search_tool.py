@@ -60,9 +60,21 @@ class GrepSearchTool:
         }
 
     def _resolve(self, relative_path: str | None) -> Path:
-        candidate = (self.root_dir / (relative_path or ".")).resolve()
-        if self.root_dir not in candidate.parents and candidate != self.root_dir:
-            raise ValueError("Path escapes project root")
+        # Accept either a relative path (joined to root_dir) or an absolute
+        # path that already lives inside root_dir. is_relative_to() handles
+        # symlinked roots (/tmp -> /private/tmp on macOS, .shipit workspaces)
+        # so the LLM passing back the absolute workspace path the engagement
+        # created doesn't trip a false "escapes project root".
+        rel = relative_path or "."
+        candidate_path = Path(rel)
+        if candidate_path.is_absolute():
+            candidate = candidate_path.resolve()
+        else:
+            candidate = (self.root_dir / candidate_path).resolve()
+        if not candidate.is_relative_to(self.root_dir):
+            raise ValueError(
+                f"Path escapes project root: {candidate} is not under {self.root_dir}"
+            )
         return candidate
 
     def _run_rg(

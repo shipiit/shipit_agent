@@ -1,0 +1,279 @@
+"""Build notebooks/53_finance_stripe_pdf_cashflow.ipynb.
+
+Finance analyst persona: pull Stripe invoices (stubbed), extract the
+signed-PDF contract (real reportlab-generated PDF + real PDFTool), stitch
+into a cash-flow one-pager dashboard.
+
+Run ``python notebooks/_nb53_builder.py`` to regenerate the notebook.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+HERE = Path(__file__).resolve().parent
+OUT = HERE / "53_finance_stripe_pdf_cashflow.ipynb"
+
+
+def md(text: str) -> dict:
+    return {"cell_type": "markdown", "metadata": {}, "source": text.splitlines(keepends=True)}
+
+
+def code(text: str) -> dict:
+    return {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": text.splitlines(keepends=True),
+    }
+
+
+CELLS: list[dict] = [
+    md(
+        "# 53 · Finance Analyst — Stripe + Contract PDF → Cash-Flow One-Pager\n"
+        "\n"
+        "**Persona:** Finance analyst. **Tools exercised:** `StripeTool` "
+        "(stubbed), `PDFTool` (real, against a PDF we generate in-notebook "
+        "with reportlab), `DashboardRenderTool`.\n"
+        "\n"
+        "Workflow:\n"
+        "\n"
+        "1. Pull paid + open invoices from Stripe.\n"
+        "2. Generate a tiny contract PDF with reportlab inline, then extract "
+        "text + metadata with the real `PDFTool`.\n"
+        "3. Stitch everything into a cash-flow one-pager dashboard.\n"
+        "\n"
+        "Stripe is stubbed; PDF generation + extraction run for real if "
+        "reportlab and pypdf are installed. If either dep is missing the "
+        "notebook falls back to a pre-staged text blob and notes the skip.\n"
+    ),
+    md("## Setup"),
+    code(
+        "from pathlib import Path\n"
+        "\n"
+        "def _find_notebooks_dir() -> Path:\n"
+        "    cwd = Path.cwd().resolve()\n"
+        "    if cwd.name == 'notebooks':\n"
+        "        return cwd\n"
+        "    candidate = cwd / 'notebooks'\n"
+        "    return candidate if candidate.is_dir() else cwd\n"
+        "WORKSPACE = _find_notebooks_dir() / '_finance_workspace'\n"
+        "WORKSPACE.mkdir(parents=True, exist_ok=True)\n"
+        "print('workspace:', WORKSPACE)\n"
+    ),
+    md("## 1 · Pick a model"),
+    code(
+        "# from shipit_agent.llms import build_llm_from_settings\n"
+        "# llm = build_llm_from_settings({'provider': 'bedrock',\n"
+        "#     'model': 'bedrock/anthropic.claude-sonnet-4-5-v2:0'}, provider='bedrock')\n"
+        "# llm = build_llm_from_settings({'provider': 'litellm',\n"
+        "#     'model': 'openai/gpt-4o-mini'}, provider='litellm')\n"
+        "# from shipit_agent.llms import LiteLLMProxyChatLLM\n"
+        "# llm = LiteLLMProxyChatLLM(model='gpt-4o-mini',\n"
+        "#     api_base='https://litellm.internal', api_key='sk-proxy')\n"
+        "\n"
+        "from shipit_agent.llms import SimpleEchoLLM\n"
+        "llm = SimpleEchoLLM()\n"
+        "print('llm:', type(llm).__name__)\n"
+    ),
+    md("## 2 · Stubbed Stripe tool"),
+    code(
+        "from shipit_agent.integrations import CredentialRecord, InMemoryCredentialStore\n"
+        "from shipit_agent.tools.stripe import StripeTool\n"
+        "\n"
+        "store = InMemoryCredentialStore()\n"
+        "store.set(CredentialRecord(\n"
+        "    key='stripe', provider='stripe',\n"
+        "    secrets={'api_key': 'sk_test_demo'},\n"
+        "    metadata={'base_url': 'https://api.stripe.com'},\n"
+        "))\n"
+        "stripe = StripeTool(credential_store=store)\n"
+        "\n"
+        "_INVOICES = [\n"
+        "    {'id': 'in_001', 'status': 'paid',  'amount_due': 199900, 'amount_paid': 199900,\n"
+        "     'currency': 'usd', 'customer': 'cus_NW', 'due_date': '2026-04-15'},\n"
+        "    {'id': 'in_002', 'status': 'paid',  'amount_due': 199900, 'amount_paid': 199900,\n"
+        "     'currency': 'usd', 'customer': 'cus_NW', 'due_date': '2026-04-15'},\n"
+        "    {'id': 'in_003', 'status': 'open',  'amount_due': 199900, 'amount_paid': 0,\n"
+        "     'currency': 'usd', 'customer': 'cus_ACME', 'due_date': '2026-04-30'},\n"
+        "    {'id': 'in_004', 'status': 'paid',  'amount_due':  99900, 'amount_paid':  99900,\n"
+        "     'currency': 'usd', 'customer': 'cus_BETA', 'due_date': '2026-04-18'},\n"
+        "    {'id': 'in_005', 'status': 'open',  'amount_due': 349900, 'amount_paid': 0,\n"
+        "     'currency': 'usd', 'customer': 'cus_GLOBEX', 'due_date': '2026-05-05'},\n"
+        "]\n"
+        "\n"
+        "def _fake_stripe(*, record, method, path, query=None, body=None):\n"
+        "    if path == '/v1/invoices':\n"
+        "        return {'object': 'list', 'data': _INVOICES, 'has_more': False}\n"
+        "    return {}\n"
+        "\n"
+        "stripe._request_json = _fake_stripe\n"
+        "print('stripe stub installed')\n"
+    ),
+    md("## 3 · Pull invoices through the tool"),
+    code(
+        "from shipit_agent.tools.base import ToolContext\n"
+        "\n"
+        "ctx = ToolContext(prompt='finance', state={'credential_store': store})\n"
+        "\n"
+        "inv_out = stripe.run(ctx, action='list_invoices')\n"
+        "print(inv_out.text)\n"
+        "\n"
+        "items = inv_out.metadata.get('items') or []\n"
+        "paid = [i for i in items if i['status'] == 'paid']\n"
+        "open_ = [i for i in items if i['status'] == 'open']\n"
+        "paid_usd = sum(i['amount_paid'] for i in paid) / 100\n"
+        "open_usd = sum(i['amount_due']  for i in open_) / 100\n"
+        "print(f'\\npaid this month: ${paid_usd:,.0f}')\n"
+        "print(f'outstanding:     ${open_usd:,.0f}')\n"
+    ),
+    md(
+        "## 4 · Generate a contract PDF with reportlab\n"
+        "\n"
+        "We write a tiny single-page PDF so the `PDFTool` has something real "
+        "to extract against. If reportlab isn't installed we fall back to a "
+        "text blob and note the skip.\n"
+    ),
+    code(
+        "contract_pdf = WORKSPACE / 'northwind_contract.pdf'\n"
+        "reportlab_ok = False\n"
+        "try:\n"
+        "    from reportlab.lib.pagesizes import letter\n"
+        "    from reportlab.pdfgen import canvas\n"
+        "    reportlab_ok = True\n"
+        "except ImportError:\n"
+        "    print('reportlab not installed — falling back to staged text blob.')\n"
+        "\n"
+        "if reportlab_ok:\n"
+        "    c = canvas.Canvas(str(contract_pdf), pagesize=letter)\n"
+        "    c.setTitle('Northwind Cloud — Master Subscription Agreement')\n"
+        "    c.setAuthor('Acme Finance')\n"
+        "    c.setFont('Helvetica-Bold', 16)\n"
+        "    c.drawString(72, 720, 'Master Subscription Agreement')\n"
+        "    c.setFont('Helvetica', 11)\n"
+        "    c.drawString(72, 696, 'Between: Acme Inc. (\"Vendor\") and Northwind Cloud Ltd. (\"Customer\")')\n"
+        "    c.drawString(72, 678, 'Effective date: 2026-04-01')\n"
+        "    c.drawString(72, 660, 'Term: 12 months, auto-renewing')\n"
+        "    c.drawString(72, 642, 'MRR: $1,999.00 USD — billed monthly in advance')\n"
+        "    c.drawString(72, 624, 'Invoice cadence: 1st of each month, Net 15')\n"
+        "    c.drawString(72, 606, 'Payment method: ACH (primary), card (fallback)')\n"
+        "    c.drawString(72, 588, 'Early-termination fee: 3 months MRR')\n"
+        "    c.drawString(72, 570, 'Total contract value (year 1): $23,988.00 USD')\n"
+        "    c.showPage()\n"
+        "    c.save()\n"
+        "    print(f'wrote {contract_pdf}  ({contract_pdf.stat().st_size} bytes)')\n"
+        "else:\n"
+        "    # Fallback fake — we'll skip the PDF extraction below.\n"
+        "    contract_pdf = None\n"
+    ),
+    md("## 5 · Extract contract text + metadata with the real PDFTool"),
+    code(
+        "from shipit_agent.tools.pdf import PDFTool\n"
+        "\n"
+        "pdf_tool = PDFTool()\n"
+        "pdf_text = ''\n"
+        "pdf_meta: dict = {}\n"
+        "\n"
+        "if contract_pdf is not None:\n"
+        "    txt_out = pdf_tool.run(ctx, action='extract_text', source=str(contract_pdf))\n"
+        "    if txt_out.metadata.get('error'):\n"
+        "        print('PDFTool skipped:', txt_out.metadata['error'])\n"
+        "        print('  hint:', txt_out.metadata.get('install', ''))\n"
+        "    else:\n"
+        "        pdf_text = txt_out.text\n"
+        "        print('--- extracted text ---')\n"
+        "        print(pdf_text[:600])\n"
+        "\n"
+        "    meta_out = pdf_tool.run(ctx, action='metadata', source=str(contract_pdf))\n"
+        "    if not meta_out.metadata.get('error'):\n"
+        "        pdf_meta = meta_out.metadata.get('metadata') or {}\n"
+        "        print()\n"
+        "        print('--- pdf metadata ---')\n"
+        "        for k, v in pdf_meta.items():\n"
+        "            print(f'{k}: {v}')\n"
+        "else:\n"
+        "    pdf_text = ('Master Subscription Agreement. Customer: Northwind Cloud. '\n"
+        "                'MRR $1,999 monthly Net 15. ACV $23,988.')\n"
+        "    print('(using staged text blob)')\n"
+    ),
+    md("## 6 · Cash-flow one-pager dashboard"),
+    code(
+        "from shipit_agent.tools.dashboard_render import DashboardRenderTool\n"
+        "\n"
+        "dash = DashboardRenderTool(workspace_root=WORKSPACE)\n"
+        "\n"
+        "result = dash.run(\n"
+        "    ToolContext(prompt='finance',\n"
+        "                 state={'artifact_workspace_root': str(WORKSPACE)}),\n"
+        "    title='Cash-Flow One-Pager — April 2026',\n"
+        "    subtitle='Stripe invoices + Northwind MSA',\n"
+        "    lang='en',\n"
+        "    sections=[\n"
+        "        {'type': 'metrics', 'title': 'This month', 'columns': 3, 'items': [\n"
+        "            {'label': 'Collected', 'value': f'${paid_usd:,.0f}',\n"
+        "             'sub': f'{len(paid)} invoices'},\n"
+        "            {'label': 'Outstanding', 'value': f'${open_usd:,.0f}',\n"
+        "             'sub': f'{len(open_)} invoices', 'color': '#ba7517'},\n"
+        "            {'label': 'Net', 'value': f'${paid_usd - 0:,.0f}', 'sub': 'received'},\n"
+        "        ]},\n"
+        "        {'type': 'timeline', 'title': 'Invoice ledger', 'items': [\n"
+        "            {'period': i['due_date'],\n"
+        "             'head': f\"{i['id']} — {i['customer']}\",\n"
+        "             'desc': f\"${i['amount_due']/100:,.0f} {i['currency'].upper()}  {i['status']}\",\n"
+        "             'dot_color': '#1d9e75' if i['status'] == 'paid' else '#ba7517',\n"
+        "             'tags': [{'text': i['status'],\n"
+        "                        'color': 'green' if i['status'] == 'paid' else 'amber'}]}\n"
+        "            for i in items\n"
+        "        ]},\n"
+        "        {'type': 'cards', 'title': 'Key contract — Northwind MSA', 'columns': 1, 'cards': [\n"
+        "            {'title': pdf_meta.get('title') or 'Northwind MSA',\n"
+        "             'rows': [\n"
+        "                 {'strong': 'Extracted text:',\n"
+        "                  'text': (pdf_text or '(no extraction — see warning)')[:400],\n"
+        "                  'dot_color': '#185fa5'},\n"
+        "             ]}\n"
+        "        ]},\n"
+        "        {'type': 'verdict', 'title': 'Finance takeaway',\n"
+        "         'text': (f'**${paid_usd:,.0f}** collected, **${open_usd:,.0f}** '\n"
+        "                  f'outstanding. Chase Acme + Globex before month-end; '\n"
+        "                  f'Northwind MSA is ACV **${23988:,}** auto-renewing.')},\n"
+        "    ],\n"
+        "    export=True,\n"
+        ")\n"
+        "print(result.text)\n"
+        "print('artifact path:', result.metadata.get('path'))\n"
+    ),
+    md(
+        "## Next steps\n"
+        "\n"
+        "* See `docs-app/content/source/tools/stripe.md` for the Stripe action "
+        "surface (customers / subs / charges / catalog) and write-gating.\n"
+        "* See `docs-app/content/source/tools/pdf.md` for PDF extraction modes "
+        "(`extract_text`, `extract_pages`, `metadata`, `page_count`).\n"
+        "* Wrap in `Autopilot(..., goal=Goal('Produce month-end cash-flow '\n"
+        "'one-pager'))` on a 1st-of-month schedule via the scheduler daemon.\n"
+    ),
+]
+
+
+def main() -> None:
+    notebook = {
+        "cells": CELLS,
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    for i, cell in enumerate(notebook["cells"]):
+        cell.setdefault("id", f"cell-{i:02d}")
+    OUT.write_text(json.dumps(notebook, indent=1))
+    print(f"wrote {OUT}")
+
+
+if __name__ == "__main__":
+    main()

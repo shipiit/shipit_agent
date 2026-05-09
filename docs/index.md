@@ -5,8 +5,11 @@ description: A clean, powerful Python agent library with tools, MCP, streaming e
 
 # SHIPIT Agent
 
+!!! tip "v1.0.7 — Agents for every role"
+    New in 1.0.7: **12 new tools** (GitHub · GitLab · SQL · Vision · PDF · LangSmith/OTel trace exporters · Figma · Salesforce · Stripe · Google Sheets · Zendesk · read-only LinkedIn search) and **9 new specialist personas** (code-reviewer-bot · release-engineer · figma-designer · sales-rep · account-executive · sales-ops · recruiter · finance-analyst · customer-support-agent). shipit-agent now ships agents for **every role**, not just developers. See the [changelog](changelog.md) for the full story.
+
 !!! tip "v1.0.6 — Bulletproof 24h Autopilot, Dashboard Renderer, LiteLLM Proxy"
-    New in 1.0.6: **Autopilot hardened for 24-hour runs** (cumulative budgets across resume · SIGTERM-safe · end-to-end dollar tracking · corrupt-checkpoint quarantine), a new **`render_dashboard` tool** the agent drives to produce Claude-Desktop-style HTML one-pagers, and **first-class LiteLLM-proxy support** — plug every agent into your own proxy in three fields. See the [changelog](changelog.md) for the full story.
+    New in 1.0.6: **Autopilot hardened for 24-hour runs** (cumulative budgets across resume · SIGTERM-safe · end-to-end dollar tracking · corrupt-checkpoint quarantine), a new **`render_dashboard` tool** the agent drives to produce Claude-Desktop-style HTML one-pagers, and **first-class LiteLLM-proxy support** — plug every agent into your own proxy in three fields.
 
 !!! tip "v1.0.5 — Prebuilt Agents, ShipCrew, Notifications, Cost Tracking"
     New in 1.0.5: **40 prebuilt agent personas**, **ShipCrew** DAG orchestration, **Slack/Discord/Telegram notifications**, and **cost tracking with budgets**. See the [changelog](changelog.md) for the verified notebook and test coverage shipped in this repo.

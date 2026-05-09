@@ -1,0 +1,237 @@
+"""Build notebooks/50_manager_sheets_kpis.ipynb.
+
+Manager persona: pull KPIs from Google Sheets, render a weekly dashboard,
+optionally post to Slack.
+
+Run ``python notebooks/_nb50_builder.py`` to regenerate the notebook.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+HERE = Path(__file__).resolve().parent
+OUT = HERE / "50_manager_sheets_kpis.ipynb"
+
+
+def md(text: str) -> dict:
+    return {
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": text.splitlines(keepends=True),
+    }
+
+
+def code(text: str) -> dict:
+    return {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": text.splitlines(keepends=True),
+    }
+
+
+CELLS: list[dict] = [
+    md(
+        "# 50 · Manager — Weekly KPI Dashboard From Sheets\n"
+        "\n"
+        "**Persona:** Engineering manager. **Tools exercised:** "
+        "`GoogleSheetsTool`, `DashboardRenderTool`, `SlackTool`.\n"
+        "\n"
+        "End-to-end workflow:\n"
+        "\n"
+        "1. Read KPI ranges (squad velocity, deploy freq, error rate) from a "
+        "Google Sheet.\n"
+        "2. Render a weekly manager dashboard.\n"
+        "3. Drop a summary into the squad's Slack channel.\n"
+        "\n"
+        "Google Sheets and Slack calls are stubbed with canned JSON so this "
+        "executes clean without creds.\n"
+    ),
+    md("## Setup"),
+    code(
+        "from pathlib import Path\n"
+        "\n"
+        "def _find_notebooks_dir() -> Path:\n"
+        "    cwd = Path.cwd().resolve()\n"
+        "    if cwd.name == 'notebooks':\n"
+        "        return cwd\n"
+        "    candidate = cwd / 'notebooks'\n"
+        "    return candidate if candidate.is_dir() else cwd\n"
+        "WORKSPACE = _find_notebooks_dir() / '_manager_workspace'\n"
+        "WORKSPACE.mkdir(parents=True, exist_ok=True)\n"
+        "print('workspace:', WORKSPACE)\n"
+    ),
+    md("## 1 · Pick a model"),
+    code(
+        "# from shipit_agent.llms import build_llm_from_settings\n"
+        "# llm = build_llm_from_settings({'provider': 'bedrock',\n"
+        "#     'model': 'bedrock/openai.gpt-oss-120b-1:0'}, provider='bedrock')\n"
+        "# llm = build_llm_from_settings({'provider': 'litellm',\n"
+        "#     'model': 'anthropic/claude-sonnet-4-5'}, provider='litellm')\n"
+        "# from shipit_agent.llms import LiteLLMProxyChatLLM\n"
+        "# llm = LiteLLMProxyChatLLM(model='gpt-4o-mini',\n"
+        "#     api_base='https://litellm.internal', api_key='sk-proxy')\n"
+        "\n"
+        "from shipit_agent.llms import SimpleEchoLLM\n"
+        "llm = SimpleEchoLLM()\n"
+        "print('llm:', type(llm).__name__)\n"
+    ),
+    md("## 2 · Stubbed Google Sheets + Slack"),
+    code(
+        "from shipit_agent.integrations import CredentialRecord, InMemoryCredentialStore\n"
+        "from shipit_agent.tools.google_sheets import GoogleSheetsTool\n"
+        "from shipit_agent.tools.slack import SlackTool\n"
+        "\n"
+        "store = InMemoryCredentialStore()\n"
+        "store.set(CredentialRecord(\n"
+        "    key='google_sheets', provider='google_sheets',\n"
+        "    secrets={'access_token': 'sheets-demo'},\n"
+        "    metadata={'base_url': 'https://sheets.googleapis.com'},\n"
+        "))\n"
+        "store.set(CredentialRecord(\n"
+        "    key='slack', provider='slack', secrets={'token': 'xoxb-demo'},\n"
+        "))\n"
+        "\n"
+        "sheets = GoogleSheetsTool(credential_store=store)\n"
+        "slack = SlackTool(credential_store=store)\n"
+        "\n"
+        "SHEET_ID = '1ABC_demo_spreadsheet_id'\n"
+        "\n"
+        "# Canned values for three ranges.\n"
+        "_SHEET_VALUES = {\n"
+        "    'Weekly!A2:B4': [\n"
+        "        ['Velocity (points)', '42'],\n"
+        "        ['Deploys', '17'],\n"
+        "        ['Error rate (%)', '0.32'],\n"
+        "    ],\n"
+        "    'Weekly!A8:C13': [\n"
+        "        ['Squad',    'Deploys', 'Velocity'],\n"
+        "        ['Platform', '6',       '14'],\n"
+        "        ['Billing',  '4',       '11'],\n"
+        "        ['Growth',   '3',       '9'],\n"
+        "        ['Mobile',   '2',       '5'],\n"
+        "        ['DX',       '2',       '3'],\n"
+        "    ],\n"
+        "}\n"
+        "\n"
+        "def _fake_sheets(*, record, method, path, query=None, body=None):\n"
+        "    # Decode the range name from /values/<encoded-range> path.\n"
+        "    # Canned payloads key off the exact range-string shape Sheets uses.\n"
+        "    for range_str, values in _SHEET_VALUES.items():\n"
+        "        from urllib.parse import quote\n"
+        "        if quote(range_str, safe='') in path:\n"
+        "            return {'range': range_str, 'majorDimension': 'ROWS', 'values': values}\n"
+        "    return {'values': []}\n"
+        "\n"
+        "sheets._request_json = _fake_sheets\n"
+        "\n"
+        "def _fake_slack(*, record, method, path, query=None, body=None):\n"
+        "    if path == '/chat.postMessage':\n"
+        "        return {'ok': True, 'channel': body.get('channel'),\n"
+        "                'ts': '1714000000.000200'}\n"
+        "    return {'ok': True}\n"
+        "slack._request_json = _fake_slack\n"
+        "print('stubs installed')\n"
+    ),
+    md("## 3 · Read KPI ranges"),
+    code(
+        "from shipit_agent.tools.base import ToolContext\n"
+        "\n"
+        "ctx = ToolContext(prompt='manager kpi', state={'credential_store': store})\n"
+        "\n"
+        "headline = sheets.run(ctx, action='get_values',\n"
+        "                       spreadsheet_id=SHEET_ID, range='Weekly!A2:B4')\n"
+        "print(headline.text)\n"
+        "\n"
+        "per_squad = sheets.run(ctx, action='get_values',\n"
+        "                        spreadsheet_id=SHEET_ID, range='Weekly!A8:C13')\n"
+        "print()\n"
+        "print(per_squad.text)\n"
+    ),
+    md("## 4 · Render the dashboard"),
+    code(
+        "from shipit_agent.tools.dashboard_render import DashboardRenderTool\n"
+        "\n"
+        "dash = DashboardRenderTool(workspace_root=WORKSPACE)\n"
+        "\n"
+        "kpi_rows = headline.metadata.get('values') or []\n"
+        "headline_items = [\n"
+        "    {'label': r[0], 'value': r[1]} for r in kpi_rows if len(r) >= 2\n"
+        "]\n"
+        "\n"
+        "sq_rows = per_squad.metadata.get('values') or []\n"
+        "squad_bars = []\n"
+        "if len(sq_rows) > 1:\n"
+        "    rows = sq_rows[1:]\n"
+        "    # Normalize velocity to percent for bars.\n"
+        "    max_v = max((int(r[2]) for r in rows if len(r) >= 3 and r[2].isdigit()), default=1)\n"
+        "    palette = ['#185fa5', '#1d9e75', '#534ab7', '#ba7517', '#888888']\n"
+        "    for i, r in enumerate(rows):\n"
+        "        if len(r) < 3 or not r[2].isdigit():\n"
+        "            continue\n"
+        "        pct = int(round(int(r[2]) / max_v * 100))\n"
+        "        squad_bars.append({'label': r[0], 'pct': pct, 'color': palette[i % len(palette)]})\n"
+        "\n"
+        "result = dash.run(\n"
+        "    ToolContext(prompt='manager kpi',\n"
+        "                 state={'artifact_workspace_root': str(WORKSPACE)}),\n"
+        "    title='Engineering KPIs — week of 2026-04-20',\n"
+        "    subtitle='Generated from the team Google Sheet',\n"
+        "    lang='en',\n"
+        "    sections=[\n"
+        "        {'type': 'metrics', 'title': 'Headline', 'columns': len(headline_items),\n"
+        "         'items': headline_items},\n"
+        "        {'type': 'bars', 'title': 'Velocity by squad', 'items': squad_bars},\n"
+        "        {'type': 'verdict', 'title': 'Manager takeaway',\n"
+        "         'text': ('Platform leads velocity for the third week running. '\n"
+        "                  'Mobile + DX are holding — flag for investment review.')},\n"
+        "    ],\n"
+        "    export=True,\n"
+        ")\n"
+        "print(result.text)\n"
+        "print('artifact path:', result.metadata.get('path'))\n"
+    ),
+    md("## 5 · Optional: post summary to Slack"),
+    code(
+        "text = (\n"
+        "    '*Engineering KPIs — week of 2026-04-20*\\n'\n"
+        "    + '\\n'.join(f'{i[\"label\"]}: *{i[\"value\"]}*' for i in headline_items)\n"
+        "    + '\\n\\nFull dashboard attached.'\n"
+        ")\n"
+        "slack_out = slack.run(ctx, action='post_message',\n"
+        "                       channel='C_ENG_UPDATES', text=text)\n"
+        "print(slack_out.text)\n"
+    ),
+    md(
+        "## Next steps\n"
+        "\n"
+        "* Swap stubs for real creds — see "
+        "`docs-app/content/source/tools/google_sheets.md` for OAuth setup.\n"
+        "* Wrap in `Autopilot(...)` + the scheduler daemon (notebook 39) for a "
+        "Monday-morning automated send.\n"
+    ),
+]
+
+
+def main() -> None:
+    notebook = {
+        "cells": CELLS,
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    for i, cell in enumerate(notebook["cells"]):
+        cell.setdefault("id", f"cell-{i:02d}")
+    OUT.write_text(json.dumps(notebook, indent=1))
+    print(f"wrote {OUT}")
+
+
+if __name__ == "__main__":
+    main()

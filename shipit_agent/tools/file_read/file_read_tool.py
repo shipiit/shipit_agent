@@ -48,9 +48,18 @@ class FileReadTool:
         }
 
     def _resolve(self, relative_path: str) -> Path:
-        candidate = (self.root_dir / relative_path).resolve()
-        if self.root_dir not in candidate.parents and candidate != self.root_dir:
-            raise ValueError("Path escapes project root")
+        # Accept absolute paths inside root_dir as well as relative ones; use
+        # is_relative_to so symlinked roots (/tmp -> /private/tmp) don't
+        # trigger a false "escapes project root" rejection.
+        candidate_path = Path(relative_path)
+        if candidate_path.is_absolute():
+            candidate = candidate_path.resolve()
+        else:
+            candidate = (self.root_dir / candidate_path).resolve()
+        if not candidate.is_relative_to(self.root_dir):
+            raise ValueError(
+                f"Path escapes project root: {candidate} is not under {self.root_dir}"
+            )
         return candidate
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:

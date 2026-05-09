@@ -51,13 +51,39 @@ class EditFileTool:
         }
 
     def _resolve(self, relative_path: str) -> Path:
-        candidate = (self.root_dir / relative_path).resolve()
-        if self.root_dir not in candidate.parents and candidate != self.root_dir:
-            raise ValueError("Path escapes project root")
+        # Accept absolute paths inside root_dir as well as relative ones; use
+        # is_relative_to so symlinked roots (/tmp -> /private/tmp) don't
+        # trigger a false "escapes project root" rejection.
+        candidate_path = Path(relative_path)
+        if candidate_path.is_absolute():
+            candidate = candidate_path.resolve()
+        else:
+            candidate = (self.root_dir / candidate_path).resolve()
+        if not candidate.is_relative_to(self.root_dir):
+            raise ValueError(
+                f"Path escapes project root: {candidate} is not under {self.root_dir}"
+            )
         return candidate
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
-        path = self._resolve(str(kwargs["path"]))
+        # Some models like to call this tool with `file_path` / `filepath`
+        # instead of the documented `path`. Rather than crashing the whole
+        # run on a KeyError, accept the common aliases and return a
+        # friendly error if none of them are present.
+        raw = (
+            kwargs.get("path")
+            or kwargs.get("file_path")
+            or kwargs.get("filepath")
+            or kwargs.get("filename")
+        )
+        if not raw:
+            return ToolOutput(
+                text=(
+                    "Edit failed: missing required argument `path`. "
+                    "Call edit_file with path, old_text, and new_text."
+                )
+            )
+        path = self._resolve(str(raw))
         if not path.exists():
             return ToolOutput(text=f"File not found: {path}")
         if path.is_dir():

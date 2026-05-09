@@ -16,14 +16,18 @@ Tool categories:
     File operations:    read_file, edit_file, write_file, glob_files, grep_files
     Shell & code:       bash, run_code
     Workspace:          workspace_files
-    Interaction:        ask_user, human_review
+    Interaction:        ask_user, ask_user_async, human_review
     Planning:           plan_task, decompose_problem
     Reasoning:          synthesize_evidence, decision_matrix, verify_output
-    Building:           build_artifact, build_prompt
+    Building:           build_artifact, build_prompt, render_dashboard
+    Content:            pdf, vision
+    Data:               sql
     Memory & search:    memory, tool_search
     Sub-agents:         sub_agent (requires llm)
-    Connectors:         gmail_search, google_calendar, google_drive,
-                        slack, linear, jira, notion, confluence, custom_api
+    Connectors:         gmail, google_calendar, google_drive, google_sheets,
+                        slack, linear, jira, notion, confluence, github,
+                        gitlab, figma, salesforce, stripe, zendesk,
+                        linkedin_search, custom_api
 
 Note: ``SubAgentTool`` requires an ``llm`` and is only included when
 ``llm`` is passed. All other tools are stateless or self-contained.
@@ -35,39 +39,52 @@ from typing import Any
 
 from shipit_agent.llms.base import LLM
 from shipit_agent.tools import (
+    AskUserAsyncTool,
     AskUserTool,
     ArtifactBuilderTool,
     BashTool,
     CodeExecutionTool,
     ConfluenceTool,
     CustomAPITool,
+    DashboardRenderTool,
     DecisionMatrixTool,
     EditFileTool,
     EvidenceSynthesisTool,
+    FigmaTool,
     FileReadTool,
     FileWriteTool,
+    GitHubTool,
+    GitLabTool,
     GmailTool,
     GlobSearchTool,
     GoogleCalendarTool,
     GoogleDriveTool,
+    GoogleSheetsTool,
     GrepSearchTool,
     HumanReviewTool,
     JiraTool,
     LinearTool,
+    LinkedInSearchTool,
     MemoryTool,
     NotionTool,
     OpenURLTool,
+    PDFTool,
     PlannerTool,
     PlaywrightBrowserTool,
     PromptTool,
+    SalesforceTool,
+    SQLTool,
+    StripeTool,
     SubAgentTool,
     Tool,
     ToolSearchTool,
     VerifierTool,
+    VisionTool,
     WebSearchTool,
     WorkspaceFilesTool,
     SlackTool,
     ThoughtDecompositionTool,
+    ZendeskTool,
 )
 
 
@@ -112,6 +129,7 @@ def get_builtin_tool_map(
         GrepSearchTool(root_dir=project_root),
         # ── interaction ───────────────────────────────────────────
         AskUserTool(),
+        AskUserAsyncTool(),
         HumanReviewTool(),
         # ── planning & reasoning ──────────────────────────────────
         MemoryTool(),
@@ -126,15 +144,29 @@ def get_builtin_tool_map(
         ArtifactBuilderTool(),
         WorkspaceFilesTool(root_dir=workspace_root),
         CodeExecutionTool(workspace_root=f"{workspace_root}/code_execution"),
+        DashboardRenderTool(workspace_root=f"{workspace_root}/dashboards"),
+        # ── content extraction ────────────────────────────────────
+        PDFTool(),
+        VisionTool(llm=llm),
+        # ── data & databases ──────────────────────────────────────
+        SQLTool(),
         # ── connectors (SaaS integrations) ────────────────────────
         GmailTool(),
         GoogleCalendarTool(),
         GoogleDriveTool(),
+        GoogleSheetsTool(),
         SlackTool(),
         LinearTool(),
         JiraTool(),
         NotionTool(),
         ConfluenceTool(),
+        GitHubTool(),
+        GitLabTool(),
+        FigmaTool(),
+        SalesforceTool(),
+        StripeTool(),
+        ZendeskTool(),
+        LinkedInSearchTool(),
         CustomAPITool(),
     ]
 

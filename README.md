@@ -51,7 +51,83 @@
   <img src="https://img.shields.io/badge/Custom%20API-supported-gray?style=flat-square" alt="Custom" />
 </p>
 
-## 🚀 What's new in 1.0.6
+## 🚀 What's new in 1.0.7
+
+**SHIPIT Agent 1.0.7 — Agents for every role.** 12 new tools + 9 new specialist personas turn shipit-agent into a framework that ships agents for developers, designers, sales reps, PMs, data analysts, finance, customer support, and recruiters — not just code agents. **1190 unit tests (+286 new). 0 regressions.**
+
+### 12 new tools
+
+**Core tools** (everyone benefits):
+
+```python
+from shipit_agent import (
+    GitHubTool,              # PRs, issues, reviews, workflow runs
+    GitLabTool,              # MRs, issues, CI pipelines
+    SQLTool,                 # SQLAlchemy: Postgres / BigQuery / Snowflake / MySQL / …
+    VisionTool,              # image → text via any vision-capable LLM
+    PDFTool,                 # extract text / pages / metadata from PDFs
+)
+from shipit_agent.tracing_exporters import (
+    LangSmithExporter,       # ship every agent's trace to LangSmith
+    OpenTelemetryExporter,   # or any OTLP backend (Datadog, Grafana, Honeycomb)
+)
+```
+
+**Persona SaaS connectors**:
+
+```python
+from shipit_agent import (
+    FigmaTool,                 # designers
+    SalesforceTool,            # sales / CS
+    StripeTool,                # finance / sales ops
+    GoogleSheetsTool,          # PM / manager / analyst
+    ZendeskTool,               # customer support
+    LinkedInSearchTool,        # sales / recruiter (strictly read-only)
+)
+```
+
+Every connector ships with the same safety rails: rate-limit detection with structured `retry_after` metadata, not-connected + unknown-action structured errors, `allow_writes=False` default for tools that mutate business data (Salesforce, Stripe, Zendesk, Sheets, SQL).
+
+### 9 new specialist personas
+
+Extend the bundled `agents.json` — total roster now **56 specialists**:
+
+```
+code-reviewer-bot · release-engineer · figma-designer ·
+sales-rep · account-executive · sales-ops ·
+recruiter · finance-analyst · customer-support-agent
+```
+
+Load by name:
+
+```python
+from shipit_agent.agents import AgentRegistry
+
+registry = AgentRegistry.default()
+spec = registry.get("code-reviewer-bot")
+```
+
+### 7 persona walk-through notebooks
+
+Every notebook runs with `SimpleEchoLLM` + stubbed API calls — 0 credentials needed to see the flow:
+
+- `47_pm_pr_digest` — nightly PR digest
+- `48_designer_figma_review` — Figma → design review
+- `49_sales_lead_enrichment` — Salesforce + LinkedIn → outreach
+- `50_manager_sheets_kpis` — Google Sheets → weekly dashboard
+- `51_support_zendesk_triage` — ticket triage with screenshot reading
+- `52_analyst_sql_to_dashboard` — SQL → dashboard (real SQLite)
+- `53_finance_stripe_pdf_cashflow` — Stripe + PDF contracts → cash-flow one-pager
+
+### Optional dependency extras
+
+```bash
+pip install 'shipit-agent[pdf,sql,otel]'        # pypdf, SQLAlchemy, OpenTelemetry
+```
+
+---
+
+## 🚀 Also new in 1.0.6
 
 **SHIPIT Agent 1.0.6** makes **Autopilot bulletproof for 24-hour runs**, ships a new **`render_dashboard` tool** for Claude-Desktop-style HTML one-pagers, and locks in **first-class LiteLLM-proxy support** so any company can plug every agent into their own LiteLLM deployment in three fields. **904 unit tests. 7 opt-in Bedrock end-to-end tests. 1 opt-in soak test. All passing.**
 

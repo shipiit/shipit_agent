@@ -31,9 +31,9 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/v/shipit-agent?style=for-the-badge&color=blue&label=pypi" alt="PyPI" /></a>
-  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/pyversions/shipit-agent?style=for-the-badge&color=green" alt="Python versions" /></a>
-  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/dm/shipit-agent?style=for-the-badge&color=purple&label=downloads" alt="Downloads" /></a>
+  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/v/shipit-agent?style=for-the-badge&color=blue&label=pypi&cacheSeconds=300" alt="PyPI" /></a>
+  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/pyversions/shipit-agent?style=for-the-badge&color=green&cacheSeconds=300" alt="Python versions" /></a>
+  <a href="https://pypi.org/project/shipit-agent/"><img src="https://img.shields.io/pypi/dm/shipit-agent?style=for-the-badge&color=purple&label=downloads&cacheSeconds=300" alt="Downloads" /></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge" alt="License" /></a>
   <a href="https://docs.shipiit.com/"><img src="https://img.shields.io/badge/docs-mkdocs--material-483D8B?style=for-the-badge" alt="Docs" /></a>
 </p>

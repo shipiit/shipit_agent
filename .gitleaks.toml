@@ -21,6 +21,10 @@ paths = [
 
     # Notebooks may contain stub credentials in markdown cells
     '''notebooks/.*\.ipynb$''',
+    # Notebook-builder scripts (e.g. _nb48_builder.py) — internal utilities
+    # that template fake demo IDs into the .ipynb output. Same allowlist
+    # rationale as the notebooks themselves.
+    '''notebooks/_nb\d+_builder\.py$''',
 
     # Test fixtures — may include fake tokens for assertion
     '''tests/.*''',

@@ -31,10 +31,13 @@ from .exceptions import DuplicateToolError, ShipitAgentError
 from .hooks import AgentHooks
 from .memory import (
     AgentMemory,
+    ConsolidationResult,
     ConversationMemory,
+    DistilledFact,
     Entity,
     EntityMemory,
     InMemoryVectorStore,
+    MemoryConsolidator,
     SearchResult,
     SemanticMemory,
     VectorStore,
@@ -47,6 +50,7 @@ from .parsers import (
     ParseError,
     PydanticParser,
     RegexParser,
+    parse_partial_json,
 )
 from .pipeline import Pipeline, Step, parallel, step
 from .structured import (
@@ -54,6 +58,35 @@ from .structured import (
     is_pydantic_model,
     parse_structured_output,
     schema_to_response_format,
+)
+from .structured_output import StructuredOutput, StructuredOutputResult
+from .computer_use import (
+    ActionKind,
+    ActionRecord,
+    BrowserSession,
+    ComputerAction,
+    ComputerUseAgent,
+    ComputerUseResult,
+    MockBrowserSession,
+    PlaywrightBrowserSession,
+    parse_action,
+)
+from .replay import (
+    ForkPoint,
+    ReplayCheckpoint,
+    ReplayResult,
+    TraceDiff,
+    TraceReplayer,
+    diff_traces,
+)
+from .verifier import (
+    PreToolDecision,
+    PreToolVerifier,
+    ProgressCheck,
+    ProgressVerifier,
+    VerifierConfig,
+    VerifierNetwork,
+    VerifierVerdict,
 )
 from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
 from .agent import Agent, DEFAULT_SKILLS_PATH
@@ -226,7 +259,10 @@ __all__ = [
     "BenchmarkReport",
     "Channel",
     "Checkpoint",
+    "ConsolidationResult",
     "ConversationMemory",
+    "DistilledFact",
+    "MemoryConsolidator",
     "DEEP_AGENT_PROMPT",
     "DeepAgent",
     "create_deep_agent",
@@ -260,9 +296,34 @@ __all__ = [
     "TestCase",
     "VectorStore",
     "Worker",
+    "ActionKind",
+    "ActionRecord",
+    "BrowserSession",
+    "ComputerAction",
+    "ComputerUseAgent",
+    "ComputerUseResult",
+    "ForkPoint",
+    "MockBrowserSession",
+    "PlaywrightBrowserSession",
+    "parse_action",
+    "PreToolDecision",
+    "PreToolVerifier",
+    "ProgressCheck",
+    "ProgressVerifier",
+    "ReplayCheckpoint",
+    "ReplayResult",
+    "TraceDiff",
+    "TraceReplayer",
+    "diff_traces",
+    "StructuredOutput",
+    "StructuredOutputResult",
+    "VerifierConfig",
+    "VerifierNetwork",
+    "VerifierVerdict",
     "build_schema_prompt",
     "is_pydantic_model",
     "parallel",
+    "parse_partial_json",
     "parse_structured_output",
     "schema_to_response_format",
     "step",

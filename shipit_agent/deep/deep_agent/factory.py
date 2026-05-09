@@ -111,6 +111,10 @@ class DeepAgent:
     reflect_threshold: float = 0.8
     reflect_max_iterations: int = 3
     goal: Goal | None = None
+    # Process-supervision verifier (v1.0.8). Wraps every tool with a
+    # pre-call veto check and exposes progress-rating on each step.
+    # See ``shipit_agent.verifier``.
+    verifier: Any = None
 
     # ---- runtime tuning ---------------------------------------------------
     max_iterations: int = 8
@@ -296,6 +300,7 @@ class DeepAgent:
             "default_skill_ids": list(self.default_skill_ids),
             "skill_match_limit": self.skill_match_limit,
             "project_root": self.project_root,
+            "verifier": self.verifier,
         }
         combined_history = [*list(self.history), *history]
         if combined_history:
@@ -530,6 +535,7 @@ def create_deep_agent(
     goal: Goal | None = None,
     memory: Any = None,
     max_iterations: int = 8,
+    verifier: Any = None,
     **kwargs: Any,
 ) -> DeepAgent:
     """LangChain-style ``create_deep_agent`` factory function — but more powerful.
@@ -598,6 +604,7 @@ def create_deep_agent(
         goal=goal,
         memory=memory,
         max_iterations=max_iterations,
+        verifier=verifier,
         **kwargs,
     )
 

@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="banner.svg" alt="SHIPIT Agent — production-grade Python agent runtime" width="100%" />
+</p>
+
+<p align="center">
   <img src="shipit-icon.svg" alt="SHIPIT" width="120" height="120" />
 </p>
 
@@ -51,7 +55,50 @@
   <img src="https://img.shields.io/badge/Custom%20API-supported-gray?style=flat-square" alt="Custom" />
 </p>
 
-## 🚀 What's new in 1.0.7
+## 🚀 What's new in 1.0.8
+
+**Five flagship features that genuinely beat the competition.** All five
+reachable from `from shipit_agent import …`. Both `Agent` and `DeepAgent`
+get them. **1508 unit tests (+318 new). 0 regressions.**
+
+| Feature | One-line | Beats |
+| --- | --- | --- |
+| **[Structured output with auto-retry](https://docs.shipiit.com/agent/structured-output/)** | Pydantic / JSON Schema results with same-conversation validation retry + streaming partial JSON | LangChain's `OutputFixingParser` (separate LLM call) |
+| **[Verifier network](https://docs.shipiit.com/agent/verifier/)** | Cheap LLM vetoes hallucinated tool calls + detects stalling | LangGraph (no per-call gating) |
+| **[Episodic memory consolidation](https://docs.shipiit.com/agent/memory-consolidation/)** | Distill conversations → durable facts. Forgetting curve + core-memory promotion | ChatGPT Memories (no decay, no auto-extract) |
+| **[Time-travel replay](https://docs.shipiit.com/agent/time-travel-replay/)** | Fork any saved trace from any event. Resume on a fresh agent. Diff two runs side-by-side | LangSmith Playground / Inngest branching (SaaS-only) |
+| **[ComputerUseAgent](https://docs.shipiit.com/agent/computer-use/)** | Drive a browser by showing screenshots to a vision-capable LLM. Anthropic native + plain-text fallback | Devin / OpenAI Operator (SaaS-only) |
+
+```python
+from pydantic import BaseModel
+from shipit_agent import Agent, VerifierNetwork
+
+class Movie(BaseModel):
+    title: str
+    rating: float
+
+verifier = VerifierNetwork(llm=haiku_llm, goal="Pick a movie.")
+
+agent = Agent(
+    llm=opus_llm,
+    tools=[WebSearchTool()],
+    verifier=verifier,                     # process supervision
+)
+
+result = agent.run(
+    "Pick a thriller from the last decade.",
+    output_schema=Movie,                   # typed result
+    max_validation_retries=2,              # auto-retry on parse failure
+)
+print(result.parsed)                       # Movie(title='Heat', rating=8.5)
+print(verifier.stats.pretool_veto)         # how many calls the verifier blocked
+```
+
+→ [Five new notebooks (54-58)](https://github.com/shipiit/shipit_agent/tree/main/notebooks) walk through every feature with real-life examples.
+
+---
+
+## 📦 What's new in 1.0.7
 
 **SHIPIT Agent 1.0.7 — Agents for every role.** 12 new tools + 9 new specialist personas turn shipit-agent into a framework that ships agents for developers, designers, sales reps, PMs, data analysts, finance, customer support, and recruiters — not just code agents. **1190 unit tests (+286 new). 0 regressions.**
 

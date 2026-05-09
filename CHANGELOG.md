@@ -5,6 +5,65 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] — 2026-05-09
+
+**Five flagship features that beat the competition.** Structured output
+with same-conversation auto-retry. Verifier network for process
+supervision. Episodic memory consolidation with forgetting curve.
+Time-travel replay. ComputerUseAgent + BrowserAgentTool.
+
+All five reachable from `from shipit_agent import …`. Both `Agent` AND
+`DeepAgent` get them. **1527 unit tests (+337 new). 0 regressions.**
+
+### Added — power features
+
+- **`StructuredOutput`** — wraps any LLM with same-conversation
+  validation retry, streaming partial JSON, and Pydantic / JSON Schema
+  parsing. Wired into `Agent.run(output_schema=, max_validation_retries=2)`
+  and through to `DeepAgent`.
+- **`VerifierNetwork`** — pre-tool veto + per-iteration progress check,
+  both backed by a (typically cheap) verifier LLM. Wraps every tool the
+  agent sees; vetoed calls become synthetic error tool-results so the
+  agent re-plans. Confidence-gated, hard-capped, fails open.
+- **`MemoryConsolidator`** — distill conversations into 3-8 durable
+  facts; exponential decay with prune threshold; core-memory ranking by
+  `strength + 0.1·log1p(retrievals)`; `record_retrieval()` for the
+  feedback loop.
+- **`TraceReplayer`** — load any saved `TraceRecord`, inspect events,
+  fork at any event with optional prompt edit, resume on a fresh agent.
+  `diff_traces()` for side-by-side comparison.
+- **`ComputerUseAgent`** — screenshot → reason → act loop driving a
+  `BrowserSession`. `MockBrowserSession` for tests;
+  `PlaywrightBrowserSession.launch()` for production. Anthropic native
+  computer-use + plain-text fallback for any vision LLM.
+- **`BrowserAgentTool`** — adapter that exposes `ComputerUseAgent` as a
+  regular `Tool` so the main `Agent` can call `browser_use(goal=...)`
+  alongside `web_search`, `pdf_extract`, etc.
+
+### Added — tests + docs + notebooks
+
+- **+337 unit tests** (1190 → 1527), zero regressions, ≥10 tests per
+  public method.
+- **6 new notebooks**: `54_structured_output_with_retry`,
+  `55_verifier_network`, `56_episodic_memory_consolidation`,
+  `57_time_travel_replay`, `58_computer_use_agent`,
+  `59_browser_agent_tool`.
+- **5 new docs pages** under `agent/`: structured-output, verifier,
+  memory-consolidation, time-travel-replay, computer-use.
+- **`banner.svg`** at repo root. README updated with v1.0.8 highlights.
+- **`RELEASE_NOTES_1.0.8.md`** with the full release narrative.
+
+### Compatibility
+
+- All v1.0.7 APIs continue to work unchanged.
+- New constructor kwarg on `Agent`: `verifier=` (default `None`).
+- New `Agent.run` kwarg: `max_validation_retries=` (default 2).
+- `DeepAgent` accepts `verifier=`; propagates through to inner Agent.
+- Optional dependency: `pip install playwright` for
+  `PlaywrightBrowserSession` (imported lazily).
+
+---
+
 ## [1.0.7] — 2026-04-24
 
 **Agents for every role.** 12 new tools and 9 new persona specialists

@@ -148,6 +148,12 @@ class Agent:
     # ── RAG ───────────────────────────────────────────────────────────
     rag: Any = None
 
+    # ── Verifier network (v1.0.8) ─────────────────────────────────────
+    # Optional ``VerifierNetwork`` that runs pre-tool veto checks on every
+    # tool call and (when used in autopilot-style loops) progress checks
+    # between iterations. See ``shipit_agent/verifier/``.
+    verifier: Any = None
+
     # ── project / file tools ──────────────────────────────────────────
     project_root: str | Path = "/tmp"
 
@@ -392,7 +398,10 @@ class Agent:
             for index, tool in enumerate(self.tools)
         }
         if not selected_skills:
-            return list(effective.values())
+            tools_list = list(effective.values())
+            if self.verifier is not None and hasattr(self.verifier, "wrap_tools"):
+                tools_list = self.verifier.wrap_tools(tools_list)
+            return tools_list
 
         # Resolve skill-linked tools from the builtin map and merge in.
         builtin_tool_map = get_builtin_tool_map(
@@ -403,7 +412,13 @@ class Agent:
             tool = builtin_tool_map.get(tool_name)
             if tool is not None:
                 effective[tool_name] = tool
-        return list(effective.values())
+        tools_list = list(effective.values())
+        # If a verifier is configured, wrap every tool so the verifier sees
+        # each proposed call before it executes. The wrapper is transparent
+        # to the runtime — same name/schema/run() surface as the inner tool.
+        if self.verifier is not None and hasattr(self.verifier, "wrap_tools"):
+            tools_list = self.verifier.wrap_tools(tools_list)
+        return tools_list
 
     def _skill_tool_names(self, selected_skills: list[Skill]) -> list[str]:
         """Return tool names that were *added* by skills (not already on the agent).
@@ -439,7 +454,13 @@ class Agent:
     # Run (synchronous)
     # ──────────────────────────────────────────────────────────────────
 
-    def run(self, user_prompt: str, *, output_schema: Any = None) -> AgentResult:
+    def run(
+        self,
+        user_prompt: str,
+        *,
+        output_schema: Any = None,
+        max_validation_retries: int = 2,
+    ) -> AgentResult:
         """Execute the agent loop and return the final result.
 
         Steps:
@@ -498,20 +519,36 @@ class Agent:
         )
         state, response = runtime.run(effective_user_prompt)
 
-        # Optionally parse structured output from the LLM response.
+        # Optionally parse structured output from the LLM response, with
+        # validation-retry: if the first parse fails, send the error back
+        # to the same LLM (no tools) and ask for a corrected response.
+        # Cheap fix-it round trip; only fires when the first parse fails.
         parsed = None
         if output_schema and response.content:
-            try:
-                from shipit_agent.structured import parse_structured_output
+            from shipit_agent.structured_output import validate_with_retry
 
-                parsed = parse_structured_output(response.content, output_schema)
-            except Exception as exc:
+            parsed, retry_text, attempts, attempt_log = validate_with_retry(
+                llm=self.llm,
+                raw_text=response.content,
+                schema=output_schema,
+                history=state.messages,
+                max_retries=max_validation_retries,
+            )
+            if parsed is None:
                 logger.warning(
-                    "output_schema parsing failed: %s — raw output: %s",
-                    exc,
+                    "output_schema parsing failed after %d attempts. Last error: %s — raw: %s",
+                    attempts,
+                    attempt_log[-1]["error"] if attempt_log else "unknown",
                     response.content[:500],
                 )
-                parsed = None
+            elif attempts > 1:
+                # Retry succeeded — surface the corrected text as the output.
+                logger.info(
+                    "output_schema parsed on attempt %d (after %d failures)",
+                    attempts,
+                    attempts - 1,
+                )
+                response.content = retry_text
         elif output_schema and not response.content:
             logger.warning(
                 "output_schema was set but LLM returned empty content — "

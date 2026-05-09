@@ -31,6 +31,9 @@ site/
 .eggs/
 pip-wheel-metadata/
 
+# Marketing assets (Peerlist banner, post copy, etc) — kept local, not in repo
+marketing/
+
 # MkDocs build cache (social cards, search index)
 .cache/
 

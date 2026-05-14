@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import Message, ToolCall
@@ -45,7 +45,15 @@ class LiteLLMChatLLM:
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
+        text_delta_callback: Callable[[str], None] | None = None,
     ) -> LLMResponse:
+        """Run a chat completion.
+
+        If ``text_delta_callback`` is provided, switches to streaming mode and
+        invokes the callback synchronously for each text chunk as it arrives.
+        Returns the same ``LLMResponse`` shape in both modes so callers don't
+        branch — the runtime just opts in by passing the callback.
+        """
         try:
             from litellm import completion
         except ImportError as exc:
@@ -55,6 +63,17 @@ class LiteLLMChatLLM:
         extra_kwargs = dict(self.completion_kwargs)
         if response_format:
             extra_kwargs["response_format"] = response_format
+
+        if text_delta_callback is not None:
+            return _stream_completion(
+                completion_fn=completion,
+                model=self.model,
+                payload_messages=payload_messages,
+                tools=tools or None,
+                extra_kwargs=extra_kwargs,
+                text_delta_callback=text_delta_callback,
+            )
+
         try:
             response = completion(
                 model=self.model,
@@ -105,6 +124,125 @@ class LiteLLMChatLLM:
             reasoning_content=reasoning_content,
             usage=usage,
         )
+
+
+def _stream_completion(
+    *,
+    completion_fn: Any,
+    model: str,
+    payload_messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    extra_kwargs: dict[str, Any],
+    text_delta_callback: Callable[[str], None],
+) -> LLMResponse:
+    """Drive a streaming litellm completion, accumulating text and tool calls.
+
+    Invokes ``text_delta_callback`` for every textual chunk as it arrives so
+    upstream code can stream tokens to the client in real time. Returns the
+    same ``LLMResponse`` a non-streaming call would, so the rest of the
+    runtime is unchanged.
+    """
+    try:
+        stream = completion_fn(
+            model=model,
+            messages=payload_messages,
+            tools=tools,
+            stream=True,
+            stream_options={"include_usage": True},
+            **extra_kwargs,
+        )
+    except Exception as exc:
+        exc_name = type(exc).__name__
+        status = getattr(exc, "status_code", None)
+        if (
+            status in (429, 500, 502, 503, 529)
+            or "ServiceUnavailable" in exc_name
+            or "RateLimitError" in exc_name
+            or "InternalServerError" in exc_name
+        ):
+            raise ConnectionError(f"{exc_name}: {exc}") from exc
+        raise
+
+    content_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    # index -> partial {"id": str, "name": str, "arguments": str}
+    tool_call_acc: dict[int, dict[str, str]] = {}
+    usage: dict[str, int] = {}
+
+    try:
+        for chunk in stream:
+            choices = getattr(chunk, "choices", None) or []
+            if choices:
+                delta = getattr(choices[0], "delta", None)
+                if delta is not None:
+                    text = getattr(delta, "content", None)
+                    if text:
+                        content_parts.append(text)
+                        try:
+                            text_delta_callback(text)
+                        except Exception:
+                            # A misbehaving subscriber must not break the
+                            # stream — we still need to drain the iterator
+                            # so the underlying HTTP connection closes.
+                            pass
+
+                    reasoning_text = getattr(delta, "reasoning_content", None)
+                    if reasoning_text:
+                        reasoning_parts.append(str(reasoning_text))
+
+                    for tc_delta in getattr(delta, "tool_calls", None) or []:
+                        idx = getattr(tc_delta, "index", 0) or 0
+                        entry = tool_call_acc.setdefault(
+                            idx, {"id": "", "name": "", "arguments": ""}
+                        )
+                        tc_id = getattr(tc_delta, "id", None)
+                        if tc_id:
+                            entry["id"] = tc_id
+                        fn = getattr(tc_delta, "function", None)
+                        if fn is not None:
+                            fn_name = getattr(fn, "name", None)
+                            if fn_name:
+                                entry["name"] = fn_name
+                            fn_args = getattr(fn, "arguments", None)
+                            if fn_args:
+                                entry["arguments"] += fn_args
+
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage:
+                usage = {
+                    "prompt_tokens": getattr(chunk_usage, "prompt_tokens", 0) or 0,
+                    "completion_tokens": getattr(chunk_usage, "completion_tokens", 0) or 0,
+                    "total_tokens": getattr(chunk_usage, "total_tokens", 0) or 0,
+                }
+    except Exception as exc:
+        exc_name = type(exc).__name__
+        status = getattr(exc, "status_code", None)
+        if (
+            status in (429, 500, 502, 503, 529)
+            or "ServiceUnavailable" in exc_name
+            or "RateLimitError" in exc_name
+            or "InternalServerError" in exc_name
+        ):
+            raise ConnectionError(f"{exc_name}: {exc}") from exc
+        raise
+
+    tool_calls = []
+    for idx in sorted(tool_call_acc.keys()):
+        entry = tool_call_acc[idx]
+        raw_args = entry["arguments"] or "{}"
+        try:
+            arguments = json.loads(raw_args)
+        except json.JSONDecodeError:
+            arguments = {"_raw": raw_args}
+        tool_calls.append(ToolCall(name=entry["name"], arguments=arguments))
+
+    return LLMResponse(
+        content="".join(content_parts),
+        tool_calls=tool_calls,
+        metadata={"model": model, "provider": "litellm", "streamed": True},
+        reasoning_content="\n".join(reasoning_parts) if reasoning_parts else None,
+        usage=usage,
+    )
 
 
 def _extract_reasoning(message: Any) -> str | None:

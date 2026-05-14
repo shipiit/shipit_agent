@@ -5,6 +5,46 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] — 2026-05-14
+
+**Inline text streaming.** The agent can now stream LLM tokens token-by-token
+as they arrive, matching the feel of a modern chat-coding assistant. Existing
+non-streaming behaviour is preserved byte-for-byte for callers that don't
+opt in — streaming is enabled per-call via the new `text_delta_callback`
+parameter.
+
+### Added
+
+- **`LLM.complete(text_delta_callback=…)`** — every adapter now accepts a
+  callback parameter (Protocol-level addition). When provided, the adapter
+  streams the completion and calls the callback synchronously for each text
+  chunk as it arrives, then returns the same `LLMResponse` as a non-streaming
+  call. Currently implemented end-to-end for `LiteLLMChatLLM`; other
+  adapters accept the parameter as a no-op for Protocol compliance.
+- **`AgentRuntime` emits `text_delta` events** — when the configured LLM
+  adapter supports streaming, the runtime wires a callback that calls
+  `self.emit(state, "text_delta", "", chunk=…)` for each token. Downstream
+  SSE / WebSocket consumers can forward these inline alongside `tool_called`
+  and `tool_completed` events.
+
+### Internal
+
+- `LiteLLMChatLLM` internal `_stream_completion` helper accumulates text
+  chunks, tool-call argument fragments (multi-chunk JSON), reasoning content,
+  and usage metadata. Tool calls streamed across multiple deltas are correctly
+  re-assembled into single `ToolCall` objects.
+- Five new tests in `tests/test_litellm_streaming.py` cover the non-streaming
+  path, callback streaming, tool-call delta accumulation, end-to-end runtime
+  `text_delta` emission, and resilience to misbehaving subscriber callbacks.
+
+### Notes
+
+- Image / vision support is unchanged in this release — `VisionTool`,
+  `ComputerUseAgent`, and `BrowserAgentTool` continue to provide multi-modal
+  capability for agents that need it.
+- No public API was removed. No callers need code changes; opt in by passing
+  `text_delta_callback` when calling `LLM.complete()`.
+
 ## [1.0.8] — 2026-05-09
 
 **Five flagship features that beat the competition.** Structured output

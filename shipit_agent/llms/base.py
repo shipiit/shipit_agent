@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from shipit_agent.models import Message, ToolCall
 
@@ -23,4 +23,5 @@ class LLM(Protocol):
         tools: list[dict[str, Any]] | None = None,
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
+        text_delta_callback: Callable[[str], None] | None = None,
     ) -> LLMResponse: ...

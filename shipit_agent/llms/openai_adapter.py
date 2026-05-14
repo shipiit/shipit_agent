@@ -56,6 +56,7 @@ class OpenAIChatLLM:
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
+        text_delta_callback: Any = None,  # noqa: ARG002 — Protocol compliance; streaming TODO
     ) -> LLMResponse:
         try:
             from openai import OpenAI

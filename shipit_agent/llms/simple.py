@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import Message
 
@@ -17,6 +19,7 @@ class ShipitLLM:
         system_prompt: str | None = None,
         metadata: dict | None = None,
         response_format: dict | None = None,
+        text_delta_callback: Any = None,  # noqa: ARG002 — Protocol compliance
     ) -> LLMResponse:
         last_user_message = next(
             (

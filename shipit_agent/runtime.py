@@ -412,6 +412,15 @@ class AgentRuntime:
         tools: list[dict[str, Any]],
         base_prompt: str,
     ) -> LLMResponse:
+        # When the LLM adapter supports streaming via ``text_delta_callback``,
+        # emit each text chunk as a ``text_delta`` event so the SSE adapter
+        # downstream can forward tokens inline as they arrive. The callback
+        # runs on the same thread that called complete(), so emit() is safe.
+        def _on_text_delta(chunk: str) -> None:
+            if not chunk:
+                return
+            self.emit(state, "text_delta", "", chunk=chunk)
+
         attempt = 0
         while True:
             try:
@@ -420,6 +429,7 @@ class AgentRuntime:
                     tools=tools,
                     system_prompt=base_prompt,
                     metadata=dict(self.metadata),
+                    text_delta_callback=_on_text_delta,
                 )
             except self.retry_policy.retry_on_exceptions as exc:
                 if attempt >= self.retry_policy.max_llm_retries:

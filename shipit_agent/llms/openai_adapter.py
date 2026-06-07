@@ -117,6 +117,28 @@ class OpenAIChatLLM:
                 "completion_tokens": response.usage.completion_tokens or 0,
                 "total_tokens": response.usage.total_tokens or 0,
             }
+            # OpenAI does *automatic* prompt caching — no cache_control needed.
+            # Surface the cached-prompt portion under the same key the
+            # CostTracker reads for Anthropic, so cache reads bill cheaper for
+            # OpenAI/OpenAI-compatible providers too. Reasoning models also
+            # report reasoning tokens — pass them through when present.
+            try:
+                details = getattr(response.usage, "prompt_tokens_details", None)
+                cached = getattr(details, "cached_tokens", None) if details else None
+                if cached:
+                    usage["cache_read_input_tokens"] = int(cached)
+                out_details = getattr(
+                    response.usage, "completion_tokens_details", None
+                )
+                reasoning = (
+                    getattr(out_details, "reasoning_tokens", None)
+                    if out_details
+                    else None
+                )
+                if reasoning:
+                    usage["reasoning_tokens"] = int(reasoning)
+            except Exception:
+                pass
 
         return LLMResponse(
             content=choice.content or "",

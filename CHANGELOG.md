@@ -5,6 +5,58 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.12] — 2026-06-07
+
+**Claude API power features + cross-provider caching.** Adds Anthropic
+server-side tools, citations, the Batch API, interleaved thinking & server-side
+context editing — and makes prompt caching work across providers (not just
+Anthropic). All opt-in and backward compatible. **1844 tests passing (+49 new).
+0 regressions.**
+
+### Added — cross-provider prompt caching
+
+- **Prompt caching is no longer Anthropic-only.** OpenAI does *automatic*
+  prompt caching — the OpenAI adapter now surfaces
+  `usage["cache_read_input_tokens"]` from `prompt_tokens_details.cached_tokens`
+  (and `reasoning_tokens` for reasoning models), the same keys `CostTracker`
+  uses for the Anthropic `cache_control` path. LiteLLM forwards both shapes.
+  Net: cache-read cost accounting works for Anthropic, Bedrock, Vertex **and**
+  OpenAI / OpenAI-compatible providers.
+
+### Added — server-side tools (Anthropic)
+
+- **`shipit_agent.llms.server_tools`** — `web_search()`, `code_execution()`,
+  `computer_use()`, `bash()`, `text_editor()` helpers that declare Anthropic
+  **server-side** tools (executed in Anthropic's sandbox — zero local infra).
+  The adapter forwards them verbatim, attaches the required beta headers
+  automatically, and routes `server_tool_use` / result blocks into
+  `LLMResponse.metadata` (never into the client tool loop). _Note: these are
+  Anthropic API shapes; other providers use shipit's client-side tools
+  (`WebSearchTool`, `CodeExecutionTool`, …) which work with any LLM._
+
+### Added — citations & Batch API
+
+- **Citations** — `text_document()` / `pdf_document()` / `url_pdf_document()`
+  document helpers with `citations.enabled`; response citations are parsed into
+  `LLMResponse.metadata["citations"]` for verifiable, grounded answers.
+- **`BatchRuntime`** (`shipit_agent.batch`) — submit many requests to the
+  Anthropic Messages Batches API for ~50%-cheaper bulk/offline runs;
+  `BatchRequest` / `BatchResult`, `run(...)` polls to completion with an
+  injectable clock/sleep.
+
+### Added — interleaved thinking & context editing
+
+- **`AnthropicChatLLM(interleaved_thinking=True)`** — adds the
+  `interleaved-thinking-2025-05-14` beta and surfaces `thinking` blocks in
+  metadata; **`context_management=`** forwards Anthropic's server-side
+  context-editing (auto-clear old tool results).
+
+### Added — examples & docs
+
+- Notebooks `64`–`66` (server-side tools, citations + batch, interleaved
+  thinking) and docs pages for each, all with honest per-feature **provider
+  support** notes.
+
 ## [1.0.11] — 2026-06-07
 
 **The control plane.** A Claude Code-grade safety + performance layer: a
@@ -1075,7 +1127,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.11...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.12...HEAD
+[1.0.12]: https://github.com/shipiit/shipit_agent/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/shipiit/shipit_agent/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/shipiit/shipit_agent/compare/v1.0.9...v1.0.10
 [1.0.1]: https://github.com/shipiit/shipit_agent/compare/v1.0.0...v1.0.1

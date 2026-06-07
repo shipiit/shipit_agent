@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.0.12 — 2026-06-07
+
+**Claude API power + cross-provider caching.** Server-side tools, citations, the Batch API, interleaved thinking & context editing — plus **prompt caching that works across providers, not just Anthropic**. All opt-in, backward compatible. **1844 tests passing. 0 regressions.**
+
+### Added — cross-provider prompt caching
+
+- Caching is no longer Anthropic-only. The **OpenAI** adapter now surfaces `usage["cache_read_input_tokens"]` from OpenAI's *automatic* prompt caching (`prompt_tokens_details.cached_tokens`) — the same key `CostTracker` uses for Anthropic/Bedrock/Vertex `cache_control`. LiteLLM forwards both shapes. Cache-read cost accounting now spans Anthropic, Bedrock, Vertex, and OpenAI/-compatible providers.
+
+### Added — Anthropic server-side tools
+
+- **`shipit_agent.llms.server_tools`**: `web_search()`, `code_execution()`, `computer_use()`, `bash()`, `text_editor()` declarations that run in Anthropic's sandbox (zero local infra); beta headers auto-attached; `server_tool_use`/results surface in `LLMResponse.metadata`. _Other providers: use shipit's client-side tools, which work with any LLM._
+
+### Added — citations & Batch API
+
+- Citation document helpers (`text_document`/`pdf_document`/`url_pdf_document`) → `metadata["citations"]`; **`BatchRuntime`** (`shipit_agent.batch`) for ~50%-cheaper bulk runs via the Anthropic Batches API.
+
+### Added — interleaved thinking & context editing
+
+- `AnthropicChatLLM(interleaved_thinking=True)` (beta) + `context_management=` server-side context editing.
+
+### Added — examples & docs
+
+- Notebooks `64`–`66` and docs pages, each with honest per-feature provider-support notes.
+
 ## v1.0.11 — 2026-06-07
 
 **The control plane.** A Claude Code-grade safety + performance layer: a rule-based **permission engine** with modes (incl. read-only **plan mode**), **hooks that can block or rewrite** tool calls, **prompt caching** for ~10× cheaper repeated calls, and a model-driven **memory tool**. All opt-in and backward compatible. **1795 tests passing (+50 new). 0 regressions.**

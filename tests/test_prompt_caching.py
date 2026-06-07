@@ -30,6 +30,7 @@ import pytest
 
 from shipit_agent.llms.anthropic_adapter import AnthropicChatLLM
 from shipit_agent.llms.litellm_adapter import BedrockChatLLM, LiteLLMChatLLM
+from shipit_agent.llms.openai_adapter import OpenAIChatLLM
 from shipit_agent.models import Message
 
 
@@ -295,3 +296,53 @@ class TestLiteLLMCacheUsage:
         llm = LiteLLMChatLLM(model="gpt-4o")
         out = llm.complete(messages=[Message(role="user", content="hi")])
         assert out.usage["cache_read_input_tokens"] == 77
+
+
+# ======================================================================
+# OpenAI adapter — cross-provider automatic caching
+# ======================================================================
+class TestOpenAICacheUsage:
+    """OpenAI does *automatic* prompt caching (no cache_control breakpoints).
+
+    The adapter surfaces the cached-prompt portion under the same
+    ``cache_read_input_tokens`` key the Anthropic/Bedrock adapters use, so the
+    CostTracker bills cache reads cheaper for OpenAI/OpenAI-compatible providers
+    too. We inject a fake ``openai`` module whose ``OpenAI`` client returns a
+    response whose ``usage.prompt_tokens_details.cached_tokens`` is set.
+    """
+
+    def test_openai_surfaces_cached_tokens(self, monkeypatch) -> None:
+        message = _ns(content="ok", tool_calls=[], reasoning_content=None)
+        usage = _ns(
+            prompt_tokens=200,
+            completion_tokens=40,
+            total_tokens=240,
+            # OpenAI's automatic-cache shape.
+            prompt_tokens_details=_ns(cached_tokens=160),
+            completion_tokens_details=None,
+        )
+        response = _ns(choices=[_ns(message=message)], usage=usage)
+
+        class _Completions:
+            def create(self, **_kwargs):
+                return response
+
+        class _Chat:
+            def __init__(self):
+                self.completions = _Completions()
+
+        class _OpenAI:
+            def __init__(self, **_kwargs):
+                self.chat = _Chat()
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = _OpenAI
+        monkeypatch.setitem(sys.modules, "openai", fake_openai)
+
+        llm = OpenAIChatLLM(model="gpt-4o")
+        out = llm.complete(messages=[Message(role="user", content="hi")])
+
+        assert out.usage["prompt_tokens"] == 200
+        assert out.usage["completion_tokens"] == 40
+        # The automatic-cache portion is surfaced under the shared key.
+        assert out.usage["cache_read_input_tokens"] == 160

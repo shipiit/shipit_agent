@@ -205,6 +205,12 @@ from .costs import (
     MODEL_ALIASES,
     MODEL_PRICING,
 )
+from .batch import (
+    BatchRequest,
+    BatchResult,
+    BatchRuntime,
+    MessageBatchRunner,
+)
 from .tools import (
     AskUserTool,
     ArtifactBuilderTool,
@@ -517,4 +523,9 @@ __all__ = [
     "CostTracker",
     "MODEL_ALIASES",
     "MODEL_PRICING",
+    # --- Batch API runtime (bulk/offline, ~50% cost) ----------------------
+    "BatchRequest",
+    "BatchResult",
+    "BatchRuntime",
+    "MessageBatchRunner",
 ]

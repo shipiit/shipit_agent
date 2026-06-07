@@ -7,10 +7,52 @@ from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import Message, ToolCall
 
 
-def _serialize_message(message: Message) -> dict[str, Any]:
-    payload: dict[str, Any] = {
+def _normalize_content(content: Any) -> Any:
+    """Make multimodal content portable across providers.
+
+    Callers like ``ComputerUseAgent`` build Anthropic-shape image blocks
+    (``{"type": "image", "source": {"type": "base64", ...}}``). LiteLLM (and
+    OpenAI) speak the ``image_url`` shape, so translate base64 image blocks to a
+    ``data:`` URL. Plain-string content and already-``image_url`` blocks pass
+    through unchanged.
+    """
+    if not isinstance(content, list):
+        return content
+    normalized: list[Any] = []
+    for block in content:
+        if (
+            isinstance(block, dict)
+            and block.get("type") == "image"
+            and isinstance(block.get("source"), dict)
+            and block["source"].get("type") == "base64"
+        ):
+            src = block["source"]
+            url = f"data:{src.get('media_type', 'image/png')};base64,{src.get('data', '')}"
+            normalized.append({"type": "image_url", "image_url": {"url": url}})
+        else:
+            normalized.append(block)
+    return normalized
+
+
+def _serialize_message(message: Any) -> dict[str, Any]:
+    # Accept raw dict messages (e.g. from ComputerUseAgent) as well as Message
+    # objects — a dict is already in OpenAI message shape; just normalize media.
+    if isinstance(message, dict):
+        payload: dict[str, Any] = {
+            "role": message.get("role", "user"),
+            "content": _normalize_content(message.get("content", "")),
+        }
+        if message.get("name"):
+            payload["name"] = message["name"]
+        if message.get("tool_calls"):
+            payload["tool_calls"] = message["tool_calls"]
+        if message.get("tool_call_id"):
+            payload["tool_call_id"] = message["tool_call_id"]
+        return payload
+
+    payload = {
         "role": message.role,
-        "content": message.content,
+        "content": _normalize_content(message.content),
         **({"name": message.name} if message.name else {}),
     }
     tool_calls = message.metadata.get("tool_calls", [])

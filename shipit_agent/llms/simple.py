@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from shipit_agent.llms.base import LLMResponse
+from shipit_agent.llms.base import LLMResponse, coerce_messages
 from shipit_agent.models import Message
 
 
@@ -21,10 +21,12 @@ class ShipitLLM:
         response_format: dict | None = None,
         text_delta_callback: Any = None,  # noqa: ARG002 — Protocol compliance
     ) -> LLMResponse:
+        # Accept dict messages too (e.g. from ComputerUseAgent).
+        coerced = coerce_messages(messages)
         last_user_message = next(
             (
                 message.content
-                for message in reversed(messages)
+                for message in reversed(coerced)
                 if message.role == "user"
             ),
             "",

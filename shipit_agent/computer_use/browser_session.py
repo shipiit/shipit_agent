@@ -8,7 +8,10 @@ fixture in tests) plugs in.
 from __future__ import annotations
 
 import base64
-from typing import Any, Protocol
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Protocol, TypeVar
+
+_T = TypeVar("_T")
 
 
 class BrowserSession(Protocol):
@@ -99,12 +102,36 @@ class PlaywrightBrowserSession:
         with PlaywrightBrowserSession.launch(headless=True) as browser:
             agent = ComputerUseAgent(llm=llm, browser=browser, goal="...")
             result = agent.run()
+
+    **Works inside Jupyter / asyncio.** Playwright's *sync* API refuses to run
+    when an asyncio event loop is already running (e.g. in a notebook). To stay
+    a simple synchronous API while avoiding that, every Playwright call is run
+    on a single dedicated worker thread that has no event loop — so the same
+    code works in scripts, notebooks, and async web frameworks alike.
     """
 
-    def __init__(self, *, browser: Any, page: Any, viewport_size: tuple[int, int]) -> None:
+    def __init__(
+        self,
+        *,
+        executor: ThreadPoolExecutor,
+        browser: Any,
+        page: Any,
+        playwright: Any,
+        viewport_size: tuple[int, int],
+    ) -> None:
+        self._executor = executor
         self._browser = browser
         self._page = page
+        self._playwright = playwright
         self.viewport_size = viewport_size
+
+    def _run(self, fn: Callable[[], _T]) -> _T:
+        """Marshal a Playwright call onto the dedicated browser thread.
+
+        Playwright objects are thread-affine and the sync API can't run inside
+        a live asyncio loop, so all access is confined to one loop-free thread.
+        """
+        return self._executor.submit(fn).result()
 
     @classmethod
     def launch(
@@ -122,46 +149,67 @@ class PlaywrightBrowserSession:
                 "Install with: pip install playwright && playwright install chromium"
             ) from exc
 
-        # Keep the playwright handle so we can stop() it later
-        playwright = sync_playwright().start()
-        browser = playwright.chromium.launch(headless=headless)
-        context = browser.new_context(
-            viewport={"width": viewport_size[0], "height": viewport_size[1]},
+        executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="shipit-playwright"
         )
-        page = context.new_page()
-        page.goto(start_url)
 
-        session = cls(browser=browser, page=page, viewport_size=viewport_size)
-        session._playwright = playwright  # type: ignore[attr-defined]
-        return session
+        def _start() -> tuple[Any, Any, Any]:
+            # Runs on the worker thread (no asyncio loop) → sync API is happy.
+            playwright = sync_playwright().start()
+            browser = playwright.chromium.launch(headless=headless)
+            context = browser.new_context(
+                viewport={"width": viewport_size[0], "height": viewport_size[1]},
+            )
+            page = context.new_page()
+            page.goto(start_url)
+            return playwright, browser, page
+
+        try:
+            playwright, browser, page = executor.submit(_start).result()
+        except Exception:
+            executor.shutdown(wait=False)
+            raise
+
+        return cls(
+            executor=executor,
+            browser=browser,
+            page=page,
+            playwright=playwright,
+            viewport_size=viewport_size,
+        )
 
     # --- Protocol surface -----------------------------------------------
     def screenshot(self) -> str:
-        png = self._page.screenshot(type="png")
+        png = self._run(lambda: self._page.screenshot(type="png"))
         return base64.b64encode(png).decode("ascii")
 
     def click(self, x: int, y: int) -> None:
-        self._page.mouse.click(x, y)
+        self._run(lambda: self._page.mouse.click(x, y))
 
     def type_text(self, text: str) -> None:
-        self._page.keyboard.type(text)
+        self._run(lambda: self._page.keyboard.type(text))
 
     def key(self, key: str) -> None:
-        self._page.keyboard.press(key)
+        self._run(lambda: self._page.keyboard.press(key))
 
     def scroll(self, dx: int, dy: int) -> None:
-        self._page.mouse.wheel(dx, dy)
+        self._run(lambda: self._page.mouse.wheel(dx, dy))
 
     def navigate(self, url: str) -> None:
-        self._page.goto(url)
+        self._run(lambda: self._page.goto(url))
 
     def close(self) -> None:
+        def _close() -> None:
+            try:
+                self._browser.close()
+            finally:
+                if self._playwright is not None:
+                    self._playwright.stop()
+
         try:
-            self._browser.close()
+            self._run(_close)
         finally:
-            playwright = getattr(self, "_playwright", None)
-            if playwright is not None:
-                playwright.stop()
+            self._executor.shutdown(wait=True)
 
     # --- Context manager sugar ------------------------------------------
     def __enter__(self) -> "PlaywrightBrowserSession":

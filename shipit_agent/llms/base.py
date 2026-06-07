@@ -7,6 +7,32 @@ from typing import Any, Callable, Protocol
 from shipit_agent.models import Message, ToolCall
 
 
+def coerce_message(message: Any) -> Message:
+    """Coerce a raw ``dict`` message into a :class:`Message`.
+
+    Some callers (notably ``ComputerUseAgent``) build plain ``{"role": ...,
+    "content": ...}`` dicts — possibly with multimodal list content. Adapters
+    access ``message.role`` etc., which would raise ``'dict' object has no
+    attribute 'role'``. This makes every adapter accept dict messages. Already
+    a :class:`Message`? Returned unchanged.
+    """
+    if isinstance(message, Message):
+        return message
+    if isinstance(message, dict):
+        return Message(
+            role=message.get("role", "user"),
+            content=message.get("content", ""),
+            name=message.get("name"),
+            metadata=dict(message.get("metadata") or {}),
+        )
+    return message
+
+
+def coerce_messages(messages: Any) -> list[Message]:
+    """Coerce a list that may contain dict messages into ``list[Message]``."""
+    return [coerce_message(m) for m in (messages or [])]
+
+
 def accepts_text_delta_callback(complete_fn: Any) -> bool:
     """Return True if ``complete_fn`` accepts a ``text_delta_callback`` kwarg.
 

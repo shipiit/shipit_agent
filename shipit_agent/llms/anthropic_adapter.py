@@ -5,7 +5,7 @@ from typing import Any
 
 from shipit_agent.llms import citations as _citations
 from shipit_agent.llms import server_tools as _server_tools
-from shipit_agent.llms.base import LLMResponse
+from shipit_agent.llms.base import LLMResponse, coerce_message
 from shipit_agent.models import Message, ToolCall
 
 # Beta header for interleaved thinking (verified in
@@ -74,9 +74,14 @@ class AnthropicChatLLM:
         self.client_kwargs = client_kwargs
 
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        """Map shipit's Message model to Anthropic's user/assistant blocks."""
+        """Map shipit's Message model to Anthropic's user/assistant blocks.
+
+        Accepts raw dict messages too (e.g. from ``ComputerUseAgent``) — their
+        content is already in Anthropic block shape and passes through.
+        """
         converted: list[dict[str, Any]] = []
-        for message in messages:
+        for raw_message in messages:
+            message = coerce_message(raw_message)
             if message.role == "system":
                 # System prompts are passed via the top-level `system` kwarg.
                 continue

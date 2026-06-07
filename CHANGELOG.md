@@ -5,6 +5,32 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.13] — 2026-06-07
+
+**Computer-use + adapter fixes.** Two bugs that blocked the computer-use
+agent on every provider are fixed; both are backward compatible.
+**1854 tests passing (+10 new). 0 regressions.**
+
+### Fixed
+
+- **Computer-use now works in Jupyter / asyncio.** `PlaywrightBrowserSession`
+  used Playwright's *sync* API, which refuses to run inside an already-running
+  asyncio event loop (e.g. a notebook cell) — raising
+  *"It looks like you are using Playwright Sync API inside the asyncio loop."*
+  It now runs every Playwright call on a dedicated, loop-free worker thread, so
+  the same synchronous API works in scripts, notebooks, and async web
+  frameworks. No API change.
+- **All LLM adapters accept dict messages** — fixes
+  `'dict' object has no attribute 'role'`. `ComputerUseAgent` (and any caller)
+  builds plain `{"role", "content"}` dict messages, sometimes with multimodal
+  list content, but adapters accessed `message.role` and crashed. Fixed at the
+  adapter layer so it's universal:
+  - **LiteLLM family** (Bedrock, Gemini, Vertex, Groq, Together, Ollama) and
+    **OpenAI** — `_serialize_message` accepts dicts and translates the
+    Anthropic-shape base64 image block to a portable `image_url` block.
+  - **Anthropic** and **ShipitLLM** — coerce dicts via a new shared
+    `coerce_message()` / `coerce_messages()` helper in `shipit_agent.llms.base`.
+
 ## [1.0.12] — 2026-06-07
 
 **Claude API power features + cross-provider caching.** Adds Anthropic
@@ -1127,7 +1153,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.12...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.13...HEAD
+[1.0.13]: https://github.com/shipiit/shipit_agent/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/shipiit/shipit_agent/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/shipiit/shipit_agent/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/shipiit/shipit_agent/compare/v1.0.9...v1.0.10

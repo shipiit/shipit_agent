@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.0.13 — 2026-06-07
+
+**Computer-use + adapter fixes.** Two bugs that blocked the computer-use agent on every provider, both backward compatible. **1854 tests passing (+10 new). 0 regressions.**
+
+### Fixed
+
+- **Computer-use works in Jupyter / asyncio.** `PlaywrightBrowserSession` used the sync Playwright API, which can't run inside a notebook's running asyncio loop. It now runs all Playwright calls on a dedicated loop-free worker thread (same synchronous API).
+- **All LLM adapters accept dict messages** — fixes `'dict' object has no attribute 'role'`. `ComputerUseAgent` passes raw `{"role","content"}` dicts (sometimes multimodal); the LiteLLM family (Bedrock/Gemini/Vertex/Groq/Together/Ollama) + OpenAI now serialize dicts and translate the Anthropic image block to a portable `image_url`; Anthropic + ShipitLLM coerce dicts via a shared `coerce_message()` helper.
+
 ## v1.0.12 — 2026-06-07
 
 **Claude API power + cross-provider caching.** Server-side tools, citations, the Batch API, interleaved thinking & context editing — plus **prompt caching that works across providers, not just Anthropic**. All opt-in, backward compatible. **1844 tests passing. 0 regressions.**

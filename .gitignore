@@ -4,6 +4,10 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Scratch review notes + generated notebook workspaces / sample media
+FINDINGS.md
+notebooks/_*/
+
 # Test, type-check, and coverage artifacts
 .pytest_cache/
 .mypy_cache/

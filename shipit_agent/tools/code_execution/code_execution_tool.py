@@ -187,37 +187,42 @@ class CodeExecutionTool:
             handle.write(code)
             script_path = Path(handle.name)
 
-        if sandbox:
-            command, cwd = build_sandbox_command(
-                language,
-                script_path,
-                workspace_root,
-                allow_network=allow_network,
-                image=str(override_image) if override_image else None,
-            )
-        else:
-            command = self._command_for_language(language, script_path)
-            cwd = workspace_root
-
         try:
-            completed = subprocess.run(
-                command,
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-                check=False,
-            )
-        except FileNotFoundError as err:
             if sandbox:
-                return ToolOutput(
-                    text=(
-                        "Error: docker is not installed or not on PATH. "
-                        "Install Docker Desktop or call the tool without sandbox=true."
-                    ),
-                    metadata={"ok": False, "sandbox": True, "error": str(err)},
+                command, cwd = build_sandbox_command(
+                    language,
+                    script_path,
+                    workspace_root,
+                    allow_network=allow_network,
+                    image=str(override_image) if override_image else None,
                 )
-            raise
+            else:
+                command = self._command_for_language(language, script_path)
+                cwd = workspace_root
+
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds,
+                    check=False,
+                )
+            except FileNotFoundError as err:
+                if sandbox:
+                    return ToolOutput(
+                        text=(
+                            "Error: docker is not installed or not on PATH. "
+                            "Install Docker Desktop or call the tool without sandbox=true."
+                        ),
+                        metadata={"ok": False, "sandbox": True, "error": str(err)},
+                    )
+                raise
+        finally:
+            # NamedTemporaryFile(delete=False) never self-cleans; remove the
+            # script ourselves so the workspace doesn't accumulate temp files.
+            script_path.unlink(missing_ok=True)
         text = "\n".join(
             [
                 f"exit_code: {completed.returncode}",

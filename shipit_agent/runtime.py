@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -9,7 +10,7 @@ from uuid import uuid4
 
 from shipit_agent.construction import build_tool_schemas, construct_tool_registry
 from shipit_agent.integrations import CredentialStore
-from shipit_agent.llms.base import LLM, LLMResponse
+from shipit_agent.llms.base import LLM, LLMResponse, accepts_text_delta_callback
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
 from shipit_agent.policies import RetryPolicy, RouterPolicy
@@ -33,6 +34,57 @@ class RuntimeState:
     messages: list[Message] = field(default_factory=list)
     events: list[AgentEvent] = field(default_factory=list)
     tool_results: list[ToolResult] = field(default_factory=list)
+
+
+# Keys in the runtime's shared_state that hold shared *service* objects (not
+# per-tool data). They must be passed by reference, never deep-copied, when
+# isolating state for concurrent tool execution.
+_SHARED_SERVICE_STATE_KEYS = frozenset(
+    {"memory_store", "credential_store"}
+)
+
+
+def _isolated_tool_state(shared_state: dict[str, Any]) -> dict[str, Any]:
+    """Return a per-tool copy of ``shared_state`` for safe concurrent writes.
+
+    Service objects (memory/credential stores) are shared by reference; plain
+    data is deep-copied so two tools running in parallel can't corrupt each
+    other's reads/writes (e.g. both doing ``state.setdefault("artifacts", [])
+    .append(...)``). Copies are merged back via :func:`_merge_tool_state`.
+    """
+    isolated: dict[str, Any] = {}
+    for key, value in shared_state.items():
+        if key in _SHARED_SERVICE_STATE_KEYS:
+            isolated[key] = value
+            continue
+        try:
+            isolated[key] = copy.deepcopy(value)
+        except Exception:
+            isolated[key] = value
+    return isolated
+
+
+def _merge_tool_state(target: dict[str, Any], child: dict[str, Any]) -> None:
+    """Merge a finished tool's isolated state back into the canonical state.
+
+    Lists are extended with items the child added (de-duplicated); dicts are
+    shallow-merged; scalars are last-write-wins. Called in original tool order
+    so the merge is deterministic.
+    """
+    for key, value in child.items():
+        if key in _SHARED_SERVICE_STATE_KEYS:
+            continue
+        if key not in target:
+            target[key] = value
+        elif isinstance(value, list) and isinstance(target.get(key), list):
+            existing = target[key]
+            for item in value:
+                if item not in existing:
+                    existing.append(item)
+        elif isinstance(value, dict) and isinstance(target.get(key), dict):
+            target[key].update(value)
+        else:
+            target[key] = value
 
 
 class AgentRuntime:
@@ -78,12 +130,19 @@ class AgentRuntime:
         self.hooks = hooks
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
+        # Detect once whether this LLM adapter accepts the inline-streaming
+        # ``text_delta_callback`` kwarg. Adapters on the older protocol
+        # signature don't — passing it unconditionally raises TypeError.
+        self._llm_streams_text = accepts_text_delta_callback(self.llm.complete)
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,
         }
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
+        # Serializes event emission so parallel tool threads don't interleave
+        # writes to a (possibly non-atomic) trace store.
+        self._emit_lock = threading.Lock()
 
     def registry(self) -> ToolRegistry:
         return construct_tool_registry(tools=self.tools, mcps=self.mcps)
@@ -95,21 +154,22 @@ class AgentRuntime:
         self, state: RuntimeState, event_type: str, message: str, **payload: Any
     ) -> None:
         event = AgentEvent(type=event_type, message=message, payload=payload)
-        state.events.append(event)
-        if self._event_subscriber is not None:
-            try:
-                self._event_subscriber(event)
-            except Exception:
-                pass
-        self.trace_store.append_event(
-            self.trace_id,
-            event,
-            metadata={
-                "session_id": self.session_id,
-                "agent_name": self.metadata.get("agent_name"),
-                "agent_description": self.metadata.get("agent_description"),
-            },
-        )
+        with self._emit_lock:
+            state.events.append(event)
+            if self._event_subscriber is not None:
+                try:
+                    self._event_subscriber(event)
+                except Exception:
+                    pass
+            self.trace_store.append_event(
+                self.trace_id,
+                event,
+                metadata={
+                    "session_id": self.session_id,
+                    "agent_name": self.metadata.get("agent_name"),
+                    "agent_description": self.metadata.get("agent_description"),
+                },
+            )
 
     def _run_planner_if_needed(
         self,
@@ -299,6 +359,12 @@ class AgentRuntime:
         if self.parallel_tool_execution and len(tool_calls) > 1:
             # Run all tool calls concurrently, then append results in
             # original order so the message sequence stays deterministic.
+            # Each tool gets its OWN isolated copy of shared_state so concurrent
+            # mutations can't corrupt each other; copies are merged back in
+            # original order afterwards.
+            isolated_states: list[dict[str, Any]] = [
+                _isolated_tool_state(shared_state) for _ in tool_calls
+            ]
             futures_map: dict[Any, int] = {}
             with ThreadPoolExecutor(max_workers=len(tool_calls)) as pool:
                 for idx, tc in enumerate(tool_calls):
@@ -309,7 +375,13 @@ class AgentRuntime:
                         tool_runner=tool_runner,
                         tool_call=tc,
                         tool_call_record=tool_call_records[idx],
-                        context=_make_context(),
+                        context=ToolContext(
+                            prompt=user_prompt,
+                            system_prompt=base_prompt,
+                            metadata=dict(self.metadata),
+                            state=isolated_states[idx],
+                            session_id=self.session_id,
+                        ),
                         iteration=iteration,
                     )
                     futures_map[future] = idx
@@ -320,6 +392,7 @@ class AgentRuntime:
                     ordered[idx] = future.result()
 
             for idx in range(len(tool_calls)):
+                _merge_tool_state(shared_state, isolated_states[idx])
                 tool_result, msg = ordered[idx]
                 if tool_result is not None:
                     state.tool_results.append(tool_result)
@@ -360,7 +433,7 @@ class AgentRuntime:
             return messages
 
         total_chars = sum(len(m.content or "") for m in messages)
-        estimated_tokens = self._estimate_tokens("x" * total_chars)
+        estimated_tokens = total_chars // 4
         threshold = int(self.context_window_tokens * 0.75)
 
         if estimated_tokens < threshold:
@@ -421,16 +494,21 @@ class AgentRuntime:
                 return
             self.emit(state, "text_delta", "", chunk=chunk)
 
+        complete_kwargs: dict[str, Any] = dict(
+            messages=messages,
+            tools=tools,
+            system_prompt=base_prompt,
+            metadata=dict(self.metadata),
+        )
+        # Only pass the streaming callback to adapters that accept it; older
+        # custom adapters keep working unchanged (no inline streaming).
+        if self._llm_streams_text:
+            complete_kwargs["text_delta_callback"] = _on_text_delta
+
         attempt = 0
         while True:
             try:
-                return self.llm.complete(
-                    messages=messages,
-                    tools=tools,
-                    system_prompt=base_prompt,
-                    metadata=dict(self.metadata),
-                    text_delta_callback=_on_text_delta,
-                )
+                return self.llm.complete(**complete_kwargs)
             except self.retry_policy.retry_on_exceptions as exc:
                 if attempt >= self.retry_policy.max_llm_retries:
                     raise
@@ -443,7 +521,29 @@ class AgentRuntime:
                     error=str(exc),
                 )
 
+    def _close_mcps(self) -> None:
+        """Close every attached MCP transport, swallowing close errors.
+
+        Must run even when the agent loop raises, otherwise a failed run
+        leaks live MCP subprocesses / sockets.
+        """
+        for mcp in self.mcps:
+            close = getattr(mcp, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
     def run(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
+        # Guarantee MCP cleanup even if registry construction (which opens MCP
+        # transports) or the agent loop raises.
+        try:
+            return self._run_inner(user_prompt)
+        finally:
+            self._close_mcps()
+
+    def _run_inner(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
         shared_state: dict[str, Any] = {}
         registry = self.registry()
@@ -453,12 +553,22 @@ class AgentRuntime:
         )
         existing_session = self.session_store.load(self.session_id)
         if existing_session:
-            state.messages.extend(existing_session.messages)
+            prior_messages = existing_session.messages
         elif self.history_messages:
-            state.messages.extend(self.history_messages)
+            prior_messages = self.history_messages
+        else:
+            prior_messages = []
+        # Inject exactly one fresh system message at the front, then the prior
+        # turns with any *previously persisted* system messages stripped out.
+        # Multi-turn sessions (AgentChatSession reuses session_id + store)
+        # reload the saved conversation every turn; without this strip a new
+        # system message stacks on top of the old one each turn — unbounded
+        # growth and a malformed mid-conversation system block that several
+        # providers reject.
         state.messages.append(
             Message(role="system", content=base_prompt, metadata=dict(self.metadata))
         )
+        state.messages.extend(m for m in prior_messages if m.role != "system")
         state.messages.append(Message(role="user", content=user_prompt))
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
@@ -499,6 +609,10 @@ class AgentRuntime:
         )
 
         response = LLMResponse(content="")
+        # id() of the response object whose content has already been appended
+        # as an assistant message inside the loop, so the trailing append
+        # below doesn't write the same text twice.
+        appended_response_id: int | None = None
         for iteration in range(1, self.max_iterations + 1):
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), tool_schemas)
@@ -560,6 +674,7 @@ class AgentRuntime:
                     },
                 )
             )
+            appended_response_id = id(response)
 
             self._execute_tool_calls(
                 state=state,
@@ -624,13 +739,21 @@ class AgentRuntime:
                     tools=[],  # force text-only completion
                     base_prompt=base_prompt,
                 )
+                # The summary turn is a real LLM call — account for its tokens
+                # and fire the after-LLM hook, same as in-loop completions.
+                self._track_usage(summary)
+                if self.hooks:
+                    self.hooks.run_after_llm(summary)
                 if summary.content:
                     response = summary
             except Exception:
                 # Don't let summarization failures mask the whole run.
                 pass
 
-        if response.content:
+        # Append the final answer unless this exact response was already
+        # written inside the loop (model narrated alongside a tool call on the
+        # last iteration) — otherwise the text would be duplicated.
+        if response.content and id(response) != appended_response_id:
             state.messages.append(
                 Message(
                     role="assistant",
@@ -667,10 +790,8 @@ class AgentRuntime:
             format="markdown",
             usage=dict(self._total_usage),
         )
-        for mcp in self.mcps:
-            close = getattr(mcp, "close", None)
-            if callable(close):
-                close()
+        # MCP transports are closed by run()'s finally (covers the error path
+        # too) — don't close here.
         return state, response
 
     def stream(self, user_prompt: str) -> Iterator[AgentEvent]:

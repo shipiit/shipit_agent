@@ -67,7 +67,12 @@ def test_trace_store_works_with_seed_history() -> None:
         history=[Message(role="user", content="Earlier message")],
     )
     result = agent.run("new")
-    assert result.messages[0].content == "Earlier message"
+    # Exactly one system message, and it comes first (providers expect a single
+    # leading system message); seed history is preserved right after it.
+    system_messages = [m for m in result.messages if m.role == "system"]
+    assert len(system_messages) == 1
+    assert result.messages[0].role == "system"
+    assert any(m.content == "Earlier message" for m in result.messages)
     trace = trace_store.load("trace-history")
     assert trace is not None
     assert len(trace.events) >= 2

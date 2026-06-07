@@ -5,6 +5,80 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] — 2026-06-07
+
+**Bug-fix & hardening release.** Fixes a v1.0.9 regression that broke custom
+LLM adapters, hardens the local-execution and connector tools against
+sandbox-escape / SSRF, and tightens session, cost, and concurrency
+correctness. No public API was removed and no caller needs code changes.
+**1742 tests passing (+180 new). 0 regressions.**
+
+### Fixed — critical
+
+- **`text_delta_callback` regression (v1.0.9).** The runtime passed the new
+  `text_delta_callback` kwarg to `LLM.complete()` *unconditionally*, raising
+  `TypeError` for any adapter on the prior protocol signature (every custom
+  adapter, and all test mocks). The runtime now detects support via signature
+  inspection and only passes the callback to adapters that accept it —
+  backward compatible, with streaming preserved for opted-in adapters.
+- **Multi-turn sessions stacked duplicate system prompts.** Re-running with a
+  persistent `session_store` + reused `session_id` (the `AgentChatSession`
+  path) re-appended a fresh system message every turn — unbounded growth and a
+  malformed mid-conversation system block. The runtime now injects exactly one
+  leading system message and strips persisted ones on reload.
+
+### Fixed — security hardening (tools)
+
+- **Bash tool** — `_validate_command` rejects command substitution (`$(…)`,
+  backticks), process substitution, and file redirection that could smuggle
+  past the allowlist.
+- **`open_url` / browser fetch** — http(s)-only; blocks `file://` and private,
+  loopback, link-local, and cloud-metadata IPs (SSRF). Opt out with
+  `allow_private_hosts=True`.
+- **SQL tool** — the read-only guard scans the *entire* statement (not the
+  first 500 chars) and rejects stacked statements, closing an
+  `allow_writes=False` bypass on multi-statement drivers.
+- **OAuth** — `OAuthHelper.exchange_code(state=…)` validates and consumes the
+  CSRF state nonce.
+- **`edit_file`** — refuses to edit non-UTF-8 files instead of silently
+  corrupting them.
+- **`FileCredentialStore`** — warns that secrets are stored in plaintext,
+  chmods the file `0600`, and writes atomically.
+
+### Fixed — reliability & correctness
+
+- MCP transports are closed even when a run raises (`try/finally`), and
+  `RemoteMCPServer.discover_tools` closes its transport on a failed handshake —
+  no more leaked subprocesses.
+- Parallel tool execution gives each tool an isolated copy of shared state and
+  merges results deterministically, fixing a read-modify-write race.
+- The iteration-cap summary turn now counts its tokens and fires the after-LLM
+  hook (previously escaped all cost/usage accounting).
+- `CostTracker` no longer silently bills unknown models at `$0` while a budget
+  is active — it flags `has_unknown_pricing` and warns (raises only under
+  `on_unknown_model="error"`), so budgets can't be silently bypassed.
+- `JSONParser` extracts the *balanced* JSON object via a depth scan and prefers
+  a ```json fence, instead of grabbing the last brace / first fenced block.
+- Pipeline `stream()` no longer executes agent steps twice.
+- Autopilot fan-out preserves input order (was sorted lexicographically by
+  run id).
+- `create_deep_agent(goal=…/reflect=…)` forwards `memory`, `history`, and
+  `verifier` to the inner agent.
+- `InMemoryVectorStore` uses monotonic ids (no reuse/collision after a delete).
+- `FileSessionStore` / `FileMemoryStore` write atomically (+ a lock on memory
+  `add`) so concurrent readers never see truncated JSON.
+- `grep` tool gains a configurable subprocess timeout and a global match cap;
+  ShipCrew task `timeout_seconds` now actually pre-empts; `code_execution`
+  removes its temp script; `diff_traces` stops counting matches after a
+  reconverging divergence; RAG `total_found` reports the true match count.
+
+### Added
+
+- 180+ new tests covering every fix above (suite now 1742 passing, 8 skipped).
+- Six new runnable examples — `examples/13_parallel_tools.py` through
+  `examples/18_verifier_guard.py` (parallel tools, cost budgets, multi-turn
+  memory, async runtime, secure tools, verifier guard).
+
 ## [1.0.9] — 2026-05-14
 
 **Inline text streaming.** The agent can now stream LLM tokens token-by-token
@@ -946,6 +1020,7 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.10...HEAD
+[1.0.10]: https://github.com/shipiit/shipit_agent/compare/v1.0.9...v1.0.10
 [1.0.1]: https://github.com/shipiit/shipit_agent/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/shipiit/shipit_agent/releases/tag/v1.0.0

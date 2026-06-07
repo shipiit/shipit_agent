@@ -445,6 +445,19 @@ class DeepAgent:
 
     # ---- goal-driven mode ----------------------------------------------
 
+    def _inner_agent_extras(self) -> dict[str, Any]:
+        """Kwargs forwarded to GoalAgent/ReflectiveAgent so the inner Agent
+        gets the factory's ``history`` and ``verifier`` (memory is passed
+        explicitly via ``memory=``). Only non-empty values are forwarded so we
+        don't override the inner agent's memory-derived history with an empty
+        list."""
+        extras: dict[str, Any] = {}
+        if self.history:
+            extras["history"] = list(self.history)
+        if self.verifier is not None:
+            extras["verifier"] = self.verifier
+        return extras
+
     def _build_goal_agent(self) -> GoalAgent:
         return GoalAgent(
             llm=self.llm,
@@ -453,6 +466,8 @@ class DeepAgent:
             goal=self.goal,
             prompt=self.prompt,
             rag=self.rag,
+            memory=self.memory,
+            **self._inner_agent_extras(),
         )
 
     def _run_goal(self) -> GoalResult:
@@ -472,6 +487,8 @@ class DeepAgent:
             max_reflections=self.reflect_max_iterations,
             prompt=self.prompt,
             rag=self.rag,
+            memory=self.memory,
+            **self._inner_agent_extras(),
         )
 
     def _run_reflective(self, user_prompt: str) -> ReflectionResult:

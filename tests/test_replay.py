@@ -525,3 +525,22 @@ class TestPublicSurface:
         fp = ForkPoint(source_trace_id="t", at_event=3, edits={"k": "v"})
         assert fp.source_trace_id == "t"
         assert fp.at_event == 3
+
+    def test_matched_stops_after_reconverging_divergence(self) -> None:
+        # Traces that diverge at index 1 then reconverge at index 2.
+        # `matched` must count only the common prefix (index 0), not resume
+        # counting after the divergence.
+        left = _record(
+            [_ev("a"), _ev("b"), _ev("d")],
+            trace_id="L",
+        )
+        right = _record(
+            [_ev("a"), _ev("c"), _ev("d")],
+            trace_id="R",
+        )
+        diff = diff_traces(
+            TraceReplayer.from_record(left),
+            TraceReplayer.from_record(right),
+        )
+        assert diff.diverged_at == 1
+        assert diff.matched == 1  # only index 0; not 2

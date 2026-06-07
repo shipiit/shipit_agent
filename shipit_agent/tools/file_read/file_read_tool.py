@@ -69,7 +69,11 @@ class FileReadTool:
         if path.is_dir():
             return ToolOutput(text=f"Path is a directory, not a file: {path}")
 
+        # Decode lossily for display, but flag when invalid bytes were
+        # replaced with U+FFFD so the caller knows the on-disk content is not
+        # pure UTF-8 (and must not be edited as text — see edit_file).
         content = path.read_text(encoding="utf-8", errors="replace")
+        had_replacement = "�" in content
         lines = content.splitlines()
         start_line = max(1, int(kwargs.get("start_line", 1)))
         max_lines = max(1, int(kwargs.get("max_lines", min(len(lines) or 1, 250))))
@@ -86,12 +90,19 @@ class FileReadTool:
             if str(path) not in read_files:
                 read_files.append(str(path))
             state["read_files"] = read_files
+        body = numbered or "(file is empty)"
+        if had_replacement:
+            body = (
+                "[warning: file is not valid UTF-8; invalid bytes shown as "
+                "U+FFFD. Do not edit as text.]\n" + body
+            )
         return ToolOutput(
-            text=numbered or "(file is empty)",
+            text=body,
             metadata={
                 "path": str(path),
                 "start_line": start_line,
                 "returned_lines": len(sliced),
                 "total_lines": len(lines),
+                "utf8_replacement": had_replacement,
             },
         )

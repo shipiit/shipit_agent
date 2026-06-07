@@ -300,23 +300,29 @@ class RemoteMCPServer(MCPServer):
             return list(self.tools)
         if self.transport is None:
             raise MCPError("RemoteMCPServer requires a transport.")
-        self.initialize()
-        result = self.transport.request("tools/list", {})
-        resolved_tools: list[MCPTool | MCPRemoteTool] = []
-        for item in result.get("tools", []):
-            resolved_tools.append(
-                MCPRemoteTool(
-                    server_name=self.name,
-                    transport=self.transport,
-                    name=str(item["name"]),
-                    description=str(item.get("description", "")),
-                    input_schema=dict(
-                        item.get("inputSchema")
-                        or {"type": "object", "properties": {}, "required": []}
-                    ),
-                    metadata={"server": self.name},
+        try:
+            self.initialize()
+            result = self.transport.request("tools/list", {})
+            resolved_tools: list[MCPTool | MCPRemoteTool] = []
+            for item in result.get("tools", []):
+                resolved_tools.append(
+                    MCPRemoteTool(
+                        server_name=self.name,
+                        transport=self.transport,
+                        name=str(item["name"]),
+                        description=str(item.get("description", "")),
+                        input_schema=dict(
+                            item.get("inputSchema")
+                            or {"type": "object", "properties": {}, "required": []}
+                        ),
+                        metadata={"server": self.name},
+                    )
                 )
-            )
+        except Exception:
+            # Discovery opened the connection/subprocess; if it fails we must
+            # close the transport so we don't leak a live process or socket.
+            self.close()
+            raise
         self.tools = resolved_tools
         self._discovered = True
         return list(self.tools)

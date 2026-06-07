@@ -141,13 +141,18 @@ def autopilot_fanout(
                 halt_reason=f"child exception: {type(err).__name__}: {err}",
             )
 
+    indexed: list[tuple[int, AutopilotResult]] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = [pool.submit(_child_run, i, item) for i, item in enumerate(items)]
-        for f in as_completed(futures):
-            children_out.append(f.result())
+        future_idx = {
+            pool.submit(_child_run, i, item): i for i, item in enumerate(items)
+        }
+        for f in as_completed(future_idx):
+            indexed.append((future_idx[f], f.result()))
 
     # Preserve item order in the output — as_completed returns out-of-order.
-    children_out.sort(key=lambda r: r.run_id)
+    # Sort by the integer item index, not by run_id (which sorts lexically).
+    indexed.sort(key=lambda pair: pair[0])
+    children_out = [res for _, res in indexed]
 
     # The `failed` list should include every child that didn't complete
     # successfully — whether that was an exception escape OR an inner
@@ -213,7 +218,7 @@ def autopilot_fanout_stream(
         return
 
     max_workers = max(1, min(max_parallel, len(items)))
-    children_out: list[AutopilotResult] = []
+    indexed: list[tuple[int, AutopilotResult]] = []
     failed: list[str] = []
 
     def _child_run(idx: int, item: Any) -> tuple[int, AutopilotResult]:
@@ -248,7 +253,7 @@ def autopilot_fanout_stream(
         futures = [pool.submit(_child_run, i, item) for i, item in enumerate(items)]
         for f in as_completed(futures):
             idx, res = f.result()
-            children_out.append(res)
+            indexed.append((idx, res))
             yield {
                 "kind": "autopilot.fanout_child",
                 "item_index": idx,
@@ -258,7 +263,9 @@ def autopilot_fanout_stream(
                 "halt_reason": res.halt_reason,
             }
 
-    children_out.sort(key=lambda r: r.run_id)
+    # Preserve input order by integer item index (run_id sorts lexically).
+    indexed.sort(key=lambda pair: pair[0])
+    children_out = [res for _, res in indexed]
     aggregated = (aggregator or _default_aggregator)(children_out)
     status = _rollup_status([r.status for r in children_out])
 

@@ -126,14 +126,29 @@ class Pipeline:
                     payload={"step": stage.name},
                 )
 
-                # If the step has an agent, stream inner agent events
+                # If the step has an agent, stream inner agent events and
+                # capture the final output from the streamed run — do NOT call
+                # stage.execute() afterwards (that would run the agent twice).
                 if stage.agent is not None:
                     resolved_prompt = stage._resolve_template(stage.prompt, context)
+                    captured_output: str | None = None
                     for event in stage.agent.stream(resolved_prompt):
                         event.payload["pipeline_step"] = stage.name
+                        # A run_completed payload carries the final answer as
+                        # `output`/`content`. Guard against trailing
+                        # run_completed events that omit it (e.g. a verify pass).
+                        if event.type == "run_completed":
+                            out = event.payload.get("output") or event.payload.get(
+                                "content"
+                            )
+                            if out:
+                                captured_output = out
                         yield event
-
-                result = stage.execute(context, **inputs)
+                    result = StepResult(
+                        name=stage.name, output=captured_output or ""
+                    )
+                else:
+                    result = stage.execute(context, **inputs)
                 context[result.name] = result
                 last_output = result.output
                 yield AgentEvent(

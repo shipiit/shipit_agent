@@ -11,8 +11,11 @@ Safety posture:
 * ``allow_writes=False`` (the default) rejects anything that isn't a
   pure ``SELECT`` or ``WITH ... SELECT`` CTE.
 * ``max_rows`` caps the row count returned on any ``query``.
-* ``timeout_seconds`` is applied via SQLAlchemy's per-connection
-  ``execution_options``.
+* ``timeout_seconds`` is applied on a *best-effort, dialect-dependent*
+  basis: PostgreSQL gets ``SET LOCAL statement_timeout`` and MySQL/MariaDB
+  get ``max_execution_time`` per statement. SQLAlchemy exposes no portable
+  cross-dialect statement timeout, so dialects without a supported mechanism
+  (e.g. SQLite) are *not* time-bounded — do not rely on it there.
 * Exceptions are caught and surfaced as structured metadata — the tool
   never raises from :meth:`run`.
 """
@@ -64,12 +67,19 @@ def _strip_comments(sql: str) -> str:
 
 
 def _is_read_only(sql: str) -> bool:
-    """Return True iff ``sql`` is a pure SELECT (or WITH...SELECT CTE).
+    """Return True iff ``sql`` is a single pure SELECT (or WITH...SELECT CTE).
 
-    The check looks at the *first ~500 non-whitespace characters* after
-    comments and leading whitespace/semicolons are removed, and rejects
-    the statement if it contains any of the mutation keywords. The CTE
-    form is accepted because ``WITH ... SELECT`` is still a read.
+    The check scans the *entire* cleaned statement (after comments and
+    leading whitespace/semicolons are removed) and rejects it if any
+    mutation keyword appears anywhere, or if it contains more than one
+    statement (a ``;`` followed by additional non-empty SQL). Scanning the
+    whole string — rather than just the head — closes the bypass where a
+    trailing ``; DELETE ...`` rides past a long leading SELECT. The CTE form
+    is accepted because ``WITH ... SELECT`` is still a read.
+
+    A semicolon inside a string literal will be (conservatively) treated as a
+    statement separator; this fails *safe* — it rejects a legitimate query
+    rather than admitting a write.
     """
     if not sql or not sql.strip():
         return False
@@ -78,13 +88,18 @@ def _is_read_only(sql: str) -> bool:
     if not cleaned:
         return False
 
-    head = cleaned[:500]
-
-    # If any write keyword appears as a whole word in the head, reject.
-    if _WRITE_PATTERN.search(head):
+    # Reject multiple statements: drop a single trailing ``;`` then split.
+    # ``SELECT 1;`` → 1 segment (OK); ``SELECT 1; DELETE ...`` → 2 (reject).
+    trimmed = cleaned.rstrip().rstrip(";").rstrip()
+    segments = [seg for seg in trimmed.split(";") if seg.strip()]
+    if len(segments) > 1:
         return False
 
-    lowered = head.lower()
+    # If any write keyword appears as a whole word anywhere, reject.
+    if _WRITE_PATTERN.search(cleaned):
+        return False
+
+    lowered = cleaned.lower()
     if lowered.startswith("select") or lowered.startswith("with") or lowered.startswith("("):
         return True
     # ``VALUES ...`` and ``TABLE foo`` are technically reads in some
@@ -306,6 +321,33 @@ class SQLTool:
         return engine
 
     # ------------------------------------------------------------------
+    # Statement timeout (best-effort, dialect-dependent)
+    # ------------------------------------------------------------------
+    def _apply_statement_timeout(self, conn: Any, sa_text: Any) -> None:
+        """Apply a per-statement timeout for dialects that support one.
+
+        SQLAlchemy has no portable cross-dialect statement timeout, so we
+        emit the appropriate session/transaction-scoped setting for the
+        dialects that have one and silently no-op everywhere else. Failures
+        to set the timeout are swallowed — a missing timeout must never break
+        an otherwise-valid query.
+        """
+        if self.timeout_seconds is None or self.timeout_seconds <= 0:
+            return
+        dialect = getattr(getattr(conn, "dialect", None), "name", "") or ""
+        dialect = dialect.lower()
+        ms = int(self.timeout_seconds * 1000)
+        try:
+            if dialect in ("postgresql", "postgres"):
+                conn.execute(sa_text(f"SET LOCAL statement_timeout = {ms}"))
+            elif dialect in ("mysql", "mariadb"):
+                conn.execute(sa_text(f"SET SESSION max_execution_time = {ms}"))
+            # Other dialects (sqlite, mssql, bigquery, ...) have no portable
+            # per-statement timeout we can set here; documented as a limitation.
+        except Exception:  # noqa: BLE001 — best-effort; never block the query
+            pass
+
+    # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
     def _do_query(
@@ -336,6 +378,7 @@ class SQLTool:
         params = kwargs.get("params") or {}
         try:
             with engine.connect() as conn:
+                self._apply_statement_timeout(conn, sa_text)
                 result = conn.execute(sa_text(sql), params)
                 mappings = result.mappings().all()
         except SQLAlchemyError as exc:
@@ -394,6 +437,7 @@ class SQLTool:
         params = kwargs.get("params") or {}
         try:
             with engine.begin() as conn:
+                self._apply_statement_timeout(conn, sa_text)
                 result = conn.execute(sa_text(sql), params)
                 rowcount = getattr(result, "rowcount", -1)
         except SQLAlchemyError as exc:

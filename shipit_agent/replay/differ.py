@@ -94,7 +94,10 @@ def diff_traces(
         a = left_events[i]
         b = right_events[i]
         if a.type == b.type:
-            matched += 1
+            # Only the common prefix counts as matched — once the traces have
+            # diverged, a later reconvergence must not resume the count.
+            if not diverged:
+                matched += 1
         else:
             if not diverged:
                 diff.diverged_at = i

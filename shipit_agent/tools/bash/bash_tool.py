@@ -241,6 +241,32 @@ class BashTool:
         for blocked in self.blocked_substrings:
             if blocked in lowered:
                 raise ValueError(f"Blocked shell command pattern: {blocked}")
+
+        # The allowlist below only inspects the first token of each
+        # `;`/`&&`/`||`/`|` segment, so any construct that runs an arbitrary
+        # command *without* appearing as a leading token defeats it entirely.
+        # Reject those clear-cut bypasses up front, before any tokenisation:
+        #   - command substitution:  $(...)  and backticks `...`
+        #   - process substitution:  <(...)  >(...)
+        #   - redirection to/from files: >  >>  <  (covers heredocs too)
+        # These checks run on the raw string so quoted/malformed input is
+        # rejected cleanly rather than slipping past shlex.split.
+        #
+        # NOTE: this is a deliberately conservative, syntactic filter. It will
+        # false-positive on redirection-like characters inside quotes (e.g.
+        # `echo "a > b"`), which we accept as the safe trade-off. It does NOT
+        # defend against an allowlisted command being handed an absolute path
+        # to a sensitive file (e.g. `cat /etc/passwd`) — argument-level path
+        # confinement is out of scope for this syntactic guard.
+        if "$(" in normalized:
+            raise ValueError("Command substitution '$(...)' is not allowed")
+        if "`" in normalized:
+            raise ValueError("Command substitution with backticks is not allowed")
+        if "<(" in normalized or ">(" in normalized:
+            raise ValueError("Process substitution '<(...)'/'>(...)' is not allowed")
+        if ">" in normalized or "<" in normalized:
+            raise ValueError("File redirection ('>', '>>', '<') is not allowed")
+
         for segment in re.split(r"\s*(?:&&|\|\||;|\|)\s*", normalized):
             stripped = segment.strip()
             if not stripped:

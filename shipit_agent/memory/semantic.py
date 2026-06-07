@@ -35,13 +35,21 @@ class InMemoryVectorStore:
 
     def __init__(self) -> None:
         self._entries: list[dict[str, Any]] = []
+        # Monotonic id counter — never reuses ids even after a delete, so
+        # ``delete([id])`` can never collide with a later-added entry.
+        self._next_id: int = 0
+
+    def _make_id(self) -> str:
+        entry_id = f"mem_{self._next_id}"
+        self._next_id += 1
+        return entry_id
 
     def add(
         self, texts: list[str], metadatas: list[dict[str, Any]] | None = None
     ) -> list[str]:
         ids = []
         for i, text in enumerate(texts):
-            entry_id = f"mem_{len(self._entries)}"
+            entry_id = self._make_id()
             self._entries.append(
                 {
                     "id": entry_id,
@@ -63,7 +71,7 @@ class InMemoryVectorStore:
     ) -> list[str]:
         ids = []
         for i, text in enumerate(texts):
-            entry_id = f"mem_{len(self._entries)}"
+            entry_id = self._make_id()
             self._entries.append(
                 {
                     "id": entry_id,

@@ -8,9 +8,9 @@ the pricing table, enforces budgets, and integrates with
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from shipit_agent.hooks import AgentHooks
 
@@ -43,6 +43,7 @@ class CostRecord:
     cache_write_tokens: int
     cost_usd: float
     timestamp: datetime
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dictionary."""
@@ -55,6 +56,7 @@ class CostRecord:
             "cache_write_tokens": self.cache_write_tokens,
             "cost_usd": round(self.cost_usd, 6),
             "timestamp": self.timestamp.isoformat(),
+            "metadata": dict(self.metadata),
         }
 
 
@@ -80,6 +82,20 @@ class CostTracker:
         on_cost_alert: Optional callback invoked when the budget
                        warning threshold is crossed.  Receives
                        ``(spent, budget_limit)`` as arguments.
+        on_unknown_model: Policy for a model that has no pricing entry.
+
+                       * ``"warn"`` (default): record the call with
+                         ``cost_usd == 0.0``, flag the
+                         :class:`CostRecord` with
+                         ``metadata={"pricing": "unknown"}``, set
+                         :attr:`has_unknown_pricing`, and log a warning.
+                         If a :class:`Budget` is attached this also
+                         raises :class:`BudgetExceededError` so the
+                         budget is never silently under-counted.
+                       * ``"error"``: always raise ``ValueError`` for an
+                         unknown model, regardless of budget.
+                       * ``"ignore"``: legacy behaviour — silently treat
+                         the cost as ``$0.00`` (no flag, no raise).
     """
 
     def __init__(
@@ -87,6 +103,7 @@ class CostTracker:
         budget: Budget | None = None,
         pricing: dict[str, dict[str, float]] | None = None,
         on_cost_alert: Callable[[float, float], None] | None = None,
+        on_unknown_model: Literal["warn", "error", "ignore"] = "warn",
     ) -> None:
         self._calls: list[CostRecord] = []
         self._total_cost: float = 0.0
@@ -96,7 +113,19 @@ class CostTracker:
         }
         self._budget = budget
         self._on_cost_alert = on_cost_alert
+        self._on_unknown_model = on_unknown_model
         self._warning_emitted: bool = False
+        self._has_unknown_pricing: bool = False
+
+    @property
+    def has_unknown_pricing(self) -> bool:
+        """``True`` if any recorded call used a model with no pricing entry.
+
+        When this is ``True`` the reported :attr:`total_cost` is a *lower
+        bound*: at least one call was billed at ``$0.00`` because its model
+        is absent from the pricing table.
+        """
+        return self._has_unknown_pricing
 
     # ------------------------------------------------------------------
     # Properties
@@ -140,6 +169,14 @@ class CostTracker:
         Also checks the budget and emits warnings or raises
         :class:`BudgetExceededError` as appropriate.
         """
+        is_unknown = self._resolve_model(model) not in self._pricing
+
+        if is_unknown and self._on_unknown_model == "error":
+            raise ValueError(
+                f"No pricing data for model '{model}' and "
+                f"on_unknown_model='error'."
+            )
+
         cost = self.calculate_cost(
             model,
             input_tokens,
@@ -147,6 +184,12 @@ class CostTracker:
             cache_read_tokens=cache_read_tokens,
             cache_write_tokens=cache_write_tokens,
         )
+
+        metadata: dict[str, Any] = {}
+        flag_unknown = is_unknown and self._on_unknown_model != "ignore"
+        if flag_unknown:
+            metadata["pricing"] = "unknown"
+            self._has_unknown_pricing = True
 
         record = CostRecord(
             call_number=len(self._calls) + 1,
@@ -157,6 +200,7 @@ class CostTracker:
             cache_write_tokens=cache_write_tokens,
             cost_usd=cost,
             timestamp=datetime.now(timezone.utc),
+            metadata=metadata,
         )
         self._calls.append(record)
         self._total_cost += cost
@@ -171,7 +215,23 @@ class CostTracker:
             self._total_cost,
         )
 
-        # Budget checks.
+        # An unknown-priced call under an active budget is billed at $0.00 and
+        # cannot trip the budget. Surface it loudly via a warning + the
+        # ``has_unknown_pricing`` flag (set above) rather than crashing a
+        # legitimate run on a model that's simply new/custom. Callers who want
+        # a hard failure opt in with ``on_unknown_model="error"`` (handled at
+        # the top of this method, before any cost is computed).
+        if flag_unknown and self._budget is not None and not self._warning_emitted:
+            logger.warning(
+                "Model '%s' has no pricing data: it is billed at $0.00, so the "
+                "$%.2f budget cannot be enforced for these calls. Check "
+                "tracker.has_unknown_pricing or pass on_unknown_model='error' "
+                "to fail hard.",
+                model,
+                self._budget.max_dollars,
+            )
+
+        # Budget checks (on the known-priced portion of the spend).
         self._check_warning()
         self.check_budget()
 

@@ -102,7 +102,26 @@ class EditFileTool:
         new_text = str(kwargs.get("new_text", ""))
         replace_all = bool(kwargs.get("replace_all", False))
 
-        content = path.read_text(encoding="utf-8", errors="replace")
+        # Read raw bytes and decode strictly. Reading with errors="replace"
+        # would turn invalid bytes into U+FFFD, and writing the result back
+        # would silently corrupt a non-UTF-8 file while reporting success.
+        # Refuse to edit anything we can't round-trip losslessly.
+        raw = path.read_bytes()
+        try:
+            content = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            return ToolOutput(
+                text=(
+                    "Edit refused: file is not valid UTF-8 "
+                    f"({exc.reason} at byte {exc.start}). Editing it as text "
+                    "would corrupt its contents, so no changes were made."
+                ),
+                metadata={
+                    "path": str(path),
+                    "error": "not_utf8",
+                    "encoding_error": str(exc),
+                },
+            )
         occurrences = content.count(old_text)
         if occurrences == 0:
             return ToolOutput(text="Edit failed: old_text was not found in the file.")

@@ -125,6 +125,10 @@ class HybridSearchPipeline:
         fused_list = list(fused.values())
         fused_list.sort(key=lambda e: e["score"], reverse=True)
 
+        # True match count, captured before reranking truncates the candidate
+        # set to top_k*2 — `total_found` must report all fused matches.
+        total_found = len(fused_list)
+
         # 5. Optional recency bias.
         if query.enable_recency_bias:
             for entry in fused_list:
@@ -176,7 +180,7 @@ class HybridSearchPipeline:
         return RAGContext(
             query=query.query,
             results=results,
-            total_found=len(fused_list),
+            total_found=total_found,
             timing_ms=timings,
         )
 

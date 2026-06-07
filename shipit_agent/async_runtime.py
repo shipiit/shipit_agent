@@ -11,7 +11,11 @@ from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
-from shipit_agent.runtime import RuntimeState
+from shipit_agent.runtime import (
+    RuntimeState,
+    _isolated_tool_state,
+    _merge_tool_state,
+)
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -272,7 +276,30 @@ class AsyncAgentRuntime:
             )
         return tool_result, msg
 
+    def _close_mcps(self) -> None:
+        """Close every attached MCP transport, swallowing close errors.
+
+        Runs even when the agent loop raises, so a failed run never leaks live
+        MCP subprocesses / sockets.
+        """
+        for mcp in self.mcps:
+            close = getattr(mcp, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
     async def run(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
+        # Guarantee MCP cleanup even if registry construction or the loop raises.
+        try:
+            return await self._run_inner(user_prompt)
+        finally:
+            self._close_mcps()
+
+    async def _run_inner(
+        self, user_prompt: str
+    ) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
         shared_state: dict[str, Any] = {}
         registry = self.registry()
@@ -282,12 +309,18 @@ class AsyncAgentRuntime:
         )
         existing_session = self.session_store.load(self.session_id)
         if existing_session:
-            state.messages.extend(existing_session.messages)
+            prior_messages = existing_session.messages
         elif self.history_messages:
-            state.messages.extend(self.history_messages)
+            prior_messages = self.history_messages
+        else:
+            prior_messages = []
+        # Exactly one fresh system message at the front; strip any persisted
+        # system messages from prior turns so multi-turn sessions don't stack
+        # duplicates and grow unbounded. (See sync AgentRuntime for details.)
         state.messages.append(
             Message(role="system", content=base_prompt, metadata=dict(self.metadata))
         )
+        state.messages.extend(m for m in prior_messages if m.role != "system")
         state.messages.append(Message(role="user", content=user_prompt))
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
@@ -320,6 +353,9 @@ class AsyncAgentRuntime:
         tool_runner = ToolRunner(registry)
 
         response = LLMResponse(content="")
+        # id() of the response already appended as an assistant message in the
+        # loop, so the trailing append doesn't duplicate the final text.
+        appended_response_id: int | None = None
         for iteration in range(1, self.max_iterations + 1):
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), tool_schemas)
@@ -378,16 +414,23 @@ class AsyncAgentRuntime:
                     },
                 )
             )
+            appended_response_id = id(response)
 
             if self.parallel_tool_execution and len(response.tool_calls) > 1:
-                # Run tools concurrently
+                # Run tools concurrently — each on its own isolated copy of
+                # shared_state so concurrent writes can't corrupt each other;
+                # merged back in original order after all complete.
+                isolated_states = [
+                    _isolated_tool_state(shared_state)
+                    for _ in response.tool_calls
+                ]
                 tasks = []
                 for idx, tc in enumerate(response.tool_calls):
                     context = ToolContext(
                         prompt=user_prompt,
                         system_prompt=base_prompt,
                         metadata=dict(self.metadata),
-                        state=shared_state,
+                        state=isolated_states[idx],
                         session_id=self.session_id,
                     )
                     tasks.append(
@@ -402,7 +445,8 @@ class AsyncAgentRuntime:
                         )
                     )
                 results = await asyncio.gather(*tasks)
-                for tool_result, msg in results:
+                for idx, (tool_result, msg) in enumerate(results):
+                    _merge_tool_state(shared_state, isolated_states[idx])
                     if tool_result is not None:
                         state.tool_results.append(tool_result)
                     state.messages.append(msg)
@@ -445,12 +489,17 @@ class AsyncAgentRuntime:
                     tools=[],
                     base_prompt=base_prompt,
                 )
+                # Account for the summary turn's tokens + fire the hook.
+                self._track_usage(summary)
+                if self.hooks:
+                    self.hooks.run_after_llm(summary)
                 if summary.content:
                     response = summary
             except Exception:
                 pass
 
-        if response.content:
+        # Skip if this exact response was already appended in the loop.
+        if response.content and id(response) != appended_response_id:
             state.messages.append(
                 Message(
                     role="assistant",
@@ -483,10 +532,7 @@ class AsyncAgentRuntime:
             usage=dict(self._total_usage),
         )
 
-        for mcp in self.mcps:
-            close = getattr(mcp, "close", None)
-            if callable(close):
-                close()
+        # MCP transports are closed by run()'s finally (covers the error path).
         return state, response
 
     def _track_usage(self, response: LLMResponse) -> None:

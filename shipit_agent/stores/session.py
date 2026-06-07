@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -80,7 +82,7 @@ class FileSessionStore:
             ],
             "metadata": record.metadata,
         }
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        _atomic_write_text(path, json.dumps(payload, indent=2))
 
     def list_all(self) -> list[SessionRecord]:
         records: list[SessionRecord] = []
@@ -89,3 +91,27 @@ class FileSessionStore:
             if record is not None:
                 records.append(record)
         return records
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write *text* to *path* atomically via a temp file + ``os.replace``.
+
+    The temp file is created in the same directory as *path* so that
+    ``os.replace`` is an atomic rename on the same filesystem.  A
+    concurrent reader therefore always sees either the old, complete file
+    or the new, complete file — never a truncated write.
+    """
+    directory = path.parent
+    fd, tmp_name = tempfile.mkstemp(dir=directory, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise

@@ -17,10 +17,12 @@ class GrepSearchTool:
         name: str = "grep_files",
         description: str = "Search file contents in the local project using ripgrep when available.",
         prompt: str | None = None,
+        timeout_seconds: float = 30.0,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
         self.name = name
         self.description = description
+        self.timeout_seconds = timeout_seconds
         self.prompt = prompt or GREP_SEARCH_PROMPT
         self.prompt_instructions = "Use this to find symbols, error strings, config keys, query fragments, and code references across the project."
 
@@ -95,16 +97,25 @@ class GrepSearchTool:
         if glob_pattern:
             command.extend(["--glob", glob_pattern])
         command.extend(["-m", str(limit), pattern, str(path)])
-        completed = subprocess.run(
-            command,
-            cwd=self.root_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.root_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=self.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"ripgrep timed out after {self.timeout_seconds}s"
+            ) from None
         if completed.returncode not in (0, 1):
             raise RuntimeError(completed.stderr.strip() or "ripgrep failed")
-        return completed.stdout.strip()
+        # ``-m`` is a per-file cap, so the total can exceed ``limit`` when many
+        # files match. Truncate to the global limit for consistent output.
+        lines = completed.stdout.strip().splitlines()
+        return "\n".join(lines[:limit])
 
     def _run_python(
         self,

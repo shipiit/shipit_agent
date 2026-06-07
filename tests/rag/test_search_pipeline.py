@@ -143,6 +143,36 @@ def test_reranker_reorders_results():
     assert ctx.results[0].rerank_score == 0.9
 
 
+def test_total_found_counts_matches_before_rerank_truncation():
+    # total_found must reflect the fused match count captured BEFORE the
+    # rerank step (which can drop/truncate candidates). Here the reranker
+    # returns an empty ordering, emptying the post-rerank list — but the
+    # matches that were actually found must still be reported.
+    emb = HashingEmbedder(dimension=256)
+    vec, kw, _ = _make_store(
+        [("r", f"programming topic {i}") for i in range(4)],
+        emb,
+    )
+
+    class EmptyReranker:
+        def rerank(self, query, chunks, top_k):
+            return []
+
+    pipeline = HybridSearchPipeline(
+        vector_store=vec,
+        embedder=emb,
+        keyword_store=kw,
+        reranker=EmptyReranker(),
+    )
+    ctx = pipeline.search(
+        SearchQuery(query="programming", top_k=2, enable_reranking=True)
+    )
+    # Pre-rerank fused match count (top_n = top_k*2 = 4 candidates retrieved).
+    assert ctx.total_found > 0
+    # Post-rerank the results are empty because the reranker dropped them.
+    assert len(ctx.results) == 0
+
+
 def test_context_expansion_returns_neighbours():
     emb = HashingEmbedder(dimension=256)
     vec, kw, _ = _make_store(

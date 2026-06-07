@@ -24,6 +24,8 @@ class OAuthStateStore(Protocol):
 
     def load(self, state: str) -> dict[str, Any] | None: ...
 
+    def delete(self, state: str) -> None: ...
+
 
 class InMemoryOAuthStateStore:
     def __init__(self) -> None:
@@ -34,6 +36,9 @@ class InMemoryOAuthStateStore:
 
     def load(self, state: str) -> dict[str, Any] | None:
         return self._items.get(state)
+
+    def delete(self, state: str) -> None:
+        self._items.pop(state, None)
 
 
 class FileOAuthStateStore:
@@ -53,6 +58,12 @@ class FileOAuthStateStore:
 
     def load(self, state: str) -> dict[str, Any] | None:
         return self._load_all().get(state)
+
+    def delete(self, state: str) -> None:
+        data = self._load_all()
+        if state in data:
+            del data[state]
+            self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 class OAuthHelper:
@@ -84,7 +95,33 @@ class OAuthHelper:
             "url": f"{self.config.authorize_url}?{parse.urlencode(params)}",
         }
 
-    def exchange_code(self, *, code: str) -> dict[str, Any]:
+    def exchange_code(
+        self, *, code: str, state: str | None = None
+    ) -> dict[str, Any]:
+        """Exchange an authorization ``code`` for tokens.
+
+        Pass the ``state`` returned to your redirect URI to validate it
+        against the nonce stored by :meth:`create_authorization_url` — this
+        is the CSRF defense for the OAuth flow. The nonce is consumed (single
+        use) on a successful match.
+
+        .. warning::
+            If ``state`` is omitted the CSRF check is **skipped** for
+            backward compatibility. Always pass the callback ``state`` in
+            production; an unvalidated flow is vulnerable to login-CSRF and
+            nonce replay.
+        """
+        if state is not None:
+            stored = self.state_store.load(state)
+            if stored is None:
+                raise ValueError(
+                    "Invalid or expired OAuth state — possible CSRF or replay."
+                )
+            # Consume the nonce so it can't be replayed.
+            delete = getattr(self.state_store, "delete", None)
+            if callable(delete):
+                delete(state)
+
         payload = parse.urlencode(
             {
                 "code": code,

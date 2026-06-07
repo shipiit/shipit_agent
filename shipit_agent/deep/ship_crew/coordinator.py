@@ -13,7 +13,11 @@ from __future__ import annotations
 import json
 import time
 from collections import defaultdict, deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    TimeoutError as FutureTimeoutError,
+    as_completed,
+)
 from typing import Any, Generator
 
 from .agent import ShipAgent
@@ -203,15 +207,22 @@ class ShipCoordinator:
         last_error: Exception | None = None
         for attempt in range(1, task.max_retries + 1):
             try:
-                start = time.monotonic()
-                result = agent.run(prompt)
-                elapsed = time.monotonic() - start
-
-                if elapsed > task.timeout_seconds:
+                # Run the agent under a future so the timeout actually preempts
+                # (stops waiting) instead of only being measured after the fact.
+                # Python can't kill the worker thread, so a timed-out run keeps
+                # finishing in the background — but the crew no longer hangs on
+                # it. shutdown(wait=False) avoids blocking on that runaway run.
+                pool = ThreadPoolExecutor(max_workers=1)
+                future = pool.submit(agent.run, prompt)
+                try:
+                    result = future.result(timeout=task.timeout_seconds)
+                except FutureTimeoutError:
+                    pool.shutdown(wait=False, cancel_futures=True)
                     raise TaskTimeoutError(
-                        f"Task '{task.name}' took {elapsed:.1f}s "
-                        f"(limit: {task.timeout_seconds}s)"
-                    )
+                        f"Task '{task.name}' exceeded the "
+                        f"{task.timeout_seconds}s limit"
+                    ) from None
+                pool.shutdown(wait=False)
 
                 return result.output
 

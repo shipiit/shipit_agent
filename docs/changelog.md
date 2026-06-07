@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.0.10 — 2026-06-07
+
+**Bug-fix & hardening release.** Fixes a v1.0.9 regression that broke custom LLM adapters, hardens local-execution and connector tools against sandbox-escape / SSRF, and tightens session, cost, and concurrency correctness. No public API removed; no caller needs changes. **1742 tests passing (+180 new). 0 regressions.**
+
+### Fixed — critical
+
+- **`text_delta_callback` regression (v1.0.9)** — the runtime passed the new streaming callback to `LLM.complete()` unconditionally, raising `TypeError` for any adapter on the prior signature. It now detects support via signature inspection and only passes it to adapters that accept it (backward compatible; streaming preserved for opted-in adapters).
+- **Multi-turn sessions** no longer stack a duplicate system prompt every turn — the runtime injects exactly one leading system message and strips persisted ones on reload (fixes unbounded growth in the `AgentChatSession` path).
+
+### Fixed — security hardening
+
+- **Bash tool** rejects command substitution (`$(…)`, backticks), process substitution, and file redirection that could bypass the allowlist.
+- **`open_url`** is http(s)-only and blocks `file://` plus private / loopback / link-local / cloud-metadata IPs (SSRF); opt out with `allow_private_hosts=True`.
+- **SQL tool** read-only guard scans the whole statement and rejects stacked statements (closes an `allow_writes=False` bypass).
+- **OAuth** `exchange_code(state=…)` validates and consumes the CSRF state nonce.
+- **`edit_file`** refuses non-UTF-8 files instead of corrupting them; **`FileCredentialStore`** warns about plaintext, chmods `0600`, and writes atomically.
+
+### Fixed — reliability & correctness
+
+- MCP transports are closed on error (`try/finally`) and on a failed discovery handshake — no leaked subprocesses.
+- Parallel tools run on isolated state and merge deterministically (race fixed).
+- The iteration-cap summary turn is now counted in usage/cost; `CostTracker` flags unknown-model pricing instead of silently billing `$0` under a budget.
+- `JSONParser` balanced-brace extraction; pipeline `stream()` no longer double-runs steps; autopilot fan-out preserves input order; deep-agent factory forwards `memory`/`history`/`verifier`; vector-store ids are monotonic; file stores write atomically; grep gains a timeout; ShipCrew timeout actually pre-empts.
+
+### Added
+
+- 180+ new tests and six runnable examples (`examples/13`–`18`).
+
 ## v1.0.7 — 2026-04-24
 
 **Agents for every role.** 12 new tools and 9 new persona specialists turn shipit-agent into a framework that ships agents for developers, designers, sales reps, PMs, data analysts, finance, customer support, and recruiters — not just code-slinging agents.

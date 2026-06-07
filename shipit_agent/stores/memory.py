@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -37,6 +40,8 @@ class FileMemoryStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # In-process lock guarding the read-modify-write cycle in add().
+        self._lock = threading.Lock()
         if not self.path.exists():
             self.path.write_text("[]", encoding="utf-8")
 
@@ -62,14 +67,39 @@ class FileMemoryStore:
             }
             for fact in facts
         ]
-        self.path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        _atomic_write_text(self.path, json.dumps(payload, indent=2))
 
     def add(self, fact: MemoryFact) -> None:
-        facts = self._load_all()
-        facts.append(fact)
-        self._save_all(facts)
+        # Lock the whole load -> append -> save cycle so concurrent adds
+        # cannot lose updates; the write itself is atomic via temp + replace.
+        with self._lock:
+            facts = self._load_all()
+            facts.append(fact)
+            self._save_all(facts)
 
     def search(self, query: str, limit: int = 5) -> list[MemoryFact]:
         lowered = query.lower()
         matches = [fact for fact in self._load_all() if lowered in fact.content.lower()]
         return matches[:limit]
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write *text* to *path* atomically via a temp file + ``os.replace``.
+
+    The temp file is created in the same directory so the rename is atomic
+    on one filesystem; a concurrent reader never sees a truncated write.
+    """
+    directory = path.parent
+    fd, tmp_name = tempfile.mkstemp(dir=directory, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise

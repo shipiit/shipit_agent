@@ -1,13 +1,40 @@
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
+import socket
 from html import unescape
+from urllib.parse import urlsplit
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from .prompt import OPEN_URL_PROMPT
 
 logger = logging.getLogger(__name__)
+
+
+class URLNotAllowedError(ValueError):
+    """Raised when a requested URL fails the SSRF / scheme guard."""
+
+
+def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True if ``ip`` is a private/loopback/link-local/reserved address.
+
+    169.254.0.0/16 (and the IPv6 link-local equivalent) is the cloud-metadata
+    range; ``is_link_local`` already covers it but we keep the explicit check
+    for clarity and defence in depth.
+    """
+    link_local_v4 = ipaddress.ip_network("169.254.0.0/16")
+    if isinstance(ip, ipaddress.IPv4Address) and ip in link_local_v4:
+        return True
+    return bool(
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
 
 
 # A realistic desktop Chrome UA — many sites 503/403 minimal clients.
@@ -48,6 +75,7 @@ class OpenURLTool:
         user_agent: str = _DEFAULT_UA,
         headless: bool = True,
         wait_until: str = "domcontentloaded",
+        allow_private_hosts: bool = False,
     ) -> None:
         self.name = name
         self.description = description
@@ -61,6 +89,58 @@ class OpenURLTool:
         self.user_agent = user_agent
         self.headless = headless
         self.wait_until = wait_until
+        self.allow_private_hosts = bool(allow_private_hosts)
+
+    # ------------------------------------------------------------------ #
+    #  SSRF guard
+    # ------------------------------------------------------------------ #
+
+    def _validate_url(self, url: str) -> None:
+        """Reject non-http(s) schemes and URLs that resolve to internal hosts.
+
+        This blocks ``file://`` (local file read) and SSRF against private,
+        loopback, link-local (cloud metadata, 169.254.0.0/16), reserved, and
+        multicast addresses. Set ``allow_private_hosts=True`` on the tool to
+        bypass this guard for trusted internal usage.
+
+        NOTE: validation happens on the *original* URL only. A server that
+        returns an HTTP redirect to an internal address can still be reached
+        after this check passes (TOCTOU on redirect-following); fully closing
+        that gap would require intercepting each redirect hop.
+        """
+        if self.allow_private_hosts:
+            return
+
+        parts = urlsplit(url)
+        scheme = (parts.scheme or "").lower()
+        # Scheme check first — this rejects file://, ftp://, gopher://, etc.
+        # before any DNS resolution happens.
+        if scheme not in ("http", "https"):
+            raise URLNotAllowedError(
+                f"Only http/https URLs are allowed (got scheme '{scheme or 'none'}')"
+            )
+        host = parts.hostname
+        if not host:
+            raise URLNotAllowedError("URL has no host")
+
+        # Resolve the hostname to every address it maps to and block if ANY
+        # of them is internal (a host can resolve to several addresses).
+        try:
+            infos = socket.getaddrinfo(host, parts.port or None, proto=socket.IPPROTO_TCP)
+        except socket.gaierror as exc:
+            raise URLNotAllowedError(f"Could not resolve host '{host}': {exc}") from exc
+
+        for info in infos:
+            sockaddr = info[4]
+            try:
+                ip = ipaddress.ip_address(sockaddr[0])
+            except ValueError:
+                continue
+            if _ip_is_blocked(ip):
+                raise URLNotAllowedError(
+                    f"Host '{host}' resolves to a blocked address ({ip}); "
+                    "private/loopback/link-local/reserved hosts are not allowed"
+                )
 
     def schema(self) -> dict:
         return {
@@ -177,6 +257,16 @@ class OpenURLTool:
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         url = str(kwargs["url"]).strip()
         max_chars = int(kwargs.get("max_chars", self.max_chars))
+
+        # SSRF / scheme guard — applied once, before either fetch path, so it
+        # covers both the Playwright and the urllib backends.
+        try:
+            self._validate_url(url)
+        except URLNotAllowedError as exc:
+            return ToolOutput(
+                text=f"Error: refusing to fetch {url} — {exc}",
+                metadata={"url": url, "error": str(exc), "blocked": True},
+            )
 
         errors: list[str] = []
         text: str = ""

@@ -154,6 +154,16 @@ class Agent:
     # between iterations. See ``shipit_agent/verifier/``.
     verifier: Any = None
 
+    # ── permissions / control plane (v1.0.11) ─────────────────────────
+    # Claude Code-style rule-based gate over tool calls. Set a mode
+    # ("default" | "acceptEdits" | "plan" | "bypass"), or pass a full
+    # ``PermissionEngine`` / kwargs dict via ``permissions``, or a
+    # ``permission_callback(name, args) -> PermissionResult | None`` for
+    # programmatic human-in-the-loop approval. See ``shipit_agent.permissions``.
+    permission_mode: str = "default"
+    permissions: Any = None
+    permission_callback: Any = None
+
     # ── project / file tools ──────────────────────────────────────────
     project_root: str | Path = "/tmp"
 
@@ -450,6 +460,47 @@ class Agent:
             return max(8, self.max_iterations)
         return self.max_iterations
 
+    def _effective_permissions(self) -> Any:
+        """Resolve the permission engine for this run.
+
+        An explicit ``permissions`` spec (engine / dict / mode string) wins and
+        carries its own mode. Otherwise, if ``permission_mode`` is non-default
+        or a ``permission_callback`` is set, build an engine from the mode.
+        A ``permission_callback`` is attached when the engine has none.
+        """
+        from shipit_agent.permissions import PermissionEngine, coerce_permissions
+
+        engine = coerce_permissions(self.permissions)
+        if engine is None and (
+            self.permission_mode != "default" or self.permission_callback is not None
+        ):
+            engine = PermissionEngine(mode=self.permission_mode)  # type: ignore[arg-type]
+        if engine is not None and self.permission_callback is not None and (
+            engine.callback is None
+        ):
+            engine.callback = self.permission_callback
+        return engine
+
+    def plan(self, user_prompt: str, **kwargs: Any) -> AgentResult:
+        """Run in read-only **plan mode** — propose a plan without acting.
+
+        Mutating/unknown tools are denied so the agent researches with
+        read-only tools and writes a step-by-step plan instead of taking
+        action. Returns an :class:`AgentResult` whose ``output`` is the plan.
+        """
+        import dataclasses
+
+        from shipit_agent.permissions import PermissionEngine
+
+        planner = dataclasses.replace(
+            self,
+            permission_mode="plan",
+            permissions=PermissionEngine(
+                mode="plan", callback=self.permission_callback
+            ),
+        )
+        return planner.run(user_prompt, **kwargs)
+
     # ──────────────────────────────────────────────────────────────────
     # Run (synchronous)
     # ──────────────────────────────────────────────────────────────────
@@ -516,6 +567,7 @@ class Agent:
             hooks=self.hooks,
             context_window_tokens=self.context_window_tokens,
             replan_interval=self.replan_interval,
+            permissions=self._effective_permissions(),
         )
         state, response = runtime.run(effective_user_prompt)
 
@@ -618,6 +670,7 @@ class Agent:
             hooks=self.hooks,
             context_window_tokens=self.context_window_tokens,
             replan_interval=self.replan_interval,
+            permissions=self._effective_permissions(),
         )
         for event in runtime.stream(user_prompt):
             yield event

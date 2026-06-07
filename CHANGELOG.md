@@ -5,6 +5,61 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.11] — 2026-06-07
+
+**The control plane.** A Claude Code-grade safety + performance layer: a
+rule-based **permission engine** with modes (incl. read-only **plan mode**),
+**hooks that can block or rewrite** tool calls, **prompt caching** for ~10×
+cheaper repeated calls, and a model-driven **memory tool** for cross-session
+learning. All opt-in and backward compatible — existing agents are unchanged.
+**1795 tests passing (+50 new). 0 regressions.**
+
+### Added — permission engine & plan mode
+
+- **`PermissionEngine`** — a fast, rule-based gate over every tool call (no LLM
+  needed). Declarative `allow` / `deny` / `ask` rules (fnmatch globs on tool
+  name) and **modes**: `default`, `acceptEdits` (auto-approve file edits),
+  `plan` (read-only — mutating tools denied so the agent proposes a plan), and
+  `bypass`. Precedence: deny > mode > allow > ask > callback > default.
+- **`Agent(permission_mode=…, permissions=…, permission_callback=…)`** —
+  configure via a mode string, a full `PermissionEngine`/kwargs dict, and/or a
+  `canUseTool`-style callback `(name, args) -> PermissionResult | None` for
+  programmatic human-in-the-loop approval.
+- **`Agent.plan(prompt)`** — run read-only and get back a proposed plan.
+- Denied calls emit a `tool_denied` event and return a "was NOT run" tool
+  message so the model re-plans. New exports: `PermissionEngine`,
+  `PermissionResult`, `PermissionDecision`.
+
+### Added — blocking / modifying hooks
+
+- `AgentHooks` **`before_tool`** hooks can now **return a decision** to deny a
+  call or **rewrite its arguments** (`PermissionResult(..., updated_arguments=…)`
+  or `{"decision": "deny", "reason": …}`), mirroring Claude Code `PreToolUse`.
+- New **`on_user_prompt`** hook can redact or rewrite the incoming prompt.
+- Returning `None` preserves the old observe-only behaviour (backward compatible).
+
+### Added — prompt caching
+
+- **`AnthropicChatLLM(prompt_caching=True)`** / **`LiteLLMChatLLM(prompt_caching=
+  True)`** (default on for Claude-family models) place `cache_control`
+  breakpoints on the tool definitions and system prompt — the stable prefix the
+  runtime rebuilds every iteration. Bedrock inherits via LiteLLM.
+- Responses surface `usage["cache_read_input_tokens"]` /
+  `["cache_creation_input_tokens"]`, which flow into `CostTracker` so cache
+  reads bill at the discounted rate. Degrades safely on non-Anthropic models.
+
+### Added — memory tool
+
+- **`ClaudeMemoryTool`** — the Anthropic `memory_20250818`-style tool the model
+  calls with a `command` (`view` / `create` / `str_replace` / `insert` /
+  `delete` / `rename`), sandboxed to `.shipit_workspace/memories` (path-escape
+  rejected) for true cross-session learning.
+
+### Added — examples & docs
+
+- Three new notebooks (`notebooks/61`–`63`) and docs pages for permissions/plan
+  mode, prompt caching, and the memory tool.
+
 ## [1.0.10] — 2026-06-07
 
 **Bug-fix & hardening release.** Fixes a v1.0.9 regression that broke custom
@@ -1020,7 +1075,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.10...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.11...HEAD
+[1.0.11]: https://github.com/shipiit/shipit_agent/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/shipiit/shipit_agent/compare/v1.0.9...v1.0.10
 [1.0.1]: https://github.com/shipiit/shipit_agent/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/shipiit/shipit_agent/releases/tag/v1.0.0

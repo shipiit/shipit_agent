@@ -26,7 +26,7 @@ from .human_review import HumanReviewTool
 from .jira import JiraTool
 from .linear import LinearTool
 from .linkedin import LinkedInSearchTool
-from .memory import MemoryTool
+from .memory import ClaudeMemoryTool, MemoryTool
 from .notion import NotionTool
 from .open_url import OpenURLTool
 from .pdf import PDFTool
@@ -61,6 +61,7 @@ __all__ = [
     "BashTool",
     "BraveSearchProvider",
     "build_search_provider",
+    "ClaudeMemoryTool",
     "CodeExecutionTool",
     "ConfluenceTool",
     "CustomAPITool",

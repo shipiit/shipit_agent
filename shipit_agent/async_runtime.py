@@ -9,6 +9,7 @@ from shipit_agent.integrations import CredentialStore
 from shipit_agent.llms.base import LLM, LLMResponse
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
+from shipit_agent.permissions import PermissionEngine, authorize_tool
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
 from shipit_agent.runtime import (
@@ -67,6 +68,7 @@ class AsyncAgentRuntime:
         hooks: Any | None = None,
         context_window_tokens: int = 0,
         replan_interval: int = 0,
+        permissions: PermissionEngine | None = None,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -87,6 +89,7 @@ class AsyncAgentRuntime:
         self.hooks = hooks
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
+        self.permissions = permissions
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
@@ -205,8 +208,48 @@ class AsyncAgentRuntime:
             )
             return None, msg
 
-        if self.hooks:
-            self.hooks.run_before_tool(tool_call.name, tool_call.arguments)
+        # ── Permission gate: blocking hooks + rule-based permission engine ──
+        decision = authorize_tool(
+            self.hooks, self.permissions, tool_call.name, tool_call.arguments, tool
+        )
+        if decision is not None and not decision.allowed:
+            reason = decision.reason or "not permitted"
+            error_kind = (
+                "permission_denied" if decision.denied else "permission_required"
+            )
+            self.emit(
+                state,
+                "tool_denied",
+                f"Tool blocked: {tool_call.name}",
+                reason=reason,
+                decision=decision.decision.value,
+                iteration=iteration,
+            )
+            content = (
+                f"Tool '{tool_call.name}' was NOT run — {reason}"
+                if decision.denied
+                else f"Tool '{tool_call.name}' requires human approval — {reason}"
+            )
+            msg = Message(
+                role="tool",
+                name=tool_call.name,
+                content=content,
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "error": error_kind,
+                    "decision": decision.decision.value,
+                },
+            )
+            return None, msg
+        if decision is not None and decision.updated_arguments is not None:
+            tool_call = type(
+                "RewrittenToolCall",
+                (),
+                {
+                    "name": tool_call.name,
+                    "arguments": dict(decision.updated_arguments),
+                },
+            )()
 
         self.emit(
             state,

@@ -32,9 +32,84 @@ def _serialize_message(message: Message) -> dict[str, Any]:
     return payload
 
 
+def _is_anthropic_model(model: str) -> bool:
+    """True for Anthropic-family models (direct, on Bedrock, or on Vertex).
+
+    Only these accept Anthropic ``cache_control`` breakpoints, which LiteLLM
+    forwards to the Messages API and translates to Bedrock ``cachePoint``
+    blocks for ``bedrock/anthropic.*`` models. Any other provider would reject
+    the unknown field, so caching is gated behind this predicate.
+    """
+    m = model.lower()
+    return "anthropic" in m or "claude" in m
+
+
+def _with_cache_control(block: dict[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy of ``block`` with an ephemeral cache breakpoint."""
+    return {**block, "cache_control": {"type": "ephemeral"}}
+
+
+def _apply_prompt_caching(
+    payload_messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+    """Inject ``cache_control`` breakpoints on the system message + last tool.
+
+    Returns new lists; the caller's ``tools`` / message objects are never
+    mutated in place (they are reused across calls). The system message's
+    string content is promoted to Anthropic's list-of-blocks form so the
+    breakpoint has a home; LiteLLM forwards this verbatim to the Anthropic /
+    Bedrock-Anthropic backends.
+    """
+    new_messages: list[dict[str, Any]] = []
+    system_marked = False
+    for msg in payload_messages:
+        if msg.get("role") == "system" and not system_marked:
+            content = msg.get("content")
+            if isinstance(content, str) and content:
+                new_messages.append(
+                    {
+                        **msg,
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": content,
+                                "cache_control": {"type": "ephemeral"},
+                            }
+                        ],
+                    }
+                )
+                system_marked = True
+                continue
+            if isinstance(content, list) and content:
+                marked = list(content)
+                last = marked[-1]
+                if isinstance(last, dict):
+                    marked[-1] = _with_cache_control(last)
+                    new_messages.append({**msg, "content": marked})
+                    system_marked = True
+                    continue
+        new_messages.append(msg)
+
+    new_tools = tools
+    if tools:
+        new_tools = list(tools)
+        new_tools[-1] = _with_cache_control(new_tools[-1])
+
+    return new_messages, new_tools
+
+
 class LiteLLMChatLLM:
-    def __init__(self, model: str, **completion_kwargs: Any) -> None:
+    def __init__(
+        self, model: str, *, prompt_caching: bool = True, **completion_kwargs: Any
+    ) -> None:
         self.model = model
+        # Forward Anthropic ``cache_control`` breakpoints through LiteLLM for
+        # Anthropic-family models (incl. Bedrock/Vertex Claude). Gated per-call
+        # on the model id so non-Anthropic providers never see the field.
+        # Extracted as an explicit kwarg so it is NOT forwarded into
+        # ``litellm.completion`` (which would reject the unknown argument).
+        self.prompt_caching = prompt_caching
         self.completion_kwargs = completion_kwargs
 
     def complete(
@@ -60,6 +135,19 @@ class LiteLLMChatLLM:
             raise RuntimeError("Install `litellm` to use LiteLLMChatLLM.") from exc
 
         payload_messages = [_serialize_message(m) for m in messages]
+        request_tools = tools or None
+        # Add prompt-caching breakpoints for Anthropic-family models. Guarded so
+        # non-Anthropic providers never receive the unsupported field and
+        # nothing crashes if message/tool shapes are unexpected.
+        if self.prompt_caching and _is_anthropic_model(self.model):
+            try:
+                payload_messages, request_tools = _apply_prompt_caching(
+                    payload_messages, request_tools
+                )
+            except Exception:
+                # Defensive: never let caching break a real call.
+                pass
+
         extra_kwargs = dict(self.completion_kwargs)
         if response_format:
             extra_kwargs["response_format"] = response_format
@@ -69,7 +157,7 @@ class LiteLLMChatLLM:
                 completion_fn=completion,
                 model=self.model,
                 payload_messages=payload_messages,
-                tools=tools or None,
+                tools=request_tools,
                 extra_kwargs=extra_kwargs,
                 text_delta_callback=text_delta_callback,
             )
@@ -78,7 +166,7 @@ class LiteLLMChatLLM:
             response = completion(
                 model=self.model,
                 messages=payload_messages,
-                tools=tools or None,
+                tools=request_tools,
                 **extra_kwargs,
             )
         except Exception as exc:
@@ -116,6 +204,7 @@ class LiteLLMChatLLM:
                 "completion_tokens": getattr(u, "completion_tokens", 0) or 0,
                 "total_tokens": getattr(u, "total_tokens", 0) or 0,
             }
+            usage.update(_extract_cache_usage(u))
 
         return LLMResponse(
             content=getattr(message, "content", "") or "",
@@ -214,6 +303,7 @@ def _stream_completion(
                     "completion_tokens": getattr(chunk_usage, "completion_tokens", 0) or 0,
                     "total_tokens": getattr(chunk_usage, "total_tokens", 0) or 0,
                 }
+                usage.update(_extract_cache_usage(chunk_usage))
     except Exception as exc:
         exc_name = type(exc).__name__
         status = getattr(exc, "status_code", None)
@@ -243,6 +333,37 @@ def _stream_completion(
         reasoning_content="\n".join(reasoning_parts) if reasoning_parts else None,
         usage=usage,
     )
+
+
+def _extract_cache_usage(usage_obj: Any) -> dict[str, int]:
+    """Best-effort extraction of prompt-cache token counts from a usage object.
+
+    LiteLLM normalises providers inconsistently, so several shapes are tried:
+
+    * Anthropic-style attributes promoted onto ``usage``
+      (``cache_read_input_tokens`` / ``cache_creation_input_tokens``),
+    * OpenAI-style ``usage.prompt_tokens_details.cached_tokens``.
+
+    The returned keys (``cache_read_input_tokens`` /
+    ``cache_creation_input_tokens``) are exactly what ``CostTracker.as_hooks``
+    reads, so cache reads bill at the discounted rate automatically. Returns an
+    empty dict (and never raises) when no cache info is present.
+    """
+    out: dict[str, int] = {}
+    try:
+        cache_read = getattr(usage_obj, "cache_read_input_tokens", 0) or 0
+        cache_creation = getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
+        if not cache_read:
+            details = getattr(usage_obj, "prompt_tokens_details", None)
+            if details is not None:
+                cache_read = getattr(details, "cached_tokens", 0) or 0
+        if cache_read:
+            out["cache_read_input_tokens"] = int(cache_read)
+        if cache_creation:
+            out["cache_creation_input_tokens"] = int(cache_creation)
+    except Exception:
+        return {}
+    return out
 
 
 def _extract_reasoning(message: Any) -> str | None:

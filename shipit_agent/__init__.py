@@ -139,6 +139,11 @@ from .packets import (
     websocket_event_packet,
     websocket_result_packet,
 )
+from .permissions import (
+    PermissionDecision,
+    PermissionEngine,
+    PermissionResult,
+)
 from .policies import RetryPolicy, RouterPolicy
 from .profiles import AgentProfile, AgentProfileBuilder
 from .prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
@@ -206,6 +211,7 @@ from .tools import (
     BashTool,
     BraveSearchProvider,
     build_search_provider,
+    ClaudeMemoryTool,
     CodeExecutionTool,
     ConfluenceTool,
     CustomAPITool,
@@ -363,6 +369,7 @@ __all__ = [
     "build_tool_schemas",
     "construct_tool_registry",
     "BraveSearchProvider",
+    "ClaudeMemoryTool",
     "CodeExecutionTool",
     "ConfluenceTool",
     "ContextSnapshot",
@@ -433,6 +440,9 @@ __all__ = [
     "PromptTemplate",
     "RemoteMCPServer",
     "result_packet",
+    "PermissionDecision",
+    "PermissionEngine",
+    "PermissionResult",
     "RetryPolicy",
     "RouterPolicy",
     "SalesforceTool",

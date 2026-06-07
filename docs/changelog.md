@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.0.11 — 2026-06-07
+
+**The control plane.** A Claude Code-grade safety + performance layer: a rule-based **permission engine** with modes (incl. read-only **plan mode**), **hooks that can block or rewrite** tool calls, **prompt caching** for ~10× cheaper repeated calls, and a model-driven **memory tool**. All opt-in and backward compatible. **1795 tests passing (+50 new). 0 regressions.**
+
+### Added — permissions & plan mode
+
+- **`PermissionEngine`** — rule-based gate over every tool call (no LLM): `allow`/`deny`/`ask` globs + modes `default` / `acceptEdits` / `plan` (read-only) / `bypass`. Precedence: deny > mode > allow > ask > callback > default.
+- **`Agent(permission_mode=…, permissions=…, permission_callback=…)`** and **`Agent.plan(prompt)`** (read-only planning). Denied calls emit a `tool_denied` event. New exports: `PermissionEngine`, `PermissionResult`, `PermissionDecision`.
+
+### Added — blocking / modifying hooks
+
+- `before_tool` hooks can return a decision to **deny** or **rewrite arguments** (`PermissionResult(..., updated_arguments=…)` / `{"decision":"deny"}`); new **`on_user_prompt`** hook redacts/rewrites prompts. `None` = observe-only (backward compatible).
+
+### Added — prompt caching
+
+- **`AnthropicChatLLM(prompt_caching=True)`** / **`LiteLLMChatLLM(prompt_caching=True)`** (default on for Claude) place `cache_control` on tools + system prompt; `usage["cache_read_input_tokens"]`/`["cache_creation_input_tokens"]` flow into `CostTracker` (reads ~10% of input). Bedrock inherits via LiteLLM.
+
+### Added — memory tool
+
+- **`ClaudeMemoryTool`** (`memory_20250818` shape): `view`/`create`/`str_replace`/`insert`/`delete`/`rename`, sandboxed to `.shipit_workspace/memories`.
+
+### Added — examples & docs
+
+- Notebooks `61`–`63` and docs pages for permissions/plan mode, prompt caching, and the memory tool.
+
 ## v1.0.10 — 2026-06-07
 
 **Bug-fix & hardening release.** Fixes a v1.0.9 regression that broke custom LLM adapters, hardens local-execution and connector tools against sandbox-escape / SSRF, and tightens session, cost, and concurrency correctness. No public API removed; no caller needs changes. **1742 tests passing (+180 new). 0 regressions.**

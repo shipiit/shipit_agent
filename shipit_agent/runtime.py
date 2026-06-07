@@ -13,6 +13,11 @@ from shipit_agent.integrations import CredentialStore
 from shipit_agent.llms.base import LLM, LLMResponse, accepts_text_delta_callback
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
+from shipit_agent.permissions import (
+    PermissionEngine,
+    PermissionResult,
+    authorize_tool,
+)
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
 from shipit_agent.stores import (
@@ -110,6 +115,7 @@ class AgentRuntime:
         hooks: Any | None = None,
         context_window_tokens: int = 0,
         replan_interval: int = 0,
+        permissions: PermissionEngine | None = None,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -130,6 +136,7 @@ class AgentRuntime:
         self.hooks = hooks
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
+        self.permissions = permissions
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
         # signature don't — passing it unconditionally raises TypeError.
@@ -222,6 +229,11 @@ class AgentRuntime:
             state, "planning_completed", "Planner completed", output=tool_result.output
         )
 
+    def _authorize_tool(
+        self, name: str, arguments: dict[str, Any], tool: Any
+    ) -> PermissionResult | None:
+        return authorize_tool(self.hooks, self.permissions, name, arguments, tool)
+
     def _execute_single_tool(
         self,
         *,
@@ -235,7 +247,8 @@ class AgentRuntime:
     ) -> tuple[ToolResult | None, Message]:
         """Execute a single tool call and return (tool_result, message).
 
-        Returns (None, error_message) for hallucinated tools.
+        Returns (None, error_message) for hallucinated tools and for calls
+        blocked by the permission engine / a hook.
         """
         tool = registry.get(tool_call.name)
         if tool is None:
@@ -261,8 +274,47 @@ class AgentRuntime:
             )
             return None, msg
 
-        if self.hooks:
-            self.hooks.run_before_tool(tool_call.name, tool_call.arguments)
+        # ── Permission gate: blocking hooks + rule-based permission engine ──
+        decision = self._authorize_tool(tool_call.name, tool_call.arguments, tool)
+        if decision is not None and not decision.allowed:
+            reason = decision.reason or "not permitted"
+            error_kind = (
+                "permission_denied" if decision.denied else "permission_required"
+            )
+            self.emit(
+                state,
+                "tool_denied",
+                f"Tool blocked: {tool_call.name}",
+                reason=reason,
+                decision=decision.decision.value,
+                iteration=iteration,
+            )
+            content = (
+                f"Tool '{tool_call.name}' was NOT run — {reason}"
+                if decision.denied
+                else f"Tool '{tool_call.name}' requires human approval — {reason}"
+            )
+            msg = Message(
+                role="tool",
+                name=tool_call.name,
+                content=content,
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "error": error_kind,
+                    "decision": decision.decision.value,
+                },
+            )
+            return None, msg
+        if decision is not None and decision.updated_arguments is not None:
+            # A hook/rule rewrote the arguments — run with the rewritten call.
+            tool_call = type(
+                "RewrittenToolCall",
+                (),
+                {
+                    "name": tool_call.name,
+                    "arguments": dict(decision.updated_arguments),
+                },
+            )()
 
         self.emit(
             state,

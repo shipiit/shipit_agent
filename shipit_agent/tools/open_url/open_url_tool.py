@@ -5,6 +5,8 @@ import logging
 import re
 import socket
 from html import unescape
+from html.parser import HTMLParser
+from typing import Any
 from urllib.parse import urlsplit
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -45,11 +47,47 @@ _DEFAULT_UA = (
 )
 
 
+class _TextExtractor(HTMLParser):
+    """Collect visible text from HTML, skipping script/style/etc.
+
+    Uses a real parser (not a regex tag filter) so malformed or nested
+    ``<script>`` tags can't slip executable text into the extracted output
+    (clears CodeQL ``py/bad-tag-filter``).
+    """
+
+    _SKIP = {"script", "style", "head", "noscript", "template", "svg"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._chunks: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: Any) -> None:
+        if tag.lower() in self._SKIP:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self._SKIP and self._skip_depth > 0:
+            self._skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0 and data:
+            self._chunks.append(data)
+
+    def text(self) -> str:
+        return " ".join(self._chunks)
+
+
 def _strip_html(value: str) -> str:
-    cleaned = re.sub(r"<script[\s\S]*?</script>", " ", value or "", flags=re.IGNORECASE)
-    cleaned = re.sub(r"<style[\s\S]*?</style>", " ", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"<[^>]+>", " ", cleaned)
-    cleaned = unescape(cleaned)
+    parser = _TextExtractor()
+    try:
+        parser.feed(value or "")
+        parser.close()
+        cleaned = parser.text()
+    except Exception:
+        # Conservative fallback: blanket-strip every tag (not a selective
+        # tag filter) and unescape entities.
+        cleaned = unescape(re.sub(r"<[^>]+>", " ", value or ""))
     return re.sub(r"\s+", " ", cleaned).strip()
 
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlparse
 
 from shipit_agent import (
     Agent,
@@ -21,7 +22,7 @@ def test_google_oauth_helper_builds_authorization_url(tmp_path: Path) -> None:
         state_store=FileOAuthStateStore(tmp_path / "oauth-state.json"),
     )
     result = helper.create_authorization_url(state_payload={"provider": "google"})
-    assert "accounts.google.com" in result["url"]
+    assert urlparse(result["url"]).netloc == "accounts.google.com"
     assert "scope=openid+email" in result["url"]
     assert helper.state_store.load(result["state"]) == {"provider": "google"}
 

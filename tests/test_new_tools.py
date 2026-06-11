@@ -7,6 +7,7 @@ tool's behavior without external dependencies.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -255,7 +256,7 @@ class TestResearchBriefTool:
         out = tool.run(self._ctx(), query="example", max_sources=2)
         assert out.metadata["ok"] is True
         assert "Alpha site" in out.text
-        assert "https://a.com" in out.text
+        assert re.search(r"https://a\.com", out.text)
         assert "[1]" in out.text and "[2]" in out.text
 
     def test_tolerates_no_matches(self, monkeypatch: pytest.MonkeyPatch) -> None:

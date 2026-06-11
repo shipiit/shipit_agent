@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 from urllib.error import HTTPError
 
 import pytest
@@ -127,7 +128,7 @@ def test_missing_subdomain_surfaces_hint():
         query="status:open",
     )
     assert out.metadata["error"] == "missing_subdomain"
-    assert "zendesk.com" in out.metadata["hint"]
+    assert re.search(r"zendesk\.com", out.metadata["hint"])
 
 
 # ---------------------------------------------------------------- auth

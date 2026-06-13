@@ -167,6 +167,11 @@ class Agent:
     # ── project / file tools ──────────────────────────────────────────
     project_root: str | Path = "/tmp"
 
+    # ── workspace (v1.0.14) ───────────────────────────────────────────
+    # Auto-load SHIPIT.md / AGENTS.md project instructions into the system
+    # prompt, and expand `/slash` commands from .shipit/commands/ on run().
+    auto_project_memory: bool = True
+
     # ── skills (see docs/guides/skills.md) ────────────────────────────
     skill_registry: SkillRegistry | None = None  # pre-built registry
     skill_source: str | Path | None = DEFAULT_SKILLS_PATH  # catalog file
@@ -197,6 +202,14 @@ class Agent:
             rag_section = self.rag.prompt_section()
             if rag_section and rag_section not in self.prompt:
                 self.prompt = f"{self.prompt}\n\n{rag_section}"
+
+        # Auto-load SHIPIT.md / AGENTS.md project instructions into the prompt.
+        if self.auto_project_memory:
+            from shipit_agent.workspace import load_project_memory
+
+            memory = load_project_memory(self.project_root)
+            if memory and memory not in self.prompt:
+                self.prompt = f"{self.prompt}\n\n{memory}"
 
         # Build the skill registry from the catalog file if not supplied.
         if self.skill_registry is None and self.skill_source:
@@ -270,6 +283,39 @@ class Agent:
             metadata=metadata or {},
             rag=rag,
             **kwargs,
+        )
+
+    @classmethod
+    def for_project(
+        cls,
+        *,
+        llm: Any,
+        project_root: str | Path = ".",
+        apply_env: bool = False,
+        **kwargs: Any,
+    ) -> "Agent":
+        """Build a workspace-aware agent rooted at a repo (the SHIPIT Workspace).
+
+        Loads ``.shipit/settings.json`` (permissions + env), auto-attaches the
+        full builtin tool catalogue, picks up ``SHIPIT.md`` / ``AGENTS.md``
+        project instructions, and enables ``/slash`` commands from
+        ``.shipit/commands/``. Point it at a directory and it just works::
+
+            agent = Agent.for_project(llm=llm, project_root="/my/repo")
+            agent.run("/review src/app.py")
+        """
+        from shipit_agent.workspace import load_settings
+
+        settings = load_settings(project_root)
+        if apply_env:
+            settings.apply_env()
+        # Settings provide permissions unless the caller passed their own.
+        if "permissions" not in kwargs and "permission_mode" not in kwargs:
+            engine = settings.to_permission_engine()
+            if engine is not None:
+                kwargs["permissions"] = engine
+        return cls.with_builtins(
+            llm=llm, project_root=str(project_root), **kwargs
         )
 
     # ──────────────────────────────────────────────────────────────────
@@ -505,6 +551,15 @@ class Agent:
     # Run (synchronous)
     # ──────────────────────────────────────────────────────────────────
 
+    def _expand_slash_command(self, user_prompt: str) -> str:
+        """Expand a ``/command`` from ``.shipit/commands/``; else pass through."""
+        if not isinstance(user_prompt, str) or not user_prompt.startswith("/"):
+            return user_prompt
+        from shipit_agent.workspace import expand_command
+
+        expanded = expand_command(self.project_root, user_prompt)
+        return expanded if expanded is not None else user_prompt
+
     def run(
         self,
         user_prompt: str,
@@ -523,6 +578,7 @@ class Agent:
         5. Optionally parse the output against ``output_schema``.
         6. Return ``AgentResult`` with output, messages, events, and metadata.
         """
+        user_prompt = self._expand_slash_command(user_prompt)
         # Append schema instructions to the USER prompt (not system prompt)
         # so the model can still use tools normally and only formats the
         # final answer as JSON. Bedrock returns empty content when schema
@@ -635,6 +691,7 @@ class Agent:
         instead of blocking until completion. Useful for UIs that want
         real-time progress feedback.
         """
+        user_prompt = self._expand_slash_command(user_prompt)
         if self.rag is not None:
             self.rag.begin_run()
 

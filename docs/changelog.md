@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.0.14 — 2026-06-13
+
+**The SHIPIT Workspace.** Point an agent at a repo and it just works. All opt-in, backward compatible. **1884 tests passing (+30 new). 0 regressions.**
+
+### Added
+
+- **Project memory** — agents auto-load `SHIPIT.md` / `AGENTS.md` / `.shipit/SHIPIT.md` (+ user-global `~/.shipit/SHIPIT.md`) into the system prompt, with `@path` imports. Opt out via `auto_project_memory=False`. API: `load_project_memory()`.
+- **Slash commands** — `.shipit/commands/<name>.md` invoked with `agent.run("/<name> args")`; `$ARGUMENTS` / `$1` substitution + frontmatter stripping. API: `discover_commands()`, `expand_command()`.
+- **Declarative config** — `.shipit/settings.json` (permissions + env + model) merged under `~/.shipit/settings.json`; wires into the permission engine. API: `load_settings()`, `WorkspaceSettings`. **`Agent.for_project(llm=…, project_root=…)`** loads settings + builtins + memory + commands in one call.
+- **`TodoTool`** — live task tracking (the model maintains a `pending → in_progress → completed` checklist; in `Agent.with_builtins()`).
+- Notebooks `67`/`68` + docs pages.
+
 ## v1.0.13 — 2026-06-07
 
 **Computer-use + adapter fixes.** Two bugs that blocked the computer-use agent on every provider, both backward compatible. **1854 tests passing (+10 new). 0 regressions.**

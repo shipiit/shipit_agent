@@ -17,7 +17,7 @@ Tool categories:
     Shell & code:       bash, run_code
     Workspace:          workspace_files
     Interaction:        ask_user, ask_user_async, human_review
-    Planning:           plan_task, decompose_problem
+    Planning:           plan_task, decompose_problem, todo
     Reasoning:          synthesize_evidence, decision_matrix, verify_output
     Building:           build_artifact, build_prompt, render_dashboard
     Content:            pdf, vision
@@ -76,6 +76,7 @@ from shipit_agent.tools import (
     SQLTool,
     StripeTool,
     SubAgentTool,
+    TodoTool,
     Tool,
     ToolSearchTool,
     VerifierTool,
@@ -134,6 +135,7 @@ def get_builtin_tool_map(
         # ── planning & reasoning ──────────────────────────────────
         MemoryTool(),
         PlannerTool(),
+        TodoTool(),
         ThoughtDecompositionTool(),
         EvidenceSynthesisTool(),
         DecisionMatrixTool(),

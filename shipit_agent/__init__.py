@@ -144,6 +144,13 @@ from .permissions import (
     PermissionEngine,
     PermissionResult,
 )
+from .workspace import (
+    WorkspaceSettings,
+    discover_commands,
+    expand_command,
+    load_project_memory,
+    load_settings,
+)
 from .policies import RetryPolicy, RouterPolicy
 from .profiles import AgentProfile, AgentProfileBuilder
 from .prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
@@ -257,6 +264,7 @@ from .tools import (
     SubAgentTool,
     TavilySearchProvider,
     ThoughtDecompositionTool,
+    TodoTool,
     Tool,
     ToolSearchTool,
     ToolContext,
@@ -449,6 +457,11 @@ __all__ = [
     "PermissionDecision",
     "PermissionEngine",
     "PermissionResult",
+    "WorkspaceSettings",
+    "load_project_memory",
+    "load_settings",
+    "discover_commands",
+    "expand_command",
     "RetryPolicy",
     "RouterPolicy",
     "SalesforceTool",
@@ -466,6 +479,7 @@ __all__ = [
     "SubAgentTool",
     "TavilySearchProvider",
     "ThoughtDecompositionTool",
+    "TodoTool",
     "Tool",
     "ToolRunner",
     "ToolRunnerResult",

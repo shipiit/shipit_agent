@@ -39,6 +39,7 @@ from .sql import SQLTool
 from .stripe import StripeTool
 from .sub_agent import SubAgentTool
 from .thought_decomposition import ThoughtDecompositionTool
+from .todo import TodoTool
 from .tool_search import ToolSearchTool
 from .verifier import VerifierTool
 from .vision import VisionTool
@@ -103,6 +104,7 @@ __all__ = [
     "SubAgentTool",
     "TavilySearchProvider",
     "ThoughtDecompositionTool",
+    "TodoTool",
     "Tool",
     "ToolSearchTool",
     "ToolContext",

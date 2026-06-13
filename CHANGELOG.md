@@ -5,6 +5,47 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.14] — 2026-06-13
+
+**The SHIPIT Workspace.** Point an agent at a repo and it just works — project
+instructions, slash commands, a declarative policy file, and live task tracking.
+All opt-in and backward compatible. **1884 tests passing (+30 new). 0 regressions.**
+
+### Added — project memory (`SHIPIT.md` / `AGENTS.md`)
+
+- Agents auto-load instructions from `SHIPIT.md`, `AGENTS.md`, or
+  `.shipit/SHIPIT.md` at `project_root` (plus a user-global
+  `~/.shipit/SHIPIT.md`) into the system prompt — the SHIPIT answer to a project
+  instructions file. Files can pull in others with `@path` imports. Opt out with
+  `Agent(..., auto_project_memory=False)`. Public API: `load_project_memory()`.
+
+### Added — slash commands (`.shipit/commands/`)
+
+- Drop a markdown file at `.shipit/commands/<name>.md` and invoke it with
+  `agent.run("/<name> args")` — the body becomes the prompt, with `$ARGUMENTS`
+  and `$1`, `$2`, … substituted and YAML frontmatter stripped. Unknown `/cmd`
+  passes through unchanged. Public API: `discover_commands()`, `expand_command()`.
+
+### Added — declarative config (`.shipit/settings.json`)
+
+- Check a policy into the repo: `permissions` (mode + allow/deny/ask), `env`,
+  and a default `model`, merged under `~/.shipit/settings.json`. Wires straight
+  into the permission engine. Public API: `load_settings()`, `WorkspaceSettings`.
+- **`Agent.for_project(llm=…, project_root=…)`** — one call that loads settings →
+  a permission engine, the full builtin tools, project memory, and slash
+  commands. Provider-agnostic.
+
+### Added — live task tracking (`TodoTool`)
+
+- **`TodoTool`** (name `todo`, in `Agent.with_builtins()`) — the model maintains
+  a checklist as it works (`pending → in_progress → completed`, replace
+  semantics), stored on `context.state["todos"]` with a rendered checklist and a
+  progress summary. Makes long agentic runs observable and smooth.
+
+### Added — examples & docs
+
+- Notebooks `67` (the SHIPIT Workspace) and `68` (TodoTool), plus docs pages.
+
 ## [1.0.13] — 2026-06-07
 
 **Computer-use + adapter fixes.** Two bugs that blocked the computer-use
@@ -1153,7 +1194,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.13...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.14...HEAD
+[1.0.14]: https://github.com/shipiit/shipit_agent/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/shipiit/shipit_agent/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/shipiit/shipit_agent/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/shipiit/shipit_agent/compare/v1.0.10...v1.0.11

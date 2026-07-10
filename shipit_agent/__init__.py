@@ -156,7 +156,7 @@ from .profiles import AgentProfile, AgentProfileBuilder
 from .prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
 from .reasoning import ReasoningResult, ReasoningRuntime
 from .registry import ToolRegistry
-from .schedule import ScheduleResult, ScheduleRunner
+from .schedule import AgentScheduler, ScheduledJob, ScheduleResult, ScheduleRunner
 from .session_manager import SessionManager
 from .stores import (
     FileMemoryStore,
@@ -316,6 +316,8 @@ __all__ = [
     "ReflectiveAgent",
     "RegexParser",
     "SearchResult",
+    "AgentScheduler",
+    "ScheduledJob",
     "ScheduleResult",
     "ScheduleRunner",
     "SemanticMemory",

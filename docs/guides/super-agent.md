@@ -131,10 +131,49 @@ sched.run_forever()   # blocks, firing jobs as they come due
 ```
 
 Jobs support `on_result` callbacks, `max_runs` caps, and `session_id` for
-persistent-conversation runs. The scheduler is **in-process** — jobs live
-as long as your process. For durable scheduling, drive `run_pending()`
-from OS cron/systemd. The `clock`/`sleep` hooks are injectable, so
+persistent-conversation runs. The `clock`/`sleep` hooks are injectable, so
 schedules are unit-testable with zero real waiting.
+
+**Durable jobs:** pass `store=SQLiteJobStore()` and due times + run counts
+persist across restarts — a re-`add()`ed job resumes its slot instead of
+resetting:
+
+```python
+from shipit_agent import AgentScheduler, SQLiteJobStore
+
+sched = AgentScheduler(agent, store=SQLiteJobStore())
+```
+
+## 6. Run metrics, background subagents, deeper MCP
+
+Three more v1.0.15 capabilities that round out the picture:
+
+**`result.summary()`** — one dict of run metrics from the event trace:
+
+```python
+result.summary()
+# {"duration_seconds": 3.4, "iterations": 2, "tool_calls": 3,
+#  "tool_failures": 0, "usage": {...},
+#  "tools": {"bash": {"calls": 2, "failures": 0, "total_ms": 2140.0}}}
+```
+
+**Background subagents** — the `sub_agent` tool fans work out like Claude
+Code's task tool: `background=true` returns a task id immediately (thread
+pool), `collect="task-1"` fetches the result when needed.
+
+**MCP resources & prompts** — servers expose more than tools:
+
+```python
+server = connect_mcp("filesystem", args=["/repo"])
+server.list_resources()                      # browse
+server.read_resource("file:///repo/README.md")
+server.get_prompt("review", {"file": "app.py"})
+agent = Agent(llm=llm, mcps=[server], tools=[server.resource_tool()])
+```
+
+For hosted servers, `MCPStreamableHTTPTransport(url, bearer_token=...)`
+speaks the 2025 streamable-HTTP spec (JSON + SSE responses, session
+affinity). See the [MCP guide](mcp.md) for details.
 
 ## Putting it together
 

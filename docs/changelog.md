@@ -1,5 +1,62 @@
 # Changelog
 
+## v1.0.16 — 2026-07-10
+
+**The live experience — streaming, cancellation, and Claude-Code-grade
+ergonomics.** Real token streaming everywhere, one-call live runs with rich
+tool cards, safe stops, stale-proof edits, model-written compaction, and a
+sharper CLI. Works with **any** LLM provider. **1969 tests passing (+13 new).
+0 regressions.**
+
+### Token streaming, everywhere
+
+- **`OpenAIChatLLM` streams for real** (was a silent TODO): tokens hit the
+  callback as generated, tool-call fragments stitched by index, usage captured
+  from the final chunk; gateways that ignore `stream=True` degrade gracefully.
+  Lights up **Gemma 4 on Bedrock mantle**, Groq, and every OpenAI-compatible
+  endpoint.
+- **`AnthropicChatLLM` streams** via the SDK's `messages.stream` helper — all
+  existing parsing (thinking blocks, tool use, server tools, citations)
+  unchanged.
+
+### The live experience
+
+- **`Agent.run_live(prompt)`** — tokens print as generated, tool calls render
+  as cards with args/status/duration, a `✔ done` footer closes the run;
+  returns the final answer text.
+- **`StreamRenderer`** — the underlying renderer for custom loops;
+  `style="rich"` (automatic on TTYs) draws Claude-Code-style **⏺/⎿ cards with
+  ANSI colors**; prints the answer at the end for non-streaming adapters.
+- **`agent.cancel()`** — thread-safe ESC: stops at the next checkpoint, emits
+  `run_cancelled`, returns normally with `metadata["cancelled"]`; skipped
+  batch tools get synthetic results so message pairing stays valid.
+
+### Reliability
+
+- **Edit hardening** — `edit_file` blocks when the file changed on disk after
+  the last `read_file` (external modification → re-read hint) and returns a
+  compact **unified diff** with every patch (`metadata["diff"]`).
+- **LLM-powered compaction** — near the context window, old turns are
+  **summarized by the model** (decisions, facts, paths, open threads; ~300
+  words) with a mechanical fallback; the `context_compacted` event now fires
+  reliably.
+
+### CLI
+
+- Live `StreamRenderer` turns (real tokens + cards; spinner retired), inline
+  **[y]es / [n]o / [a]lways** prompts for `ask`-gated tools (session-persistent
+  always-allows), and `--continue` to resume the most recent session
+  (`~/.shipit/sessions`). Fixed a `--session-dir` crash.
+
+### Examples & notebooks
+
+- `examples/23_bedrock_model_switching.py` — Gemma 4 26B ↔ gpt-oss-120B, one
+  function, live-verified.
+- `notebooks/71_full_test_drive.ipynb` — 13 in-depth sections exercising every
+  capability, executed end-to-end (live Bedrock cells + offline).
+
+---
+
 ## v1.0.15 — 2026-07-10
 
 **The Super Agent — every sector, clean logs, real deliverables.** One release

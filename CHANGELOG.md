@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [1.0.16] — 2026-07-10
+
 ### Added
 
 - **Token-by-token streaming in the native adapters** — `OpenAIChatLLM`
@@ -1301,7 +1307,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.15...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.16...HEAD
+[1.0.16]: https://github.com/shipiit/shipit_agent/compare/v1.0.15...v1.0.16
 [1.0.15]: https://github.com/shipiit/shipit_agent/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/shipiit/shipit_agent/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/shipiit/shipit_agent/compare/v1.0.12...v1.0.13

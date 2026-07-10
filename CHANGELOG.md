@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Token-by-token streaming in the native adapters** — `OpenAIChatLLM`
+  (and everything built on it: Gemma 4 on Bedrock mantle, Groq, any
+  OpenAI-compatible endpoint) and `AnthropicChatLLM` now implement
+  `text_delta_callback` for real: tokens stream as they're generated,
+  tool-call fragments are stitched by index, usage is captured from the
+  final chunk, and gateways that ignore `stream=True` degrade gracefully.
+  (The LiteLLM adapter already streamed; now all three do.)
+- **`Agent.run_live(prompt)`** — the one-call Claude-Code experience:
+  tokens print as they arrive, tool calls render as ⚙ cards with args /
+  status / duration, and a `✔ done · N tool calls` footer closes the run.
+  Returns the final answer text. Pass `file=` to capture output.
+- **`StreamRenderer`** — the underlying live renderer for custom loops:
+  `renderer.feed(event)` per streamed event handles token/card interleaving
+  and newline management; prints the final answer itself when an adapter
+  doesn't stream, so it works with every LLM.
 
 ---
 

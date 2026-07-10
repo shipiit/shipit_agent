@@ -56,7 +56,7 @@ class OpenAIChatLLM:
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
-        text_delta_callback: Any = None,  # noqa: ARG002 — Protocol compliance; streaming TODO
+        text_delta_callback: Any = None,
     ) -> LLMResponse:
         try:
             from openai import OpenAI
@@ -80,6 +80,9 @@ class OpenAIChatLLM:
             kwargs["tool_choice"] = self.tool_choice
         if response_format:
             kwargs["response_format"] = response_format
+
+        if text_delta_callback is not None:
+            return self._complete_streaming(client, kwargs, text_delta_callback)
 
         try:
             response = client.chat.completions.create(**kwargs)
@@ -153,6 +156,107 @@ class OpenAIChatLLM:
                 ),
             },
             reasoning_content=reasoning_content,
+            usage=usage,
+        )
+
+    def _complete_streaming(
+        self, client: Any, kwargs: dict[str, Any], on_delta: Any
+    ) -> LLMResponse:
+        """Token-by-token completion — same LLMResponse shape as non-streaming.
+
+        Text deltas hit ``on_delta`` the moment they arrive; tool-call
+        fragments are stitched together by index. ``stream_options`` is
+        retried without ``include_usage`` for OpenAI-compatible providers
+        that reject it (e.g. some gateways).
+        """
+        try:
+            stream = client.chat.completions.create(
+                **kwargs, stream=True, stream_options={"include_usage": True}
+            )
+        except Exception as first_exc:
+            exc_name = type(first_exc).__name__
+            status = getattr(first_exc, "status_code", None)
+            if status in (429, 500, 502, 503, 529) or "RateLimitError" in exc_name:
+                raise ConnectionError(f"{exc_name}: {first_exc}") from first_exc
+            try:  # provider may not support stream_options
+                stream = client.chat.completions.create(**kwargs, stream=True)
+            except Exception:
+                raise first_exc from None
+
+        # Some gateways (and test fakes) ignore stream=True and return a plain
+        # completion object. Detect that and degrade gracefully: one delta
+        # with the full text, same LLMResponse out.
+        if hasattr(stream, "choices"):
+            choice = stream.choices[0].message
+            if choice.content:
+                on_delta(choice.content)
+            tool_calls = []
+            for call in choice.tool_calls or []:
+                arguments = call.function.arguments or "{}"
+                tool_calls.append(
+                    ToolCall(
+                        name=call.function.name,
+                        arguments=json.loads(arguments)
+                        if isinstance(arguments, str)
+                        else arguments,
+                    )
+                )
+            return LLMResponse(
+                content=choice.content or "",
+                tool_calls=tool_calls,
+                metadata={"model": self.model, "provider": "openai"},
+                reasoning_content=_extract_reasoning(choice),
+                usage={},
+            )
+
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        calls: dict[int, dict[str, Any]] = {}  # index → {name, arguments}
+        usage: dict[str, int] = {}
+
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                usage = {
+                    "prompt_tokens": chunk.usage.prompt_tokens or 0,
+                    "completion_tokens": chunk.usage.completion_tokens or 0,
+                    "total_tokens": chunk.usage.total_tokens or 0,
+                }
+            if not getattr(chunk, "choices", None):
+                continue
+            delta = chunk.choices[0].delta
+            if delta is None:
+                continue
+            text = getattr(delta, "content", None)
+            if text:
+                content_parts.append(text)
+                on_delta(text)
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                reasoning_parts.append(str(reasoning))
+            for frag in getattr(delta, "tool_calls", None) or []:
+                idx = getattr(frag, "index", 0) or 0
+                slot = calls.setdefault(idx, {"name": "", "arguments": ""})
+                fn = getattr(frag, "function", None)
+                if fn is not None:
+                    if getattr(fn, "name", None):
+                        slot["name"] += fn.name
+                    if getattr(fn, "arguments", None):
+                        slot["arguments"] += fn.arguments
+
+        tool_calls = []
+        for idx in sorted(calls):
+            raw = calls[idx]["arguments"] or "{}"
+            try:
+                arguments = json.loads(raw)
+            except json.JSONDecodeError:
+                arguments = {"_raw": raw}
+            tool_calls.append(ToolCall(name=calls[idx]["name"], arguments=arguments))
+
+        return LLMResponse(
+            content="".join(content_parts),
+            tool_calls=tool_calls,
+            metadata={"model": self.model, "provider": "openai", "streamed": True},
+            reasoning_content="".join(reasoning_parts) or None,
             usage=usage,
         )
 

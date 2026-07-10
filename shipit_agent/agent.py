@@ -750,6 +750,35 @@ class Agent:
     # Stream (yields events as they happen)
     # ──────────────────────────────────────────────────────────────────
 
+    def run_live(self, user_prompt: str, *, file: Any = None) -> str:
+        """Run with a live, Claude-Code-style display and return the answer.
+
+        Tokens print as they're generated (when the LLM adapter streams),
+        tool calls appear as ⚙ cards with args, status, and duration, and a
+        one-line summary closes the run::
+
+            agent.run_live("Close Q2 and hand me the workbook.")
+            # ⚙ build_document(kind="xlsx", …) …
+            # ⚙ build_document ✓ 228ms
+            #   └ Created XLSX 'Q2 Close' → q2_close.xlsx
+            # The workbook is ready — net income formula included.
+            # ✔ done · 1 tool call
+
+        Pass ``file=`` to redirect output (any object with ``write``).
+        Returns the final answer text; use :meth:`run` when you need the
+        full :class:`AgentResult`.
+        """
+        from shipit_agent.activity import StreamRenderer
+
+        renderer = StreamRenderer(file=file)
+        output = ""
+        for event in self.stream(user_prompt):
+            renderer.feed(event)
+            if event.type == "run_completed":
+                output = str(event.payload.get("output", "") or "")
+        renderer.close()
+        return output
+
     def stream(self, user_prompt: str):
         """Stream agent events (tool calls, completions, etc.) as they happen.
 

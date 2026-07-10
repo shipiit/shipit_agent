@@ -101,7 +101,7 @@ from .verifier import (
     VerifierVerdict,
 )
 from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
-from .activity import format_activity, format_event_line
+from .activity import StreamRenderer, format_activity, format_event_line
 from .agent import Agent, DEFAULT_SKILLS_PATH
 from .builtins import get_builtin_tool_map, get_builtin_tools
 from .chat_session import AgentChatSession
@@ -340,6 +340,7 @@ __all__ = [
     "ScheduleResult",
     "ScheduleRunner",
     "SQLiteJobStore",
+    "StreamRenderer",
     "SemanticMemory",
     "Step",
     "Supervisor",

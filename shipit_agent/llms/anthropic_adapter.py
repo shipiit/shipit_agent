@@ -301,7 +301,7 @@ class AnthropicChatLLM:
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
         documents: list[dict[str, Any]] | None = None,
-        text_delta_callback: Any = None,  # noqa: ARG002 — Protocol compliance; streaming TODO
+        text_delta_callback: Any = None,
     ) -> LLMResponse:
         try:
             import anthropic
@@ -345,7 +345,22 @@ class AnthropicChatLLM:
                 )
 
         try:
-            response = create(**kwargs)
+            # Token streaming: the SDK's stream helper yields text deltas and
+            # then hands back the SAME final Message shape, so every parsing
+            # branch below (thinking, tool_use, server tools, citations) works
+            # unchanged. Beta-endpoint calls keep the non-streaming path.
+            if text_delta_callback is not None and "betas" not in kwargs:
+                stream_fn = getattr(client.messages, "stream", None)
+                if stream_fn is not None:
+                    with stream_fn(**kwargs) as _stream:
+                        for _text in _stream.text_stream:
+                            if _text:
+                                text_delta_callback(_text)
+                        response = _stream.get_final_message()
+                else:  # very old SDK without stream helper
+                    response = create(**kwargs)
+            else:
+                response = create(**kwargs)
         except Exception as exc:
             exc_name = type(exc).__name__
             status = getattr(exc, "status_code", None)

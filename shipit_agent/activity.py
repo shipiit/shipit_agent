@@ -71,6 +71,81 @@ def format_event_line(event: AgentEvent) -> str | None:
     return None
 
 
+class StreamRenderer:
+    """Render a live event stream like Claude Code — tokens + tool cards.
+
+    Text deltas print inline as they arrive; tool calls appear as cards
+    between them, with proper newline handling either side::
+
+        from shipit_agent import StreamRenderer
+
+        renderer = StreamRenderer()
+        for event in agent.stream("Close Q2 and hand me the workbook."):
+            renderer.feed(event)
+        renderer.close()
+
+    Writes to ``sys.stdout`` by default; pass any ``write(str)``-able
+    ``file`` (e.g. ``io.StringIO``) to capture instead.
+    """
+
+    def __init__(self, *, file: Any = None, show_summary: bool = True) -> None:
+        import sys
+
+        self._file = file or sys.stdout
+        self._mid_text = False  # currently inside a streamed text line
+        self._saw_delta = False
+        self._show_summary = show_summary
+        self._events: list[AgentEvent] = []
+
+    def _write(self, text: str) -> None:
+        self._file.write(text)
+        flush = getattr(self._file, "flush", None)
+        if flush is not None:
+            flush()
+
+    def _break_text(self) -> None:
+        """End an in-progress token line before printing a card."""
+        if self._mid_text:
+            self._write("\n")
+            self._mid_text = False
+
+    def feed(self, event: AgentEvent) -> None:
+        self._events.append(event)
+        if event.type == "text_delta":
+            chunk = str(event.payload.get("chunk", ""))
+            if chunk:
+                self._write(chunk)
+                self._mid_text = True
+                self._saw_delta = True
+            return
+        line = format_event_line(event)
+        if line is not None:
+            self._break_text()
+            self._write(line + "\n")
+        elif event.type == "run_completed":
+            self._break_text()
+            # If the adapter didn't stream tokens, the answer never printed
+            # inline — show it now so the renderer works with every LLM.
+            if not self._saw_delta:
+                output = str(event.payload.get("output", "") or "")
+                if output:
+                    self._write(output + "\n")
+            if self._show_summary:
+                calls = sum(1 for e in self._events if e.type == "tool_called")
+                failed = sum(1 for e in self._events if e.type == "tool_failed")
+                footer = f"✔ done · {calls} tool call{'s' if calls != 1 else ''}"
+                if failed:
+                    footer += f" ({failed} failed)"
+                self._write(footer + "\n")
+
+    def close(self) -> None:
+        self._break_text()
+
+    @property
+    def events(self) -> list[AgentEvent]:
+        return list(self._events)
+
+
 def format_activity(source: AgentResult | Iterable[AgentEvent]) -> str:
     """Render a full run as a clean activity trace.
 

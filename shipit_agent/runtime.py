@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import queue
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
@@ -320,9 +321,11 @@ class AgentRuntime:
             state,
             "tool_called",
             f"Tool called: {tool_call.name}",
+            tool=tool_call.name,
             arguments=tool_call.arguments,
             iteration=iteration,
         )
+        started_at = time.perf_counter()
         attempt = 0
         while True:
             try:
@@ -334,8 +337,12 @@ class AgentRuntime:
                         state,
                         "tool_failed",
                         f"Tool failed: {tool_call.name}",
+                        tool=tool_call.name,
                         error=str(exc),
                         iteration=iteration,
+                        duration_ms=round(
+                            (time.perf_counter() - started_at) * 1000, 1
+                        ),
                     )
                     error_output = f"Error running tool '{tool_call.name}': {exc}"
                     tool_result = ToolResult(
@@ -370,8 +377,10 @@ class AgentRuntime:
             state,
             "tool_completed",
             f"Tool completed: {tool_call.name}",
+            tool=tool_call.name,
             output=tool_result.output,
             iteration=iteration,
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
         )
         if tool_result.metadata.get("interactive"):
             self.emit(

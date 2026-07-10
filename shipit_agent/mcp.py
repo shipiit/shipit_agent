@@ -82,13 +82,29 @@ class MCPRemoteTool:
         }
 
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
-        result = self.transport.request(
-            "tools/call",
-            {
-                "name": self.name,
-                "arguments": kwargs,
-            },
-        )
+        try:
+            result = self.transport.request(
+                "tools/call",
+                {
+                    "name": self.name,
+                    "arguments": kwargs,
+                },
+            )
+        except (MCPError, OSError, TimeoutError) as exc:
+            # Surface transport/server failures as a readable tool result the
+            # model can react to, instead of crashing the whole agent run.
+            return ToolOutput(
+                text=(
+                    f"MCP tool '{self.name}' on server '{self.server_name}' "
+                    f"failed: {exc}"
+                ),
+                metadata={
+                    "server": self.server_name,
+                    "ok": False,
+                    "error": str(exc),
+                    **self.metadata,
+                },
+            )
         content = result.get("content", [])
         text_parts = []
         for item in content:
@@ -334,3 +350,8 @@ class RemoteMCPServer(MCPServer):
 
 def discover_mcp_tools(server: MCPServer) -> list[MCPTool | MCPRemoteTool]:
     return server.discover_tools()
+
+
+# Friendly aliases matching MCP ecosystem naming (and our docs).
+MCPStdioTransport = MCPSubprocessTransport
+PersistentMCPSession = PersistentMCPSubprocessTransport

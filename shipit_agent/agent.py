@@ -318,6 +318,72 @@ class Agent:
             llm=llm, project_root=str(project_root), **kwargs
         )
 
+    @classmethod
+    def for_role(
+        cls,
+        role: str,
+        *,
+        llm: Any,
+        registry: Any = None,
+        tools: list[Any] | None = None,
+        **kwargs: Any,
+    ) -> "Agent":
+        """Build a ready-to-run agent from a prebuilt role definition.
+
+        One line to a sector specialist — finance, marketing, engineering,
+        design, research, sales, support, and 40+ more from the built-in
+        :class:`~shipit_agent.agents.AgentRegistry`::
+
+            agent = Agent.for_role("finance-analyst", llm=llm)
+            agent = Agent.for_role("marketing-writer", llm=llm)
+            agent = Agent.for_role("researcher", llm=llm)
+
+        The definition's role/goal/backstory/prompt become the system
+        prompt, its ``tools`` list selects the matching built-ins (plus any
+        extra ``tools`` you pass), and ``max_iterations`` is applied.
+        Unknown role ids raise ``ValueError`` listing close matches.
+        """
+        from shipit_agent.agents.registry import AgentRegistry
+        from shipit_agent.builtins import get_builtin_tools
+
+        reg = registry or AgentRegistry.default()
+        definition = reg.get(role)
+        if definition is None:
+            near = [d.id for d in reg.search(role)][:5]
+            hint = f" Did you mean: {', '.join(near)}?" if near else ""
+            raise ValueError(f"Unknown role '{role}'.{hint}")
+
+        sections = [
+            f"You are {definition.name}. {definition.role}.",
+            f"Goal: {definition.goal}." if definition.goal else "",
+            definition.backstory,
+            definition.prompt,
+        ]
+        prompt = "\n\n".join(s for s in sections if s)
+
+        builtin_tools = get_builtin_tools(
+            llm=llm,
+            project_root=str(kwargs.pop("project_root", ".")),
+        )
+        wanted = set(definition.tools)
+        selected = (
+            [t for t in builtin_tools if getattr(t, "name", None) in wanted]
+            if wanted
+            else list(builtin_tools)
+        )
+        return cls(
+            llm=llm,
+            prompt=kwargs.pop("prompt", prompt),
+            tools=[*selected, *(tools or [])],
+            name=definition.id,
+            description=definition.role,
+            max_iterations=kwargs.pop(
+                "max_iterations", definition.max_iterations
+            ),
+            metadata={"role": definition.id, "category": definition.category},
+            **kwargs,
+        )
+
     # ──────────────────────────────────────────────────────────────────
     # Skill resolution
     # ──────────────────────────────────────────────────────────────────

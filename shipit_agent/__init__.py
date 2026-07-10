@@ -101,6 +101,7 @@ from .verifier import (
     VerifierVerdict,
 )
 from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
+from .activity import format_activity, format_event_line
 from .agent import Agent, DEFAULT_SKILLS_PATH
 from .builtins import get_builtin_tool_map, get_builtin_tools
 from .chat_session import AgentChatSession
@@ -124,11 +125,19 @@ from .mcp import (
     MCPError,
     MCPHTTPTransport,
     MCPServer,
+    MCPStdioTransport,
     MCPSubprocessTransport,
     MCPTool,
+    PersistentMCPSession,
     PersistentMCPSubprocessTransport,
     RemoteMCPServer,
     discover_mcp_tools,
+)
+from .mcp_catalog import (
+    MCP_CATALOG,
+    MCPCatalogEntry,
+    connect_mcp,
+    list_mcp_catalog,
 )
 from .models import AgentEvent, AgentResult, Artifact, Message, ToolCall, ToolResult
 from .packets import (
@@ -221,6 +230,7 @@ from .batch import (
 from .tools import (
     AskUserTool,
     ArtifactBuilderTool,
+    DocumentBuilderTool,
     BashTool,
     BraveSearchProvider,
     build_search_provider,
@@ -381,6 +391,7 @@ __all__ = [
     "AskUserTool",
     "Artifact",
     "ArtifactBuilderTool",
+    "DocumentBuilderTool",
     "BashTool",
     "build_tool_schemas",
     "construct_tool_registry",
@@ -415,6 +426,8 @@ __all__ = [
     "FileCredentialStore",
     "FileOAuthStateStore",
     "FileTraceStore",
+    "format_activity",
+    "format_event_line",
     "GitHubTool",
     "GitLabTool",
     "GmailTool",
@@ -436,8 +449,14 @@ __all__ = [
     "MCPError",
     "MCPHTTPTransport",
     "MCPServer",
+    "MCPStdioTransport",
     "MCPSubprocessTransport",
     "MCPTool",
+    "MCP_CATALOG",
+    "MCPCatalogEntry",
+    "connect_mcp",
+    "list_mcp_catalog",
+    "PersistentMCPSession",
     "PersistentMCPSubprocessTransport",
     "MemoryTool",
     "MemoryFact",

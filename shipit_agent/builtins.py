@@ -42,6 +42,7 @@ from shipit_agent.tools import (
     AskUserAsyncTool,
     AskUserTool,
     ArtifactBuilderTool,
+    DocumentBuilderTool,
     BashTool,
     CodeExecutionTool,
     ConfluenceTool,
@@ -144,6 +145,7 @@ def get_builtin_tool_map(
         ToolSearchTool(),
         # ── building ──────────────────────────────────────────────
         ArtifactBuilderTool(),
+        DocumentBuilderTool(workspace_root=f"{workspace_root}/documents"),
         WorkspaceFilesTool(root_dir=workspace_root),
         CodeExecutionTool(workspace_root=f"{workspace_root}/code_execution"),
         DashboardRenderTool(workspace_root=f"{workspace_root}/dashboards"),

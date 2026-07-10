@@ -83,7 +83,14 @@ class ScheduledJob:
                 target += _dt.timedelta(days=1)
             return target.timestamp()
         if self.cron:
-            from croniter import croniter  # optional dependency
+            try:
+                from croniter import croniter  # optional dependency
+            except ImportError as err:
+                raise ImportError(
+                    "cron schedules need the optional `croniter` package — "
+                    "install with `pip install croniter`, or use "
+                    "`every=`/`at=` instead."
+                ) from err
 
             return float(
                 croniter(self.cron, _dt.datetime.fromtimestamp(now)).get_next(float)

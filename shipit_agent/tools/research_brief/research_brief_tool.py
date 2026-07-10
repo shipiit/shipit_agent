@@ -132,9 +132,15 @@ class ResearchBriefTool:
         return sources
 
     def _fetch(self, url: str) -> str:
+        # Scheme guard: URLs come from web search results (model-influenced),
+        # so file:// or custom schemes must never reach urlopen — a poisoned
+        # search result could otherwise read local files.
+        scheme = urllib.parse.urlparse(url).scheme.lower()
+        if scheme not in ("http", "https"):
+            raise _NetError(f"blocked non-http(s) URL scheme: {scheme or 'none'}")
         req = urllib.request.Request(url, headers={"User-Agent": self.user_agent})
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=20) as resp:  # nosec B310 — scheme guarded above (http/https only)
                 raw = resp.read(2_000_000)  # cap at 2MB to avoid runaway pages
         except Exception as err:  # noqa: BLE001
             raise _NetError(str(err)) from err

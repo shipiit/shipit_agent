@@ -60,14 +60,26 @@ class AdaptiveAgent:
         return cls(llm=llm, mcps=mcps, use_builtins=True, **kwargs)
 
     def create_tool(self, name: str, description: str, code: str) -> Any:
-        """Dynamically create and register a tool from Python code."""
+        """Dynamically create and register a tool from Python code.
+
+        .. warning::
+            ``code`` is executed with ``exec`` in the current process — only
+            pass code you wrote or fully trust, never model output or user
+            input. This is a developer API (it is NOT exposed to the LLM as
+            a callable tool). Disable it entirely with
+            ``AdaptiveAgent(can_create_tools=False)``.
+        """
+        if not self.can_create_tools:
+            raise PermissionError(
+                "Tool creation is disabled (can_create_tools=False)."
+            )
         import textwrap
         from shipit_agent import FunctionTool
 
         # Auto-dedent so indented code strings (e.g. from notebooks) work
         clean_code = textwrap.dedent(code)
         namespace: dict[str, Any] = {}
-        exec(clean_code, namespace)  # noqa: S102 — intentional for dynamic tool creation
+        exec(clean_code, namespace)  # noqa: S102 # nosec B102 — gated by can_create_tools; trusted developer code only (see docstring)
 
         # Find the function in the namespace
         fn = None

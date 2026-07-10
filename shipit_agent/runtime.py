@@ -322,6 +322,7 @@ class AgentRuntime:
             "tool_called",
             f"Tool called: {tool_call.name}",
             tool=tool_call.name,
+            call_id=tool_call_record["id"],
             arguments=tool_call.arguments,
             iteration=iteration,
         )
@@ -338,6 +339,7 @@ class AgentRuntime:
                         "tool_failed",
                         f"Tool failed: {tool_call.name}",
                         tool=tool_call.name,
+                        call_id=tool_call_record["id"],
                         error=str(exc),
                         iteration=iteration,
                         duration_ms=round(
@@ -356,6 +358,8 @@ class AgentRuntime:
                     state,
                     "tool_retry",
                     f"Retrying tool: {tool_call.name}",
+                    tool=tool_call.name,
+                    call_id=tool_call_record["id"],
                     attempt=attempt,
                     error=str(exc),
                     iteration=iteration,
@@ -378,6 +382,7 @@ class AgentRuntime:
             "tool_completed",
             f"Tool completed: {tool_call.name}",
             tool=tool_call.name,
+            call_id=tool_call_record["id"],
             output=tool_result.output,
             iteration=iteration,
             duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
@@ -518,12 +523,17 @@ class AgentRuntime:
 
         summaries: list[str] = []
         for m in old:
+            text = (m.content or "")[:200]
             if m.role == "tool":
-                text = m.content[:200] if m.content else ""
-                summaries.append(f"[{m.name}]: {text}")
+                summaries.append(f"[tool {m.name}]: {text}")
+            elif text.strip():
+                summaries.append(f"[{m.role}]: {text}")
 
         if summaries:
-            summary_text = "Previous tool results (condensed):\n" + "\n".join(summaries)
+            summary_text = (
+                "Earlier conversation (condensed to save context):\n"
+                + "\n".join(summaries)
+            )
             compact_msg = Message(
                 role="user",
                 content=summary_text,
@@ -680,6 +690,15 @@ class AgentRuntime:
 
             # Compact messages if approaching context window limit
             compacted_messages = self._compact_messages(list(state.messages))
+            if len(compacted_messages) < len(state.messages):
+                self.emit(
+                    state,
+                    "context_compacted",
+                    "Older turns condensed to stay within the context window",
+                    before=len(state.messages),
+                    after=len(compacted_messages),
+                    iteration=iteration,
+                )
 
             self.emit(
                 state,

@@ -124,8 +124,11 @@ from .integrations import (
 from .mcp import (
     MCPError,
     MCPHTTPTransport,
+    MCPPrompt,
+    MCPResource,
     MCPServer,
     MCPStdioTransport,
+    MCPStreamableHTTPTransport,
     MCPSubprocessTransport,
     MCPTool,
     PersistentMCPSession,
@@ -165,7 +168,13 @@ from .profiles import AgentProfile, AgentProfileBuilder
 from .prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
 from .reasoning import ReasoningResult, ReasoningRuntime
 from .registry import ToolRegistry
-from .schedule import AgentScheduler, ScheduledJob, ScheduleResult, ScheduleRunner
+from .schedule import (
+    AgentScheduler,
+    ScheduledJob,
+    ScheduleResult,
+    ScheduleRunner,
+    SQLiteJobStore,
+)
 from .session_manager import SessionManager
 from .stores import (
     FileMemoryStore,
@@ -330,6 +339,7 @@ __all__ = [
     "ScheduledJob",
     "ScheduleResult",
     "ScheduleRunner",
+    "SQLiteJobStore",
     "SemanticMemory",
     "Step",
     "Supervisor",
@@ -448,8 +458,11 @@ __all__ = [
     "LinkedInSearchTool",
     "MCPError",
     "MCPHTTPTransport",
+    "MCPPrompt",
+    "MCPResource",
     "MCPServer",
     "MCPStdioTransport",
+    "MCPStreamableHTTPTransport",
     "MCPSubprocessTransport",
     "MCPTool",
     "MCP_CATALOG",

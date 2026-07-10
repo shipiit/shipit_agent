@@ -22,6 +22,7 @@ EventType = Literal[
     "tool_retry",
     "run_completed",
     "context_snapshot",
+    "context_compacted",
     "rag_sources",
 ]
 
@@ -97,6 +98,59 @@ class AgentResult:
     @property
     def steps(self) -> list[AgentEvent]:
         return self.events
+
+    def summary(self) -> dict[str, Any]:
+        """Run metrics computed from the event trace.
+
+        Returns wall-clock duration, iteration count, token usage, and a
+        per-tool breakdown (calls, failures, total time)::
+
+            {
+              "duration_seconds": 3.4,
+              "iterations": 2,
+              "tool_calls": 3,
+              "tool_failures": 0,
+              "usage": {"input_tokens": 812, "output_tokens": 240},
+              "tools": {"bash": {"calls": 2, "failures": 0, "total_ms": 2140.0},
+                        "edit_file": {"calls": 1, "failures": 0, "total_ms": 12.0}},
+            }
+        """
+        tools: dict[str, dict[str, Any]] = {}
+        iterations: set[Any] = set()
+        calls = failures = 0
+        for event in self.events:
+            payload = event.payload
+            if "iteration" in payload:
+                iterations.add(payload["iteration"])
+            if event.type == "tool_called":
+                calls += 1
+            if event.type in ("tool_completed", "tool_failed"):
+                name = str(payload.get("tool", "?"))
+                stats = tools.setdefault(
+                    name, {"calls": 0, "failures": 0, "total_ms": 0.0}
+                )
+                stats["calls"] += 1
+                try:
+                    stats["total_ms"] += float(payload.get("duration_ms", 0) or 0)
+                except (TypeError, ValueError):
+                    pass
+                if event.type == "tool_failed":
+                    stats["failures"] += 1
+                    failures += 1
+        duration = (
+            round(self.events[-1].timestamp - self.events[0].timestamp, 3)
+            if len(self.events) >= 2
+            else 0.0
+        )
+        usage = self.metadata.get("usage", {})
+        return {
+            "duration_seconds": duration,
+            "iterations": len(iterations),
+            "tool_calls": calls,
+            "tool_failures": failures,
+            "usage": dict(usage) if isinstance(usage, dict) else {},
+            "tools": tools,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return {

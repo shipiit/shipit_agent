@@ -80,7 +80,8 @@ def format_activity(source: AgentResult | Iterable[AgentEvent]) -> str:
     """
     events = list(source.events if isinstance(source, AgentResult) else source)
     lines: list[str] = []
-    pending_args: dict[int, str] = {}  # order-preserving call → args text
+    # Pair calls to results by call_id when present; fall back to LIFO order.
+    pending_args: dict[Any, str] = {}
     calls = ok = failed = 0
     iterations: set[Any] = set()
 
@@ -90,9 +91,12 @@ def format_activity(source: AgentResult | Iterable[AgentEvent]) -> str:
             iterations.add(p["iteration"])
         if event.type == "tool_called":
             calls += 1
-            pending_args[calls] = _format_args(p.get("arguments"))
+            pending_args[p.get("call_id", calls)] = _format_args(p.get("arguments"))
         elif event.type in ("tool_completed", "tool_failed"):
-            args_text = pending_args.pop(max(pending_args, default=0), "")
+            key = p.get("call_id")
+            if key not in pending_args:
+                key = max(pending_args, default=0, key=lambda k: str(k))
+            args_text = pending_args.pop(key, "")
             dur = _format_duration(p.get("duration_ms"))
             status = "✓" if event.type == "tool_completed" else "✗"
             head = f"⚙ {p.get('tool', '?')}({args_text}) {status}"

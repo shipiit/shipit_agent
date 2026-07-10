@@ -260,9 +260,12 @@ class MCPHTTPTransport:
         *,
         headers: dict[str, str] | None = None,
         timeout: float = 20.0,
+        bearer_token: str | None = None,
     ) -> None:
         self.endpoint = endpoint
-        self.headers = headers or {}
+        self.headers = dict(headers or {})
+        if bearer_token:
+            self.headers.setdefault("authorization", f"Bearer {bearer_token}")
         self.timeout = timeout
         self._id_counter = count(1)
 
@@ -294,21 +297,219 @@ class MCPHTTPTransport:
         return None
 
 
+class MCPStreamableHTTPTransport(MCPHTTPTransport):
+    """Streamable-HTTP MCP transport (the 2025 spec revision).
+
+    POSTs JSON-RPC like :class:`MCPHTTPTransport`, but also handles servers
+    that answer with ``text/event-stream`` — the JSON-RPC response arrives
+    as SSE ``data:`` lines. Also carries the ``Mcp-Session-Id`` header the
+    spec uses for session affinity. Pass ``bearer_token=`` for servers
+    behind OAuth/bearer auth.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._session_id: str | None = None
+
+    def request(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": next(self._id_counter),
+                "method": method,
+                "params": params or {},
+            }
+        ).encode("utf-8")
+        headers = {
+            "content-type": "application/json",
+            "accept": "application/json, text/event-stream",
+            **self.headers,
+        }
+        if self._session_id:
+            headers["mcp-session-id"] = self._session_id
+        req = request.Request(
+            self.endpoint, data=payload, headers=headers, method="POST"
+        )
+        with request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
+            session_id = response.headers.get("Mcp-Session-Id")
+            if session_id:
+                self._session_id = session_id
+            content_type = (response.headers.get("Content-Type") or "").lower()
+            body = response.read().decode("utf-8")
+        if "text/event-stream" in content_type:
+            parsed = self._parse_sse(body)
+        else:
+            parsed = json.loads(body) if body else {}
+        if "error" in parsed:
+            raise MCPError(str(parsed["error"]))
+        return dict(parsed.get("result", {}))
+
+    @staticmethod
+    def _parse_sse(body: str) -> dict[str, Any]:
+        """Extract the JSON-RPC response from SSE `data:` lines."""
+        for chunk in body.split("\n\n"):
+            data_lines = [
+                line[5:].strip()
+                for line in chunk.splitlines()
+                if line.startswith("data:")
+            ]
+            if not data_lines:
+                continue
+            try:
+                parsed = json.loads("\n".join(data_lines))
+            except json.JSONDecodeError:
+                continue
+            # The response to our request carries an id (notifications don't).
+            if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
+                return parsed
+        raise MCPError("No JSON-RPC response found in SSE stream.")
+
+
+@dataclass(slots=True)
+class MCPResource:
+    """A resource exposed by an MCP server (a file, table, doc, …)."""
+
+    uri: str
+    name: str = ""
+    description: str = ""
+    mime_type: str = ""
+
+
+@dataclass(slots=True)
+class MCPPrompt:
+    """A prompt template exposed by an MCP server."""
+
+    name: str
+    description: str = ""
+    arguments: list[dict[str, Any]] = field(default_factory=list)
+
+
 @dataclass(slots=True)
 class RemoteMCPServer(MCPServer):
     transport: MCPTransport | None = None
     _discovered: bool = False
+    _initialized: bool = False
 
     def initialize(self) -> None:
         if self.transport is None:
             raise MCPError("RemoteMCPServer requires a transport.")
+        if self._initialized:
+            return
         self.transport.request(
             "initialize",
             {
                 "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
+                "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                 "clientInfo": {"name": "shipit_agent", "version": "1.0.0"},
             },
+        )
+        self._initialized = True
+
+    # ── resources ─────────────────────────────────────────────────────
+    def list_resources(self) -> list[MCPResource]:
+        """Resources the server exposes. Empty if unsupported."""
+        try:
+            self.initialize()
+            result = self.transport.request("resources/list", {})
+        except MCPError:
+            return []  # server doesn't implement resources
+        return [
+            MCPResource(
+                uri=str(item.get("uri", "")),
+                name=str(item.get("name", "")),
+                description=str(item.get("description", "")),
+                mime_type=str(item.get("mimeType", "")),
+            )
+            for item in result.get("resources", [])
+        ]
+
+    def read_resource(self, uri: str) -> str:
+        """Read one resource's content (text parts joined; blobs noted)."""
+        self.initialize()
+        result = self.transport.request("resources/read", {"uri": uri})
+        parts: list[str] = []
+        for item in result.get("contents", []):
+            if "text" in item:
+                parts.append(str(item["text"]))
+            elif "blob" in item:
+                parts.append(f"[binary content: {item.get('mimeType', 'unknown')}]")
+        return "\n".join(parts)
+
+    # ── prompts ───────────────────────────────────────────────────────
+    def list_prompts(self) -> list[MCPPrompt]:
+        """Prompt templates the server exposes. Empty if unsupported."""
+        try:
+            self.initialize()
+            result = self.transport.request("prompts/list", {})
+        except MCPError:
+            return []  # server doesn't implement prompts
+        return [
+            MCPPrompt(
+                name=str(item.get("name", "")),
+                description=str(item.get("description", "")),
+                arguments=list(item.get("arguments", [])),
+            )
+            for item in result.get("prompts", [])
+        ]
+
+    def get_prompt(self, name: str, arguments: dict[str, Any] | None = None) -> str:
+        """Render a prompt template to plain text (role-prefixed)."""
+        self.initialize()
+        result = self.transport.request(
+            "prompts/get", {"name": name, "arguments": arguments or {}}
+        )
+        lines: list[str] = []
+        for message in result.get("messages", []):
+            content = message.get("content", "")
+            if isinstance(content, dict):
+                content = content.get("text", "")
+            role = message.get("role", "user")
+            lines.append(f"[{role}] {content}" if role != "user" else str(content))
+        return "\n".join(lines)
+
+    def resource_tool(self) -> MCPTool:
+        """A tool that lets the model browse/read this server's resources.
+
+        Call with no ``uri`` to list what's available; pass ``uri`` to read
+        one. Attach it alongside the server's tools::
+
+            server = connect_mcp("filesystem", args=["."])
+            agent = Agent(llm=llm, mcps=[server],
+                          tools=[server.resource_tool()])
+        """
+
+        def handler(context: Any = None, uri: str = "", **_ignored: Any) -> str:
+            if uri:
+                return self.read_resource(uri)
+            resources = self.list_resources()
+            if not resources:
+                return f"MCP server '{self.name}' exposes no resources."
+            return "\n".join(
+                f"{r.uri} — {r.name or r.description or r.mime_type}"
+                for r in resources
+            )
+
+        return MCPTool(
+            name=f"{self.name}_resources",
+            description=(
+                f"Browse and read resources exposed by the '{self.name}' MCP "
+                "server. Call without arguments to list resource URIs; pass "
+                "`uri` to read one."
+            ),
+            handler=handler,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "uri": {
+                        "type": "string",
+                        "description": "Resource URI to read (omit to list all)",
+                    }
+                },
+                "required": [],
+            },
+            metadata={"server": self.name},
         )
 
     def discover_tools(self) -> list[MCPTool | MCPRemoteTool]:

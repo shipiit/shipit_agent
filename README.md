@@ -96,6 +96,41 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
 
 ---
 
+## What's new in v1.0.15 — The Super Agent
+
+One release that makes a shipit agent useful to **every sector** — and makes every run readable.
+All of it works with any LLM provider.
+
+```python
+from shipit_agent import Agent, AgentScheduler, connect_mcp, format_activity
+
+# 1. Sector specialists in one line — finance, marketing, engineering, design, research, sales…
+agent = Agent.for_role("finance-analyst", llm=llm)
+
+# 2. Prebuilt MCP catalog — 12 well-known servers by name, validated up front
+agent = Agent.for_role("finance-analyst", llm=llm,
+                       mcps=[connect_mcp("postgres", args=["postgresql://localhost/finance"])])
+
+# 3. Real deliverables — polished PDF / Excel (live formulas) / Word / PowerPoint / HTML
+result = agent.run("Close Q2: P&L workbook with a net-income formula + a board deck.")
+
+# 4. Claude-Code-style tool logs — cards with args, ✓/✗, duration, output preview
+print(format_activity(result))     # ⚙ build_document(kind="xlsx", …) ✓ 228ms
+print(result.summary())            # duration, iterations, per-tool ms, token usage
+
+# 5. Scheduled jobs — cron for agents (durable with SQLiteJobStore)
+sched = AgentScheduler(agent)
+sched.add("Rebuild the close package.", at="07:00")
+sched.run_forever()
+```
+
+Plus: MCP **resources & prompts** + the 2025 **streamable-HTTP** transport (bearer auth),
+**background subagents** (`background=true` → task id → `collect`), live-updatable tool events
+(`call_id` correlation), and observable **context compaction**.
+See the [full guide](https://docs.shipiit.com/guides/super-agent/) and [changelog](CHANGELOG.md).
+
+---
+
 ## Installation
 
 **Requirements:** Python **3.11+** (3.11 – 3.14 supported). The only hard dependency is
@@ -394,13 +429,19 @@ with built-in OAuth helpers.
 ## MCP
 
 ```python
-from shipit_agent.mcp import RemoteMCPServer
+from shipit_agent import Agent, connect_mcp
 
-agent = Agent.with_builtins(llm=llm, mcps=[RemoteMCPServer(name="fs", transport=...)])
+github = connect_mcp("github")                      # needs GITHUB_TOKEN
+files  = connect_mcp("filesystem", args=["/my/project"])
+agent  = Agent.with_builtins(llm=llm, mcps=[github, files])
 ```
 
-Connect MCP servers over **stdio**, **HTTP**, or a **persistent subprocess** — their tools join the
-agent's tool set automatically.
+A **prebuilt catalog** of 12 well-known servers (GitHub, Slack, Postgres, filesystem, Puppeteer,
+Brave search, …) connects by name with fail-fast env/launcher validation — or bring your own
+server over **stdio**, **HTTP**, a **persistent subprocess**, or the 2025 **streamable-HTTP** spec
+(`MCPStreamableHTTPTransport`, with `bearer_token=` for hosted servers). Beyond tools, servers'
+**resources and prompt templates** are first-class (`list_resources()` / `read_resource()` /
+`get_prompt()` / `resource_tool()`).
 
 ---
 

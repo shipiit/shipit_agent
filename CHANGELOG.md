@@ -5,6 +5,72 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Nothing yet.
+
+---
+
+## [1.0.15] — 2026-07-10
+
+**The Super Agent.** One release that makes a shipit agent useful to every
+sector — finance, marketing, engineering, design, research, sales, support —
+and makes every run readable. Works with **any** LLM provider.
+**1948 tests passing (+51 new). 0 regressions.**
+
+### Added
+
+- **`Agent.for_role(id, llm=...)`** — one line to any of the 40+ prebuilt sector
+  specialists: the role's prompt, its matching builtin tools, and its iteration
+  budget. Unknown ids raise `ValueError` with did-you-mean suggestions.
+- **Prebuilt MCP catalog** — `connect_mcp("github")` and 11 more well-known
+  servers (slack, postgres, filesystem, puppeteer, brave-search, fetch, memory,
+  sentry, gitlab, sqlite, google-maps) on a persistent stdio transport, with
+  fail-fast env-var and launcher validation. `list_mcp_catalog()` to browse.
+- **MCP resources & prompts** — `RemoteMCPServer.list_resources()` /
+  `read_resource()`, `list_prompts()` / `get_prompt()` (graceful empty when
+  unsupported), and `resource_tool()` — a model-facing tool to browse/read a
+  server's resources. New `MCPResource` / `MCPPrompt` types.
+- **`MCPStreamableHTTPTransport`** — the 2025 streamable-HTTP spec: JSON and
+  SSE responses, `Mcp-Session-Id` affinity; `bearer_token=` on both HTTP
+  transports for OAuth-protected hosted servers.
+- **`build_document` tool** — polished PDF reports, Excel workbooks (styled
+  frozen headers, auto-sized columns, live `=` formulas), Word docs, PowerPoint
+  decks, and styled HTML from one structured payload. Optional-dependency
+  renderers reply with the exact `pip install` fix; wired into the builtin
+  catalogue and 14 deliverable-producing specialists.
+- **`format_activity(result)` / `format_event_line(event)`** — Claude-Code-style
+  tool cards (name, args, ✓/✗, duration, output preview) for finished runs and
+  live streams. `AgentEvent` gains a `timestamp`; tool events carry `tool`,
+  `call_id` (live-updatable card correlation), and `duration_ms`.
+- **`AgentResult.summary()`** — wall-clock duration, iterations, token usage,
+  and per-tool calls/failures/total-ms in one dict.
+- **`AgentScheduler`** — cron for agents: `every=` seconds, `at="HH:MM"` daily,
+  or `cron="..."` (optional `croniter`), with `on_result` callbacks, `max_runs`,
+  session-backed runs, and injectable `clock`/`sleep` for zero-wait tests.
+  **`SQLiteJobStore`** makes jobs durable across restarts.
+- **Background subagents** — `sub_agent` accepts `background=true` (returns a
+  task id immediately, thread pool) and `collect="task-N"` to fetch the result.
+- **Gemma on Bedrock** — `BedrockChatLLM` transparently routes Gemma 4 ids to
+  the OpenAI-compatible `bedrock-mantle` endpoint (native function calling);
+  Gemma 3 via Converse. New `BedrockGemmaChatLLM` under the hood.
+- **`clip_text`** head+tail truncation for bash/grep/code-execution output;
+  full output preserved in tool metadata.
+- New examples 19–22, notebooks 69 (rebuilt with real streaming) and 70, and a
+  `docs/guides/super-agent.md` tour.
+
+### Changed
+
+- MCP tool-call failures (server down, timeout) now return a readable tool
+  result the model can react to instead of crashing the run.
+- Context compaction now summarizes old user/assistant turns (previously only
+  tool results; other content was dropped) and emits a `context_compacted`
+  event with before/after counts.
+- Default agent prompt gains a "Response style" section (lead with the answer,
+  concise, clean Markdown).
+- `MCPStdioTransport` / `PersistentMCPSession` aliases exported (the docs
+  referenced them; the MCP guide's transport examples were corrected).
+
 ## [1.0.14] — 2026-06-13
 
 **The SHIPIT Workspace.** Point an agent at a repo and it just works — project
@@ -1194,7 +1260,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.14...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.15...HEAD
+[1.0.15]: https://github.com/shipiit/shipit_agent/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/shipiit/shipit_agent/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/shipiit/shipit_agent/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/shipiit/shipit_agent/compare/v1.0.11...v1.0.12

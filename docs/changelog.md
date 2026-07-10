@@ -1,5 +1,100 @@
 # Changelog
 
+## v1.0.15 — 2026-07-10
+
+**The Super Agent — every sector, clean logs, real deliverables.** One release
+that makes a shipit agent useful to a finance analyst, a marketer, an engineer,
+a designer, a researcher, and a sales rep alike — and makes every run readable.
+All of it works with **any** LLM provider.
+
+### Sector specialists — `Agent.for_role`
+
+- **One line to a specialist** — `Agent.for_role("finance-analyst", llm=llm)`
+  turns any of the 40+ prebuilt role definitions (finance, marketing,
+  engineering, design, research, sales, support, HR, …) into a runnable agent:
+  the role's prompt, its matching builtin tools, and its iteration budget.
+- **Did-you-mean errors** — unknown ids raise a `ValueError` listing the
+  closest matching roles.
+- **Deliverable-ready roles** — 14 specialists (finance-analyst,
+  marketing-writer, researcher, data-analyst, sales roles, …) now carry the new
+  `build_document` tool.
+
+### Prebuilt MCP catalog — `connect_mcp`
+
+- **12 well-known servers by name** — `connect_mcp("github")`,
+  `connect_mcp("filesystem", args=["/repo"])`, `connect_mcp("postgres",
+  args=[url])`, plus slack, sqlite, puppeteer, brave-search, fetch, memory,
+  sentry, gitlab, and google-maps — each on a persistent stdio transport.
+- **Fail-fast validation** — required env vars and the launcher binary
+  (`npx`/`uvx`) are checked before anything starts; misconfiguration is one
+  clear message.
+- **Resilient MCP calls** — a failing MCP tool call (server down, timeout) now
+  returns a readable tool result the model can react to instead of crashing
+  the run. `MCPStdioTransport` / `PersistentMCPSession` aliases are exported.
+
+### Polished documents — `build_document`
+
+- **Five formats** — PDF reports, Excel workbooks, Word documents, PowerPoint
+  decks, and styled HTML from one structured payload (`title` + `sections`,
+  or `sheets` for Excel).
+- **Finished, not generated** — accent-colored headings, zebra-striped tables,
+  bold frozen header rows, auto-sized columns; Excel cells starting with `=`
+  become live formulas.
+- **Optional dependencies** — renderers use `reportlab` / `openpyxl` /
+  `python-docx` / `python-pptx` and reply with the exact `pip install` fix
+  when one is missing; HTML needs nothing.
+
+### Clean tool-call logs — `format_activity`
+
+- **Claude-Code-style tool cards** — `format_activity(result)` renders each
+  call as `⚙ name(args) ✓ 228ms` with a compact output preview and a run
+  summary footer; `format_event_line(event)` does the same live for streams.
+- **Timing built in** — every `AgentEvent` now carries a `timestamp`;
+  `tool_completed` / `tool_failed` carry the tool name and `duration_ms`.
+
+### Scheduled jobs — `AgentScheduler`
+
+- **Cron for agents** — `sched.add(prompt, every=3600)`, `at="09:00"` daily,
+  or `cron="0 8 * * 1"` (optional `croniter`); `run_forever()` fires jobs as
+  they come due.
+- **Durable jobs** — pass `store=SQLiteJobStore()` and due times + run counts
+  persist across restarts; a re-added job resumes its slot instead of
+  resetting.
+- **Production niceties** — `on_result` callbacks, `max_runs` caps,
+  session-backed runs, and injectable `clock`/`sleep` so schedules are
+  unit-testable with zero real waiting.
+
+### MCP, deeper — resources, prompts, streamable HTTP
+
+- **Resources & prompts** — `server.list_resources()` / `read_resource(uri)`
+  and `list_prompts()` / `get_prompt(name, args)`; `server.resource_tool()`
+  gives the *model* a tool to browse/read a server's resources. Servers that
+  don't implement them return empty lists, not errors.
+- **Streamable HTTP transport** — `MCPStreamableHTTPTransport` speaks the
+  2025 spec revision: JSON *and* SSE responses, `Mcp-Session-Id` affinity,
+  and `bearer_token=` on both HTTP transports for OAuth-protected servers.
+
+### Run metrics & live-updatable events
+
+- **`result.summary()`** — wall-clock duration, iterations, token usage, and
+  a per-tool breakdown (calls / failures / total ms) in one dict.
+- **Correlation ids** — `tool_called` / `tool_completed` / `tool_failed` /
+  `tool_retry` share a `call_id`, so live UIs can update one tool card in
+  place (running → ✓/✗) instead of appending lines.
+
+### Background subagents & context compaction
+
+- **Parallel delegation** — `sub_agent` accepts `background=true` (returns a
+  task id immediately, runs on a thread pool) and `collect="task-N"` to fetch
+  the result — Claude-Code-style task fan-out.
+- **Observable compaction** — when a run approaches the context window, older
+  turns are summarized (user/assistant content included, not dropped) and a
+  `context_compacted` event reports before/after message counts.
+
+See the [Super agent guide](guides/super-agent.md) for the full tour.
+
+---
+
 ## v1.0.14 — 2026-06-13
 
 **The SHIPIT Workspace.** Point an agent at a repo and it just works. All opt-in, backward compatible. **1884 tests passing (+30 new). 0 regressions.**

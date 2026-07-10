@@ -83,6 +83,52 @@ finally:
 
 The runtime also closes MCP transports automatically when a run finishes.
 
+## Resources & prompts
+
+Beyond tools, MCP servers can expose **resources** (files, tables, docs) and
+**prompt templates**. Both are first-class:
+
+```python
+server = connect_mcp("filesystem", args=["/my/project"])
+
+for r in server.list_resources():          # browse what's available
+    print(r.uri, "—", r.name)
+readme = server.read_resource("file:///my/project/README.md")
+
+for p in server.list_prompts():             # prompt templates
+    print(p.name, "—", p.description)
+text = server.get_prompt("review", {"file": "app.py"})
+agent.run(text)                             # use it like a slash command
+```
+
+Give the **model** access to a server's resources with one extra tool:
+
+```python
+agent = Agent(llm=llm, mcps=[server], tools=[server.resource_tool()])
+# the agent can now call `filesystem_resources` to list/read resources
+```
+
+Servers that don't implement resources or prompts simply return empty lists —
+no errors to handle.
+
+## Streamable HTTP + authenticated remote servers
+
+For hosted MCP servers on the 2025 streamable-HTTP spec (JSON *or* SSE
+responses, `Mcp-Session-Id` affinity), use `MCPStreamableHTTPTransport`; pass
+`bearer_token=` for OAuth/bearer-protected endpoints:
+
+```python
+from shipit_agent import MCPStreamableHTTPTransport, RemoteMCPServer
+
+mcp = RemoteMCPServer(
+    name="hosted",
+    transport=MCPStreamableHTTPTransport(
+        "https://mcp.example.com/mcp",
+        bearer_token=os.environ["MCP_TOKEN"],
+    ),
+)
+```
+
 ## Mixing MCP tools with local tools
 
 ```python

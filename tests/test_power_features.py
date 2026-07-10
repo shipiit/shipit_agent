@@ -315,8 +315,9 @@ class TestContextWindowManagement:
             Message(role="tool", name="t2", content="w" * 200),
             Message(role="user", content="latest question"),
         ]
-        compacted = runtime._compact_messages(messages)
-        assert len(compacted) < len(messages)
+        compacted, did_compact = runtime._compact_messages(messages)
+        assert did_compact
+        assert len(compacted) <= len(messages)
         # Should have a compacted message
         compacted_msgs = [m for m in compacted if m.metadata.get("compacted")]
         assert compacted_msgs
@@ -332,8 +333,9 @@ class TestContextWindowManagement:
             Message(role="system", content="prompt"),
             Message(role="user", content="hi"),
         ]
-        result = runtime._compact_messages(messages)
+        result, did_compact = runtime._compact_messages(messages)
         assert result == messages
+        assert did_compact is False
 
     def test_no_compaction_when_disabled(self) -> None:
         """No compaction when context_window_tokens=0."""
@@ -343,8 +345,9 @@ class TestContextWindowManagement:
             context_window_tokens=0,
         )
         messages = [Message(role="user", content="x" * 10000)]
-        result = runtime._compact_messages(messages)
+        result, did_compact = runtime._compact_messages(messages)
         assert result == messages
+        assert did_compact is False
 
 
 # ---------------------------------------------------------------------------

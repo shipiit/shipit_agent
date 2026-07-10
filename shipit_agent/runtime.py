@@ -151,6 +151,22 @@ class AgentRuntime:
         # Serializes event emission so parallel tool threads don't interleave
         # writes to a (possibly non-atomic) trace store.
         self._emit_lock = threading.Lock()
+        # Cooperative cancellation — checked between iterations and before
+        # each tool execution. Set from any thread via cancel().
+        self._cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        """Request cancellation of the in-flight run (thread-safe).
+
+        The loop stops at the next checkpoint — before the next LLM call or
+        tool execution — and returns a normal result with whatever was
+        produced so far, marked ``metadata["cancelled"] = True``.
+        """
+        self._cancel_event.set()
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancel_event.is_set()
 
     def registry(self) -> ToolRegistry:
         return construct_tool_registry(tools=self.tools, mcps=self.mcps)
@@ -467,6 +483,21 @@ class AgentRuntime:
         else:
             # Sequential execution (default)
             for idx, tc in enumerate(tool_calls):
+                if self._cancel_event.is_set():
+                    # Cancelled mid-batch: answer the remaining tool calls
+                    # with a synthetic result so message pairing stays valid.
+                    state.messages.append(
+                        Message(
+                            role="tool",
+                            name=tc.name,
+                            content="[cancelled before execution]",
+                            metadata={
+                                "tool_call_id": tool_call_records[idx]["id"],
+                                "cancelled": True,
+                            },
+                        )
+                    )
+                    continue
                 tool_result, msg = self._execute_single_tool(
                     state=state,
                     registry=registry,
@@ -488,22 +519,24 @@ class AgentRuntime:
         """Rough token estimate: ~4 chars per token for English text."""
         return len(text) // 4 if text else 0
 
-    def _compact_messages(self, messages: list[Message]) -> list[Message]:
-        """Summarize older tool results to free context space.
+    def _compact_messages(
+        self, messages: list[Message]
+    ) -> tuple[list[Message], bool]:
+        """Summarize older turns to free context space.
 
-        Keeps system messages, the most recent user message, and the last
-        2 assistant+tool exchanges intact. Older tool results get condensed
-        into a single summary message.
+        Keeps system messages and the last 4 exchange messages intact;
+        everything older is condensed into one summary message (written by
+        the LLM when possible). Returns ``(messages, did_compact)``.
         """
         if not self.context_window_tokens:
-            return messages
+            return messages, False
 
         total_chars = sum(len(m.content or "") for m in messages)
         estimated_tokens = total_chars // 4
         threshold = int(self.context_window_tokens * 0.75)
 
         if estimated_tokens < threshold:
-            return messages
+            return messages, False
 
         # Separate system/user messages from tool exchanges
         keep_head: list[Message] = []
@@ -515,33 +548,74 @@ class AgentRuntime:
                 exchanges.append(m)
 
         if len(exchanges) <= 4:
-            return messages
+            return messages, False
 
         # Compact older exchanges, keep last 4 messages intact
         old = exchanges[:-4]
         recent = exchanges[-4:]
 
-        summaries: list[str] = []
-        for m in old:
-            text = (m.content or "")[:200]
-            if m.role == "tool":
-                summaries.append(f"[tool {m.name}]: {text}")
-            elif text.strip():
-                summaries.append(f"[{m.role}]: {text}")
-
-        if summaries:
-            summary_text = (
-                "Earlier conversation (condensed to save context):\n"
-                + "\n".join(summaries)
-            )
+        summary_text = self._summarize_for_compaction(old)
+        if summary_text:
             compact_msg = Message(
                 role="user",
                 content=summary_text,
                 metadata={"compacted": True},
             )
-            return keep_head + [compact_msg] + recent
+            return keep_head + [compact_msg] + recent, True
 
-        return messages
+        return messages, False
+
+    def _summarize_for_compaction(self, old: list[Message]) -> str:
+        """Condense old turns — with the LLM when possible, mechanically otherwise.
+
+        The model-written summary preserves decisions, facts, file paths, and
+        open threads far better than truncation. Any failure (or a missing
+        LLM) falls back to the mechanical head-truncation summary so
+        compaction never takes the run down.
+        """
+        transcript_lines: list[str] = []
+        for m in old:
+            text = (m.content or "").strip()
+            if not text:
+                continue
+            label = f"tool {m.name}" if m.role == "tool" else m.role
+            transcript_lines.append(f"[{label}]: {text[:2000]}")
+        if not transcript_lines:
+            return ""
+
+        try:
+            response = self.llm.complete(
+                messages=[
+                    Message(
+                        role="user",
+                        content=(
+                            "Summarize this earlier portion of an agent "
+                            "conversation so the agent can continue seamlessly. "
+                            "Preserve: decisions made, key facts and numbers, "
+                            "file paths, tool results that matter, and any "
+                            "unfinished threads. Be dense; max ~300 words.\n\n"
+                            + "\n".join(transcript_lines)
+                        ),
+                    )
+                ],
+                tools=[],
+                system_prompt="You compress conversation history without losing load-bearing details.",
+                metadata={"purpose": "context_compaction"},
+            )
+            summary = (getattr(response, "content", "") or "").strip()
+            if summary:
+                return (
+                    "Earlier conversation (summarized to save context):\n"
+                    + summary
+                )
+        except Exception:
+            pass  # any LLM failure → mechanical fallback below
+
+        mechanical = [line[:200] for line in transcript_lines]
+        return (
+            "Earlier conversation (condensed to save context):\n"
+            + "\n".join(mechanical)
+        )
 
     def _track_usage(self, response: LLMResponse) -> None:
         """Accumulate token usage across iterations."""
@@ -685,12 +759,24 @@ class AgentRuntime:
         # below doesn't write the same text twice.
         appended_response_id: int | None = None
         for iteration in range(1, self.max_iterations + 1):
+            if self._cancel_event.is_set():
+                self.emit(
+                    state,
+                    "run_cancelled",
+                    "Run cancelled by caller",
+                    iteration=iteration,
+                )
+                if not response.content:
+                    response = LLMResponse(content="[cancelled]")
+                break
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), tool_schemas)
 
             # Compact messages if approaching context window limit
-            compacted_messages = self._compact_messages(list(state.messages))
-            if len(compacted_messages) < len(state.messages):
+            compacted_messages, did_compact = self._compact_messages(
+                list(state.messages)
+            )
+            if did_compact:
                 self.emit(
                     state,
                     "context_compacted",
@@ -869,6 +955,7 @@ class AgentRuntime:
             content=response.content,
             format="markdown",
             usage=dict(self._total_usage),
+            cancelled=self._cancel_event.is_set(),
         )
         # MCP transports are closed by run()'s finally (covers the error path
         # too) — don't close here.

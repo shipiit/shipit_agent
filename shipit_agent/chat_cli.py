@@ -503,8 +503,11 @@ class ChatREPL:
         self.last_sources: list[Any] = []
         self.goal_objective: str | None = None
         self.goal_criteria: list[str] | None = None
+        # Tools the user approved with [a]lways for this session.
+        self.always_allowed: set[str] = set()
 
         self.agent = self._make_agent()
+        self._wire_permission_prompt()
         self.chat = agent_chat_session(
             self.agent,
             session_id=self.session_id,
@@ -757,41 +760,82 @@ class ChatREPL:
         self._rebuild_agent(output)
         output(dim(f"[chat] model → {cyan(target)}  (env {env_var})"))
 
+    def _wire_permission_prompt(self) -> None:
+        """Attach an interactive y/n/always prompt for `ask`-gated tools."""
+        if hasattr(self.agent, "permission_callback"):
+            try:
+                self.agent.permission_callback = self._permission_prompt
+            except Exception:
+                pass  # frozen/custom agent types keep their own behavior
+
+    def _permission_prompt(self, name: str, arguments: dict) -> Any:
+        from shipit_agent.permissions import PermissionDecision, PermissionResult
+
+        if name in self.always_allowed:
+            return PermissionResult(
+                decision=PermissionDecision.ALLOW, reason="always-allowed (session)"
+            )
+        args_preview = ", ".join(f"{k}={v!r}" for k, v in list(arguments.items())[:4])
+        if len(args_preview) > 120:
+            args_preview = args_preview[:119] + "…"
+        sys.stdout.write(
+            yellow(f"\n⏸ allow {bold(name)}({args_preview})? ")
+            + dim("[y]es / [n]o / [a]lways: ")
+        )
+        sys.stdout.flush()
+        try:
+            answer = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "n"
+        if answer in ("a", "always"):
+            self.always_allowed.add(name)
+            return PermissionResult(
+                decision=PermissionDecision.ALLOW, reason="user approved (always)"
+            )
+        if answer in ("y", "yes"):
+            return PermissionResult(
+                decision=PermissionDecision.ALLOW, reason="user approved"
+            )
+        return PermissionResult(
+            decision=PermissionDecision.DENY, reason="user declined"
+        )
+
     def handle_user_turn(self, user_text: str, *, output=print) -> None:
+        from shipit_agent.activity import StreamRenderer
+
         try:
             final_text = ""
             captured_sources: list[Any] = []
+            saw_delta = False
 
             if self.chat is not None:
                 events = self.chat.stream(user_text)
             else:
                 events = stream_any_agent(self.agent, user_text)
 
-            spinner = Spinner(label="thinking")
-            spinner.start()
-            try:
-                for event in events:
-                    etype = getattr(event, "type", "")
-                    if etype == "run_completed":
-                        payload_out = (
-                            event.payload.get("output")
-                            if hasattr(event, "payload")
-                            else None
-                        )
-                        final_text = payload_out or final_text
-                        continue
-                    if etype == "rag_sources":
-                        captured_sources = list(event.payload.get("sources", [])) or []
-                        continue
-                    # Update spinner label for context; print line if not quiet
-                    if etype:
-                        spinner.update(etype.replace("_", " "))
-                    if not self.quiet:
-                        # Clear the spinner line, print the event, spinner resumes.
-                        sys.stdout.write("\r" + " " * 60 + "\r")
-                        output(format_event(event))
-            finally:
-                spinner.stop()
+            # Claude-Code-style live view: tokens inline, ⏺/⎿ tool cards.
+            renderer = StreamRenderer(
+                style="plain" if self.quiet else "auto", show_summary=False
+            )
+            output()
+            for event in events:
+                etype = getattr(event, "type", "")
+                if etype == "run_completed":
+                    payload_out = (
+                        event.payload.get("output")
+                        if hasattr(event, "payload")
+                        else None
+                    )
+                    final_text = payload_out or final_text
+                    continue
+                if etype == "rag_sources":
+                    captured_sources = list(event.payload.get("sources", [])) or []
+                    continue
+                if etype == "text_delta":
+                    saw_delta = True
+                if not self.quiet or etype == "text_delta":
+                    renderer.feed(event)
+            renderer.close()
 
             if not final_text and self.chat is not None:
                 for msg in reversed(self.chat.history()):
@@ -800,14 +844,20 @@ class ChatREPL:
                         break
 
             self.last_sources = captured_sources
-            output()
-            header = green("agent ▸ ")
-            if final_text:
-                sys.stdout.write(header)
-                sys.stdout.flush()
-                typewriter(final_text, output=output, enabled=self.typewriter_enabled)
+            if saw_delta:
+                # Answer already streamed inline — just close the turn.
+                output()
             else:
-                output(header + dim("(no answer)"))
+                output()
+                header = green("agent ▸ ")
+                if final_text:
+                    sys.stdout.write(header)
+                    sys.stdout.flush()
+                    typewriter(
+                        final_text, output=output, enabled=self.typewriter_enabled
+                    )
+                else:
+                    output(header + dim("(no answer)"))
             if captured_sources:
                 output(
                     dim(f"  ({len(captured_sources)} RAG source(s) — /sources to see)")
@@ -1167,9 +1217,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--session-id", default=None, help="Resume a specific session id"
     )
     parser.add_argument(
+        "--continue",
+        dest="continue_last",
+        action="store_true",
+        help="Resume the most recent session from the session directory",
+    )
+    parser.add_argument(
         "--session-dir",
         default=None,
-        help="Persist sessions to this directory (FileSessionStore)",
+        help=(
+            "Persist sessions to this directory (FileSessionStore). "
+            "Defaults to ~/.shipit/sessions when --continue is used."
+        ),
     )
     parser.add_argument(
         "--workspace",
@@ -1239,11 +1298,31 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:
                 sys.stderr.write(red(f"[chat] failed to index {path}: {exc}\n"))
 
+    session_dir = args.session_dir
+    if args.continue_last and not session_dir:
+        session_dir = str(Path.home() / ".shipit" / "sessions")
+
     session_store: Any
-    if args.session_dir:
-        session_store = FileSessionStore(root=args.session_dir)
+    if session_dir:
+        session_store = FileSessionStore(session_dir)
     else:
         session_store = InMemorySessionStore()
+
+    session_id = args.session_id
+    if args.continue_last and not session_id:
+        # Most recently modified session file wins.
+        candidates = sorted(
+            Path(session_dir).glob("*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if candidates:
+            session_id = candidates[0].stem
+            sys.stderr.write(dim(f"[chat] continuing session {session_id}\n"))
+        else:
+            sys.stderr.write(
+                dim("[chat] no previous session found — starting a new one\n")
+            )
 
     repl = ChatREPL(
         llm=llm,
@@ -1252,7 +1331,7 @@ def main(argv: list[str] | None = None) -> int:
         rag=rag,
         workspace_root=args.workspace,
         use_builtins=not args.no_builtins,
-        session_id=args.session_id,
+        session_id=session_id,
         session_store=session_store,
         quiet=args.quiet,
         reflect=args.reflect,

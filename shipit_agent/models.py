@@ -21,6 +21,7 @@ EventType = Literal[
     "llm_retry",
     "tool_retry",
     "run_completed",
+    "run_cancelled",
     "context_snapshot",
     "context_compacted",
     "rag_sources",

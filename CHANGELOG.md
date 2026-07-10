@@ -24,6 +24,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `renderer.feed(event)` per streamed event handles token/card interleaving
   and newline management; prints the final answer itself when an adapter
   doesn't stream, so it works with every LLM.
+- **Rich rendering** — `StreamRenderer(style="rich")` / `run_live(style=...)`
+  draws Claude-Code-style ⏺/⎿ cards with ANSI colors (tool name cyan, ✓
+  green, ✗ red, durations dim); `"auto"` picks rich on TTYs, plain elsewhere.
+- **Cancellation** — `agent.cancel()` (thread-safe) stops the in-flight
+  `run()`/`stream()` at the next checkpoint (before the next LLM call or
+  tool), emits `run_cancelled`, and returns normally with
+  `metadata["cancelled"]`; mid-batch tool calls get synthetic
+  "[cancelled before execution]" results so message pairing stays valid.
+- **Edit-tool hardening** — `edit_file` now detects **external
+  modification** (file mtime moved since the last `read_file`) and blocks
+  with a re-read hint; successful edits return a compact **unified diff**
+  (also in `metadata["diff"]`), and sequential edits keep the guard fresh.
+  Read-before-edit and unique-match validation already existed.
+- **LLM-powered context compaction** — when a run approaches the context
+  window, older turns are now **summarized by the model** (decisions, facts,
+  file paths, open threads preserved; ~300 words) instead of truncated;
+  any summarizer failure falls back to the mechanical condensation, and the
+  `context_compacted` event now fires reliably (explicit did-compact flag).
+- **CLI upgrades** — `shipit-chat` renders turns with the live
+  `StreamRenderer` (real tokens + ⏺/⎿ cards instead of a spinner), prompts
+  **[y]es / [n]o / [a]lways** inline when a tool hits an `ask` permission
+  rule (always-allows persist for the session), and adds `--continue` to
+  resume the most recent session (default store `~/.shipit/sessions`).
+  Fixed a latent crash: `--session-dir` passed a wrong kwarg to
+  `FileSessionStore`.
 
 ---
 

@@ -71,6 +71,17 @@ def format_event_line(event: AgentEvent) -> str | None:
     return None
 
 
+_ANSI = {
+    "dim": "\033[2m",
+    "bold": "\033[1m",
+    "cyan": "\033[36m",
+    "green": "\033[32m",
+    "red": "\033[31m",
+    "yellow": "\033[33m",
+    "reset": "\033[0m",
+}
+
+
 class StreamRenderer:
     """Render a live event stream like Claude Code — tokens + tool cards.
 
@@ -84,11 +95,23 @@ class StreamRenderer:
             renderer.feed(event)
         renderer.close()
 
+    ``style`` controls the look:
+
+    - ``"auto"`` (default) — rich when writing to a TTY, plain otherwise
+    - ``"rich"`` — Claude-Code-style ⏺/⎿ cards with ANSI colors
+    - ``"plain"`` — the ⚙-card format with no escape codes
+
     Writes to ``sys.stdout`` by default; pass any ``write(str)``-able
     ``file`` (e.g. ``io.StringIO``) to capture instead.
     """
 
-    def __init__(self, *, file: Any = None, show_summary: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        file: Any = None,
+        show_summary: bool = True,
+        style: str = "auto",
+    ) -> None:
         import sys
 
         self._file = file or sys.stdout
@@ -96,6 +119,44 @@ class StreamRenderer:
         self._saw_delta = False
         self._show_summary = show_summary
         self._events: list[AgentEvent] = []
+        if style == "auto":
+            style = "rich" if getattr(self._file, "isatty", lambda: False)() else "plain"
+        self._rich = style == "rich"
+
+    def _c(self, color: str, text: str) -> str:
+        """Wrap in ANSI color when rich mode is on."""
+        if not self._rich:
+            return text
+        return f"{_ANSI[color]}{text}{_ANSI['reset']}"
+
+    def _rich_line(self, event: AgentEvent) -> str | None:
+        """Claude-Code-style ⏺/⎿ card line for one event."""
+        p = event.payload
+        if event.type == "tool_called":
+            name = self._c("bold", self._c("cyan", str(p.get("tool", "?"))))
+            args = self._c("dim", _format_args(p.get("arguments")))
+            return f"⏺ {name}({args})"
+        if event.type == "tool_completed":
+            dur = _format_duration(p.get("duration_ms"))
+            status = self._c("green", "✓") + (self._c("dim", f" {dur}") if dur else "")
+            preview = _clip(str(p.get("output", "")), _MAX_OUTPUT_CHARS)
+            body = f"  ⎿ {preview} {status}" if preview else f"  ⎿ {status}"
+            return body
+        if event.type == "tool_failed":
+            err = _clip(str(p.get("error", "")), _MAX_OUTPUT_CHARS)
+            return f"  ⎿ {self._c('red', '✗ ' + err)}"
+        if event.type == "tool_retry":
+            return self._c(
+                "yellow", f"  ⎿ ↻ retry (attempt {p.get('attempt', '?')})"
+            )
+        if event.type == "context_compacted":
+            return self._c(
+                "dim",
+                f"◈ context compacted ({p.get('before')}→{p.get('after')} messages)",
+            )
+        if event.type == "run_cancelled":
+            return self._c("yellow", "■ cancelled")
+        return None
 
     def _write(self, text: str) -> None:
         self._file.write(text)
@@ -118,7 +179,7 @@ class StreamRenderer:
                 self._mid_text = True
                 self._saw_delta = True
             return
-        line = format_event_line(event)
+        line = self._rich_line(event) if self._rich else format_event_line(event)
         if line is not None:
             self._break_text()
             self._write(line + "\n")
@@ -136,7 +197,7 @@ class StreamRenderer:
                 footer = f"✔ done · {calls} tool call{'s' if calls != 1 else ''}"
                 if failed:
                     footer += f" ({failed} failed)"
-                self._write(footer + "\n")
+                self._write(self._c("green", footer) + "\n")
 
     def close(self) -> None:
         self._break_text()

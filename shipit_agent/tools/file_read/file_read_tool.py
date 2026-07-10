@@ -90,6 +90,14 @@ class FileReadTool:
             if str(path) not in read_files:
                 read_files.append(str(path))
             state["read_files"] = read_files
+            # Record the mtime at read time so edit_file can detect the file
+            # changing underneath the agent between read and edit.
+            mtimes = dict(state.get("read_file_mtimes", {}))
+            try:
+                mtimes[str(path)] = path.stat().st_mtime_ns
+            except OSError:
+                pass
+            state["read_file_mtimes"] = mtimes
         body = numbered or "(file is empty)"
         if had_replacement:
             body = (

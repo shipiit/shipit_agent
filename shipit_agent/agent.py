@@ -180,9 +180,24 @@ class Agent:
     default_skill_ids: list[str] = field(default_factory=list)
     skill_match_limit: int = 3  # max auto-matched
 
+    # ── internal: handle to the in-flight runtime (for cancel()) ──────
+    _active_runtime: Any = field(default=None, repr=False, compare=False)
+
     # ──────────────────────────────────────────────────────────────────
     # Lifecycle
     # ──────────────────────────────────────────────────────────────────
+
+    def cancel(self) -> None:
+        """Cancel the in-flight ``run()`` / ``stream()`` (thread-safe).
+
+        The loop stops at its next checkpoint — before the next LLM call or
+        tool execution — emits ``run_cancelled``, and returns normally with
+        whatever was produced so far. Call from another thread (e.g. a
+        keyboard handler) while the agent is working; no-op when idle.
+        """
+        runtime = self._active_runtime
+        if runtime is not None:
+            runtime.cancel()
 
     def __post_init__(self) -> None:
         """Wire up RAG tools/prompts and resolve skill references.
@@ -665,7 +680,7 @@ class Agent:
         )
         skill_tool_names = self._skill_tool_names(selected_skills)
 
-        runtime = AgentRuntime(
+        runtime = self._active_runtime = AgentRuntime(
             llm=self.llm,
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
@@ -750,7 +765,9 @@ class Agent:
     # Stream (yields events as they happen)
     # ──────────────────────────────────────────────────────────────────
 
-    def run_live(self, user_prompt: str, *, file: Any = None) -> str:
+    def run_live(
+        self, user_prompt: str, *, file: Any = None, style: str = "auto"
+    ) -> str:
         """Run with a live, Claude-Code-style display and return the answer.
 
         Tokens print as they're generated (when the LLM adapter streams),
@@ -770,7 +787,7 @@ class Agent:
         """
         from shipit_agent.activity import StreamRenderer
 
-        renderer = StreamRenderer(file=file)
+        renderer = StreamRenderer(file=file, style=style)
         output = ""
         for event in self.stream(user_prompt):
             renderer.feed(event)
@@ -796,7 +813,7 @@ class Agent:
             user_prompt, selected_skills=selected_skills
         )
 
-        runtime = AgentRuntime(
+        runtime = self._active_runtime = AgentRuntime(
             llm=self.llm,
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,

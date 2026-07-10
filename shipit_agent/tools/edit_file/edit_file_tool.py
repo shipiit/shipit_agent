@@ -97,6 +97,24 @@ class EditFileTool:
                     "Edit blocked: read the file first with read_file so the patch is based on current contents."
                 )
             )
+        # External-change detection: if the file's mtime moved since the last
+        # read_file, the patch may be based on stale contents.
+        recorded_mtime = (state.get("read_file_mtimes") or {}).get(str(path))
+        if recorded_mtime is not None:
+            try:
+                current_mtime = path.stat().st_mtime_ns
+            except OSError:
+                current_mtime = None
+            if current_mtime is not None and current_mtime != recorded_mtime:
+                return ToolOutput(
+                    text=(
+                        "Edit blocked: the file changed on disk after it was "
+                        "read (external modification). Re-read it with "
+                        "read_file, then retry the edit against the current "
+                        "contents."
+                    ),
+                    metadata={"path": str(path), "error": "stale_read"},
+                )
 
         old_text = str(kwargs.get("old_text", ""))
         new_text = str(kwargs.get("new_text", ""))
@@ -138,12 +156,45 @@ class EditFileTool:
             else content.replace(old_text, new_text, 1)
         )
         path.write_text(updated, encoding="utf-8")
+
+        # Keep the recorded mtime current so sequential edits to the same
+        # file don't trip the external-change guard.
+        if isinstance(state, dict) and "read_file_mtimes" in state:
+            try:
+                state["read_file_mtimes"][str(path)] = path.stat().st_mtime_ns
+            except OSError:
+                pass
+
+        # A compact unified diff so reviewers (and the model) see exactly
+        # what changed without re-reading the file.
+        import difflib
+
+        diff_lines = list(
+            difflib.unified_diff(
+                content.splitlines(),
+                updated.splitlines(),
+                fromfile=f"a/{path.name}",
+                tofile=f"b/{path.name}",
+                lineterm="",
+                n=2,
+            )
+        )
+        diff_text = "\n".join(diff_lines)
+        if len(diff_text) > 4000:
+            diff_text = diff_text[:4000].rstrip() + "\n… (diff truncated)"
+
+        replaced = occurrences if replace_all else 1
         return ToolOutput(
-            text=f"File patched: {path}",
+            text=(
+                f"File patched: {path} "
+                f"({replaced} occurrence{'s' if replaced != 1 else ''} replaced)\n"
+                f"{diff_text}"
+            ),
             metadata={
                 "path": str(path),
                 "replace_all": replace_all,
                 "occurrences": occurrences,
                 "size": path.stat().st_size,
+                "diff": diff_text,
             },
         )

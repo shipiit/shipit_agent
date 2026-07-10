@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.formatting import clip_text
 
 from .prompt import BASH_PROMPT
 
@@ -300,8 +301,10 @@ class BashTool:
             timeout=timeout,
         )
         duration = time.monotonic() - started_at
-        output = completed.stdout.strip()
-        error = completed.stderr.strip()
+        # Clip long logs to head + tail so a noisy command can't flood the
+        # model's context while still keeping the error/exit at the very end.
+        output = clip_text(completed.stdout.strip())
+        error = clip_text(completed.stderr.strip())
         lines: list[str] = [f"exit_code: {completed.returncode}"]
         if output:
             lines.append("stdout:")

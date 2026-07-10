@@ -30,13 +30,14 @@ from .litellm_adapter import (
     TogetherChatLLM,
     VertexAIChatLLM,
 )
-from .openai_adapter import OpenAIChatLLM
+from .openai_adapter import BedrockGemmaChatLLM, OpenAIChatLLM
 from .simple import ShipitLLM, SimpleEchoLLM
 
 __all__ = [
     "AnthropicChatLLM",
     "bash",
     "BedrockChatLLM",
+    "BedrockGemmaChatLLM",
     "build_llm_from_env",
     "build_llm_from_settings",
     "code_execution",

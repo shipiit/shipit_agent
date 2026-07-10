@@ -463,6 +463,33 @@ class BedrockChatLLM(LiteLLMChatLLM):
     def __init__(
         self, model: str = "bedrock/openai.gpt-oss-120b-1:0", **completion_kwargs: Any
     ) -> None:
+        self._mantle_delegate: Any = None
+
+        # Gemma 4 on Bedrock is served through the OpenAI-compatible
+        # `bedrock-mantle` endpoint (with native function calling for agentic
+        # use), NOT the Converse API the rest of Bedrock uses. Route it there
+        # transparently so callers keep using BedrockChatLLM — pass a
+        # `google.gemma-4-*` id and it just works (needs a Bedrock API key in
+        # AWS_BEARER_TOKEN_BEDROCK). ``complete()`` forwards to the delegate.
+        if "gemma-4" in model.lower():
+            from shipit_agent.llms.openai_adapter import BedrockGemmaChatLLM
+
+            mantle_model = model.split("bedrock/", 1)[-1]
+            region = completion_kwargs.pop("aws_region_name", None) or (
+                completion_kwargs.pop("region", None)
+            )
+            api_key = completion_kwargs.pop("api_key", None)
+            base_url = completion_kwargs.pop("base_url", None)
+            self._mantle_delegate = BedrockGemmaChatLLM(
+                model=mantle_model,
+                region=region,
+                api_key=api_key,
+                base_url=base_url,
+                **completion_kwargs,
+            )
+            self.model = model
+            return
+
         # Bedrock's Anthropic path requires strict tool_use/tool_result id
         # pairing. The shipit_agent Message model doesn't carry tool-call IDs,
         # so we let litellm patch the request on our behalf (inserts dummy
@@ -484,6 +511,12 @@ class BedrockChatLLM(LiteLLMChatLLM):
                 litellm.modify_params = True
             except Exception:
                 pass
+
+    def complete(self, **kwargs: Any) -> LLMResponse:
+        # Gemma 4 → OpenAI-compatible mantle endpoint; everything else → Converse.
+        if self._mantle_delegate is not None:
+            return self._mantle_delegate.complete(**kwargs)
+        return super().complete(**kwargs)
 
 
 class GeminiChatLLM(LiteLLMChatLLM):

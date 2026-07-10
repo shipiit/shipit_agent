@@ -117,9 +117,21 @@ class TestBrowserSessionInAsyncioLoop:
                     b.navigate("data:text/html,<h1>hi</h1>")
                     b.click(5, 5)
                     return len(shot)
-            except RuntimeError as exc:
-                if "requires Playwright" in str(exc):
-                    pytest.skip("chromium not installed")
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc).lower()
+                # Skip cleanly when the Chromium binary isn't installed for
+                # this Python (CI / minimal envs), rather than failing.
+                if any(
+                    s in msg
+                    for s in (
+                        "requires playwright",
+                        "playwright install",
+                        "executable doesn't exist",
+                        "browsertype.launch",
+                        "looks like playwright",
+                    )
+                ):
+                    pytest.skip(f"chromium not installed: {exc}")
                 raise
 
         # Running inside asyncio.run reproduces the Jupyter condition.

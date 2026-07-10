@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.formatting import clip_text
 from .prompt import GREP_SEARCH_PROMPT
 
 
@@ -173,7 +174,7 @@ class GrepSearchTool:
                 case_sensitive=case_sensitive,
             )
         return ToolOutput(
-            text=output or "No matches found.",
+            text=clip_text(output) or "No matches found.",
             metadata={
                 "pattern": pattern,
                 "path": str(path),

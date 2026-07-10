@@ -7,6 +7,7 @@ from tempfile import NamedTemporaryFile
 from typing import ClassVar
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.formatting import clip_text
 from .prompt import CODE_EXECUTION_PROMPT
 from .sandbox import (
     SANDBOX_CMDS as _SANDBOX_CMDS,
@@ -227,9 +228,9 @@ class CodeExecutionTool:
             [
                 f"exit_code: {completed.returncode}",
                 "stdout:",
-                completed.stdout.rstrip(),
+                clip_text(completed.stdout.rstrip()),
                 "stderr:",
-                completed.stderr.rstrip(),
+                clip_text(completed.stderr.rstrip()),
             ]
         ).strip()
         return ToolOutput(

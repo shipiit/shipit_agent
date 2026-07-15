@@ -87,3 +87,35 @@ class TestStreamEvents:
         assert "navigated to https://example.com" in text
         assert "All set." in text
         assert "✔ done · 1 tool call" in text
+
+
+class TestQuotedActionParsing:
+    """Regression: models emit quoted URLs → Playwright 'invalid URL'."""
+
+    def test_navigate_strips_quotes(self) -> None:
+        from shipit_agent.computer_use import parse_action
+
+        for raw in (
+            'ACTION: navigate "https://www.google.com/flights"',
+            "ACTION: navigate 'https://www.google.com/flights'",
+            'ACTION: navigate ""https://www.google.com/flights""',
+            'ACTION: navigate url="https://www.google.com/flights"',
+            'ACTION: navigate URL=https://www.google.com/flights',
+        ):
+            action = parse_action(raw)
+            assert action.args["url"] == "https://www.google.com/flights", raw
+
+    def test_key_and_type_strip_quotes(self) -> None:
+        from shipit_agent.computer_use import parse_action
+
+        assert parse_action('ACTION: key "Enter"').args["key"] == "Enter"
+        assert parse_action("ACTION: type 'hello world'").args["text"] == "hello world"
+
+    def test_anthropic_block_url_stripped(self) -> None:
+        from shipit_agent.computer_use import parse_action
+
+        action = parse_action(
+            {"type": "tool_use", "name": "computer",
+             "input": {"action": "navigate", "url": '"https://kayak.com"'}}
+        )
+        assert action.args["url"] == "https://kayak.com"

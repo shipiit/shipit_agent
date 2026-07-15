@@ -31,6 +31,14 @@ from typing import Any
 from .models import ActionKind, ComputerAction
 
 
+def _strip_quotes(value: str) -> str:
+    """Remove surrounding single/double quotes (repeatedly, for ""url"")."""
+    value = value.strip()
+    while len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -120,7 +128,7 @@ def _from_anthropic_tool_use(block: dict[str, Any]) -> ComputerAction:
     if action == "navigate":
         return ComputerAction(
             kind=ActionKind.NAVIGATE,
-            args={"url": str(input_.get("url", ""))},
+            args={"url": _strip_quotes(str(input_.get("url", "")))},
             rationale=rationale,
         )
 
@@ -178,20 +186,16 @@ def _from_plain_text(text: str) -> ComputerAction:
         )
 
     if cmd == "type":
-        # Strip surrounding quotes if present
-        body = rest
-        if (body.startswith('"') and body.endswith('"')) or (
-            body.startswith("'") and body.endswith("'")
-        ):
-            body = body[1:-1]
         return ComputerAction(
-            kind=ActionKind.TYPE, args={"text": body}, rationale=rationale
+            kind=ActionKind.TYPE,
+            args={"text": _strip_quotes(rest)},
+            rationale=rationale,
         )
 
     if cmd == "key":
         return ComputerAction(
             kind=ActionKind.KEY,
-            args={"key": rest or "Enter"},
+            args={"key": _strip_quotes(rest) or "Enter"},
             rationale=rationale,
         )
 
@@ -213,9 +217,16 @@ def _from_plain_text(text: str) -> ComputerAction:
         return ComputerAction(kind=ActionKind.NOOP, rationale="scroll missing args")
 
     if cmd == "navigate":
+        # Models frequently emit `navigate "https://…"` or `navigate
+        # url=https://…` — normalize both so Playwright never sees literal
+        # quote characters (→ "Cannot navigate to invalid URL").
+        url = rest
+        if url.lower().startswith("url="):
+            url = url[4:]
+        url = _strip_quotes(url)
         return ComputerAction(
             kind=ActionKind.NAVIGATE,
-            args={"url": rest},
+            args={"url": url},
             rationale=rationale,
         )
 

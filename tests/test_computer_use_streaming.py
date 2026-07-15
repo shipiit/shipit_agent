@@ -119,3 +119,60 @@ class TestQuotedActionParsing:
              "input": {"action": "navigate", "url": '"https://kayak.com"'}}
         )
         assert action.args["url"] == "https://kayak.com"
+
+
+class TestObstacleHandling:
+    def test_system_prompt_teaches_consent_dismissal(self) -> None:
+        from shipit_agent.computer_use.computer_use_agent import SYSTEM_PROMPT
+
+        assert "Accept all" in SYSTEM_PROMPT
+        assert "never wait for a human" in SYSTEM_PROMPT
+        assert "CAPTCHA" in SYSTEM_PROMPT
+
+    def test_agent_clicks_through_consent_then_answers(self) -> None:
+        """The loop itself: consent click is just another action card."""
+        agent = _agent([
+            "ACTION: navigate https://www.google.com/flights",
+            "Cookie wall visible.\nACTION: click 780,520",   # Accept all
+            "ACTION: screenshot",
+            "ACTION: done Cheapest direct is $214.",
+        ])
+        result = agent.run()
+        assert result.status == "done"
+        kinds = [r.action.kind.value for r in result.action_history]
+        assert kinds == ["navigate", "click", "screenshot", "done"]
+
+    def test_save_storage_state_requires_path(self) -> None:
+        from shipit_agent.computer_use.browser_session import (
+            PlaywrightBrowserSession,
+        )
+
+        session = PlaywrightBrowserSession.__new__(PlaywrightBrowserSession)
+        try:
+            session.save_storage_state()
+        except ValueError as e:
+            assert "No path" in str(e)
+        else:
+            raise AssertionError("expected ValueError")
+
+
+class TestSessionErgonomics:
+    def test_launch_signature_has_visibility_knobs(self) -> None:
+        import inspect
+
+        from shipit_agent.computer_use.browser_session import (
+            PlaywrightBrowserSession,
+        )
+
+        params = inspect.signature(PlaywrightBrowserSession.launch).parameters
+        assert params["slow_mo"].default == 0.0
+        assert params["settle_ms"].default == 500
+        assert params["storage_state"].default is None
+
+    def test_settle_noop_without_configuration(self) -> None:
+        from shipit_agent.computer_use.browser_session import (
+            PlaywrightBrowserSession,
+        )
+
+        session = PlaywrightBrowserSession.__new__(PlaywrightBrowserSession)
+        session._settle()  # no _settle_ms attr → must not raise

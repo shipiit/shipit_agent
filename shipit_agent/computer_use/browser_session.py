@@ -140,7 +140,24 @@ class PlaywrightBrowserSession:
         headless: bool = True,
         viewport_size: tuple[int, int] = (1280, 720),
         start_url: str = "about:blank",
+        storage_state: str | None = None,
+        slow_mo: float = 0.0,
+        settle_ms: int = 500,
     ) -> "PlaywrightBrowserSession":
+        """Start a browser session.
+
+        ``storage_state`` points at a Playwright storage-state JSON file
+        (cookies + localStorage). If the file exists it is loaded — so
+        consent walls accepted in an earlier run stay accepted; the agent
+        handles them itself the first time either way. Save the current
+        state at any point with :meth:`save_storage_state`.
+
+        ``slow_mo`` (milliseconds) slows every Playwright operation — set
+        ~200 with ``headless=False`` to *watch* the agent work. ``settle_ms``
+        is the pause after each action before control returns, so the next
+        screenshot shows the page AFTER it reacted (dropdowns opened,
+        navigation painted) instead of mid-animation.
+        """
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:  # pragma: no cover
@@ -155,11 +172,20 @@ class PlaywrightBrowserSession:
 
         def _start() -> tuple[Any, Any, Any]:
             # Runs on the worker thread (no asyncio loop) → sync API is happy.
+            import os
+
             playwright = sync_playwright().start()
-            browser = playwright.chromium.launch(headless=headless)
-            context = browser.new_context(
-                viewport={"width": viewport_size[0], "height": viewport_size[1]},
-            )
+            browser = playwright.chromium.launch(headless=headless, slow_mo=slow_mo)
+            context_kwargs: dict[str, Any] = {
+                "viewport": {"width": viewport_size[0], "height": viewport_size[1]},
+                # 1:1 CSS-pixel screenshots on Retina/HiDPI displays, so the
+                # coordinates the model reads off the screenshot are EXACTLY
+                # the coordinates mouse.click() expects.
+                "device_scale_factor": 1,
+            }
+            if storage_state and os.path.exists(storage_state):
+                context_kwargs["storage_state"] = storage_state
+            context = browser.new_context(**context_kwargs)
             page = context.new_page()
             page.goto(start_url)
             return playwright, browser, page
@@ -170,13 +196,38 @@ class PlaywrightBrowserSession:
             executor.shutdown(wait=False)
             raise
 
-        return cls(
+        session = cls(
             executor=executor,
             browser=browser,
             page=page,
             playwright=playwright,
             viewport_size=viewport_size,
         )
+        session._storage_state_path = storage_state
+        session._settle_ms = max(0, int(settle_ms))
+        return session
+
+    def _settle(self) -> None:
+        """Give the page time to react before the next screenshot."""
+        ms = getattr(self, "_settle_ms", 0)
+        if ms:
+            self._run(lambda: self._page.wait_for_timeout(ms))
+
+    def save_storage_state(self, path: str | None = None) -> str:
+        """Persist cookies + localStorage (e.g. accepted consent) to disk.
+
+        Reuse the file via ``launch(storage_state=...)`` so future runs skip
+        every consent wall the agent already clicked through. Returns the
+        path written.
+        """
+        target = path or getattr(self, "_storage_state_path", None)
+        if not target:
+            raise ValueError(
+                "No path: pass save_storage_state(path=...) or launch with "
+                "storage_state=..."
+            )
+        self._run(lambda: self._page.context.storage_state(path=target))
+        return target
 
     # --- Protocol surface -----------------------------------------------
     def screenshot(self) -> str:
@@ -185,18 +236,24 @@ class PlaywrightBrowserSession:
 
     def click(self, x: int, y: int) -> None:
         self._run(lambda: self._page.mouse.click(x, y))
+        self._settle()
 
     def type_text(self, text: str) -> None:
-        self._run(lambda: self._page.keyboard.type(text))
+        # delay= makes keystrokes visible and lets autocomplete widgets react
+        self._run(lambda: self._page.keyboard.type(text, delay=40))
+        self._settle()
 
     def key(self, key: str) -> None:
         self._run(lambda: self._page.keyboard.press(key))
+        self._settle()
 
     def scroll(self, dx: int, dy: int) -> None:
         self._run(lambda: self._page.mouse.wheel(dx, dy))
+        self._settle()
 
     def navigate(self, url: str) -> None:
         self._run(lambda: self._page.goto(url))
+        self._settle()
 
     def close(self) -> None:
         def _close() -> None:

@@ -7,7 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+**Observability + live browsing.** Langfuse support for BOTH server
+generations, a downloadable-files tool, a fully observable and watchable
+computer-use loop, and a security hardening pass.
+**2006 tests passing (+37 new). 0 regressions.**
+
+### Added
+
+- **`LangfuseExporter`** (`shipit_agent.tracing_exporters`) — ship whole agent
+  runs to Langfuse as a root trace + one child span per tool call (real
+  durations, inputs/outputs, error status). Speaks **both** server
+  generations with zero SDK dependency: v3 via native OTLP
+  (`/api/public/otel/v1/traces`), v2 via the classic batch API
+  (`/api/public/ingestion`); `api_version="auto"` probes
+  `/api/public/health` and picks the wire format. Works with every adapter —
+  including Gemma-4-on-mantle calls that bypass litellm callbacks. Transport
+  failures never break the run. (For LLM-call analytics via litellm: use
+  `litellm.callbacks=["langfuse_otel"]` against v3 servers — the classic
+  `"langfuse"` callback is v2-SDK-shaped and 500s on v3.)
+- **`download_file` builtin** — binary-safe URL downloads (zip/csv/image/pdf):
+  64KB streaming with a hard size cap (partials removed on abort), reuses
+  open_url's SSRF/scheme guard, Content-Disposition filenames, no silent
+  overwrites, absolute path returned in metadata.
+- **`ComputerUseAgent.stream()`** — the screenshot→reason→act loop is now
+  observable: standard events (`tool_called`/`tool_completed`/`tool_failed`
+  as `browser.<action>` with `call_id` + `duration_ms`) render as live tool
+  cards via `StreamRenderer`; `run()` unchanged.
+- **Watchable, reliable live browsing** — `slow_mo=` (see the mouse move),
+  `settle_ms=500` (screenshots taken AFTER the page reacts, not
+  mid-animation), `device_scale_factor=1` (exact coordinate mapping on
+  Retina), typed keystrokes with `delay=40`; `storage_state=` /
+  `save_storage_state()` persist accepted consent across runs.
+- **Obstacle-autonomous computer use** — system prompt now instructs the
+  model to dismiss cookie/consent walls ("Accept all"), close popups, skip
+  sign-ins, route around CAPTCHAs, and verify field focus before typing.
+
+### Fixed
+
+- **Quoted action args** — models emitting `ACTION: navigate "https://…"`
+  produced literal quote characters that Playwright rejects ("Cannot
+  navigate to invalid URL"); quotes (and a `url=` prefix) are now stripped
+  in both the text and Anthropic tool_use parsers.
+- **Security** — `research_brief` now enforces http/https before fetching
+  (URLs come from model-influenced search results; `file:///` blocked);
+  `AdaptiveAgent.create_tool` now honors `can_create_tools=False`
+  (previously ignored) and documents its trusted-developer-code-only
+  contract. GitHub CodeQL/Dependabot: 0 open; pip-audit clean on all
+  shipit-relevant packages.
 
 ---
 

@@ -7,7 +7,8 @@ accepts a ``trace_store``.
 
 from __future__ import annotations
 
+from .langfuse_exporter import LangfuseExporter
 from .langsmith_exporter import LangSmithExporter
 from .otel_exporter import OpenTelemetryExporter
 
-__all__ = ["LangSmithExporter", "OpenTelemetryExporter"]
+__all__ = ["LangfuseExporter", "LangSmithExporter", "OpenTelemetryExporter"]

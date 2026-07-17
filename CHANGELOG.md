@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [1.0.17] — 2026-07-17
+
 **Observability + live browsing.** Langfuse support for BOTH server
 generations, a downloadable-files tool, a fully observable and watchable
 computer-use loop, and a security hardening pass.
@@ -1353,7 +1359,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.16...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.17...HEAD
+[1.0.17]: https://github.com/shipiit/shipit_agent/compare/v1.0.16...v1.0.17
 [1.0.16]: https://github.com/shipiit/shipit_agent/compare/v1.0.15...v1.0.16
 [1.0.15]: https://github.com/shipiit/shipit_agent/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/shipiit/shipit_agent/compare/v1.0.13...v1.0.14

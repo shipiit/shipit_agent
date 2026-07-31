@@ -19,14 +19,17 @@ class TestConsolePermissionPrompt:
 
     def test_yes_no_always(self) -> None:
         always: set[str] = set()
-        cb, writes = self._prompt(["y", "n", "a"], always)
+        cb, writes = self._prompt(["1", "3", "2"], always)  # menu numbers
         assert cb("bash", {"command": "ls"}).allowed
         assert not cb("bash", {"command": "rm x"}).allowed
         assert cb("bash", {"command": "pwd"}).allowed
         # always persisted — no more input consumed
         assert cb("bash", {"command": "anything"}).allowed
         assert "bash" in always
-        assert "⏸ allow bash(" in writes[0]
+        joined = "".join(writes)
+        assert "requires approval" in joined
+        assert "don't ask again for:" in joined
+        assert "1. Yes" in joined and "3. No" in joined
 
     def test_eof_denies(self) -> None:
         def boom():
@@ -219,3 +222,27 @@ class TestConsoleAskUser:
                                guardrails=None, project_root=".", mcp=None))
         ask = [t for t in agent.tools if t.name == "ask_user"]
         assert len(ask) == 1 and isinstance(ask[0], ConsoleAskUserTool)
+
+
+class TestApprovalCardUI:
+    def test_full_multiline_command_shown(self) -> None:
+        from shipit_agent import console_permission_prompt
+
+        writes: list[str] = []
+        cb = console_permission_prompt(input_fn=lambda: "1",
+                                       output=writes.append)
+        long_cmd = "cd /src\npytest tests/ -q 2>&1 | tail -15\necho done"
+        assert cb("bash", {"command": long_cmd}).allowed
+        joined = "".join(writes)
+        assert "pytest tests/ -q" in joined          # full body, not truncated
+        assert "echo done" in joined
+        assert "Bash" in joined                       # title-cased header
+
+    def test_letter_answers_still_work(self) -> None:
+        from shipit_agent import console_permission_prompt
+
+        answers = iter(["yes", "no"])
+        cb = console_permission_prompt(input_fn=lambda: next(answers),
+                                       output=lambda _t: None)
+        assert cb("bash", {"command": "ls"}).allowed
+        assert not cb("bash", {"command": "rm"}).allowed

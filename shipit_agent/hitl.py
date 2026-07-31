@@ -61,21 +61,37 @@ def console_permission_prompt(
                 decision=PermissionDecision.ALLOW,
                 reason="always-allowed (session)",
             )
-        write(
-            f"\n⏸ allow {format_call_preview(name, arguments)}? "
-            "[y]es / [n]o / [a]lways: "
-        )
+        # ── Claude-Code-style approval card ──────────────────────────
+        # Full multi-line preview of what will run (commands are shown in
+        # their entirety, not truncated), then an explicit numbered menu.
+        title = name.replace("_", " ").title()
+        write(f"\n\x1b[1m{title}\x1b[0m\n\n")
+        for key, value in list(arguments.items())[:6]:
+            text = str(value)
+            if len(text) > 4000:
+                text = text[:4000] + "…"
+            if "\n" in text or len(text) > 80:
+                indented = "\n".join("  " + line for line in text.splitlines())
+                write(f"  \x1b[2m{key}:\x1b[0m\n{indented}\n")
+            else:
+                write(f"  \x1b[2m{key}:\x1b[0m {text}\n")
+        write("\n\x1b[33mThis tool call requires approval\x1b[0m\n")
+        write("\nDo you want to proceed?\n")
+        write("  1. Yes\n")
+        write(f"  2. Yes, and don't ask again for: \x1b[1m{name}\x1b[0m\n")
+        write("  3. No\n")
+        write("▸ ")
         try:
             answer = read().strip().lower()
         except (EOFError, KeyboardInterrupt):
-            answer = "n"
-        if answer in ("a", "always"):
+            answer = "3"
+        if answer in ("2", "a", "always"):
             approved_always.add(name)
             return PermissionResult(
                 decision=PermissionDecision.ALLOW,
                 reason="user approved (always)",
             )
-        if answer in ("y", "yes"):
+        if answer in ("1", "y", "yes"):
             return PermissionResult(
                 decision=PermissionDecision.ALLOW, reason="user approved"
             )

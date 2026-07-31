@@ -164,6 +164,12 @@ class Agent:
     permissions: Any = None
     permission_callback: Any = None
 
+    # ── guardrails (content-level protection) ─────────────────────────
+    # A ``Guardrails`` instance: blocks prompt-injection inputs, redacts
+    # secrets/PII from outputs, and denies tool calls whose arguments match
+    # configured patterns. See ``shipit_agent.guardrails``.
+    guardrails: Any = None
+
     # ── project / file tools ──────────────────────────────────────────
     project_root: str | Path = "/tmp"
 
@@ -705,6 +711,7 @@ class Agent:
             context_window_tokens=self.context_window_tokens,
             replan_interval=self.replan_interval,
             permissions=self._effective_permissions(),
+            guardrails=self.guardrails,
         )
         state, response = runtime.run(effective_user_prompt)
 
@@ -840,6 +847,7 @@ class Agent:
             context_window_tokens=self.context_window_tokens,
             replan_interval=self.replan_interval,
             permissions=self._effective_permissions(),
+            guardrails=self.guardrails,
         )
         for event in runtime.stream(user_prompt):
             yield event

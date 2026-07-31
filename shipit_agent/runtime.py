@@ -117,6 +117,7 @@ class AgentRuntime:
         context_window_tokens: int = 0,
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
+        guardrails: Any | None = None,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -138,6 +139,7 @@ class AgentRuntime:
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
         self.permissions = permissions
+        self.guardrails = guardrails
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
         # signature don't — passing it unconditionally raises TypeError.
@@ -249,6 +251,12 @@ class AgentRuntime:
     def _authorize_tool(
         self, name: str, arguments: dict[str, Any], tool: Any
     ) -> PermissionResult | None:
+        # Guardrail tool rules run FIRST — a content-level deny (e.g. rm -rf /
+        # in bash args) wins over any allow rule in the permission engine.
+        if self.guardrails is not None:
+            guard = self.guardrails.check_tool(name, arguments)
+            if guard is not None and not guard.allowed:
+                return guard
         return authorize_tool(self.hooks, self.permissions, name, arguments, tool)
 
     def _execute_single_tool(
@@ -691,6 +699,35 @@ class AgentRuntime:
     def _run_inner(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
         shared_state: dict[str, Any] = {}
+
+        # ── Guardrails: input gate — blocked prompts never reach the LLM ──
+        if self.guardrails is not None:
+            decision = self.guardrails.check_input(user_prompt)
+            if decision.blocked:
+                self.emit(
+                    state,
+                    "guardrail_triggered",
+                    f"Input blocked: {decision.reason}",
+                    stage="input",
+                    reason=decision.reason,
+                )
+                refusal = (
+                    "Request blocked by guardrails: " + decision.reason
+                )
+                self.emit(
+                    state,
+                    "run_completed",
+                    "Run blocked by guardrails",
+                    output=refusal,
+                    content=refusal,
+                    format="markdown",
+                    usage={},
+                    cancelled=False,
+                    guardrail_blocked=True,
+                )
+                return state, LLMResponse(content=refusal)
+            if decision.action == "redact" and decision.text:
+                user_prompt = decision.text
         registry = self.registry()
         tool_prompt = build_tools_prompt(registry.values())
         base_prompt = (
@@ -947,6 +984,23 @@ class AgentRuntime:
         )
         # Expose the final answer as both `output` (legacy) and `content`
         # (explicit markdown string) so consumers can render it directly.
+        # ── Guardrails: output gate — redact secrets/PII before anyone sees it ──
+        if self.guardrails is not None and response.content:
+            out_decision = self.guardrails.check_output(response.content)
+            if out_decision.action != "allow":
+                self.emit(
+                    state,
+                    "guardrail_triggered",
+                    f"Output {out_decision.action}: {out_decision.reason}",
+                    stage="output",
+                    reason=out_decision.reason,
+                )
+                response.content = (
+                    out_decision.text
+                    if out_decision.action == "redact"
+                    else f"Response withheld by guardrails: {out_decision.reason}"
+                )
+
         self.emit(
             state,
             "run_completed",

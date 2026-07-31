@@ -102,6 +102,7 @@ from .verifier import (
 )
 from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
 from .activity import StreamRenderer, format_activity, format_event_line
+from .guardrails import GuardDecision, Guardrails
 from .agent import Agent, DEFAULT_SKILLS_PATH
 from .builtins import get_builtin_tool_map, get_builtin_tools
 from .chat_session import AgentChatSession
@@ -441,6 +442,8 @@ __all__ = [
     "FileTraceStore",
     "format_activity",
     "format_event_line",
+    "GuardDecision",
+    "Guardrails",
     "GitHubTool",
     "GitLabTool",
     "GmailTool",

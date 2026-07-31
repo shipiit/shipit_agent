@@ -155,3 +155,31 @@ class TestBareShipitOpensChat:
 
         assert main([]) == 0                      # captured stdout ≠ tty
         assert "serve" in capsys.readouterr().out
+
+
+class TestJobsCommand:
+    def test_add_list_remove_roundtrip(self, tmp_path, capsys) -> None:
+        from shipit_agent.cli import main
+
+        db = str(tmp_path / "jobs.db")
+        assert main(["jobs", "add", "hourly digest", "--every", "3600",
+                     "--name", "digest", "--db", db]) == 0
+        assert main(["jobs", "add", "daily post", "--at", "09:00",
+                     "--name", "post", "--db", db]) == 0
+        assert main(["jobs", "list", "--db", db]) == 0
+        out = capsys.readouterr().out
+        assert "digest" in out and "daily 09:00" in out and "every 3600s" in out
+        assert main(["jobs", "remove", "digest", "--db", db]) == 0
+        assert main(["jobs", "list", "--db", db]) == 0
+        assert "digest" not in capsys.readouterr().out
+
+    def test_add_requires_a_schedule(self, tmp_path) -> None:
+        from shipit_agent.cli import main
+
+        assert main(["jobs", "add", "x", "--db", str(tmp_path / "j.db")]) == 1
+
+    def test_remove_unknown_job(self, tmp_path) -> None:
+        from shipit_agent.cli import main
+
+        assert main(["jobs", "remove", "ghost",
+                     "--db", str(tmp_path / "j.db")]) == 1

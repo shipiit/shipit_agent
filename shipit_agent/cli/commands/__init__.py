@@ -1,5 +1,5 @@
 """shipit CLI subcommands — one module per command family."""
 
-from . import browse, code, catalog, serve_cmd, simple
+from . import browse, code, catalog, jobs, serve_cmd, simple
 
-__all__ = ["browse", "code", "catalog", "serve_cmd", "simple"]
+__all__ = ["browse", "code", "catalog", "jobs", "serve_cmd", "simple"]

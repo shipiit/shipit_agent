@@ -84,3 +84,20 @@ class TestBottomInputTerminal:
                                 "lines": 4, "columns": 80})())
         term = BottomInputTerminal(stream=io.StringIO(), enabled=True).start()
         assert term.enabled is False
+
+
+class TestBrowseCommand:
+    def test_browse_parser_registered(self) -> None:
+        from shipit_agent.cli import build_parser
+
+        args = build_parser().parse_args(
+            ["browse", "find flights", "--show", "--max-steps", "8"])
+        assert args.goal == "find flights"
+        assert args.show is True and args.max_steps == 8
+        assert args.storage_state.endswith("browser_state.json")
+
+    def test_browse_in_help(self, capsys) -> None:
+        from shipit_agent.cli import main
+
+        assert main([]) == 0
+        assert "browse" in capsys.readouterr().out

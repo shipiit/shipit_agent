@@ -23,7 +23,7 @@ __all__ = ["main", "build_parser", "build_llm"]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    from .commands import catalog, code, serve_cmd, simple
+    from .commands import browse, catalog, code, serve_cmd, simple
 
     parser = argparse.ArgumentParser(
         prog="shipit",
@@ -31,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
     code.register(sub)
+    browse.register(sub)
     simple.register(sub)
     serve_cmd.register(sub)
     catalog.register(sub)

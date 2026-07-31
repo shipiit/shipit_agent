@@ -9,6 +9,7 @@ from .confluence import ConfluenceTool
 from .custom_api import CustomAPITool
 from .dashboard_render import DashboardRenderTool
 from .decision_matrix import DecisionMatrixTool
+from .deep_research import DeepResearchTool
 from .document_builder import DocumentBuilderTool
 from .download_file import DownloadFileTool
 from .edit_file import EditFileTool
@@ -71,6 +72,7 @@ __all__ = [
     "CustomAPITool",
     "DashboardRenderTool",
     "DecisionMatrixTool",
+    "DeepResearchTool",
     "DocumentBuilderTool",
     "DownloadFileTool",
     "DuckDuckGoSearchProvider",

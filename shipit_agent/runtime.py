@@ -15,6 +15,7 @@ from shipit_agent.llms.base import LLM, LLMResponse, accepts_text_delta_callback
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
 from shipit_agent.permissions import (
+    PermissionDecision,
     PermissionEngine,
     PermissionResult,
     authorize_tool,
@@ -156,6 +157,8 @@ class AgentRuntime:
         # Cooperative cancellation — checked between iterations and before
         # each tool execution. Set from any thread via cancel().
         self._cancel_event = threading.Event()
+        # Guardrails max_tool_calls ceiling (per run — a runtime is per-run).
+        self._guarded_tool_calls = 0
 
     def cancel(self) -> None:
         """Request cancellation of the in-flight run (thread-safe).
@@ -254,9 +257,16 @@ class AgentRuntime:
         # Guardrail tool rules run FIRST — a content-level deny (e.g. rm -rf /
         # in bash args) wins over any allow rule in the permission engine.
         if self.guardrails is not None:
+            ceiling = getattr(self.guardrails, "max_tool_calls", 0)
+            if ceiling and self._guarded_tool_calls >= ceiling:
+                return PermissionResult(
+                    decision=PermissionDecision.DENY,
+                    reason=f"guardrail: tool-call ceiling ({ceiling}) reached",
+                )
             guard = self.guardrails.check_tool(name, arguments)
             if guard is not None and not guard.allowed:
                 return guard
+            self._guarded_tool_calls += 1
         return authorize_tool(self.hooks, self.permissions, name, arguments, tool)
 
     def _execute_single_tool(
@@ -391,6 +401,23 @@ class AgentRuntime:
 
         if self.hooks:
             self.hooks.run_after_tool(tool_call.name, tool_result)
+
+        # Guardrails: sanitize the tool output (indirect prompt-injection
+        # neutralized, secrets redacted) BEFORE the model reads it.
+        if self.guardrails is not None and tool_result.output:
+            sanitized = self.guardrails.check_tool_output(
+                tool_call.name, tool_result.output
+            )
+            if sanitized.action != "allow":
+                self.emit(
+                    state,
+                    "guardrail_triggered",
+                    f"Tool output sanitized: {sanitized.reason}",
+                    stage="tool_output",
+                    tool=tool_call.name,
+                    reason=sanitized.reason,
+                )
+                tool_result.output = sanitized.text
 
         msg = Message(
             role="tool",

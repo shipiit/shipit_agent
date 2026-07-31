@@ -240,6 +240,7 @@ from .batch import (
 from .tools import (
     AskUserTool,
     ArtifactBuilderTool,
+    DeepResearchTool,
     DocumentBuilderTool,
     DownloadFileTool,
     BashTool,
@@ -404,6 +405,7 @@ __all__ = [
     "AskUserTool",
     "Artifact",
     "ArtifactBuilderTool",
+    "DeepResearchTool",
     "DocumentBuilderTool",
     "DownloadFileTool",
     "BashTool",

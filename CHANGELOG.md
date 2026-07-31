@@ -33,6 +33,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   embedder window.
 - Notebooks 72 (guardrails + deep research, live Bedrock) and 73 (CLI +
   power tools), docs guide `guides/shipit-cli.md`, README CLI section.
+- **Human-in-the-loop everywhere** — `console_permission_prompt()`: one
+  reusable [y]/[n]/[a]lways approval callback for any agent; powers
+  `shipit chat` and `shipit code`; shareable always-allowed set,
+  injectable I/O, EOF→deny.
+- **Bottom-pinned chat TUI** — `BottomInputTerminal` (VT100 scroll
+  regions, stdlib): chat scrolls, input never moves; auto-on for real
+  TTYs in `shipit chat`, transparent plain fallback elsewhere.
+- **`shipit browse`** — computer use from the CLI: vision loop streamed
+  as live cards, `--show` visible window, consent persistence.
+- **`--mcp` flag + official Playwright MCP** — attach catalog servers to
+  `run`/`code`/`serve`/`doctor` from the command line; the new
+  `playwright` entry gives any tool-calling model accessibility-tree
+  browser control.
+- **RAG + Agent example** (24) — RRF-fused hybrid retrieval with
+  [document-id] citations, fully offline.
 
 ---
 

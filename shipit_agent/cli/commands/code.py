@@ -66,17 +66,11 @@ def cmd_code(args: argparse.Namespace) -> int:
     root = os.getcwd()
     mode = "plan" if args.plan else ("acceptEdits" if args.yes else "default")
 
-    def gated_prompt(name: str, arguments: dict[str, Any]) -> Any:
-        if name in _permission_prompt.always:  # type: ignore[attr-defined]
-            from shipit_agent.permissions import (
-                PermissionDecision,
-                PermissionResult,
-            )
+    from shipit_agent.hitl import console_permission_prompt
 
-            return PermissionResult(
-                decision=PermissionDecision.ALLOW, reason="always-allowed"
-            )
-        return _permission_prompt(name, arguments)
+    gated_prompt = console_permission_prompt(
+        always_allowed=_permission_prompt.always  # type: ignore[attr-defined]
+    )
 
     agent = Agent.for_project(
         llm=build_llm(args.provider, args.model),

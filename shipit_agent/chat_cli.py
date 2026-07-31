@@ -517,8 +517,24 @@ class ChatREPL:
     # ---- public entry points -------------------------------------------
 
     def run(self, *, input_fn=input, output=print) -> int:
+        from shipit_agent.cli.tui import BottomInputTerminal
+
         self._install_readline()
+        # Claude-Code layout: chat scrolls in a region, input pinned at the
+        # bottom. Only activates on a real TTY (SHIPIT_NO_TUI=1 opts out);
+        # everywhere else the loop behaves exactly as before.
+        term = BottomInputTerminal()
+        if input_fn is input and term.enabled:
+            term.start()
+            input_fn = term.read
+            output = term.print
         self._banner(output)
+        try:
+            return self._run_loop(input_fn=input_fn, output=output)
+        finally:
+            term.stop()
+
+    def _run_loop(self, *, input_fn, output) -> int:
         while True:
             try:
                 line = input_fn(bold(cyan("you ▸ ")))
@@ -769,6 +785,13 @@ class ChatREPL:
                 pass  # frozen/custom agent types keep their own behavior
 
     def _permission_prompt(self, name: str, arguments: dict) -> Any:
+        from shipit_agent.hitl import console_permission_prompt
+
+        return console_permission_prompt(always_allowed=self.always_allowed)(
+            name, arguments
+        )
+
+    def _permission_prompt_legacy(self, name: str, arguments: dict) -> Any:
         from shipit_agent.permissions import PermissionDecision, PermissionResult
 
         if name in self.always_allowed:

@@ -18,6 +18,7 @@ from .function import FunctionTool
 from .file_read import FileReadTool
 from .file_write import FileWriteTool
 from .figma import FigmaTool
+from .git_ops import GitOpsTool
 from .github import GitHubTool
 from .gitlab import GitLabTool
 from .gmail import GmailTool
@@ -31,6 +32,7 @@ from .jira import JiraTool
 from .linear import LinearTool
 from .linkedin import LinkedInSearchTool
 from .memory import ClaudeMemoryTool, MemoryTool
+from .notebook_edit import NotebookEditTool
 from .notion import NotionTool
 from .open_url import OpenURLTool
 from .pdf import PDFTool
@@ -82,6 +84,7 @@ __all__ = [
     "FileWriteTool",
     "FunctionTool",
     "FigmaTool",
+    "GitOpsTool",
     "GitHubTool",
     "GitLabTool",
     "GmailTool",
@@ -95,6 +98,7 @@ __all__ = [
     "LinearTool",
     "LinkedInSearchTool",
     "MemoryTool",
+    "NotebookEditTool",
     "NotionTool",
     "OpenURLTool",
     "PDFTool",

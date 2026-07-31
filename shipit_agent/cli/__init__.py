@@ -39,8 +39,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _interactive_terminal() -> bool:
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except Exception:
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+
+    # Bare `shipit` on a real terminal opens the full interactive REPL —
+    # bottom-pinned input, slash commands, live tool cards — like Claude
+    # Code. Pipes/CI (non-TTY) keep the help text so scripts don't hang.
+    if not argv and _interactive_terminal():
+        from shipit_agent.chat_cli import main as chat_main
+
+        return chat_main([])
 
     # Full flag passthrough for the interactive/long-running families —
     # unknown flags are forwarded untouched to their dedicated CLIs.

@@ -135,3 +135,23 @@ class TestMcpFlag:
         agent = build_agent(args)
         assert connected == ["playwright", "filesystem"]
         assert len(agent.mcps) == 2
+
+
+class TestBareShipitOpensChat:
+    def test_tty_routes_to_chat(self, monkeypatch) -> None:
+        import shipit_agent.cli as cli
+
+        monkeypatch.setattr(cli, "_interactive_terminal", lambda: True)
+        called = {}
+        import shipit_agent.chat_cli as chat_cli
+
+        monkeypatch.setattr(chat_cli, "main",
+                            lambda argv: called.setdefault("argv", argv) or 0)
+        assert cli.main([]) == 0
+        assert called["argv"] == []
+
+    def test_non_tty_keeps_help(self, capsys) -> None:
+        from shipit_agent.cli import main
+
+        assert main([]) == 0                      # captured stdout ≠ tty
+        assert "serve" in capsys.readouterr().out

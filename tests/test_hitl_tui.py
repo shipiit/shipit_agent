@@ -101,3 +101,37 @@ class TestBrowseCommand:
 
         assert main([]) == 0
         assert "browse" in capsys.readouterr().out
+
+
+class TestMcpFlag:
+    def test_playwright_in_catalog(self) -> None:
+        from shipit_agent import MCP_CATALOG
+
+        entry = MCP_CATALOG["playwright"]
+        assert "@playwright/mcp" in " ".join(entry.command)
+        assert entry.required_env == []
+
+    def test_mcp_flag_parsed_everywhere(self) -> None:
+        from shipit_agent.cli import build_parser
+
+        p = build_parser()
+        assert p.parse_args(["run", "x", "--mcp", "playwright"]).mcp == "playwright"
+        assert p.parse_args(["code", "x", "--mcp", "playwright,filesystem"]
+                            ).mcp == "playwright,filesystem"
+        assert p.parse_args(["serve", "--mcp", "github"]).mcp == "github"
+
+    def test_build_agent_attaches_servers(self, monkeypatch) -> None:
+        import shipit_agent
+        from shipit_agent.cli.llm import build_agent
+
+        connected: list[str] = []
+        monkeypatch.setattr(shipit_agent, "connect_mcp",
+                            lambda name, **_kw: connected.append(name) or
+                            type("S", (), {"name": name, "tools": [],
+                                           "discover_tools": lambda self: []})())
+        args = type("A", (), {"provider": "echo", "model": None, "role": None,
+                              "guardrails": None, "project_root": None,
+                              "mcp": "playwright,filesystem"})()
+        agent = build_agent(args)
+        assert connected == ["playwright", "filesystem"]
+        assert len(agent.mcps) == 2

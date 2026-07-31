@@ -86,11 +86,19 @@ def build_agent(args: Any) -> Any:
         guardrails = Guardrails.strict()
     elif mode == "standard":
         guardrails = Guardrails.standard()
+    mcps = []
+    raw_mcp = getattr(args, "mcp", None)
+    if raw_mcp:
+        from shipit_agent import connect_mcp
+
+        for name in [n.strip() for n in raw_mcp.split(",") if n.strip()]:
+            mcps.append(connect_mcp(name))
     role = getattr(args, "role", None)
     if role:
-        return Agent.for_role(role, llm=llm, guardrails=guardrails)
+        return Agent.for_role(role, llm=llm, guardrails=guardrails, mcps=mcps)
     return Agent.with_builtins(
         llm=llm,
         project_root=getattr(args, "project_root", None) or os.getcwd(),
         guardrails=guardrails,
+        mcps=mcps,
     )

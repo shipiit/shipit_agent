@@ -72,9 +72,17 @@ def cmd_code(args: argparse.Namespace) -> int:
         always_allowed=_permission_prompt.always  # type: ignore[attr-defined]
     )
 
+    mcps = []
+    if getattr(args, "mcp", None):
+        from shipit_agent import connect_mcp
+
+        for name in [n.strip() for n in args.mcp.split(",") if n.strip()]:
+            mcps.append(connect_mcp(name))
+
     agent = Agent.for_project(
         llm=build_llm(args.provider, args.model),
         project_root=root,
+        mcps=mcps,
         prompt=CODE_PLAYBOOK,
         permission_mode=mode,
         permission_callback=None if args.yes or args.plan else gated_prompt,
@@ -113,4 +121,7 @@ def register(sub: Any) -> None:
     parser.add_argument("--guardrails", choices=["standard", "strict"],
                         default="standard")
     parser.add_argument("--max-tool-calls", type=int, default=50)
+    parser.add_argument("--mcp", default=None,
+                        help="comma-separated MCP catalog servers to attach "
+                             "(e.g. playwright — lets the agent drive a browser)")
     parser.set_defaults(fn=cmd_code)

@@ -45,4 +45,6 @@ def register(sub: Any) -> None:
     parser.add_argument("--role", default=None)
     parser.add_argument("--guardrails", choices=["standard", "strict"], default=None)
     parser.add_argument("--project-root", default=None)
+    parser.add_argument("--mcp", default=None,
+                        help="comma-separated MCP catalog servers to attach")
     parser.set_defaults(fn=cmd_serve)

@@ -19,6 +19,9 @@ def _agent_options(parser: argparse.ArgumentParser) -> None:
                         default=None, help="enable content guardrails")
     parser.add_argument("--project-root", default=None,
                         help="base dir for file/shell tools (default: cwd)")
+    parser.add_argument("--mcp", default=None,
+                        help="comma-separated MCP catalog servers to attach "
+                             "(e.g. playwright,filesystem — see `shipit mcp`)")
 
 
 def cmd_run(args: argparse.Namespace) -> int:

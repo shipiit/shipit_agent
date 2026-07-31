@@ -74,6 +74,11 @@ MCP_CATALOG: dict[str, MCPCatalogEntry] = {
             accepts_args=True,
         ),
         MCPCatalogEntry(
+            name="playwright",
+            description="Official Playwright MCP: navigate, click, type, screenshot via accessibility tree.",
+            command=[*_NPX, "@playwright/mcp@latest"],
+        ),
+        MCPCatalogEntry(
             name="puppeteer",
             description="Headless browser: navigate, screenshot, interact with pages.",
             command=[*_NPX, "@modelcontextprotocol/server-puppeteer"],

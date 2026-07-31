@@ -119,6 +119,7 @@ class AgentRuntime:
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
         guardrails: Any | None = None,
+        heal_tool_calls: bool = True,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -141,6 +142,7 @@ class AgentRuntime:
         self.replan_interval = replan_interval
         self.permissions = permissions
         self.guardrails = guardrails
+        self.heal_tool_calls = heal_tool_calls
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
         # signature don't — passing it unconditionally raises TypeError.
@@ -864,6 +866,31 @@ class AgentRuntime:
                 base_prompt=base_prompt,
             )
             self._track_usage(response)
+
+            # Self-healing: small models often emit the tool call as TEXT.
+            # Promote declared-tool calls out of the content (response-side
+            # only; the promoted span is removed, everything else kept).
+            if (
+                self.heal_tool_calls
+                and not response.tool_calls
+                and response.content
+            ):
+                from shipit_agent.tool_healing import heal_tool_calls
+
+                cleaned, healed = heal_tool_calls(
+                    response.content,
+                    {tool.name for tool in registry.values()},
+                )
+                if healed:
+                    response.tool_calls = healed
+                    response.content = cleaned
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        f"Promoted {len(healed)} text tool call(s)",
+                        tools=[c.name for c in healed],
+                        iteration=iteration,
+                    )
 
             if self.hooks:
                 self.hooks.run_after_llm(response)

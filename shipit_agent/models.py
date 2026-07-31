@@ -23,6 +23,7 @@ EventType = Literal[
     "run_completed",
     "run_cancelled",
     "guardrail_triggered",
+    "tool_call_healed",
     "context_snapshot",
     "context_compacted",
     "rag_sources",

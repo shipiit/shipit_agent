@@ -170,6 +170,12 @@ class Agent:
     # configured patterns. See ``shipit_agent.guardrails``.
     guardrails: Any = None
 
+    # ── self-healing tool calls ───────────────────────────────────────
+    # Promote tool calls that small models emit as TEXT (<tool_call> tags,
+    # fenced JSON, bare call-shaped JSON) into structured calls. Response-
+    # side only; only declared tool names qualify. See tool_healing.py.
+    heal_tool_calls: bool = True
+
     # ── project / file tools ──────────────────────────────────────────
     project_root: str | Path = "/tmp"
 
@@ -712,6 +718,7 @@ class Agent:
             replan_interval=self.replan_interval,
             permissions=self._effective_permissions(),
             guardrails=self.guardrails,
+            heal_tool_calls=self.heal_tool_calls,
         )
         state, response = runtime.run(effective_user_prompt)
 
@@ -848,6 +855,7 @@ class Agent:
             replan_interval=self.replan_interval,
             permissions=self._effective_permissions(),
             guardrails=self.guardrails,
+            heal_tool_calls=self.heal_tool_calls,
         )
         for event in runtime.stream(user_prompt):
             yield event

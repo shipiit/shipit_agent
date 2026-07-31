@@ -93,12 +93,19 @@ def build_agent(args: Any) -> Any:
 
         for name in [n.strip() for n in raw_mcp.split(",") if n.strip()]:
             mcps.append(connect_mcp(name))
+    from shipit_agent.hitl import ConsoleAskUserTool
+
+    # CLI runs have a human at the terminal: swap the event-only ask_user
+    # for the variant that actually prompts and returns the answer.
+    extra_tools = [ConsoleAskUserTool()]
     role = getattr(args, "role", None)
     if role:
-        return Agent.for_role(role, llm=llm, guardrails=guardrails, mcps=mcps)
+        return Agent.for_role(role, llm=llm, guardrails=guardrails,
+                              mcps=mcps, tools=extra_tools)
     return Agent.with_builtins(
         llm=llm,
         project_root=getattr(args, "project_root", None) or os.getcwd(),
         guardrails=guardrails,
         mcps=mcps,
+        tools=extra_tools,
     )

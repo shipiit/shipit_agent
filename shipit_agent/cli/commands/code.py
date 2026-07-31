@@ -79,10 +79,13 @@ def cmd_code(args: argparse.Namespace) -> int:
         for name in [n.strip() for n in args.mcp.split(",") if n.strip()]:
             mcps.append(connect_mcp(name))
 
+    from shipit_agent.hitl import ConsoleAskUserTool
+
     agent = Agent.for_project(
         llm=build_llm(args.provider, args.model),
         project_root=root,
         mcps=mcps,
+        tools=[ConsoleAskUserTool()],
         prompt=CODE_PLAYBOOK,
         permission_mode=mode,
         permission_callback=None if args.yes or args.plan else gated_prompt,

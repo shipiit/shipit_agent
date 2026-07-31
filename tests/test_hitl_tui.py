@@ -184,3 +184,38 @@ class TestJobsCommand:
 
         assert main(["jobs", "remove", "ghost",
                      "--db", str(tmp_path / "j.db")]) == 1
+
+
+class TestConsoleAskUser:
+    def test_prompts_and_returns_answer(self) -> None:
+        from shipit_agent.hitl import ConsoleAskUserTool
+
+        writes: list[str] = []
+        tool = ConsoleAskUserTool(input_fn=lambda: "2",
+                                  output=writes.append)
+        out = tool.run(None, question="Which env?",
+                       options=["staging", "production"])
+        assert out.text == "production"          # numeric pick → option text
+        joined = "".join(writes)
+        assert "❓ Which env?" in joined and "1. staging" in joined
+
+    def test_eof_gives_safe_default(self) -> None:
+        from shipit_agent.hitl import ConsoleAskUserTool
+
+        def boom():
+            raise EOFError
+
+        out = ConsoleAskUserTool(input_fn=boom, output=lambda _t: None).run(
+            None, question="?")
+        assert "best judgment" in out.text
+
+    def test_cli_agent_gets_console_variant(self) -> None:
+        from types import SimpleNamespace as ns
+
+        from shipit_agent.cli.llm import build_agent
+        from shipit_agent.hitl import ConsoleAskUserTool
+
+        agent = build_agent(ns(provider="echo", model=None, role=None,
+                               guardrails=None, project_root=".", mcp=None))
+        ask = [t for t in agent.tools if t.name == "ask_user"]
+        assert len(ask) == 1 and isinstance(ask[0], ConsoleAskUserTool)

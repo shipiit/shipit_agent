@@ -84,3 +84,64 @@ def console_permission_prompt(
         )
 
     return prompt
+
+
+class ConsoleAskUserTool:
+    """`ask_user` that ACTUALLY asks on the terminal.
+
+    The builtin `ask_user` emits an `interactive_request` event for UIs to
+    handle. On the CLI there is a human right there — this variant prints
+    the question (with numbered options), reads the answer from stdin, and
+    returns it so the run continues immediately. The CLI swaps it in over
+    the builtin (same name → last-write-wins in the tool merge).
+    """
+
+    name = "ask_user"
+    description = "Ask the user a clarifying question and wait for their answer."
+
+    def __init__(self, *, input_fn: Any = None, output: Any = None) -> None:
+        self._read = input_fn or (lambda: input())
+        self._write = output or (lambda t: (sys.stdout.write(t), sys.stdout.flush()))
+        self.prompt = self.prompt_instructions = (
+            "Use only when missing information blocks safe progress. Ask ONE "
+            "specific question; offer options when they exist."
+        )
+
+    def schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "options": {"type": "array", "items": {"type": "string"},
+                                    "description": "Optional numbered choices"},
+                    },
+                    "required": ["question"],
+                },
+            },
+        }
+
+    def run(self, context: Any, **kwargs: Any) -> Any:
+        from shipit_agent.tools.base import ToolOutput
+
+        question = str(kwargs.get("question", "")).strip()
+        options = [str(o) for o in (kwargs.get("options") or [])]
+        self._write(f"\n❓ {question}\n")
+        for i, option in enumerate(options, 1):
+            self._write(f"   {i}. {option}\n")
+        self._write("you ▸ ")
+        try:
+            answer = self._read().strip()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        # numeric pick → the option text
+        if answer.isdigit() and options and 1 <= int(answer) <= len(options):
+            answer = options[int(answer) - 1]
+        if not answer:
+            answer = "(no answer provided — proceed with your best judgment)"
+        return ToolOutput(text=answer,
+                          metadata={"question": question, "answered": True})

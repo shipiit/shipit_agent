@@ -186,3 +186,22 @@ class TestUIKit:
         monkeypatch.delenv("NO_COLOR")
         monkeypatch.setenv("FORCE_COLOR", "1")
         assert "\033[" in ui.style("x", "title")
+
+
+class TestModelsCommand:
+    def test_models_lists_latest_per_provider(self, capsys) -> None:
+        from shipit_agent.cli import main
+
+        assert main(["models"]) == 0
+        out = capsys.readouterr().out
+        assert "claude-opus-5" in out
+        assert "gpt-5.5" in out and "gpt-5.6" in out
+        assert "google.gemma-4-31b" in out
+        assert "→" in out  # default marker
+
+    def test_defaults_are_in_catalog(self) -> None:
+        from shipit_agent.cli.llm import DEFAULT_MODELS, MODEL_CATALOG
+
+        for provider, default in DEFAULT_MODELS.items():
+            ids = [m for m, _ in MODEL_CATALOG.get(provider, [])]
+            assert default in ids, (provider, default)

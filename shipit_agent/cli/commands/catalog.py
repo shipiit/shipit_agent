@@ -50,6 +50,21 @@ def cmd_tools(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_models(_args: argparse.Namespace) -> int:
+    from shipit_agent.cli.llm import DEFAULT_MODELS, MODEL_CATALOG
+
+    for provider in ("anthropic", "openai", "bedrock", "ollama"):
+        ui.section(provider)
+        for model_id, note in MODEL_CATALOG.get(provider, []):
+            marker = "→" if model_id == DEFAULT_MODELS.get(provider) else " "
+            ui.out(f" {ui.style(marker, 'ok')} {ui.style(model_id, 'bold'):<48} "
+                   f"{ui.style(note, 'dim')}")
+    ui.out(ui.style(
+        "\n→ = provider default · use --provider X --model Y, or set "
+        "$SHIPIT_LLM_PROVIDER / $SHIPIT_MODEL", "dim"))
+    return 0
+
+
 def register(sub: Any) -> None:
     sub.add_parser("roles", help="List prebuilt sector specialists").set_defaults(
         fn=cmd_roles)
@@ -57,3 +72,5 @@ def register(sub: Any) -> None:
         fn=cmd_mcp)
     sub.add_parser("tools", help="List the builtin tool catalogue").set_defaults(
         fn=cmd_tools)
+    sub.add_parser("models", help="List latest models per provider").set_defaults(
+        fn=cmd_models)

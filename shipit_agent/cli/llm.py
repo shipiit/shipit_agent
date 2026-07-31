@@ -15,6 +15,32 @@ DEFAULT_MODELS = {
     "ollama": "ollama/llama3.1",
 }
 
+# Curated latest-model catalog per provider (July 2026) — shown by
+# `shipit models`. (best) marks the strongest agentic pick per provider.
+MODEL_CATALOG: dict[str, list[tuple[str, str]]] = {
+    "anthropic": [
+        ("claude-opus-5", "most capable Claude for complex agents (best)"),
+        ("claude-sonnet-5", "flagship balance of speed and intelligence"),
+        ("claude-haiku-4-5-20251001", "fastest/cheapest Claude"),
+    ],
+    "openai": [
+        ("gpt-5.6", "newest flagship family"),
+        ("gpt-5.5", "current production API recommendation (best)"),
+        ("gpt-5.5-2026-04-23", "pinned snapshot of gpt-5.5"),
+    ],
+    "bedrock": [
+        ("google.gemma-4-31b", "best open-weight agentic model (best)"),
+        ("google.gemma-4-26b-a4b", "fast MoE Gemma (simple tool args only)"),
+        ("bedrock/openai.gpt-oss-120b-1:0", "reasoning/coding heavyweight"),
+        ("bedrock/anthropic.claude-sonnet-5-v1:0", "Claude Sonnet 5 on Bedrock"),
+        ("bedrock/anthropic.claude-haiku-4-5-v1:0", "Claude Haiku on Bedrock"),
+    ],
+    "ollama": [
+        ("ollama/llama3.1", "local default"),
+        ("ollama/qwen3.5", "strong local tool-caller"),
+    ],
+}
+
 
 def build_llm(provider: str | None = None, model: str | None = None) -> Any:
     provider = (provider or os.environ.get("SHIPIT_LLM_PROVIDER") or "echo").lower()

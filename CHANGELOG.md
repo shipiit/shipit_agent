@@ -120,7 +120,7 @@ computer-use loop, and a security hardening pass.
   tool-call fragments are stitched by index, usage is captured from the
   final chunk, and gateways that ignore `stream=True` degrade gracefully.
   (The LiteLLM adapter already streamed; now all three do.)
-- **`Agent.run_live(prompt)`** — the one-call Claude-Code experience:
+- **`Agent.run_live(prompt)`** — the one-call live experience:
   tokens print as they arrive, tool calls render as ⚙ cards with args /
   status / duration, and a `✔ done · N tool calls` footer closes the run.
   Returns the final answer text. Pass `file=` to capture output.
@@ -129,7 +129,7 @@ computer-use loop, and a security hardening pass.
   and newline management; prints the final answer itself when an adapter
   doesn't stream, so it works with every LLM.
 - **Rich rendering** — `StreamRenderer(style="rich")` / `run_live(style=...)`
-  draws Claude-Code-style ⏺/⎿ cards with ANSI colors (tool name cyan, ✓
+  draws rich ⏺/⎿ tool cards with ANSI colors (tool name cyan, ✓
   green, ✗ red, durations dim); `"auto"` picks rich on TTYs, plain elsewhere.
 - **Cancellation** — `agent.cancel()` (thread-safe) stops the in-flight
   `run()`/`stream()` at the next checkpoint (before the next LLM call or
@@ -184,7 +184,7 @@ and makes every run readable. Works with **any** LLM provider.
   decks, and styled HTML from one structured payload. Optional-dependency
   renderers reply with the exact `pip install` fix; wired into the builtin
   catalogue and 14 deliverable-producing specialists.
-- **`format_activity(result)` / `format_event_line(event)`** — Claude-Code-style
+- **`format_activity(result)` / `format_event_line(event)`** — rich
   tool cards (name, args, ✓/✗, duration, output preview) for finished runs and
   live streams. `AgentEvent` gains a `timestamp`; tool events carry `tool`,
   `call_id` (live-updatable card correlation), and `duration_ms`.
@@ -337,7 +337,7 @@ Anthropic). All opt-in and backward compatible. **1844 tests passing (+49 new).
 
 ## [1.0.11] — 2026-06-07
 
-**The control plane.** A Claude Code-grade safety + performance layer: a
+**The control plane.** A production-grade safety + performance layer: a
 rule-based **permission engine** with modes (incl. read-only **plan mode**),
 **hooks that can block or rewrite** tool calls, **prompt caching** for ~10×
 cheaper repeated calls, and a model-driven **memory tool** for cross-session
@@ -364,7 +364,7 @@ learning. All opt-in and backward compatible — existing agents are unchanged.
 
 - `AgentHooks` **`before_tool`** hooks can now **return a decision** to deny a
   call or **rewrite its arguments** (`PermissionResult(..., updated_arguments=…)`
-  or `{"decision": "deny", "reason": …}`), mirroring Claude Code `PreToolUse`.
+  or `{"decision": "deny", "reason": …}`), in the standard pre-tool-hook shape.
 - New **`on_user_prompt`** hook can redact or rewrite the incoming prompt.
 - Returning `None` preserves the old observe-only behaviour (backward compatible).
 

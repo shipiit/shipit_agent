@@ -100,7 +100,7 @@ computer-use loop, and a security hardening pass.
 
 ## v1.0.16 — 2026-07-10
 
-**The live experience — streaming, cancellation, and Claude-Code-grade
+**The live experience — streaming, cancellation, and professional-grade
 ergonomics.** Real token streaming everywhere, one-call live runs with rich
 tool cards, safe stops, stale-proof edits, model-written compaction, and a
 sharper CLI. Works with **any** LLM provider. **1969 tests passing (+13 new).
@@ -123,7 +123,7 @@ sharper CLI. Works with **any** LLM provider. **1969 tests passing (+13 new).
   as cards with args/status/duration, a `✔ done` footer closes the run;
   returns the final answer text.
 - **`StreamRenderer`** — the underlying renderer for custom loops;
-  `style="rich"` (automatic on TTYs) draws Claude-Code-style **⏺/⎿ cards with
+  `style="rich"` (automatic on TTYs) draws rich **⏺/⎿ cards with
   ANSI colors**; prints the answer at the end for non-streaming adapters.
 - **`agent.cancel()`** — thread-safe ESC: stops at the next checkpoint, emits
   `run_cancelled`, returns normally with `metadata["cancelled"]`; skipped
@@ -201,7 +201,7 @@ All of it works with **any** LLM provider.
 
 ### Clean tool-call logs — `format_activity`
 
-- **Claude-Code-style tool cards** — `format_activity(result)` renders each
+- **rich tool cards** — `format_activity(result)` renders each
   call as `⚙ name(args) ✓ 228ms` with a compact output preview and a run
   summary footer; `format_event_line(event)` does the same live for streams.
 - **Timing built in** — every `AgentEvent` now carries a `timestamp`;
@@ -241,7 +241,7 @@ All of it works with **any** LLM provider.
 
 - **Parallel delegation** — `sub_agent` accepts `background=true` (returns a
   task id immediately, runs on a thread pool) and `collect="task-N"` to fetch
-  the result — Claude-Code-style task fan-out.
+  the result — background task fan-out.
 - **Observable compaction** — when a run approaches the context window, older
   turns are summarized (user/assistant content included, not dropped) and a
   `context_compacted` event reports before/after message counts.
@@ -297,7 +297,7 @@ See the [Super agent guide](guides/super-agent.md) for the full tour.
 
 ## v1.0.11 — 2026-06-07
 
-**The control plane.** A Claude Code-grade safety + performance layer: a rule-based **permission engine** with modes (incl. read-only **plan mode**), **hooks that can block or rewrite** tool calls, **prompt caching** for ~10× cheaper repeated calls, and a model-driven **memory tool**. All opt-in and backward compatible. **1795 tests passing (+50 new). 0 regressions.**
+**The control plane.** A production-grade safety + performance layer: a rule-based **permission engine** with modes (incl. read-only **plan mode**), **hooks that can block or rewrite** tool calls, **prompt caching** for ~10× cheaper repeated calls, and a model-driven **memory tool**. All opt-in and backward compatible. **1795 tests passing (+50 new). 0 regressions.**
 
 ### Added — permissions & plan mode
 

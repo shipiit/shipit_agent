@@ -170,6 +170,7 @@ class TestJobsCommand:
         out = capsys.readouterr().out
         assert "digest" in out and "daily 09:00" in out and "every 3600s" in out
         assert main(["jobs", "remove", "digest", "--db", db]) == 0
+        capsys.readouterr()                      # consume the "✓ removed" line
         assert main(["jobs", "list", "--db", db]) == 0
         assert "digest" not in capsys.readouterr().out
 

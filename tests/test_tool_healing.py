@@ -108,3 +108,104 @@ class TestRuntimeIntegration:
         result = agent.run("2+3?")
         assert not any(e.type == "tool_call_healed" for e in result.events)
         assert "<tool_call>" in result.output       # left as text, run ended
+
+
+class TestNudgeOnStall:
+    class StallingLLM:
+        """Turn 1: narrates intent, no call. Turn 2 (post-nudge): calls."""
+
+        def __init__(self) -> None:
+            self.turn = 0
+            self.saw_nudge = False
+
+        def complete(self, *, messages, tools=None, **_kw) -> LLMResponse:
+            self.turn += 1
+            texts = [
+                (m.get("content") if isinstance(m, dict) else m.content) or ""
+                for m in messages
+            ]
+            if any("did not call any tool" in t for t in texts):
+                self.saw_nudge = True
+            if self.turn == 1:
+                return LLMResponse(content="Let me use the add tool for this.")
+            if self.turn == 2:
+                from shipit_agent.llms.base import ToolCall
+
+                return LLMResponse(tool_calls=[
+                    ToolCall(name="add", arguments={"a": 2, "b": 3})])
+            return LLMResponse(content="The sum is 5.")
+
+    @staticmethod
+    def _add(a: int, b: int, **_ignored) -> str:
+        return str(a + b)
+
+    def test_stall_is_nudged_then_recovers(self) -> None:
+        llm = self.StallingLLM()
+        agent = Agent(
+            llm=llm,
+            tools=[FunctionTool.from_callable(self._add, name="add")],
+            auto_use_skills=False,
+            max_iterations=6,
+        )
+        result = agent.run("2+3?")
+        assert llm.saw_nudge                        # nudge message reached the LLM
+        assert result.output == "The sum is 5."
+        assert any(e.payload.get("nudge") for e in result.events
+                   if e.type == "tool_call_healed")
+
+    def test_normal_short_answer_not_nudged(self) -> None:
+        class Direct:
+            def complete(self, **_kw):
+                return LLMResponse(content="4")
+
+        agent = Agent(llm=Direct(),
+                      tools=[FunctionTool.from_callable(self._add, name="add")],
+                      auto_use_skills=False)
+        result = agent.run("2+2?")
+        assert result.output == "4"
+        assert not any(e.payload.get("nudge") for e in result.events
+                       if e.type == "tool_call_healed")
+
+    def test_nudge_capped_at_one(self) -> None:
+        class AlwaysStalls:
+            def complete(self, **_kw):
+                return LLMResponse(content="Let me use the add tool now.")
+
+        agent = Agent(llm=AlwaysStalls(),
+                      tools=[FunctionTool.from_callable(self._add, name="add")],
+                      auto_use_skills=False, max_iterations=6)
+        result = agent.run("2+3?")
+        nudges = [e for e in result.events
+                  if e.type == "tool_call_healed" and e.payload.get("nudge")]
+        assert len(nudges) == 1                     # capped, no dead loop
+
+
+class TestChunkOverlapBudget:
+    """Unsloth-style carry_budget: overlap never overflows the chunk target."""
+
+    def test_overlap_capped_by_remaining_room(self) -> None:
+        from shipit_agent.rag import Document as RAGDocument
+        from shipit_agent.rag.chunker import DocumentChunker
+
+        # Sentences sized so every chunk lands near the target — a full
+        # overlap prepend would blow past target_chars without the budget.
+        text = " ".join(("word " * 60).strip() + "." for _ in range(12))
+        chunker = DocumentChunker(target_tokens=80, overlap_tokens=64)
+        chunks = chunker.chunk(RAGDocument(id="d1", content=text))
+        assert len(chunks) > 2
+        target_chars = 80 * 4
+        for chunk in chunks:
+            # small tolerance for the title/metadata suffix machinery
+            assert len(chunk.text) <= target_chars * 1.3, len(chunk.text)
+
+    def test_small_chunks_still_get_overlap(self) -> None:
+        from shipit_agent.rag import Document as RAGDocument
+        from shipit_agent.rag.chunker import DocumentChunker
+
+        text = "First sentence here. " * 20 + "MARKER unique tail. " + "Second block. " * 20
+        chunker = DocumentChunker(target_tokens=60, overlap_tokens=20)
+        chunks = chunker.chunk(RAGDocument(id="d2", content=text))
+        joined = [c.text for c in chunks]
+        # at least one later chunk carries text from its predecessor
+        assert any(i > 0 and joined[i - 1][-30:].split()[-1] in joined[i]
+                   for i in range(1, len(joined)))

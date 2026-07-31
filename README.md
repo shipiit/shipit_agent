@@ -131,6 +131,25 @@ See the [full guide](https://docs.shipiit.com/guides/super-agent/) and [changelo
 
 ---
 
+## The shipit CLI
+
+```bash
+shipit code "fix the failing test"     # 🛠 coding agent in your repo
+shipit run "prompt"                    # one-shot with live tool cards
+shipit chat                            # interactive REPL
+shipit serve                           # your agent as an OpenAI-compatible API
+shipit roles | models | mcp | tools    # catalogs
+```
+
+`shipit code` roots the agent in your repository — project memory, slash
+commands, permission policy, 50 builtin tools (structured `git_ops`,
+`notebook_edit`, hardened edits with diffs, `deep_research`, …) — with
+[y]/[n]/[a]lways prompts, `--plan` (read-only) and `--yes` (auto-accept)
+modes, and self-healing tool calls for open-weight models.
+[Full CLI guide →](https://docs.shipiit.com/guides/shipit-cli/)
+
+---
+
 ## Installation
 
 **Requirements:** Python **3.11+** (3.11 – 3.14 supported). The only hard dependency is

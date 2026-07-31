@@ -130,10 +130,16 @@ class DocumentChunker:
                     stitched.append((start, end, text))
                     continue
                 prev_text = raw_chunks[idx - 1][2]
-                tail = prev_text[-overlap_chars:]
+                # Budget the carried overlap so a near-target chunk never
+                # overflows the embedder: carry at most the room remaining
+                # under target_chars (a full overlap onto a full chunk would
+                # exceed the model's window and get truncated mid-sentence).
+                carry = min(overlap_chars, max(0, target_chars - len(text)))
+                tail = prev_text[-carry:] if carry else ""
                 # Avoid duplicating text if the prev chunk already covers us.
                 stitched.append(
-                    (max(0, start - len(tail)), end, f"{tail} {text}".strip())
+                    (max(0, start - len(tail)), end,
+                     f"{tail} {text}".strip() if tail else text)
                 )
             raw_chunks = stitched
 

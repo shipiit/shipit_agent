@@ -94,6 +94,20 @@ def _merge_tool_state(target: dict[str, Any], child: dict[str, Any]) -> None:
             target[key] = value
 
 
+_INTENT_MARKERS = (
+    "let me", "i will", "i'll", "i am going to", "i'm going to", "first, i",
+    "next, i", "now i", "going to use", "going to call", "let's use",
+)
+
+
+def _is_intent_without_action(text: str | None) -> bool:
+    """Short, action-narrating text with no substance — the stall shape."""
+    stripped = (text or "").strip().lower()
+    if not stripped or len(stripped) > 300:
+        return False
+    return any(marker in stripped for marker in _INTENT_MARKERS)
+
+
 class AgentRuntime:
     def __init__(
         self,
@@ -161,6 +175,9 @@ class AgentRuntime:
         self._cancel_event = threading.Event()
         # Guardrails max_tool_calls ceiling (per run — a runtime is per-run).
         self._guarded_tool_calls = 0
+        # Nudge-on-stall bookkeeping (cap 1 per run, no identical repeats).
+        self._nudges_used = 0
+        self._last_nudged_text = ""
 
     def cancel(self) -> None:
         """Request cancellation of the in-flight run (thread-safe).
@@ -911,6 +928,42 @@ class AgentRuntime:
                 )
 
             if not response.tool_calls:
+                # Nudge-on-stall: the model narrated an action ("Let me
+                # search…") but called nothing. One tightly-gated re-prompt —
+                # short intent-shaped text only, capped, never repeated for
+                # identical text — recovers the turn instead of ending it.
+                if (
+                    self.heal_tool_calls
+                    and tool_schemas
+                    and iteration < self.max_iterations
+                    and self._nudges_used < 1
+                    and _is_intent_without_action(response.content)
+                    and (response.content or "").strip() != self._last_nudged_text
+                ):
+                    self._nudges_used += 1
+                    self._last_nudged_text = (response.content or "").strip()
+                    state.messages.append(
+                        Message(role="assistant", content=response.content)
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                "You described an action but did not call any "
+                                "tool. Call the tool now, or give your final "
+                                "answer directly."
+                            ),
+                        )
+                    )
+                    appended_response_id = id(response)
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Nudged: intent without action",
+                        nudge=True,
+                        iteration=iteration,
+                    )
+                    continue
                 break
 
             tool_call_records = [

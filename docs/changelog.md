@@ -1,5 +1,51 @@
 # Changelog
 
+## v1.0.18 — 2026-07-31
+
+### Added
+
+- **The `shipit` CLI, rebuilt as a modern package** — `shipit code` (coding
+  agent rooted in your repo: playbook prompt, --plan/--yes modes, y/n/always
+  prompts), `shipit serve` (AgentServer: the agent as an OpenAI-compatible
+  API with SSE streaming + Bearer auth), `shipit run --role/--guardrails`,
+  and catalogs (`roles | models | mcp | tools`) with a curated latest-model
+  list (claude-opus-5/sonnet-5, gpt-5.6/5.5, Gemma 4, gpt-oss). Stdlib UI
+  kit: named palette, NO_COLOR/FORCE_COLOR, encoding-safe banners.
+- **Guardrails engine** — four gates (prompt-injection input blocking,
+  secret/PII output redaction, tool-argument deny rules, indirect-injection
+  sanitization of tool outputs) + max_tool_calls ceiling, strict()/
+  standard() presets, optional fail-open LLM judge; guardrail_triggered
+  events; Agent(guardrails=...).
+- **Self-healing tool calls** — text-emitted calls (<tool_call> tags, fenced
+  JSON, bare call-shaped JSON) promoted to structured executions:
+  declared-tools-only, span-exact removal, response-side only; plus
+  nudge-on-stall (one capped re-prompt on intent-without-action).
+- **New builtin tools** — `git_ops` (structured git, fixed argv, push/reset
+  gated off), `notebook_edit` (structural .ipynb editing), `deep_research`
+  (multi-angle sweep → deduped sources → citation-ready digest).
+- **RAG chunk-overlap budgeting** — carried overlap is capped by the room
+  remaining under the chunk target so near-full chunks never overflow the
+  embedder window.
+- Notebooks 72 (guardrails + deep research, live Bedrock) and 73 (CLI +
+  power tools), docs guide `guides/shipit-cli.md`, README CLI section.
+- **Human-in-the-loop everywhere** — `console_permission_prompt()`: one
+  reusable [y]/[n]/[a]lways approval callback for any agent; powers
+  `shipit chat` and `shipit code`; shareable always-allowed set,
+  injectable I/O, EOF→deny.
+- **Bottom-pinned chat TUI** — `BottomInputTerminal` (VT100 scroll
+  regions, stdlib): chat scrolls, input never moves; auto-on for real
+  TTYs in `shipit chat`, transparent plain fallback elsewhere.
+- **`shipit browse`** — computer use from the CLI: vision loop streamed
+  as live cards, `--show` visible window, consent persistence.
+- **`--mcp` flag + official Playwright MCP** — attach catalog servers to
+  `run`/`code`/`serve`/`doctor` from the command line; the new
+  `playwright` entry gives any tool-calling model accessibility-tree
+  browser control.
+- **RAG + Agent example** (24) — RRF-fused hybrid retrieval with
+  [document-id] citations, fully offline.
+
+---
+
 ## v1.0.17 — 2026-07-17
 
 **Observability + live browsing.** Langfuse support for BOTH server

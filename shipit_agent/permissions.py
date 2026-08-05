@@ -106,12 +106,34 @@ class PermissionEngine:
     # Classification
     # ------------------------------------------------------------------
     def is_read_only(self, tool_name: str, tool: Any = None) -> bool:
+        """Is this call an observation?
+
+        Precedence: the tool's own ``read_only`` attribute, then a declared
+        :class:`~shipit_agent.tools.contracts.ToolContract`, then the name
+        globs below. The globs used to be the only answer; they are now the
+        fallback for tools nobody has declared.
+        """
         ro = getattr(tool, "read_only", None)
         if isinstance(ro, bool):
             return ro
+        declared = self._declared_read_only(tool_name)
+        if declared is not None:
+            return declared
         if _matches_any(tool_name, self.mutating_tools):
             return False
         return _matches_any(tool_name, self.read_only_tools)
+
+    @staticmethod
+    def _declared_read_only(tool_name: str) -> bool | None:
+        """``read_only`` from a declared contract, or ``None`` if undeclared.
+
+        Reads the tables directly rather than calling ``contract_for``, which
+        would recurse back here for anything undeclared.
+        """
+        from shipit_agent.tools.contracts import CONTRACTS, registered_contracts
+
+        contract = registered_contracts().get(tool_name) or CONTRACTS.get(tool_name)
+        return None if contract is None else contract.read_only
 
     def is_edit(self, tool_name: str) -> bool:
         return _matches_any(tool_name, self.edit_tools)

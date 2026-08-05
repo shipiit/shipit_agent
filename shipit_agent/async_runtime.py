@@ -69,6 +69,7 @@ class AsyncAgentRuntime:
         context_window_tokens: int = 0,
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
+        approvals: Any | None = None,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -90,6 +91,11 @@ class AsyncAgentRuntime:
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
         self.permissions = permissions
+        # Deferred-approval queue; mirrors AgentRuntime so the sync and async
+        # loops can never diverge on gate semantics.
+        from shipit_agent.approvals import coerce_queue
+
+        self.approvals = coerce_queue(approvals)
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
@@ -173,6 +179,50 @@ class AsyncAgentRuntime:
             context,
         )
 
+    def _defer_tool_call(
+        self,
+        *,
+        state: RuntimeState,
+        tool: Any,
+        tool_call: Any,
+        tool_call_record: dict[str, Any],
+        context: ToolContext,
+        iteration: int,
+    ) -> tuple[ToolResult | None, Message] | None:
+        """Mirror of AgentRuntime._defer_tool_call — same shared decision."""
+        from shipit_agent.approvals.gate import defer_tool_call
+
+        deferred_call = tool_call
+        runner = ToolRunner(self.registry())
+
+        def _apply() -> ToolResult:
+            return runner.run_tool_call(deferred_call, context)
+
+        outcome = defer_tool_call(
+            approvals=self.approvals,
+            tool=tool,
+            tool_call=tool_call,
+            call_id=tool_call_record["id"],
+            apply_fn=_apply,
+        )
+        if not outcome.handled:
+            return None
+
+        action = outcome.action
+        self.emit(
+            state,
+            "tool_completed" if outcome.applied else "action_queued",
+            f"{'Applied' if outcome.applied else 'Queued for approval'}: {tool_call.name}",
+            tool=tool_call.name,
+            call_id=tool_call_record["id"],
+            action_id=action.id,
+            title=action.title,
+            tag=action.tag,
+            auto_approved=action.auto_approved,
+            iteration=iteration,
+        )
+        return outcome.result, outcome.message
+
     async def _execute_single_tool(
         self,
         *,
@@ -212,6 +262,22 @@ class AsyncAgentRuntime:
         decision = authorize_tool(
             self.hooks, self.permissions, tool_call.name, tool_call.arguments, tool
         )
+        if (
+            decision is not None
+            and decision.needs_approval
+            and getattr(self, "approvals", None) is not None
+        ):
+            queued = self._defer_tool_call(
+                state=state,
+                tool=tool,
+                tool_call=tool_call,
+                tool_call_record=tool_call_record,
+                context=context,
+                iteration=iteration,
+            )
+            if queued is not None:
+                return queued
+
         if decision is not None and not decision.allowed:
             reason = decision.reason or "not permitted"
             error_kind = (
@@ -221,6 +287,10 @@ class AsyncAgentRuntime:
                 state,
                 "tool_denied",
                 f"Tool blocked: {tool_call.name}",
+                # Mirrors runtime.py — renderers pair outcomes to calls by
+                # (tool, call_id), and the gate can fire before `tool_called`.
+                tool=tool_call.name,
+                call_id=tool_call_record["id"],
                 reason=reason,
                 decision=decision.decision.value,
                 iteration=iteration,

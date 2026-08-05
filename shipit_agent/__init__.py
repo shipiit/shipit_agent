@@ -102,6 +102,13 @@ from .verifier import (
 )
 from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
 from .activity import StreamRenderer, format_activity, format_event_line
+from .approvals import ActionState, ApprovalQueue, PendingAction
+from .compaction import CompactionCheckpoint, Compactor, get_model_limits
+from .narrate import NarratorRenderer, build_transcript, render_transcript, summarize
+from .narrate.json_stream import StreamingToolInputParser
+# `ActionKind` is already public from .computer_use — alias rather than shadow it.
+from .tools.contracts import ActionKind as ToolActionKind
+from .tools.contracts import ToolContract, contract_for
 from .guardrails import GuardDecision, Guardrails
 from .hitl import console_permission_prompt, format_call_preview
 from .agent import Agent, DEFAULT_SKILLS_PATH
@@ -346,7 +353,21 @@ __all__ = [
     "ScheduleResult",
     "ScheduleRunner",
     "SQLiteJobStore",
+    "ActionState",
+    "ApprovalQueue",
+    "CompactionCheckpoint",
+    "Compactor",
+    "StreamingToolInputParser",
+    "get_model_limits",
+    "NarratorRenderer",
+    "PendingAction",
+    "ToolActionKind",
+    "ToolContract",
+    "contract_for",
     "StreamRenderer",
+    "build_transcript",
+    "render_transcript",
+    "summarize",
     "SemanticMemory",
     "Step",
     "Supervisor",

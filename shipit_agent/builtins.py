@@ -16,7 +16,7 @@ Tool categories:
     File operations:    read_file, edit_file, write_file, glob_files, grep_files
     Shell & code:       bash, run_code
     Workspace:          workspace_files
-    Interaction:        ask_user, ask_user_async, human_review
+    Interaction:        ask_user, ask_user_async, human_review, give_up
     Planning:           plan_task, decompose_problem, todo
     Reasoning:          synthesize_evidence, decision_matrix, verify_output
     Building:           build_artifact, build_prompt, render_dashboard
@@ -38,6 +38,7 @@ from __future__ import annotations
 from typing import Any
 
 from shipit_agent.llms.base import LLM
+from shipit_agent.tools.give_up import GiveUpTool
 from shipit_agent.tools import (
     AskUserAsyncTool,
     AskUserTool,
@@ -139,6 +140,8 @@ def get_builtin_tool_map(
         AskUserTool(),
         AskUserAsyncTool(),
         HumanReviewTool(),
+        # Declaring "I'm blocked" is an interaction, not a failure mode.
+        GiveUpTool(),
         # ── planning & reasoning ──────────────────────────────────
         MemoryTool(),
         PlannerTool(),

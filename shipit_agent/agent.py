@@ -170,6 +170,13 @@ class Agent:
     # configured patterns. See ``shipit_agent.guardrails``.
     guardrails: Any = None
 
+    # ── deferred approvals (Cloudflare-OS style) ──────────────────────
+    # An ``ApprovalQueue`` (or ``True`` for a fresh one). Side-effecting
+    # tools the policy marks ``ask`` are queued instead of blocking the run;
+    # you approve later, in bulk. Tools whose result the agent reasons over
+    # declare ``await_decision`` and still block. See shipit_agent.approvals.
+    approvals: Any = None
+
     # ── self-healing tool calls ───────────────────────────────────────
     # Promote tool calls that small models emit as TEXT (<tool_call> tags,
     # fenced JSON, bare call-shaped JSON) into structured calls. Response-
@@ -719,6 +726,7 @@ class Agent:
             permissions=self._effective_permissions(),
             guardrails=self.guardrails,
             heal_tool_calls=self.heal_tool_calls,
+            approvals=self.approvals,
         )
         state, response = runtime.run(effective_user_prompt)
 
@@ -762,6 +770,9 @@ class Agent:
 
         # Attach skill metadata so callers can see what was used.
         result_metadata = dict(response.metadata)
+        for key in ("gave_up", "give_up_reason", "give_up_needs"):
+            if key in runtime.metadata:
+                result_metadata[key] = runtime.metadata[key]
         result_metadata["used_skills"] = [skill.id for skill in selected_skills]
         result_metadata["used_skill_tools"] = skill_tool_names
 
@@ -798,10 +809,28 @@ class Agent:
         Pass ``file=`` to redirect output (any object with ``write``).
         Returns the final answer text; use :meth:`run` when you need the
         full :class:`AgentResult`.
-        """
-        from shipit_agent.activity import StreamRenderer
 
-        renderer = StreamRenderer(file=file, style=style)
+        ``style="modern"`` switches to the Narrator — human verbs, collapsed
+        work runs, and a tokens/cost footer (see
+        ``docs/design/modern-agent-upgrade.md``)::
+
+            agent.run_live("Which accounts are at risk?", style="modern")
+            # ⌕ Read 3 files ›
+            #   Enterprise Accounts · Open Tickets · Usage by Account
+            #
+            # Three I would put on your list: …
+            #                                    18,240 tokens · $0.12
+        """
+        if style == "modern":
+            from shipit_agent.narrate import NarratorRenderer
+
+            renderer = NarratorRenderer(
+                file=file, model=getattr(self.llm, "model", None)
+            )
+        else:
+            from shipit_agent.activity import StreamRenderer
+
+            renderer = StreamRenderer(file=file, style=style)
         output = ""
         for event in self.stream(user_prompt):
             renderer.feed(event)
@@ -856,6 +885,7 @@ class Agent:
             permissions=self._effective_permissions(),
             guardrails=self.guardrails,
             heal_tool_calls=self.heal_tool_calls,
+            approvals=self.approvals,
         )
         for event in runtime.stream(user_prompt):
             yield event

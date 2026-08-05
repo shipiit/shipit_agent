@@ -134,6 +134,7 @@ class AgentRuntime:
         permissions: PermissionEngine | None = None,
         guardrails: Any | None = None,
         heal_tool_calls: bool = True,
+        approvals: Any | None = None,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -157,6 +158,10 @@ class AgentRuntime:
         self.permissions = permissions
         self.guardrails = guardrails
         self.heal_tool_calls = heal_tool_calls
+        # Deferred-approval queue; None keeps the historical blocking gate.
+        from shipit_agent.approvals import coerce_queue
+
+        self.approvals = coerce_queue(approvals)
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
         # signature don't — passing it unconditionally raises TypeError.
@@ -178,6 +183,8 @@ class AgentRuntime:
         # Nudge-on-stall bookkeeping (cap 1 per run, no identical repeats).
         self._nudges_used = 0
         self._last_nudged_text = ""
+        # Built on first compaction; holds the run's checkpoint history.
+        self._compactor_instance: Any = None
 
     def cancel(self) -> None:
         """Request cancellation of the in-flight run (thread-safe).
@@ -288,6 +295,54 @@ class AgentRuntime:
             self._guarded_tool_calls += 1
         return authorize_tool(self.hooks, self.permissions, name, arguments, tool)
 
+    def _defer_tool_call(
+        self,
+        *,
+        state: RuntimeState,
+        tool: Any,
+        tool_call: Any,
+        tool_call_record: dict[str, Any],
+        context: ToolContext,
+        iteration: int,
+    ) -> tuple[ToolResult | None, Message] | None:
+        """Queue an action for later approval; ``None`` falls through to the gate.
+
+        The decision itself lives in :func:`shipit_agent.approvals.gate.defer_tool_call`
+        so this runtime and the async one can never disagree about it.
+        """
+        from shipit_agent.approvals.gate import defer_tool_call
+
+        deferred_call = tool_call
+        runner = ToolRunner(self.registry())
+
+        def _apply() -> ToolResult:
+            return runner.run_tool_call(deferred_call, context)
+
+        outcome = defer_tool_call(
+            approvals=self.approvals,
+            tool=tool,
+            tool_call=tool_call,
+            call_id=tool_call_record["id"],
+            apply_fn=_apply,
+        )
+        if not outcome.handled:
+            return None
+
+        action = outcome.action
+        self.emit(
+            state,
+            "tool_completed" if outcome.applied else "action_queued",
+            f"{'Applied' if outcome.applied else 'Queued for approval'}: {tool_call.name}",
+            tool=tool_call.name,
+            call_id=tool_call_record["id"],
+            action_id=action.id,
+            title=action.title,
+            tag=action.tag,
+            auto_approved=action.auto_approved,
+            iteration=iteration,
+        )
+        return outcome.result, outcome.message
+
     def _execute_single_tool(
         self,
         *,
@@ -330,6 +385,28 @@ class AgentRuntime:
 
         # ── Permission gate: blocking hooks + rule-based permission engine ──
         decision = self._authorize_tool(tool_call.name, tool_call.arguments, tool)
+
+        # An ASK on a deferrable action goes to the approval queue instead of
+        # stopping the run: the agent is told it's queued and keeps working,
+        # and the human decides later. Tools whose result the agent reasons
+        # over declare `await_decision` and still block — see
+        # shipit_agent.tools.contracts.
+        if (
+            decision is not None
+            and decision.needs_approval
+            and self.approvals is not None
+        ):
+            queued = self._defer_tool_call(
+                state=state,
+                tool=tool,
+                tool_call=tool_call,
+                tool_call_record=tool_call_record,
+                context=context,
+                iteration=iteration,
+            )
+            if queued is not None:
+                return queued
+
         if decision is not None and not decision.allowed:
             reason = decision.reason or "not permitted"
             error_kind = (
@@ -339,6 +416,10 @@ class AgentRuntime:
                 state,
                 "tool_denied",
                 f"Tool blocked: {tool_call.name}",
+                # Renderers pair outcomes to calls by (tool, call_id); the gate
+                # can fire before `tool_called`, so both must be on the payload.
+                tool=tool_call.name,
+                call_id=tool_call_record["id"],
                 reason=reason,
                 decision=decision.decision.value,
                 iteration=iteration,
@@ -573,103 +654,39 @@ class AgentRuntime:
         """Rough token estimate: ~4 chars per token for English text."""
         return len(text) // 4 if text else 0
 
+    def _compactor(self) -> Any:
+        """Lazily build the checkpoint compactor for this run."""
+        existing = getattr(self, "_compactor_instance", None)
+        if existing is not None:
+            return existing
+        from shipit_agent.compaction import Compactor
+
+        instance = Compactor(
+            llm=self.llm,
+            model=getattr(self.llm, "model", None),
+            context_window_tokens=self.context_window_tokens,
+        )
+        self._compactor_instance = instance
+        return instance
+
     def _compact_messages(
         self, messages: list[Message]
     ) -> tuple[list[Message], bool]:
         """Summarize older turns to free context space.
 
-        Keeps system messages and the last 4 exchange messages intact;
-        everything older is condensed into one summary message (written by
-        the LLM when possible). Returns ``(messages, did_compact)``.
+        Delegates to :class:`shipit_agent.compaction.Compactor`, which cuts at
+        a **turn boundary** (never mid-turn, which providers reject), writes a
+        structured handoff, and records an immutable checkpoint. The canonical
+        message list is left alone — only the replay window moves.
+
+        ``context_window_tokens=0`` keeps compaction off entirely, as before.
         """
         if not self.context_window_tokens:
             return messages, False
-
-        total_chars = sum(len(m.content or "") for m in messages)
-        estimated_tokens = total_chars // 4
-        threshold = int(self.context_window_tokens * 0.75)
-
-        if estimated_tokens < threshold:
+        checkpoint = self._compactor().compact(messages)
+        if checkpoint is None:
             return messages, False
-
-        # Separate system/user messages from tool exchanges
-        keep_head: list[Message] = []
-        exchanges: list[Message] = []
-        for m in messages:
-            if m.role in ("system",):
-                keep_head.append(m)
-            else:
-                exchanges.append(m)
-
-        if len(exchanges) <= 4:
-            return messages, False
-
-        # Compact older exchanges, keep last 4 messages intact
-        old = exchanges[:-4]
-        recent = exchanges[-4:]
-
-        summary_text = self._summarize_for_compaction(old)
-        if summary_text:
-            compact_msg = Message(
-                role="user",
-                content=summary_text,
-                metadata={"compacted": True},
-            )
-            return keep_head + [compact_msg] + recent, True
-
-        return messages, False
-
-    def _summarize_for_compaction(self, old: list[Message]) -> str:
-        """Condense old turns — with the LLM when possible, mechanically otherwise.
-
-        The model-written summary preserves decisions, facts, file paths, and
-        open threads far better than truncation. Any failure (or a missing
-        LLM) falls back to the mechanical head-truncation summary so
-        compaction never takes the run down.
-        """
-        transcript_lines: list[str] = []
-        for m in old:
-            text = (m.content or "").strip()
-            if not text:
-                continue
-            label = f"tool {m.name}" if m.role == "tool" else m.role
-            transcript_lines.append(f"[{label}]: {text[:2000]}")
-        if not transcript_lines:
-            return ""
-
-        try:
-            response = self.llm.complete(
-                messages=[
-                    Message(
-                        role="user",
-                        content=(
-                            "Summarize this earlier portion of an agent "
-                            "conversation so the agent can continue seamlessly. "
-                            "Preserve: decisions made, key facts and numbers, "
-                            "file paths, tool results that matter, and any "
-                            "unfinished threads. Be dense; max ~300 words.\n\n"
-                            + "\n".join(transcript_lines)
-                        ),
-                    )
-                ],
-                tools=[],
-                system_prompt="You compress conversation history without losing load-bearing details.",
-                metadata={"purpose": "context_compaction"},
-            )
-            summary = (getattr(response, "content", "") or "").strip()
-            if summary:
-                return (
-                    "Earlier conversation (summarized to save context):\n"
-                    + summary
-                )
-        except Exception:
-            pass  # any LLM failure → mechanical fallback below
-
-        mechanical = [line[:200] for line in transcript_lines]
-        return (
-            "Earlier conversation (condensed to save context):\n"
-            + "\n".join(mechanical)
-        )
+        return checkpoint.replay(messages), True
 
     def _track_usage(self, response: LLMResponse) -> None:
         """Accumulate token usage across iterations."""
@@ -866,6 +883,12 @@ class AgentRuntime:
                     "Older turns condensed to stay within the context window",
                     before=len(state.messages),
                     after=len(compacted_messages),
+                    saved_tokens=(
+                        self._compactor().latest().saved_tokens
+                        if self._compactor().latest()
+                        else 0
+                    ),
+                    checkpoints=len(self._compactor().checkpoints),
                     iteration=iteration,
                 )
 
@@ -883,6 +906,15 @@ class AgentRuntime:
                 base_prompt=base_prompt,
             )
             self._track_usage(response)
+            # Running total, so a live renderer can show tokens/cost mid-run
+            # instead of only at the end.
+            self.emit(
+                state,
+                "usage_tick",
+                "Usage updated",
+                usage=dict(self._total_usage),
+                iteration=iteration,
+            )
 
             # Self-healing: small models often emit the tool call as TEXT.
             # Promote declared-tool calls out of the content (response-side
@@ -1107,6 +1139,17 @@ class AgentRuntime:
                     if out_decision.action == "redact"
                     else f"Response withheld by guardrails: {out_decision.reason}"
                 )
+
+        # A declared stop (the `give_up` tool) is a first-class outcome, not a
+        # buried tool result — surface it so callers and autopilot loops can
+        # branch on it instead of pattern-matching prose.
+        gave_up = next(
+            (r for r in state.tool_results if r.metadata.get("gave_up")), None
+        )
+        if gave_up is not None:
+            self.metadata["gave_up"] = True
+            self.metadata["give_up_reason"] = gave_up.metadata.get("give_up_reason", "")
+            self.metadata["give_up_needs"] = gave_up.metadata.get("give_up_needs", [])
 
         self.emit(
             state,

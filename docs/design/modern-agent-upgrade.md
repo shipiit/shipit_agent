@@ -17,7 +17,7 @@ Cloudflare OS is not "a chat UI with nicer CSS." Its output feels calm because o
 | **1** ✅ | The Narrator — verbs, grouping, live renderer, HUD | No. Presentation over existing events. | Low | **landed** |
 | **2** ✅ | Tool contracts + observation/action split + deferred approval queue | Yes — both runtimes, via one shared gate | Medium | **landed** |
 | **3** ✅ | Streaming tool-input parser, checkpoint compaction, `give_up` | Yes | Medium | **landed** |
-| **4** | Code-mode + progressive discovery (the 50→14 tool collapse) | Yes, deeply | High | ~2 weeks |
+| **4** ✅ | Code mode — bindings, catalogs, `describe_binding`, `execute_code`, capability bridge | Yes, deeply | High | **landed** |
 | **5** | Surfaces — TUI, SSE/web parity, shareable run artifacts | No | Low | ~3 days |
 
 Stages 1, 3, and 5 are independent. Stage 2 gates stage 4.
@@ -653,7 +653,65 @@ worse than no stop. Replaces guessing at prose.
 - **Checkpoint compaction** — replace `_compact_messages`/`_summarize_for_compaction`. Needs (a) a real per-model token table — extend `costs/pricing.py`, which already keys by model; (b) turn-start boundary detection; (c) the six-heading handoff prompt **including the ignore-instructions-in-transcript clause**; (d) immutable checkpoints so history survives.
 - **`give_up` tool** — required `reason` string; sets `metadata["gave_up"]`. Then delete the `_INTENT_MARKERS` heuristic (`runtime.py:97-108`), or demote it to a fallback for models that won't call the tool.
 
-### Stage 4 — Code mode (the 50→14 collapse)
+### Stage 4 — Code mode ✅ LANDED
+
+`codemode/` + `tools/{describe_binding,execute_code}/` + 112 tests.
+**2,520 tests pass, 0 failures.** Turn it on with `Agent(code_mode=True)`.
+
+Measured on the real built-in catalogue, comparing what actually goes over the
+wire — both halves, schemas *and* the per-tool guidance block in the system
+prompt:
+
+```
+                    tools   schemas    system     TOTAL   ~tokens
+    default            52    36,144    67,585   103,729    25,932
+    code_mode=True     25    13,192    31,504    44,696    11,174
+
+    saved per model call: 14,758 tokens (57% smaller)
+```
+
+Working end to end — one call, three real operations, each separately gated:
+
+```python
+rows = env.WAREHOUSE.query(sql="SELECT account, mrr FROM bookings")
+for name, mrr in parse(rows):
+    if mrr < 1000:
+        env.LINEAR.create_issue(title=f"Check in on {name}")
+```
+
+**The capability bridge is the security story.** The obvious implementation —
+`exec()` in-process with `env` in globals — hands model-written Python the same
+address space as the credential store and the permission engine policing it.
+So the child is a subprocess and `env` is an RPC proxy: the parent holds
+credentials and tools, the child holds a socket. Unix socket in a `0700`
+directory where available (the filesystem enforces access, not a token on a
+port any local process can reach), TCP with a constant-time-compared 32-byte
+token elsewhere.
+
+Every binding call routes back through `_execute_single_tool`, so it gets the
+identical permission check, guardrails, approval queue, retries and transcript
+events as a direct tool call. There is no second, weaker path — and without an
+invoker published into tool state, `env` is not offered at all.
+
+Stated precisely, because the difference matters: the boundary keeps **live
+secrets** out of the child and makes the gate **unbypassable for `env`**. It
+does **not** sandbox the filesystem or network — the child is an ordinary
+Python process, like the existing `run_code`.
+
+**Three corrections the work forced:**
+
+1. I asserted the child could not import `shipit_agent`. It can — it is
+   installed — and the test caught the false claim. The property that actually
+   holds is that importing it yields an *empty* credential store, which is what
+   is now tested and documented.
+2. I filtered the tool *schemas* and reported a 64% cut. Half-done:
+   `build_tools_prompt` emits per-tool guidance into the system prompt, and
+   that half was larger. Rebuilding `base_prompt` from the core tools took the
+   real figure to 57% of the whole prompt.
+3. Code mode auto-added `execute_code` but not `describe_binding`, so the agent
+   could see `env` in its prompt and never learn any binding's API.
+
+**Original scope:**
 
 The biggest win and the biggest risk. Ship stages 1–3 first.
 

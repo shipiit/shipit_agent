@@ -40,7 +40,16 @@ class TestCoverage:
         names = {
             getattr(t, "name", "") for t in get_builtin_tools(llm=None, project_root=".")
         }
-        assert not set(CONTRACTS) - names, "contract for a nonexistent tool"
+        # Opt-in tools are real but not in the default catalogue — execute_code
+        # needs the code-mode gate published into tool state, so shipping it by
+        # default would only ever answer "code mode is not enabled".
+        opt_in = {"execute_code"}
+        assert not set(CONTRACTS) - names - opt_in, "contract for a nonexistent tool"
+
+    def test_opt_in_tools_are_importable(self) -> None:
+        from shipit_agent.tools.execute_code import ExecuteCodeTool
+
+        assert ExecuteCodeTool().name == "execute_code"
 
     def test_every_action_declares_a_kind_or_is_permanently_manual(self) -> None:
         for name, contract in CONTRACTS.items():

@@ -11,6 +11,7 @@ from .bindings import (
     build_binding,
     build_bindings,
 )
+from .bridge import BridgeCall, BridgeLimits, BridgeServer
 from .catalog import (
     CatalogEntry,
     ResourceCatalog,
@@ -20,6 +21,9 @@ from .catalog import (
 
 __all__ = [
     "Binding",
+    "BridgeCall",
+    "BridgeLimits",
+    "BridgeServer",
     "BindingMethod",
     "CatalogEntry",
     "ResourceCatalog",

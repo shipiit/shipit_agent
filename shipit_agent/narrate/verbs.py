@@ -140,6 +140,8 @@ VERBS: dict[str, VerbSpec] = {
     # ── shell & code ─────────────────────────────────────────────────────
     "bash": VerbSpec("Ran", "Running", CODE, "command",
                      args=("command", "cmd", "script")),
+    "execute_code": VerbSpec("Ran code", "Running code", CODE,
+                             args=("code",), intransitive=True),
     "run_code": VerbSpec("Ran code", "Running code", CODE,
                          args=("code", "source"), intransitive=True),
     "git_ops": VerbSpec("Ran git", "Running git", CODE, "git command",

@@ -179,6 +179,10 @@ CONTRACTS: dict[str, ToolContract] = {
     # nothing about what this particular call does.
     "bash": _act(SHELL_EXEC, await_decision=True, destructive=True),
     "run_code": _act(CODE_EXEC, await_decision=True, destructive=True),
+    # Same reasoning as run_code: the argument is arbitrary code, so the tag
+    # says nothing about what this particular call does. Each env call inside
+    # it is separately gated by its own binding's contract.
+    "execute_code": _act(CODE_EXEC, await_decision=True, destructive=True),
     "git_ops": _act(VCS_WRITE, revert=True, await_decision=True),
     # ── web ──────────────────────────────────────────────────────────────
     "web_search": OBSERVE,

@@ -135,6 +135,7 @@ class AgentRuntime:
         guardrails: Any | None = None,
         heal_tool_calls: bool = True,
         approvals: Any | None = None,
+        code_mode: bool = False,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -162,6 +163,7 @@ class AgentRuntime:
         from shipit_agent.approvals import coerce_queue
 
         self.approvals = coerce_queue(approvals)
+        self.code_mode = code_mode
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
         # signature don't — passing it unconditionally raises TypeError.
@@ -294,6 +296,97 @@ class AgentRuntime:
                 return guard
             self._guarded_tool_calls += 1
         return authorize_tool(self.hooks, self.permissions, name, arguments, tool)
+
+    def _install_code_mode(
+        self,
+        *,
+        state: RuntimeState,
+        registry: ToolRegistry,
+        tool_runner: ToolRunner,
+        shared_state: dict[str, Any],
+        user_prompt: str,
+        base_prompt: str,
+    ) -> str:
+        """Publish `env` bindings and the gated invoker; return the prompt section.
+
+        The invoker is the whole security story: it routes a binding call back
+        through :meth:`_execute_single_tool`, so a call made from sandboxed
+        code gets the identical permission check, guardrails, approval queue,
+        retries and transcript events as the equivalent tool call. There is no
+        second, weaker path.
+        """
+        from shipit_agent.codemode import CORE_TOOLS, binding_index, build_bindings
+        from shipit_agent.codemode.catalog import load_catalog
+        from shipit_agent.tools.describe_binding.describe_binding_tool import (
+            BINDINGS_STATE_KEY,
+        )
+        from shipit_agent.tools.execute_code.execute_code_tool import (
+            INVOKER_STATE_KEY,
+        )
+
+        bound_tools = [
+            tool for tool in registry.values()
+            if getattr(tool, "name", "") not in CORE_TOOLS
+        ]
+        if not bound_tools:
+            return ""
+
+        catalogs = {
+            getattr(tool, "name", ""): load_catalog(tool) for tool in bound_tools
+        }
+        bindings = build_bindings(bound_tools, catalogs=catalogs)
+
+        # Each env call is a real tool call. Give it its own id sequence so the
+        # transcript can tell them apart from the model's direct calls.
+        counter = {"n": 0}
+
+        def _invoke(
+            binding_name: str, method: str, kwargs: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            binding = bindings.get(binding_name)
+            if binding is None:
+                raise KeyError(f"no binding named {binding_name!r}")
+            if method not in binding.methods:
+                raise AttributeError(
+                    f"env.{binding_name} has no method {method!r}"
+                )
+
+            arguments = dict(kwargs)
+            # A single-method binding wraps a tool with no action enum, so the
+            # method name is ours, not the tool's — don't pass it through.
+            if method != "call":
+                arguments["action"] = method
+
+            counter["n"] += 1
+            record = {"id": f"env_{counter['n']}", "name": binding.tool_name}
+            call = type(
+                "EnvToolCall", (), {"name": binding.tool_name, "arguments": arguments}
+            )()
+            result, message = self._execute_single_tool(
+                state=state,
+                registry=registry,
+                tool_runner=tool_runner,
+                tool_call=call,
+                tool_call_record=record,
+                context=ToolContext(
+                    prompt=user_prompt,
+                    system_prompt=base_prompt,
+                    metadata=dict(self.metadata),
+                    state=shared_state,
+                    session_id=self.session_id,
+                ),
+                iteration=0,
+            )
+            if result is None:
+                # Denied, or queued for approval. The message carries the
+                # reason; hand it to the sandbox as an exception so the code
+                # sees a failure rather than a silent empty string.
+                raise PermissionError(message.content)
+            return result.output, dict(result.metadata)
+
+        shared_state[BINDINGS_STATE_KEY] = bindings
+        shared_state[INVOKER_STATE_KEY] = _invoke
+        return binding_index(bindings)
 
     def _defer_tool_call(
         self,
@@ -844,6 +937,45 @@ class AgentRuntime:
             "workspace_root", ".shipit_workspace"
         )
         tool_runner = ToolRunner(registry)
+
+        # Code mode: publish `env` and swap the tool schemas the model sees.
+        # Must happen before the first completion, since it changes both the
+        # system prompt and the advertised tool list.
+        if self.code_mode:
+            index = self._install_code_mode(
+                state=state,
+                registry=registry,
+                tool_runner=tool_runner,
+                shared_state=shared_state,
+                user_prompt=user_prompt,
+                base_prompt=base_prompt,
+            )
+            if index:
+                from shipit_agent.codemode import CORE_TOOLS
+
+                def _is_core(name: Any) -> bool:
+                    return name in CORE_TOOLS
+
+                # Rebuild the system prompt rather than appending to it: the
+                # per-tool instructions block describes every registered tool,
+                # and leaving all 50 in there would undo most of the saving
+                # the schema filter just made.
+                core_tools = [
+                    tool for tool in registry.values()
+                    if _is_core(getattr(tool, "name", ""))
+                ]
+                core_prompt = build_tools_prompt(core_tools)
+                base_prompt = "\n\n".join(
+                    part for part in (self.prompt, core_prompt, index) if part
+                )
+                state.messages[0] = Message(
+                    role="system", content=base_prompt, metadata=dict(self.metadata)
+                )
+                tool_schemas = [
+                    schema for schema in tool_schemas
+                    if _is_core((schema.get("function") or {}).get("name"))
+                ]
+
         self._run_planner_if_needed(
             state=state,
             registry=registry,

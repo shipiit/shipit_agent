@@ -33,3 +33,51 @@ __all__ = [
     "load_catalog",
     "normalize_catalog",
 ]
+
+
+# Tools that stay as tools in code mode. Everything else becomes an `env`
+# binding, reachable from execute_code.
+#
+# The split is by what the agent does *directly* versus what it reaches
+# *through* a resource: editing the repo it is working in, searching it, and
+# its own reasoning scaffolding are direct. GitHub, Slack, Stripe and the rest
+# are resources, and cost nothing in the prompt until asked about.
+CORE_TOOLS: frozenset[str] = frozenset({
+    # the working copy
+    "read_file", "write_file", "edit_file", "glob_files", "grep_files",
+    "workspace_files", "notebook_edit",
+    # the shell and the sandbox
+    "bash", "run_code", "execute_code",
+    # discovery
+    "describe_binding", "tool_search",
+    # the open web is not a connected resource
+    "web_search", "open_url",
+    # talking to the human
+    "ask_user", "ask_user_async", "human_review", "give_up",
+    # the agent's own scaffolding
+    "plan_task", "todo", "decompose_problem", "synthesize_evidence",
+    "decision_matrix", "verify_output", "memory",
+})
+
+
+def binding_index(bindings: dict) -> str:
+    """The system-prompt section listing what is in `env`.
+
+    One line per resource — this is the whole cost of an integration in the
+    prompt, versus a full JSON schema on every call.
+    """
+    if not bindings:
+        return ""
+    lines = [
+        "You have these resources bound in `env`, reachable from the "
+        "`execute_code` tool:",
+        "",
+    ]
+    lines += [b.summary_line() for _, b in sorted(bindings.items())]
+    lines += [
+        "",
+        "Call `describe_binding` with a resource's name to learn its methods "
+        "before using it for the first time. Prefer one `execute_code` call "
+        "that composes several resources over many separate tool calls.",
+    ]
+    return "\n".join(lines)

@@ -177,6 +177,13 @@ class Agent:
     # declare ``await_decision`` and still block. See shipit_agent.approvals.
     approvals: Any = None
 
+    # ── code mode (v1.0.19) ───────────────────────────────────────────
+    # Collapse the tool catalogue into a small core set plus an `env` of
+    # resource bindings reachable from `execute_code`. Cuts the tool-schema
+    # block by ~79% and lets one call compose several resources. Bindings are
+    # gated exactly as the equivalent tool calls. See shipit_agent.codemode.
+    code_mode: bool = False
+
     # ── self-healing tool calls ───────────────────────────────────────
     # Promote tool calls that small models emit as TEXT (<tool_call> tags,
     # fenced JSON, bare call-shaped JSON) into structured calls. Response-
@@ -553,6 +560,16 @@ class Agent:
             getattr(tool, "name", f"tool_{index}"): tool
             for index, tool in enumerate(self.tools)
         }
+        if self.code_mode:
+            # Code mode supplies its own two tools: without describe_binding
+            # the agent can see `env` in its prompt but cannot learn any
+            # binding's API, and without execute_code it cannot call one.
+            from shipit_agent.tools.describe_binding import DescribeBindingTool
+            from shipit_agent.tools.execute_code import ExecuteCodeTool
+
+            effective.setdefault("execute_code", ExecuteCodeTool())
+            effective.setdefault("describe_binding", DescribeBindingTool())
+
         if not selected_skills:
             tools_list = list(effective.values())
             if self.verifier is not None and hasattr(self.verifier, "wrap_tools"):
@@ -727,6 +744,7 @@ class Agent:
             guardrails=self.guardrails,
             heal_tool_calls=self.heal_tool_calls,
             approvals=self.approvals,
+            code_mode=self.code_mode,
         )
         state, response = runtime.run(effective_user_prompt)
 
@@ -886,6 +904,7 @@ class Agent:
             guardrails=self.guardrails,
             heal_tool_calls=self.heal_tool_calls,
             approvals=self.approvals,
+            code_mode=self.code_mode,
         )
         for event in runtime.stream(user_prompt):
             yield event

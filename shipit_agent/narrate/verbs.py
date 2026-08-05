@@ -189,6 +189,8 @@ VERBS: dict[str, VerbSpec] = {
                              read_only=True, intransitive=True),
     "todo": VerbSpec("Updated the todo list", "Updating the todo list", THINK,
                      intransitive=True),
+    "describe_binding": VerbSpec("Inspected", "Inspecting", SEARCH, "binding",
+                                args=("name",), read_only=True),
     "tool_search": VerbSpec("Looked for a tool", "Looking for a tool", SEARCH,
                             read_only=True, intransitive=True),
     "memory": VerbSpec("Recalled", "Recalling", MEMORY, "memory", plural="memories",

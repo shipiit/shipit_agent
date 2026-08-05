@@ -38,6 +38,7 @@ from __future__ import annotations
 from typing import Any
 
 from shipit_agent.llms.base import LLM
+from shipit_agent.tools.describe_binding import DescribeBindingTool
 from shipit_agent.tools.give_up import GiveUpTool
 from shipit_agent.tools import (
     AskUserAsyncTool,
@@ -152,6 +153,9 @@ def get_builtin_tool_map(
         PromptTool(),
         VerifierTool(),
         ToolSearchTool(),
+        # Progressive discovery: learn one binding's API instead of carrying
+        # every integration's schema in the prompt (see shipit_agent.codemode).
+        DescribeBindingTool(),
         # ── building ──────────────────────────────────────────────
         ArtifactBuilderTool(),
         DocumentBuilderTool(workspace_root=f"{workspace_root}/documents"),

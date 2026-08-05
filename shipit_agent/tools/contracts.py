@@ -234,6 +234,7 @@ CONTRACTS: dict[str, ToolContract] = {
     "verify_output": OBSERVE,
     "build_prompt": OBSERVE,
     "tool_search": OBSERVE,
+    "describe_binding": OBSERVE,
     "todo": _act(AGENT_STATE, revert=True, auto=True),
     "memory": _act(MEMORY_WRITE, revert=True, auto=True),
 }

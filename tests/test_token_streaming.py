@@ -37,6 +37,27 @@ def _install_fake_openai(monkeypatch, chunks, *, reject_stream_options=False):
 
 
 class TestOpenAIStreaming:
+    def test_completion_controls_are_request_not_client_kwargs(
+        self, monkeypatch
+    ) -> None:
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        chunks = [_chunk("ok")]
+        seen = _install_fake_openai(monkeypatch, chunks)
+        out = OpenAIChatLLM(
+            model="google.gemma-4-26b-a4b",
+            api_key="k",
+            max_tokens=16_000,
+            temperature=0.3,
+        ).complete(
+            messages=[Message(role="user", content="hi")],
+            text_delta_callback=lambda _c: None,
+        )
+
+        assert out.content == "ok"
+        assert seen["max_tokens"] == 16_000
+        assert seen["temperature"] == 0.3
+
     def test_text_deltas_hit_callback_in_order(self, monkeypatch) -> None:
         from shipit_agent.llms.openai_adapter import OpenAIChatLLM
 

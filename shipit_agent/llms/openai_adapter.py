@@ -64,6 +64,7 @@ class OpenAIChatLLM:
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
         text_delta_callback: Any = None,
+        tool_input_callback: Any = None,
     ) -> LLMResponse:
         try:
             from openai import OpenAI
@@ -92,8 +93,10 @@ class OpenAIChatLLM:
         if response_format:
             kwargs["response_format"] = response_format
 
-        if text_delta_callback is not None:
-            return self._complete_streaming(client, kwargs, text_delta_callback)
+        if text_delta_callback is not None or tool_input_callback is not None:
+            return self._complete_streaming(
+                client, kwargs, text_delta_callback, tool_input_callback
+            )
 
         try:
             response = client.chat.completions.create(**kwargs)
@@ -171,7 +174,11 @@ class OpenAIChatLLM:
         )
 
     def _complete_streaming(
-        self, client: Any, kwargs: dict[str, Any], on_delta: Any
+        self,
+        client: Any,
+        kwargs: dict[str, Any],
+        on_delta: Any,
+        on_tool_input: Any = None,
     ) -> LLMResponse:
         """Token-by-token completion — same LLMResponse shape as non-streaming.
 
@@ -199,7 +206,7 @@ class OpenAIChatLLM:
         # with the full text, same LLMResponse out.
         if hasattr(stream, "choices"):
             choice = stream.choices[0].message
-            if choice.content:
+            if choice.content and on_delta is not None:
                 on_delta(choice.content)
             tool_calls = []
             for call in choice.tool_calls or []:
@@ -253,6 +260,18 @@ class OpenAIChatLLM:
                         slot["name"] += fn.name
                     if getattr(fn, "arguments", None):
                         slot["arguments"] += fn.arguments
+                        if on_tool_input is not None and slot["name"]:
+                            # The provider streams argument JSON in fragments
+                            # exactly as Anthropic does; forward them so a
+                            # renderer can show the file being written. The
+                            # index stands in for a call id — OpenAI does not
+                            # send one until the call completes.
+                            try:
+                                on_tool_input(
+                                    f"call_{idx}", slot["name"], fn.arguments
+                                )
+                            except Exception:
+                                pass
 
         tool_calls = []
         for idx in sorted(calls):

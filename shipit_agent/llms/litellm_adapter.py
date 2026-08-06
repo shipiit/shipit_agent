@@ -163,6 +163,7 @@ class LiteLLMChatLLM:
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
         text_delta_callback: Callable[[str], None] | None = None,
+        tool_input_callback: Callable[[str, str, str], None] | None = None,
     ) -> LLMResponse:
         """Run a chat completion.
 
@@ -194,7 +195,7 @@ class LiteLLMChatLLM:
         if response_format:
             extra_kwargs["response_format"] = response_format
 
-        if text_delta_callback is not None:
+        if text_delta_callback is not None or tool_input_callback is not None:
             return _stream_completion(
                 completion_fn=completion,
                 model=self.model,
@@ -202,6 +203,7 @@ class LiteLLMChatLLM:
                 tools=request_tools,
                 extra_kwargs=extra_kwargs,
                 text_delta_callback=text_delta_callback,
+                tool_input_callback=tool_input_callback,
             )
 
         try:
@@ -264,7 +266,8 @@ def _stream_completion(
     payload_messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
     extra_kwargs: dict[str, Any],
-    text_delta_callback: Callable[[str], None],
+    text_delta_callback: Callable[[str], None] | None,
+    tool_input_callback: Callable[[str, str, str], None] | None = None,
 ) -> LLMResponse:
     """Drive a streaming litellm completion, accumulating text and tool calls.
 
@@ -310,7 +313,8 @@ def _stream_completion(
                     if text:
                         content_parts.append(text)
                         try:
-                            text_delta_callback(text)
+                            if text_delta_callback is not None:
+                                text_delta_callback(text)
                         except Exception:
                             # A misbehaving subscriber must not break the
                             # stream — we still need to drain the iterator
@@ -337,6 +341,19 @@ def _stream_completion(
                             fn_args = getattr(fn, "arguments", None)
                             if fn_args:
                                 entry["arguments"] += fn_args
+                                if tool_input_callback is not None and entry["name"]:
+                                    # Same shape as OpenAI and Anthropic: the
+                                    # provider streams argument JSON in
+                                    # fragments. Forward them so a renderer can
+                                    # show the file being written.
+                                    try:
+                                        tool_input_callback(
+                                            entry["id"] or f"call_{idx}",
+                                            entry["name"],
+                                            fn_args,
+                                        )
+                                    except Exception:
+                                        pass
 
             chunk_usage = getattr(chunk, "usage", None)
             if chunk_usage:
@@ -512,8 +529,19 @@ class BedrockChatLLM(LiteLLMChatLLM):
             except Exception:
                 pass
 
-    def complete(self, **kwargs: Any) -> LLMResponse:
-        # Gemma 4 → OpenAI-compatible mantle endpoint; everything else → Converse.
+    def complete(
+        self,
+        *,
+        tool_input_callback: Callable[[str, str, str], None] | None = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        # Gemma 4 → OpenAI-compatible mantle endpoint; everything else →
+        # Converse. `tool_input_callback` is named explicitly rather than left
+        # to **kwargs so capability sniffing can see it: both delegates
+        # support it, but an unnamed kwarg is indistinguishable from an
+        # adapter that would raise on it.
+        if tool_input_callback is not None:
+            kwargs["tool_input_callback"] = tool_input_callback
         if self._mantle_delegate is not None:
             return self._mantle_delegate.complete(**kwargs)
         return super().complete(**kwargs)

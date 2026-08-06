@@ -20,6 +20,9 @@ class ShipitLLM:
         metadata: dict | None = None,
         response_format: dict | None = None,
         text_delta_callback: Any = None,  # noqa: ARG002 — Protocol compliance
+        # Accepted and ignored: this stub returns a canned answer, so there is
+        # nothing to stream. Naming it keeps the Protocol satisfied.
+        tool_input_callback: Any = None,  # noqa: ARG002
     ) -> LLMResponse:
         # Accept dict messages too (e.g. from ComputerUseAgent).
         coerced = coerce_messages(messages)

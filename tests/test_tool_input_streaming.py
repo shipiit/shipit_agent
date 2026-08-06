@@ -33,27 +33,60 @@ def called(tool="write_file", call_id="1", **arguments):
         "tool": tool, "call_id": call_id, "arguments": arguments})
 
 
+def _shipped_adapters():
+    """Every LLM adapter class shipit ships, discovered rather than listed."""
+    import importlib
+    import inspect
+
+    found = []
+    for module in ("anthropic_adapter", "openai_adapter", "litellm_adapter", "simple"):
+        mod = importlib.import_module(f"shipit_agent.llms.{module}")
+        for name, obj in vars(mod).items():
+            if (
+                inspect.isclass(obj)
+                and hasattr(obj, "complete")
+                and obj.__module__ == mod.__name__
+            ):
+                found.append((name, obj))
+    return found
+
+
 class TestAdapterCapability:
-    def test_anthropic_opts_in(self) -> None:
-        from shipit_agent.llms.anthropic_adapter import AnthropicChatLLM
+    """Every adapter we ship, not just the one that was easy to do."""
 
-        assert accepts_tool_input_callback(AnthropicChatLLM.complete)
+    @pytest.mark.parametrize(
+        "name,cls", _shipped_adapters(), ids=[n for n, _ in _shipped_adapters()]
+    )
+    def test_every_shipped_adapter_accepts_it(self, name, cls) -> None:
+        """Discovered, not hand-listed, so a new adapter cannot silently opt out."""
+        assert accepts_tool_input_callback(cls.complete), (
+            f"{name} would raise on tool_input_callback"
+        )
 
-    @pytest.mark.parametrize("module,name", [
-        ("shipit_agent.llms.openai_adapter", "OpenAIChatLLM"),
-        ("shipit_agent.llms.litellm_adapter", "LiteLLMChatLLM"),
-    ])
-    def test_others_degrade_rather_than_break(self, module, name) -> None:
-        """A bare **kwargs must not count as support.
+    def test_the_big_providers_are_covered(self) -> None:
+        # Named explicitly so the discovery above can't pass by finding nothing.
+        names = {n for n, _ in _shipped_adapters()}
+        assert {
+            "AnthropicChatLLM", "OpenAIChatLLM", "LiteLLMChatLLM",
+            "BedrockChatLLM", "GeminiChatLLM", "VertexAIChatLLM",
+            "GroqChatLLM", "TogetherChatLLM", "OllamaChatLLM",
+        } <= names
 
-        Some adapters forward **kwargs verbatim to an inner adapter; treating
-        that as opt-in pushes an unknown keyword one level down and raises
-        there instead. This is a real regression that shipped and was caught.
+    def test_a_custom_adapter_without_it_degrades_rather_than_breaking(self) -> None:
+        """A third-party adapter written before this existed must still work.
+
+        A bare **kwargs does not count as support: some adapters forward it
+        verbatim to an inner one, so treating that as opt-in pushes an unknown
+        keyword down a level and raises there. That regression shipped, and the
+        suite caught it.
         """
-        import importlib
 
-        cls = getattr(importlib.import_module(module), name)
-        assert not accepts_tool_input_callback(cls.complete)
+        class OldAdapter:
+            def complete(self, *, messages, tools=None, system_prompt=None,
+                         metadata=None, **kwargs):
+                return None
+
+        assert not accepts_tool_input_callback(OldAdapter.complete)
 
 
 class TestAccumulator:
@@ -259,3 +292,110 @@ class TestAnthropicPump:
 
         _pump_stream_events(events, text.append, boom)
         assert text == ["still here"]  # a preview failure costs a preview
+
+
+class TestOpenAIShapedStreams:
+    """OpenAI, Bedrock, Gemini, Groq, Together, Ollama all stream this shape."""
+
+    def _fake_stream(self, monkeypatch, fragments):
+        """A chat.completions stream that emits tool-argument fragments."""
+
+        class Fn:
+            def __init__(self, name=None, arguments=None):
+                self.name, self.arguments = name, arguments
+
+        class Frag:
+            def __init__(self, index, fn):
+                self.index, self.function = index, fn
+
+        class Delta:
+            def __init__(self, tool_calls=None):
+                self.content = None
+                self.reasoning_content = None
+                self.tool_calls = tool_calls
+
+        class Choice:
+            def __init__(self, delta):
+                self.delta = delta
+                self.finish_reason = None
+
+        class Chunk:
+            def __init__(self, delta):
+                self.choices = [Choice(delta)]
+                self.usage = None
+
+        chunks = [Chunk(Delta([Frag(0, Fn(name="write_file"))]))]
+        chunks += [
+            Chunk(Delta([Frag(0, Fn(arguments=fragment))])) for fragment in fragments
+        ]
+
+        class Completions:
+            def create(self, **kwargs):
+                assert kwargs.get("stream") is True
+                return iter(chunks)
+
+        class Chat:
+            completions = Completions()
+
+        class Client:
+            chat = Chat()
+
+        return Client()
+
+    def test_openai_forwards_argument_fragments(self, monkeypatch) -> None:
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        payload = json.dumps({"path": "app.py", "content": "print(1)\n"})
+        fragments = [payload[i:i + 5] for i in range(0, len(payload), 5)]
+        client = self._fake_stream(monkeypatch, fragments)
+
+        seen: list[tuple[str, str, str]] = []
+        llm = OpenAIChatLLM(model="gpt-4o", api_key="k")
+        llm._complete_streaming(
+            client, {"model": "gpt-4o", "messages": []}, None,
+            lambda cid, name, d: seen.append((cid, name, d)),
+        )
+
+        assert seen, "no tool-input fragments forwarded"
+        assert {name for _, name, _ in seen} == {"write_file"}
+        assert "".join(d for _, _, d in seen) == payload
+
+    def test_fragments_decode_through_the_parser(self, monkeypatch) -> None:
+        """The whole chain: provider fragments -> decoded field."""
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+        from shipit_agent.narrate.json_stream import StreamingToolInputParser
+
+        body = "def main():\n    return 0\n"
+        payload = json.dumps({"path": "app.py", "content": body})
+        fragments = [payload[i:i + 3] for i in range(0, len(payload), 3)]
+        client = self._fake_stream(monkeypatch, fragments)
+
+        parser = StreamingToolInputParser("content")
+        OpenAIChatLLM(model="gpt-4o", api_key="k")._complete_streaming(
+            client, {"model": "gpt-4o", "messages": []}, None,
+            lambda cid, name, d: parser.append(d),
+        )
+        assert parser.streaming_value == body
+        assert parser.prefix_fields == {"path": "app.py"}
+
+    def test_a_raising_callback_does_not_break_the_stream(self, monkeypatch) -> None:
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        client = self._fake_stream(monkeypatch, ['{"path": "a.py"}'])
+
+        def boom(*_):
+            raise RuntimeError("renderer exploded")
+
+        response = OpenAIChatLLM(model="gpt-4o", api_key="k")._complete_streaming(
+            client, {"model": "gpt-4o", "messages": []}, None, boom
+        )
+        assert response.tool_calls[0].name == "write_file"
+
+    def test_text_only_streaming_is_unaffected(self, monkeypatch) -> None:
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        client = self._fake_stream(monkeypatch, ['{"path": "a.py"}'])
+        response = OpenAIChatLLM(model="gpt-4o", api_key="k")._complete_streaming(
+            client, {"model": "gpt-4o", "messages": []}, lambda _t: None, None
+        )
+        assert response.tool_calls[0].name == "write_file"

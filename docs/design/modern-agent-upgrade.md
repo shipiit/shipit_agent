@@ -18,9 +18,26 @@ Cloudflare OS is not "a chat UI with nicer CSS." Its output feels calm because o
 | **2** ✅ | Tool contracts + observation/action split + deferred approval queue | Yes — both runtimes, via one shared gate | Medium | **landed** |
 | **3** ✅ | Streaming tool-input parser, checkpoint compaction, `give_up` | Yes | Medium | **landed** |
 | **4** ✅ | Code mode — bindings, catalogs, `describe_binding`, `execute_code`, capability bridge | Yes, deeply | High | **landed** |
-| **5** | Surfaces — TUI, SSE/web parity, shareable run artifacts | No | Low | ~3 days |
+| **5** ✅ | Surfaces — CLI flags, SSE parity, shareable run transcripts | No | Low | **landed** |
 
-Stages 1, 3, and 5 are independent. Stage 2 gates stage 4.
+All five stages are landed. **2,548 tests pass, 0 failures.**
+
+```bash
+shipit code --code-mode --defer-approvals --share run.html "what TODOs are left?"
+```
+
+```
+  ⌕ Read README.md, searched for TODO ›
+    README.md · TODO
+
+Two TODOs left, both in the parser. I'll note them for the team.
+
+  ◈ Updated the todo list add ›
+
+Done — the list is updated.
+
+                                             27,360 tokens · claude-opus-5
+```
 
 ---
 
@@ -722,7 +739,30 @@ The biggest win and the biggest risk. Ship stages 1–3 first.
 
 Expected effect: prompt tool-schema block from thousands of tokens to a few hundred; cross-connector composition in one call.
 
-### Stage 5 — Surfaces
+### Stage 5 — Surfaces ✅ LANDED
+
+`narrate/share.py` + CLI flags + SSE sideband, 28 tests.
+
+`shipit code` gains `--code-mode`, `--defer-approvals`, `--style`, `--share`.
+
+`--defer-approvals` replaces the blocking prompt with a review pass after the
+run — the batch in front of you at once, with the work already done. "always
+this kind" enables the auto-approval rule for that tag and drains, so the rest
+settles without further asking. Tools whose result the agent reasons over still
+block; the contract decides, not the flag.
+
+`--share` writes one self-contained HTML file: same rows as the terminal,
+inlined styles, no network requests, no JavaScript beyond native `<details>`.
+Everything from the model or a tool is escaped — a transcript is a thing you
+send to other people, and the tests cover script tags in tool output, in prose,
+and in a filename.
+
+`serve.py` forwards work rows, queued approvals and running cost alongside the
+OpenAI stream under an additive `shipit` key. Plain clients ignore it. The
+forwarded set is an allow-list, and payloads are coerced to JSON-safe values so
+one unserializable tool argument cannot kill a stream mid-response.
+
+**Original scope:**
 
 - `chat_cli.py` (1375 lines) adopts `NarratorRenderer`.
 - `serve.py` SSE emits the new event types so a web client can render identically.

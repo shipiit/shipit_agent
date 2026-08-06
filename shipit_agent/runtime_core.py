@@ -375,6 +375,14 @@ class RuntimeCore:
         Only paths a tool declared in its metadata are reported: scraping them
         out of free text would invent artifacts from any string with a slash.
         """
+        # Reading a file does not produce one. `read_file` reports the path it
+        # read, and treating that as an artifact turns every read into a card
+        # for a file the user already had.
+        from shipit_agent.tools.contracts import contract_for
+
+        if contract_for(tool_name).read_only:
+            return
+
         metadata = dict(getattr(result, "metadata", None) or {})
         for path in _declared_paths(metadata):
             self.emit(

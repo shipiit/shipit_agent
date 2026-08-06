@@ -565,3 +565,49 @@ class TestDeclaredGroups:
         ])
         kinds = [type(r).__name__ for r in rows]
         assert kinds == ["WorkRow", "ProseRow"]
+
+
+class TestArtifactsInsideAGroup:
+    """A card must not split the row that made it."""
+
+    @staticmethod
+    def _event(kind, **payload):
+        return AgentEvent(type=kind, message="", payload=payload)
+
+    def test_a_card_waits_for_its_group_to_close(self, tmp_path) -> None:
+        made = tmp_path / "report.html"
+        made.write_text("<h1>x</h1>")
+        rows = build_transcript([
+            self._event("tool_called", call_id="1", tool="glob_files",
+                        arguments={"pattern": "*.eml"}, group_id="g1"),
+            self._event("tool_completed", call_id="1", tool="glob_files",
+                        output="a.eml", duration_ms=3, group_id="g1"),
+            self._event("tool_called", call_id="2", tool="write_file",
+                        arguments={"path": str(made)}, group_id="g1"),
+            AgentEvent(type="artifact_created", message="", payload={
+                "path": str(made), "title": "Report", "kind": "Page",
+                "tool": "write_file"}),
+            self._event("tool_completed", call_id="2", tool="write_file",
+                        output="ok", duration_ms=6, group_id="g1"),
+            self._event("tool_group_completed", group_id="g1"),
+            self._event("run_completed", output="done", usage={}),
+        ])
+        kinds = [type(row).__name__ for row in rows]
+        assert kinds[:2] == ["WorkRow", "ArtifactRow"], kinds
+        work = rows[0]
+        assert len(work.group.calls) == 2, "the card must not split the group"
+
+    def test_without_a_group_the_card_still_follows_the_work(self, tmp_path) -> None:
+        made = tmp_path / "report.html"
+        made.write_text("<h1>x</h1>")
+        rows = build_transcript([
+            self._event("tool_called", call_id="1", tool="write_file",
+                        arguments={"path": str(made)}),
+            self._event("tool_completed", call_id="1", tool="write_file",
+                        output="ok"),
+            AgentEvent(type="artifact_created", message="", payload={
+                "path": str(made), "title": "Report", "kind": "Page",
+                "tool": "write_file"}),
+            self._event("run_completed", output="done", usage={}),
+        ])
+        assert [type(r).__name__ for r in rows][:2] == ["WorkRow", "ArtifactRow"]

@@ -518,3 +518,33 @@ class TestUseAppDeclaresWhatItMade:
 
         assert _produced_path({"path": "/nowhere/nothing.html"}) is None
         assert _produced_path("not a dict") is None
+
+
+class TestReadsAreNotArtifacts:
+    """Reading a file does not produce one — the user already had it."""
+
+    def test_a_read_declares_no_artifact(self, tmp_path) -> None:
+        from shipit_agent.models import AgentEvent
+        from shipit_agent.runtime_core import RuntimeCore
+
+        data = tmp_path / "guests.csv"
+        data.write_text("name\nDana\n")
+
+        emitted: list[str] = []
+
+        class Probe(RuntimeCore):
+            # `event_type`, not `kind`: an artifact payload carries a `kind`
+            # of its own, and naming the parameter that collides with it.
+            def emit(self, state, event_type, message, **payload):
+                emitted.append(event_type)
+
+        class Result:
+            metadata = {"path": str(data)}
+
+        probe = Probe.__new__(Probe)   # no runtime, just the shared helper
+        probe.note_artifacts(None, "read_file", Result())
+        assert emitted == [], "read_file reports what it read, not what it made"
+
+        probe.note_artifacts(None, "write_file", Result())
+        assert emitted == ["artifact_created"]
+        assert AgentEvent  # imported for the type it documents

@@ -396,6 +396,9 @@ class WorkRunAccumulator:
         # its own. A declared group is authoritative: it says which calls
         # belong together regardless of what was said between them.
         self._group_id: str | None = None
+        # Cards for files made inside the group currently open, drawn once it
+        # closes so they sit under the row that made them.
+        self._pending_artifacts: list[ArtifactRow] = []
         self.usage: dict[str, int] = {}
         # The tool argument currently being written, keyed by call id, so a
         # live view can show a file appearing rather than nothing until the
@@ -518,19 +521,24 @@ class WorkRunAccumulator:
             return
 
         if kind == "artifact_created":
-            # An artifact belongs after the work that made it and after the
-            # sentence introducing it — both settle before the card is drawn,
-            # or the prose ends up below the thing it was announcing.
+            card = ArtifactRow(
+                path=str(payload.get("path") or ""),
+                title=str(payload.get("title") or ""),
+                kind=str(payload.get("kind") or "File"),
+                tool=str(payload.get("tool") or ""),
+            )
+            if self._group_id is not None:
+                # A group is still open: holding the card until it closes is
+                # what keeps `2 tools` from becoming two rows of one with a
+                # card wedged between them.
+                self._pending_artifacts.append(card)
+                return
+            # No declared group — the work that made it settles first, and so
+            # does the sentence introducing it, or the prose ends up below the
+            # thing it was announcing.
             self._flush_work()
             self._flush_prose()
-            self._rows.append(
-                ArtifactRow(
-                    path=str(payload.get("path") or ""),
-                    title=str(payload.get("title") or ""),
-                    kind=str(payload.get("kind") or "File"),
-                    tool=str(payload.get("tool") or ""),
-                )
-            )
+            self._rows.append(card)
             return
 
         if kind == "connection_requested":
@@ -639,6 +647,9 @@ class WorkRunAccumulator:
         group = build_group(self._calls)
         if group is not None:
             self._rows.append(WorkRow(group))
+        # Whatever that work produced belongs directly under it.
+        self._rows.extend(self._pending_artifacts)
+        self._pending_artifacts = []
         # A child's work belongs under the delegation that started it.
         for row in self._sub_agents.values():
             self._rows.append(row)

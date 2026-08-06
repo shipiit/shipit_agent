@@ -242,3 +242,23 @@ class TestNarratorAgreement:
             if name in VERBS and VERBS[name].read_only != contract.read_only
         ]
         assert not mismatched, f"read_only disagreement: {mismatched}"
+
+
+class TestAllowListingPattern:
+    """`deny=["*"]` is a trap: deny outranks allow, so it denies everything."""
+
+    def test_a_wildcard_deny_also_denies_allow_listed_tools(self) -> None:
+        engine = PermissionEngine(allow=["read_file"], deny=["*"])
+        assert engine.check("read_file", {}).denied
+
+    def test_the_correct_way_to_mean_these_and_nothing_else(self) -> None:
+        from shipit_agent.permissions import PermissionDecision
+
+        engine = PermissionEngine(
+            allow=["read_file", "grep_files"],
+            default_decision=PermissionDecision.DENY,
+        )
+        assert engine.check("read_file", {}).allowed
+        assert engine.check("grep_files", {}).allowed
+        assert engine.check("bash", {}).denied
+        assert engine.check("write_file", {}).denied

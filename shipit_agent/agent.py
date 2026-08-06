@@ -86,6 +86,10 @@ DEFAULT_SKILLS_PATH = Path(__file__).resolve().parent / "skills" / "skills.json"
 # that will be looked up in the registry at init time.
 SkillLike = str | Skill
 
+# Views ``run_live`` knows how to draw. Anything else is a typo, and used to
+# fall through to the default renderer without a word.
+_LIVE_STYLES = frozenset({"auto", "rich", "plain", "tree", "modern"})
+
 
 @dataclass(slots=True)
 class Agent:
@@ -818,7 +822,12 @@ class Agent:
     # ──────────────────────────────────────────────────────────────────
 
     def run_live(
-        self, user_prompt: str, *, file: Any = None, style: str = "auto"
+        self,
+        user_prompt: str,
+        *,
+        file: Any = None,
+        style: str = "auto",
+        detail: bool = False,
     ) -> str:
         """Run with a live, Claude-Code-style display and return the answer.
 
@@ -837,6 +846,10 @@ class Agent:
         Returns the final answer text; use :meth:`run` when you need the
         full :class:`AgentResult`.
 
+        ``style="tree"`` renders the *shape* of the run instead — every call
+        named with its status, decisions marked where they happened. Good for
+        debugging and for explaining what an agent did.
+
         ``style="modern"`` switches to the Narrator — human verbs, collapsed
         work runs, and a tokens/cost footer (see
         ``docs/design/modern-agent-upgrade.md``)::
@@ -848,7 +861,20 @@ class Agent:
             # Three I would put on your list: …
             #                                    18,240 tokens · $0.12
         """
-        if style == "modern":
+        if style not in _LIVE_STYLES:
+            # A typo used to render the default view silently, which reads as
+            # "the style I asked for does nothing".
+            raise ValueError(
+                f"Unknown style {style!r}. Valid styles: "
+                f"{', '.join(sorted(_LIVE_STYLES))}."
+            )
+        if style == "tree":
+            from shipit_agent.narrate import TreeRenderer
+
+            renderer = TreeRenderer(
+                file=file, model=getattr(self.llm, "model", None), detail=detail
+            )
+        elif style == "modern":
             from shipit_agent.narrate import NarratorRenderer
 
             renderer = NarratorRenderer(

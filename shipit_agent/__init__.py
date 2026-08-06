@@ -117,6 +117,7 @@ from .narrate import (
     build_transcript,
     render_transcript,
     render_transcript_html,
+    render_tree,
     summarize,
     write_transcript,
 )
@@ -394,6 +395,7 @@ __all__ = [
     "build_transcript",
     "render_transcript",
     "render_transcript_html",
+    "render_tree",
     "write_transcript",
     "summarize",
     "SemanticMemory",

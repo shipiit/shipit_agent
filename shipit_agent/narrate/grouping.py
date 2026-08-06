@@ -533,6 +533,35 @@ class WorkRunAccumulator:
         """The in-flight work run, in the present tense — for the live row."""
         return build_group(self._calls, present=True)
 
+    @property
+    def streaming_text(self) -> str:
+        """Prose that has arrived but is not yet a settled row.
+
+        A live view needs the half-written sentence; a transcript never does.
+        Exposed so a renderer can show tokens landing without reaching into
+        the buffer this class flushes.
+        """
+        return "".join(self._prose)
+
+    def live_rows(self) -> list[TranscriptRow]:
+        """Settled rows *plus* whatever is still in flight.
+
+        The same list :attr:`rows` returns, with the in-flight work run and
+        the half-written sentence appended in the order they will settle in.
+        Calling this never commits anything — feed the next event and the
+        provisional tail is recomputed from scratch.
+        """
+        rows: list[TranscriptRow] = list(self._rows)
+        pending = self.pending
+        if pending is not None:
+            rows.append(WorkRow(pending))
+        for row in self._sub_agents.values():
+            rows.append(row)
+        text = self.streaming_text
+        if text.strip():
+            rows.append(ProseRow(text))
+        return rows
+
     def finish(self) -> list[TranscriptRow]:
         """Close out anything still buffered and return the new rows."""
         before = len(self._rows)

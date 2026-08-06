@@ -88,6 +88,15 @@ class PermissionEngine:
     ``allow`` / ``deny`` / ``ask`` are lists of tool-name globs (``fnmatch``).
     Precedence: ``deny`` > mode logic > ``allow`` > ``ask`` > ``callback`` >
     ``default_decision``.
+
+    Because ``deny`` outranks ``allow``, ``deny=["*"]`` denies **everything**,
+    including anything you allow-listed — it is not "deny the rest". To mean
+    "these tools and nothing else", allow-list them and flip the default::
+
+        PermissionEngine(
+            allow=["read_file", "grep_files"],
+            default_decision=PermissionDecision.DENY,
+        )
     """
 
     mode: PermissionMode = "default"

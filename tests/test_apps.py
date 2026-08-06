@@ -548,3 +548,99 @@ class TestReadsAreNotArtifacts:
         probe.note_artifacts(None, "write_file", Result())
         assert emitted == ["artifact_created"]
         assert AgentEvent  # imported for the type it documents
+
+
+class TestAnalyticsBlueprints:
+    """The three that produce something a person would actually look at."""
+
+    ROWS = [
+        {"region": "EMEA", "rep": "Dana Kim", "amount": 120000},
+        {"region": "AMER", "rep": "Sam Osei", "amount": 240000},
+        {"region": "APAC", "rep": "Maximo Guk", "amount": 64000},
+    ]
+
+    def _built(self, store, blueprint, payload):
+        store.create(blueprint, title=blueprint, blueprint=blueprint)
+        result = store.run(blueprint, payload)
+        assert result.ok, result.error
+        from pathlib import Path
+
+        return result, Path(result.value["path"]).read_text()
+
+    def test_the_dashboard_totals_and_charts(self, tmp_path) -> None:
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        result, page = self._built(store, "dashboard", {
+            "rows": self.ROWS, "title": "Revenue by region",
+            "output": "d.html"})
+        assert result.value["totals"] == {"EMEA": 120000, "AMER": 240000,
+                                          "APAC": 64000}
+        assert result.value["grand_total"] == 424000
+        # The largest bar is full height and marked; the rest are relative.
+        assert "height:100.0%" in page
+        assert "class='bar top'" in page
+        assert "$424K" in page          # money is readable, not raw
+
+    def test_the_dashboard_guesses_its_fields(self, tmp_path) -> None:
+        """A model that passes only `rows` still gets a chart."""
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        result, _ = self._built(store, "dashboard",
+                                {"rows": self.ROWS, "output": "d.html"})
+        assert result.value["totals"]
+
+    def test_the_dashboard_says_what_it_needs(self, tmp_path) -> None:
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        store.create("dashboard", title="d", blueprint="dashboard")
+        assert "pass `rows`" in store.run("dashboard", {}).error
+
+    def test_the_sheet_has_letters_numbers_and_flags(self, tmp_path) -> None:
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        result, page = self._built(store, "sheet", {
+            "rows": [{"Workstream": "Gateway", "Status": "On track"},
+                     {"Workstream": "Billing", "Status": "At risk"}],
+            "title": "Q2 Workstreams",
+            "highlight": {"Status": {"At risk": 1}},
+            "output": "s.html"})
+        assert result.value["columns"] == ["Workstream", "Status"]
+        assert "<th>A</th>" in page and "<th>B</th>" in page   # column letters
+        assert "class=rownum>2<" in page                        # row numbers
+        assert "class=warn>At risk" in page                     # flagged cell
+        assert "class=warn>On track" not in page
+
+    def test_the_workflow_marks_the_agent_step(self, tmp_path) -> None:
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        result, page = self._built(store, "workflow", {
+            "title": "RSVP intake", "status": "runs on every email",
+            "steps": [{"title": "Email", "note": "trigger", "kind": "trigger"},
+                      {"title": "Classify", "note": "agent step",
+                       "kind": "agent"},
+                      {"title": "Events DB", "note": "write row",
+                       "kind": "write"}],
+            "log": ["Logged RSVP from jordan@acme.com · Yes"],
+            "output": "w.html"})
+        assert result.value["steps"] == 3
+        assert "class='step agent'" in page      # only the agent step is
+        assert page.count("class='step agent'") == 1
+        assert page.count("class=link") == 2     # connectors between the three
+        assert "jordan@acme.com" in page
+
+    def test_every_blueprint_is_self_contained(self, tmp_path) -> None:
+        """No CDN, no fonts, no fetch — these open from a file:// URL."""
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        pages = [
+            self._built(store, "dashboard",
+                        {"rows": self.ROWS, "output": "d.html"})[1],
+            self._built(store, "sheet",
+                        {"rows": self.ROWS, "output": "s.html"})[1],
+            self._built(store, "workflow",
+                        {"steps": [{"title": "A"}], "output": "w.html"})[1],
+        ]
+        for page in pages:
+            for forbidden in ("http://", "https://", "<script", "@import"):
+                assert forbidden not in page, forbidden
+
+    def test_html_in_the_data_cannot_break_out(self, tmp_path) -> None:
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        _, page = self._built(store, "sheet", {
+            "rows": [{"name": "<script>alert(1)</script>"}], "output": "s.html"})
+        assert "<script>alert(1)" not in page
+        assert "&lt;script&gt;" in page

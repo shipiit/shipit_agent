@@ -72,6 +72,11 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # A version uploaded by hand before the tag was pushed used to
+          # fail the job with "File already exists" — and take the GitHub
+          # release down with it, because that step needs this one.
+          skip-existing: true
 
   github-release:
     needs: publish-pypi
@@ -86,10 +91,30 @@ jobs:
           name: dist
           path: dist/
 
+      # `github.ref_name` is "v1.2.0"; the notes file may be named with or
+      # without the v, and may not exist at all. Resolve it here so a
+      # missing file cannot fail the release — an empty body just means
+      # generate_release_notes writes the whole thing.
+      - name: Resolve release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for candidate in "RELEASE_NOTES_${version}.md" \
+                           "RELEASE_NOTES_v${version}.md" \
+                           "docs/releases/${version}.md"; do
+            if [ -f "$candidate" ]; then
+              cp "$candidate" release-body.md
+              echo "Using $candidate"
+              break
+            fi
+          done
+          [ -f release-body.md ] || : > release-body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body_path: release-body.md
+          # Appends the commit summary under the hand-written notes.
           generate_release_notes: true
           draft: false
           prerelease: false

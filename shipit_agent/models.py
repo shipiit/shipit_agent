@@ -19,6 +19,8 @@ EventType = Literal[
     "tool_denied",
     "action_queued",
     "text_delta",
+    "tool_input_started",
+    "tool_input_delta",
     "usage_tick",
     "interactive_request",
     "mcp_attached",

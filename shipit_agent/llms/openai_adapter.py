@@ -33,6 +33,8 @@ class OpenAIChatLLM:
         *,
         reasoning_effort: str | None = None,
         tool_choice: str | dict[str, Any] | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
         **client_kwargs: Any,
     ) -> None:
         self.model = model
@@ -46,6 +48,11 @@ class OpenAIChatLLM:
         # gpt-4o-mini and other lazy models that otherwise return prose-only
         # answers even when tools are clearly needed.
         self.tool_choice = tool_choice
+        # Completion controls belong on chat.completions.create(), not on the
+        # OpenAI client constructor. Keeping them separate is especially
+        # important for OpenAI-compatible endpoints such as Bedrock Mantle.
+        self.max_tokens = max_tokens
+        self.temperature = temperature
         self.client_kwargs = client_kwargs
 
     def complete(
@@ -78,6 +85,10 @@ class OpenAIChatLLM:
         # rejects the parameter otherwise.
         if self.tool_choice and tools:
             kwargs["tool_choice"] = self.tool_choice
+        if self.max_tokens is not None:
+            kwargs["max_tokens"] = self.max_tokens
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
         if response_format:
             kwargs["response_format"] = response_format
 

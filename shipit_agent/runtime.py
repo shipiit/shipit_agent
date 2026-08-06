@@ -11,7 +11,12 @@ from uuid import uuid4
 
 from shipit_agent.construction import build_tool_schemas, construct_tool_registry
 from shipit_agent.integrations import CredentialStore
-from shipit_agent.llms.base import LLM, LLMResponse, accepts_text_delta_callback
+from shipit_agent.llms.base import (
+    LLM,
+    LLMResponse,
+    accepts_text_delta_callback,
+    accepts_tool_input_callback,
+)
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
 from shipit_agent.permissions import (
@@ -168,6 +173,9 @@ class AgentRuntime:
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
         # signature don't — passing it unconditionally raises TypeError.
         self._llm_streams_text = accepts_text_delta_callback(self.llm.complete)
+        # Only Anthropic surfaces partial tool arguments today; everywhere
+        # else arguments arrive whole, exactly as before.
+        self._llm_streams_tool_input = accepts_tool_input_callback(self.llm.complete)
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
@@ -803,12 +811,62 @@ class AgentRuntime:
                 return
             self.emit(state, "text_delta", "", chunk=chunk)
 
+        # Stream the one interesting argument of a tool call as the model
+        # writes it — the file body, the code, the command — so a renderer can
+        # show it appearing instead of nothing until the call is complete.
+        parsers: dict[str, Any] = {}
+        emitted: dict[str, int] = {}
+
+        def _on_tool_input(call_id: str, tool_name: str, fragment: str) -> None:
+            from shipit_agent.narrate.json_stream import (
+                StreamingToolInputParser,
+                streaming_field_for,
+            )
+
+            parser = parsers.get(call_id)
+            if parser is None:
+                field = streaming_field_for(tool_name)
+                if field is None:
+                    parsers[call_id] = False  # nothing worth streaming here
+                    return
+                parser = parsers[call_id] = StreamingToolInputParser(field)
+                emitted[call_id] = 0
+                self.emit(
+                    state,
+                    "tool_input_started",
+                    f"Writing {tool_name} input",
+                    tool=tool_name,
+                    call_id=call_id,
+                    field=field,
+                )
+            if parser is False:
+                return
+
+            parser.append(fragment)
+            if parser.has_error:
+                parsers[call_id] = False
+                return
+            value = parser.streaming_value
+            new = value[emitted[call_id]:]
+            if new:
+                emitted[call_id] = len(value)
+                self.emit(
+                    state,
+                    "tool_input_delta",
+                    "",
+                    tool=tool_name,
+                    call_id=call_id,
+                    delta=new,
+                )
+
         complete_kwargs: dict[str, Any] = dict(
             messages=messages,
             tools=tools,
             system_prompt=base_prompt,
             metadata=dict(self.metadata),
         )
+        if self._llm_streams_tool_input:
+            complete_kwargs["tool_input_callback"] = _on_tool_input
         # Only pass the streaming callback to adapters that accept it; older
         # custom adapters keep working unchanged (no inline streaming).
         if self._llm_streams_text:

@@ -269,6 +269,10 @@ class WorkRunAccumulator:
         self._prose: list[str] = []
         self._rows: list[TranscriptRow] = []
         self.usage: dict[str, int] = {}
+        # The tool argument currently being written, keyed by call id, so a
+        # live view can show a file appearing rather than nothing until the
+        # call completes.
+        self.writing: dict[str, str] = {}
 
     # ── ingest ───────────────────────────────────────────────────────────
 
@@ -291,6 +295,8 @@ class WorkRunAccumulator:
             return
 
         if kind == "tool_called":
+            # The argument finished streaming; the settled row takes over.
+            self.writing.pop(str(payload.get("call_id") or ""), None)
             self._flush_prose()
             call = CallRecord(
                 call_id=str(payload.get("call_id") or f"call_{len(self._calls)}"),
@@ -316,6 +322,15 @@ class WorkRunAccumulator:
             else:
                 call.status = "denied"
                 call.error = str(payload.get("reason", "") or "not permitted")
+            return
+
+        if kind == "tool_input_started":
+            self.writing[str(payload.get("call_id") or "")] = ""
+            return
+
+        if kind == "tool_input_delta":
+            key = str(payload.get("call_id") or "")
+            self.writing[key] = self.writing.get(key, "") + str(payload.get("delta", ""))
             return
 
         if kind == "action_queued":
@@ -402,6 +417,14 @@ class WorkRunAccumulator:
             self._rows.append(ProseRow(text))
 
     # ── views ────────────────────────────────────────────────────────────
+
+    @property
+    def writing_preview(self) -> str:
+        """The tail of whatever argument is being written right now."""
+        for value in reversed(list(self.writing.values())):
+            if value:
+                return value
+        return ""
 
     @property
     def pending(self) -> WorkGroup | None:

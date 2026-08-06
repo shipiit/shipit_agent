@@ -17,6 +17,47 @@ INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14"
 CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27"
 
 
+def _pump_stream_events(stream: Any, on_text: Any, on_tool_input: Any) -> None:
+    """Forward text and tool-argument deltas from the raw event stream.
+
+    The SDK's ``text_stream`` helper only yields text, so streaming a tool
+    call's arguments as the model writes them means reading raw events:
+    ``content_block_start`` names the tool, and each ``input_json_delta``
+    carries the next fragment of its argument JSON.
+
+    A failure here costs a preview, not the turn — the caller still fetches
+    the final message afterwards.
+    """
+    active: dict[int, tuple[str, str]] = {}
+    for event in stream:
+        etype = getattr(event, "type", "")
+        if etype == "content_block_start":
+            block = getattr(event, "content_block", None)
+            if getattr(block, "type", "") == "tool_use":
+                active[getattr(event, "index", -1)] = (
+                    getattr(block, "id", "") or "",
+                    getattr(block, "name", "") or "",
+                )
+        elif etype == "content_block_delta":
+            delta = getattr(event, "delta", None)
+            dtype = getattr(delta, "type", "")
+            if dtype == "text_delta" and on_text is not None:
+                text = getattr(delta, "text", "") or ""
+                if text:
+                    on_text(text)
+            elif dtype == "input_json_delta":
+                found = active.get(getattr(event, "index", -1))
+                if found is not None:
+                    fragment = getattr(delta, "partial_json", "") or ""
+                    if fragment:
+                        try:
+                            on_tool_input(found[0], found[1], fragment)
+                        except Exception:
+                            pass
+        elif etype == "content_block_stop":
+            active.pop(getattr(event, "index", -1), None)
+
+
 class AnthropicChatLLM:
     """Native Anthropic Messages API adapter.
 
@@ -302,6 +343,7 @@ class AnthropicChatLLM:
         response_format: dict[str, Any] | None = None,
         documents: list[dict[str, Any]] | None = None,
         text_delta_callback: Any = None,
+        tool_input_callback: Any = None,
     ) -> LLMResponse:
         try:
             import anthropic
@@ -349,13 +391,22 @@ class AnthropicChatLLM:
             # then hands back the SAME final Message shape, so every parsing
             # branch below (thinking, tool_use, server tools, citations) works
             # unchanged. Beta-endpoint calls keep the non-streaming path.
-            if text_delta_callback is not None and "betas" not in kwargs:
+            if (
+                text_delta_callback is not None or tool_input_callback is not None
+            ) and "betas" not in kwargs:
                 stream_fn = getattr(client.messages, "stream", None)
                 if stream_fn is not None:
                     with stream_fn(**kwargs) as _stream:
-                        for _text in _stream.text_stream:
-                            if _text:
-                                text_delta_callback(_text)
+                        if tool_input_callback is None:
+                            # text_stream is simpler and well-trodden; only
+                            # drop to raw events when someone wants tool input.
+                            for _text in _stream.text_stream:
+                                if _text:
+                                    text_delta_callback(_text)
+                        else:
+                            _pump_stream_events(
+                                _stream, text_delta_callback, tool_input_callback
+                            )
                         response = _stream.get_final_message()
                 else:  # very old SDK without stream helper
                     response = create(**kwargs)

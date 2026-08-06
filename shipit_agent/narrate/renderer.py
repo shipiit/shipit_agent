@@ -240,13 +240,30 @@ class NarratorRenderer:
 
     # ── the live row ─────────────────────────────────────────────────────
 
+    _PREVIEW_LINES = 6
+
     def _redraw_pending(self) -> None:
         if not self._live_enabled:
             return
+        lines: list[str] = []
         pending = self._acc.pending
-        self._region.draw(
-            self._work_lines(pending, present=True) if pending is not None else []
-        )
+        if pending is not None:
+            lines = self._work_lines(pending, present=True)
+
+        # A file or command being written appears as it is written, then
+        # disappears when the settled row replaces it. Only the tail is shown:
+        # a 400-line file would otherwise scroll the transcript away.
+        preview = self._acc.writing_preview
+        if preview:
+            if not lines:
+                mark = self._c("dim", self._glyph("❯"))
+                lines = [f"{_GUTTER}{mark} {self._c('accent', 'Writing…')}"]
+            tail = preview.splitlines()[-self._PREVIEW_LINES :]
+            width = _terminal_width() - len(_GUTTER) - 6
+            for line in tail:
+                clipped = line[:width]
+                lines.append(f"{_GUTTER}  {self._c('dim', clipped)}")
+        self._region.draw(lines)
 
     # ── public ───────────────────────────────────────────────────────────
 

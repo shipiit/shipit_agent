@@ -43,6 +43,7 @@ from .grouping import (
     ApprovalRow,
     NoticeRow,
     ProseRow,
+    SubAgentRow,
     WorkGroup,
     WorkRow,
     WorkRunAccumulator,
@@ -216,6 +217,15 @@ class NarratorRenderer:
         elif isinstance(row, ApprovalRow):
             for line in self._approval_lines(row):
                 self._write(line + "\n")
+        elif isinstance(row, SubAgentRow):
+            glyph = self._c("dim", self._glyph(row.icon))
+            head = f"{_GUTTER}    {glyph} {self._c('dim', row.label)}"
+            self._write(head + "\n")
+            if row.task:
+                task = row.task if len(row.task) <= 56 else row.task[:55] + "…"
+                self._write(
+                    f"{_GUTTER}      {self._c('dim', f'{row.agent} · {task}')}\n"
+                )
         elif isinstance(row, NoticeRow):
             mark = "◈" if self._unicode else "-"
             self._write(f"{_GUTTER}{self._c('dim', f'{mark} {row.text}')}\n")

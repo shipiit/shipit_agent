@@ -286,7 +286,30 @@ class RuntimeCore:
 
     # ── shared tool state ────────────────────────────────────────────────
 
-    def build_shared_state(self, registry: Any) -> dict[str, Any]:
+    def _make_subagent_sink(self, state: Any) -> Any:
+        """A callback children report through, so their work is visible.
+
+        A child's events are re-emitted on the parent's stream wrapped in
+        ``sub_agent_event``, carrying which child produced them. They are not
+        re-emitted under their own types: a renderer must be able to tell the
+        parent's work from a child's, or a nested read_file looks like the
+        parent read a file.
+        """
+
+        def sink(event: Any, label: str, task: str) -> None:
+            self.emit(
+                state,
+                "sub_agent_event",
+                f"[{label}] {event.message}",
+                agent=label,
+                task=task,
+                inner_type=event.type,
+                inner=dict(event.payload),
+            )
+
+        return sink
+
+    def build_shared_state(self, registry: Any, state: Any = None) -> dict[str, Any]:
         """What every tool can see. Identical in both loops, by construction."""
         from shipit_agent.connections import ConnectionRegistry
         from shipit_agent.tools.connections.connections_tool import (
@@ -294,6 +317,7 @@ class RuntimeCore:
         )
         from shipit_agent.tools.sub_agent.sub_agent_tool import (
             DEPTH_STATE_KEY,
+            EVENT_SINK_KEY,
             PARENT_STATE_KEY,
         )
 
@@ -325,6 +349,7 @@ class RuntimeCore:
                 "project_root": self.metadata.get("project_root", "."),
             },
             DEPTH_STATE_KEY: self.metadata.get(DEPTH_STATE_KEY, 0),
+            EVENT_SINK_KEY: self._make_subagent_sink(state),
             "artifact_workspace_root": self.metadata.get(
                 "artifact_workspace_root", ".shipit_workspace/artifacts"
             ),

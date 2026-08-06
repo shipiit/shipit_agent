@@ -29,6 +29,7 @@ from shipit_agent.models import AgentEvent
 
 from .verbs import (
     SEARCH,
+    TOOL,
     describe_count,
     describe_count_present,
     icon_for,
@@ -42,6 +43,7 @@ __all__ = [
     "ProseRow",
     "WorkRow",
     "ApprovalRow",
+    "SubAgentRow",
     "NoticeRow",
     "TranscriptRow",
     "WorkRunAccumulator",
@@ -84,6 +86,17 @@ class CallRecord:
     @property
     def target(self) -> str | None:
         return summarize(self.name, self.arguments).target
+
+    @property
+    def shape(self) -> tuple[str, str]:
+        """What this call reads as — the tool *and* its composed verb.
+
+        Two calls to one tool can be different actions: `sub_agent` starting
+        work and `sub_agent` collecting results share a name but not a verb.
+        Grouping on the name alone renders "Delegated 3 tasks" for two
+        delegations and a collection.
+        """
+        return (self.name, summarize(self.name, self.arguments).past)
 
     def past_label(self) -> str:
         return summarize(self.name, self.arguments).past_label()
@@ -143,28 +156,30 @@ def _compose_label(calls: list[CallRecord], *, present: bool) -> str:
     where it's actually true for us.
     """
     describe = describe_count_present if present else describe_count
-    names: list[str] = []
+    # Group on the *shape* — tool plus composed verb — so two calls to one
+    # tool that read as different actions are counted separately.
+    shapes: list[tuple[str, str]] = []
     for call in calls:
-        if call.name not in names:
-            names.append(call.name)
+        if call.shape not in shapes:
+            shapes.append(call.shape)
     details = _detail_lines(calls)
 
     if len(calls) == 1:
         call = calls[0]
         return call.present_label() if present else call.past_label()
 
-    if len(names) == 1:
+    if len(shapes) == 1:
         # A repeated tool that kept hitting the same target reads better as
         # the plain verb ("Edited app.py") than as a count ("Made 3 edits").
         if len(details) == 1:
             call = calls[0]
             return call.present_label() if present else call.past_label()
-        return describe(names[0], len(calls))
+        return describe(shapes[0][0], len(calls))
 
-    if len(names) <= _MAX_NAMED_TOOLS:
+    if len(shapes) <= _MAX_NAMED_TOOLS:
         parts: list[str] = []
-        for name in names:
-            matching = [c for c in calls if c.name == name]
+        for shape in shapes:
+            matching = [c for c in calls if c.shape == shape]
             if len(matching) == 1:
                 # A lone call inside a mixed run keeps its target. Without it,
                 # verbs that end in a preposition dangle: "searched for" rather
@@ -173,7 +188,13 @@ def _compose_label(calls: list[CallRecord], *, present: bool) -> str:
                     matching[0].present_label() if present else matching[0].past_label()
                 )
             else:
-                parts.append(describe(name, len(matching)))
+                counted = describe(shape[0], len(matching))
+                # An override verb ("Collected") must survive the count, which
+                # otherwise falls back to the tool's base verb.
+                base = summarize(shape[0], {}).past
+                if shape[1] != base and counted.startswith(base):
+                    counted = shape[1] + counted[len(base):]
+                parts.append(counted)
         return ", ".join(
             part if index == 0 else _lower_first(part)
             for index, part in enumerate(parts)
@@ -241,6 +262,38 @@ class ApprovalRow:
 
 
 @dataclass(slots=True)
+class SubAgentRow:
+    """Work a delegated agent did, attributed to it.
+
+    Rendered indented and labelled, never merged into the parent's own rows:
+    a nested `read_file` must not look like the parent read a file.
+    """
+
+    agent: str
+    task: str
+    calls: list[CallRecord] = field(default_factory=list)
+
+    @property
+    def group(self) -> WorkGroup | None:
+        """The child's calls, collapsed by the same rules as the parent's."""
+        return build_group(self.calls)
+
+    @property
+    def label(self) -> str:
+        group = self.group
+        return group.label if group is not None else "worked"
+
+    @property
+    def icon(self) -> str:
+        group = self.group
+        return group.icon if group is not None else TOOL
+
+    @property
+    def count(self) -> int:
+        return len(self.calls)
+
+
+@dataclass(slots=True)
 class NoticeRow:
     """Something the runtime did — compaction, cancellation, a guardrail."""
 
@@ -248,7 +301,7 @@ class NoticeRow:
     text: str
 
 
-TranscriptRow = ProseRow | WorkRow | ApprovalRow | NoticeRow
+TranscriptRow = ProseRow | WorkRow | ApprovalRow | SubAgentRow | NoticeRow
 
 
 _NOTICES = {
@@ -279,6 +332,8 @@ class WorkRunAccumulator:
         # live view can show a file appearing rather than nothing until the
         # call completes.
         self.writing: dict[str, str] = {}
+        # Work done by delegated agents, keyed by (agent, task).
+        self._sub_agents: dict[tuple[str, str], SubAgentRow] = {}
 
     # ── ingest ───────────────────────────────────────────────────────────
 
@@ -345,6 +400,10 @@ class WorkRunAccumulator:
             self.writing[key] = self.writing.get(key, "") + str(payload.get("delta", ""))
             return
 
+        if kind == "sub_agent_event":
+            self._feed_sub_agent(payload)
+            return
+
         if kind == "action_queued":
             # An approval interrupts the work run: it is a decision, not a step.
             # Flush prose too — a deferred call never emits `tool_called` (the
@@ -388,6 +447,33 @@ class WorkRunAccumulator:
                 NoticeRow(kind=kind, text=f"{notice}: {detail}" if detail else notice)
             )
 
+    def _feed_sub_agent(self, payload: dict[str, Any]) -> None:
+        """Accumulate a child's tool calls into one attributed row.
+
+        Only the child's *work* is surfaced. Its prose is its own reasoning,
+        and the parent already reports the conclusion — showing both would say
+        everything twice.
+        """
+        if payload.get("inner_type") != "tool_called":
+            return
+        inner = dict(payload.get("inner") or {})
+        agent = str(payload.get("agent") or "sub-agent")
+        task = str(payload.get("task") or "")
+        tool = str(inner.get("tool") or "?")
+
+        key = (agent, task)
+        row = self._sub_agents.get(key)
+        if row is None:
+            row = self._sub_agents[key] = SubAgentRow(agent=agent, task=task)
+        row.calls.append(
+            CallRecord(
+                call_id=str(inner.get("call_id") or f"sub_{len(row.calls)}"),
+                name=tool,
+                arguments=dict(inner.get("arguments") or {}),
+                status="ok",
+            )
+        )
+
     def _resolve(self, payload: dict[str, Any]) -> CallRecord | None:
         """Match an outcome to its call — by id, else by the newest running call.
 
@@ -419,6 +505,10 @@ class WorkRunAccumulator:
         group = build_group(self._calls)
         if group is not None:
             self._rows.append(WorkRow(group))
+        # A child's work belongs under the delegation that started it.
+        for row in self._sub_agents.values():
+            self._rows.append(row)
+        self._sub_agents = {}
         self._calls = []
         self._by_id = {}
 

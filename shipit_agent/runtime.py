@@ -902,50 +902,9 @@ class AgentRuntime(RuntimeCore):
             )
 
         tool_schemas = registry.schemas()
-        shared_state["available_tools"] = [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "prompt_instructions": getattr(tool, "prompt_instructions", ""),
-            }
-            for tool in registry.values()
-        ]
-        # What a sub-agent may inherit. Publishing the control plane here is
-        # what makes delegation non-escalating: a child is built from the
-        # parent's own permissions, approvals and guardrails, never fresh ones.
-        from shipit_agent.tools.sub_agent.sub_agent_tool import (
-            DEPTH_STATE_KEY,
-            PARENT_STATE_KEY,
-        )
-
-        shared_state[PARENT_STATE_KEY] = {
-            "tools": list(registry.values()),
-            "permissions": self.permissions,
-            "approvals": self.approvals,
-            "guardrails": self.guardrails,
-            "project_root": self.metadata.get("project_root", "."),
-        }
-        shared_state[DEPTH_STATE_KEY] = self.metadata.get(DEPTH_STATE_KEY, 0)
-        # What the agent can reach, and what it needs from the user.
-        from shipit_agent.connections import ConnectionRegistry
-        from shipit_agent.tools.connections.connections_tool import (
-            REGISTRY_STATE_KEY,
-        )
-
-        self.connections = ConnectionRegistry(
-            credential_store=self.credential_store,
-            tools=registry.values(),
-            mcps=self.mcps,
-        )
-        shared_state[REGISTRY_STATE_KEY] = self.connections
-        shared_state["memory_store"] = self.memory_store
-        shared_state["credential_store"] = self.credential_store
-        shared_state["artifact_workspace_root"] = self.metadata.get(
-            "artifact_workspace_root", ".shipit_workspace/artifacts"
-        )
-        shared_state["workspace_root"] = self.metadata.get(
-            "workspace_root", ".shipit_workspace"
-        )
+        # Built by RuntimeCore, so both loops publish identical tool state —
+        # including the sub-agent control plane and the event sink.
+        shared_state.update(self.build_shared_state(registry, state))
         tool_runner = ToolRunner(registry)
 
         # Code mode: publish `env` and swap the tool schemas the model sees.

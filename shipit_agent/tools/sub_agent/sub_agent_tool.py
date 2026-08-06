@@ -36,11 +36,20 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 
 from .prompt import SUB_AGENT_PROMPT
 
-__all__ = ["SubAgentTool", "SubAgentResult", "PARENT_STATE_KEY", "DEPTH_STATE_KEY"]
+__all__ = [
+    "SubAgentTool",
+    "SubAgentResult",
+    "PARENT_STATE_KEY",
+    "DEPTH_STATE_KEY",
+    "EVENT_SINK_KEY",
+]
 
 # The runtime publishes the parent's tools and control plane here so a child
 # can be built that is strictly no more capable.
 PARENT_STATE_KEY = "subagent_parent"
+# The runtime publishes an event sink here so a child's work is visible in
+# the parent's transcript instead of vanishing into a black box.
+EVENT_SINK_KEY = "subagent_event_sink"
 DEPTH_STATE_KEY = "subagent_depth"
 
 # How deep delegation may go. Without a cap, a model that likes delegating
@@ -289,22 +298,58 @@ class SubAgentTool:
         depth: int,
     ) -> SubAgentResult:
         result = SubAgentResult(task=task, output="", agent_type=agent_type or None)
+        label = agent_type or "sub-agent"
+        sink = _state(context, "state").get(EVENT_SINK_KEY)
+
         try:
             agent = self._build_agent(context, agent_type, depth)
             brief = task if not task_context else f"{task}\n\nContext:\n{task_context}"
-            run = agent.run(brief)
+            if sink is None:
+                run = agent.run(brief)
+                summary = run.summary()
+                output, metadata = run.output, run.metadata
+            else:
+                # Stream so the child's work appears in the parent's
+                # transcript as it happens, rather than the parent showing
+                # one opaque row and a result minutes later.
+                output, metadata, summary = self._stream_child(
+                    agent, brief, sink=sink, label=label, task=task
+                )
         except Exception as exc:  # noqa: BLE001 — reported to the parent as data
             result.error = f"{type(exc).__name__}: {exc}"
             return result
 
-        summary = run.summary()
-        result.output = run.output or ""
+        result.output = output or ""
         result.iterations = int(summary.get("iterations") or 0)
         result.tool_calls = int(summary.get("tool_calls") or 0)
         result.usage = dict(summary.get("usage") or {})
-        result.gave_up = bool(run.metadata.get("gave_up"))
-        result.give_up_reason = str(run.metadata.get("give_up_reason") or "")
+        result.gave_up = bool(metadata.get("gave_up"))
+        result.give_up_reason = str(metadata.get("give_up_reason") or "")
         return result
+
+    @staticmethod
+    def _stream_child(
+        agent: Any, brief: str, *, sink: Any, label: str, task: str
+    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        """Run the child, forwarding its events to the parent's sink."""
+        from shipit_agent.models import AgentResult
+
+        events: list[Any] = []
+        output = ""
+        for event in agent.stream(brief):
+            events.append(event)
+            if event.type == "run_completed":
+                output = str(event.payload.get("output", "") or "")
+            # Mark the origin so a renderer can nest it, and so the parent's
+            # own rows are never confused with a child's.
+            try:
+                sink(event, label, task)
+            except Exception:
+                # A subscriber must never be able to break the delegation.
+                pass
+
+        run = AgentResult(output=output, messages=[], events=events)
+        return output, dict(agent.metadata), run.summary()
 
     # ── run ──────────────────────────────────────────────────────────────
 

@@ -464,7 +464,7 @@ class AsyncAgentRuntime(RuntimeCore):
 
         tool_schemas = registry.schemas()
         # Built by RuntimeCore, so both loops publish identical tool state.
-        shared_state: dict[str, Any] = self.build_shared_state(registry)
+        shared_state: dict[str, Any] = self.build_shared_state(registry, state)
         tool_runner = ToolRunner(registry)
 
         response = LLMResponse(content="")

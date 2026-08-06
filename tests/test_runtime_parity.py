@@ -231,3 +231,51 @@ class TestCore:
         core.lockdown.engage(reason="read secrets", tool="db", source="declared")
         decision = core.authorize("slack", {}, tool("slack"))
         assert decision is not None and decision.denied
+
+
+class TestSharedStateIsActuallyShared:
+    """Both loops must *use* build_shared_state, not just have identical keys.
+
+    The sync loop kept building its state inline after RuntimeCore landed. The
+    key-comparison test passed because both happened to produce the same keys —
+    so when the sub-agent event sink was added to the core, only the async loop
+    got it. This asserts the source of the state, not just its shape.
+    """
+
+    def test_neither_loop_builds_tool_state_inline(self) -> None:
+        import pathlib
+
+        for name in ("runtime.py", "async_runtime.py"):
+            src = pathlib.Path("shipit_agent") / name
+            text = src.read_text()
+            assert "build_shared_state(registry" in text, f"{name} must use the core"
+            assert 'shared_state["available_tools"]' not in text, (
+                f"{name} builds tool state inline — it will drift"
+            )
+
+    def test_the_subagent_event_sink_is_published_by_both(self) -> None:
+        from shipit_agent.tools.sub_agent.sub_agent_tool import EVENT_SINK_KEY
+
+        seen: dict[str, set] = {}
+
+        def probe(label):
+            class P:
+                name = "probe"
+                description = "p"
+                prompt_instructions = ""
+
+                def schema(self):
+                    return {"function": {"name": "probe", "parameters": {}}}
+
+                def run(self, context, **kwargs):
+                    seen[label] = set(context.state)
+                    return ToolOutput(text="ok")
+
+            return P()
+
+        script = [("", [("probe", {})]), ("done", [])]
+        run_sync(script, [probe("sync")])
+        run_async(script, [probe("async")])
+        assert EVENT_SINK_KEY in seen["sync"]
+        assert EVENT_SINK_KEY in seen["async"]
+        assert seen["sync"] == seen["async"]

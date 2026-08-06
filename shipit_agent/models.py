@@ -30,6 +30,7 @@ EventType = Literal[
     "run_cancelled",
     "guardrail_triggered",
     "lockdown_engaged",
+    "sub_agent_event",
     "tool_call_healed",
     "context_snapshot",
     "context_compacted",

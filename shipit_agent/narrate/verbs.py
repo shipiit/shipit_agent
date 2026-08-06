@@ -53,6 +53,22 @@ def _clip(text: str, limit: int = _TARGET_LIMIT) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _usable_target(text: str | None) -> str | None:
+    """Drop a target that carries no information.
+
+    Models pass junk: a bare ``0`` for a path, a lone ``"`` for a pattern.
+    Rendering it gives ``Read 0`` and ``searched for "``, which reads as
+    corruption rather than as what the agent did. Saying less is better —
+    ``Read`` is honest, ``Read 0`` is confusing.
+    """
+    if text is None:
+        return None
+    stripped = text.strip()
+    if len(stripped) < 2 or not any(ch.isalnum() for ch in stripped):
+        return None
+    return stripped
+
+
 def pluralize(count: int, singular: str, plural: str | None = None) -> str:
     """``2, "file"`` → ``"2 files"``."""
     word = singular if count == 1 else (plural or f"{singular}s")
@@ -335,6 +351,10 @@ def _fallback_target(args: dict[str, Any]) -> str | None:
 
 
 def _extract_target(name: str, args: dict[str, Any], spec: VerbSpec | None) -> str | None:
+    return _usable_target(_raw_target(name, args, spec))
+
+
+def _raw_target(name: str, args: dict[str, Any], spec: VerbSpec | None) -> str | None:
     extractor = _TARGET_EXTRACTORS.get(name)
     if extractor is not None:
         found = extractor(args)

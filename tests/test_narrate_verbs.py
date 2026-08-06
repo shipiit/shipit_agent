@@ -326,3 +326,34 @@ class TestNoDanglingPrepositions:
             for label in (summarize(name, {}).past_label(),
                           summarize(name, {}).present_label()):
                 assert label.split()[-1].lower() not in dangling, f"{name}: {label!r}"
+
+
+class TestUninformativeTargets:
+    """Models pass junk; a garbage target reads as corruption.
+
+    Found live: Gemma called read_file with `path=0` and grep_files with
+    `pattern='"'`, and the row read `Read 0, searched for "`. Saying less is
+    better — "Read" is honest, "Read 0" is confusing.
+    """
+
+    @pytest.mark.parametrize("arguments", [
+        {"path": 0},
+        {"path": '"'},
+        {"path": " "},
+        {"path": "-"},
+        {"path": "a"},
+        {"path": "*"},
+    ])
+    def test_junk_targets_are_dropped(self, arguments) -> None:
+        assert summarize("read_file", arguments).past_label() == "Read"
+
+    @pytest.mark.parametrize("arguments,expected", [
+        ({"path": "a.py"}, "Read a.py"),
+        ({"path": "src/main.py"}, "Read src/main.py"),
+        ({"path": "L2"}, "Read L2"),
+    ])
+    def test_real_targets_survive(self, arguments, expected) -> None:
+        assert summarize("read_file", arguments).past_label() == expected
+
+    def test_a_dropped_target_also_drops_the_preposition(self) -> None:
+        assert summarize("grep_files", {"pattern": '"'}).past_label() == "Searched"

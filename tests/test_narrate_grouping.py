@@ -111,11 +111,13 @@ class TestLabels:
     def test_no_composite_label_ends_in_a_preposition(self) -> None:
         from shipit_agent.narrate.verbs import VERBS
 
-        dangling = ("for", "at", "to", "the", "of", "in", "on", "you")
+        # "you" is not a preposition — "Asked you" is a complete label.
+        dangling = ("for", "at", "to", "the", "of", "in", "on", "from", "with")
         for name in VERBS:
-            group = build_group(
-                [call("read_file", "a", path="x.py"), call(name, "b", query="q", path="p")]
-            )
+            group = build_group([
+                call("read_file", "a", path="x.py"),
+                call(name, "b", query="a search term", path="some/path.py"),
+            ])
             assert group.label.split()[-1].lower().strip(",") not in dangling, (
                 f"{name}: {group.label!r}"
             )

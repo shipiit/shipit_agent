@@ -234,3 +234,34 @@ class TestWatch:
             pass
         else:  # pragma: no cover
             raise AssertionError("the error should not be swallowed")
+
+
+class TestLiveRowsAreNotDoubleCounted:
+    """The provisional tail must never repeat a row that already settled."""
+
+    @staticmethod
+    def _sub() -> AgentEvent:
+        return event(
+            "sub_agent_event", agent="researcher", task="find the owner",
+            inner_type="tool_called",
+            inner={"tool": "read_file", "arguments": {"path": "o.md"}},
+        )
+
+    def test_a_delegated_row_appears_once_before_and_after_it_settles(self) -> None:
+        view = LiveView(display=False)
+        view.feed(self._sub())
+        assert view.html().count('class="sa-sub"') == 1
+        view.feed(event("text_delta", chunk="x"))   # flushes the work run
+        assert view.html().count('class="sa-sub"') == 1
+        view.close()
+        assert view.html().count('class="sa-sub"') == 1
+
+    def test_an_in_flight_work_run_appears_once(self) -> None:
+        view = LiveView(display=False)
+        view.feed(event("tool_called", call_id="1", tool="read_file",
+                        arguments={"path": "a.py"}))
+        view.feed(event("tool_completed", call_id="1", tool="read_file",
+                        output="x", duration_ms=1))
+        assert view.html().count('class="sa-row') == 1
+        view.close()
+        assert view.html().count('class="sa-row') == 1

@@ -187,9 +187,17 @@ def _esc(value: Any) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
 
 
-def _clip(text: str, limit: int) -> str:
+def _clip(text: str, limit: int | None) -> str:
+    """Trim to *limit*, or not at all when it is ``None``.
+
+    ``output_limit=None`` means "show me everything" — the panel scrolls each
+    output in its own box, so a long file costs height in that box rather
+    than in the page.
+    """
     text = text.strip()
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    if limit is None or len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
 
 
 class LiveView:
@@ -197,6 +205,10 @@ class LiveView:
 
     Feed it events and call :meth:`close`; in a notebook, prefer
     :func:`watch`, which does both around ``agent.stream()``.
+
+    ``output_limit=None`` shows every byte a tool returned rather than the
+    first few thousand; each output scrolls in its own box, so nothing is
+    hidden and the page does not grow without bound.
 
     ``display=False`` makes it a pure renderer — :meth:`html` still returns
     the panel, and nothing touches IPython. That is how it is tested, and how
@@ -212,7 +224,7 @@ class LiveView:
         cost_usd: float | None = None,
         display: bool = True,
         show_output: bool = True,
-        output_limit: int = 4000,
+        output_limit: int | None = 4000,
         min_interval: float = 0.05,
         shape: str = "chat",
     ) -> None:
@@ -440,6 +452,7 @@ def watch(
     title: str = "Agent run",
     show_output: bool = True,
     shape: str = "chat",
+    output_limit: int | None = 4000,
     **kwargs: Any,
 ) -> str:
     """Run *agent* with the live panel, and return the final answer.
@@ -474,6 +487,7 @@ def watch(
         model=getattr(getattr(agent, "llm", None), "model", None),
         show_output=show_output,
         shape=shape,
+        output_limit=output_limit,
         **kwargs,
     )
     answer = ""
@@ -501,6 +515,7 @@ def render_chat_html(
     model: str | None = None,
     show_output: bool = True,
     shape: str = "chat",
+    output_limit: int | None = 4000,
 ) -> str:
     """A finished run as the same panel — no IPython, no live updates.
 
@@ -514,6 +529,7 @@ def render_chat_html(
         display=False,
         show_output=show_output,
         shape=shape,
+        output_limit=output_limit,
     )
     for event in getattr(source, "events", source):
         view.feed(event)

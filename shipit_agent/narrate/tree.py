@@ -106,7 +106,7 @@ class TreeRenderer:
         show_footer: bool = True,
         model: str | None = None,
         detail: bool = False,
-        output_lines: int = 6,
+        output_lines: int | None = 6,
         live: bool | None = None,
         min_interval: float = 0.08,
         accumulator: WorkRunAccumulator | None = None,
@@ -332,7 +332,13 @@ class TreeRenderer:
             getattr(call, "error", "") or getattr(call, "output", "")
         ).strip("\n")
         if body:
-            shown = body.splitlines()[: self._output_lines]
+            # `output_lines=None` means every line — a tree you can read the
+            # whole run out of, at the cost of its compactness.
+            shown = (
+                body.splitlines()
+                if self._output_lines is None
+                else body.splitlines()[: self._output_lines]
+            )
             lines += [self._c("dim", f"  {line[:120]}") for line in shown]
             hidden = len(body.splitlines()) - len(shown)
             if hidden > 0:
@@ -404,7 +410,7 @@ def render_tree(
     *,
     model: str | None = None,
     detail: bool = False,
-    output_lines: int = 6,
+    output_lines: int | None = 6,
 ) -> str:
     """Render a finished run as a tree, with no escape codes.
 

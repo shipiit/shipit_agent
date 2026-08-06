@@ -7,7 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The tree view** — the *shape* of a run instead of its prose: every call
+  named with its status, the opening intent labelled "Understanding request",
+  each later paragraph a "Decision", the last one the "Final answer". On a
+  terminal it redraws in place while the run proceeds, keeping the trunk open
+  (`├─ working…`) until it ends, then erases the draft and writes one clean
+  tree. `agent.run_live(style="tree")`, `render_tree(events, detail=True)`.
+- **The live notebook panel** — an HTML chat card that redraws in a Jupyter
+  cell as the agent works: tokens land with a caret, tool rows appear in
+  flight and settle, real output folds away behind each call, approval cards
+  interrupt. `watch(agent, prompt)`, or `shape="tree"` for the tree.
+  `render_chat_html(events)` for a finished run. Every selector is scoped so
+  the styles cannot leak into the surrounding page.
+- **The UI timeline** — the runtime's events translated into what a frontend
+  draws: `reasoning_summary`, `tool_group_started`, `tool_call_started`,
+  `tool_call_completed`, `agent_decision`, `final_response`. Plain JSON,
+  causal (a group's settled title arrives in its `completed` step, so a
+  client never undraws a row). `stream_timeline(agent, prompt)`, and
+  `render_markdown(events)` for the same run as a report.
+- **Automatic delegation** — `Agent(delegation=True)`. The `sub_agent` tool is
+  guaranteed to exist, built from the agent's own LLM and its read-only tools;
+  the task is sized by a model (`ModelAssessor`, one cheap cached call) with a
+  structural count as the fallback and the floor; and the directive is
+  appended to the *task*, not the system prompt — measured against Gemma 4,
+  that difference is 0 delegations versus 6. It never delegates behind the
+  model's back.
+
+### Fixed
+
+- `run_live()` raises on an unknown `style` instead of silently rendering the
+  default view.
+- `write_transcript()` accepted `title` and `model` but dropped `prompt`.
+- `deny=["*"]` denying allow-listed tools is now documented where you meet it,
+  with the correct pattern (`allow=[…], default_decision=DENY`) beside it.
 
 ---
 

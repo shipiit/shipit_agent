@@ -184,6 +184,14 @@ class Agent:
     # gated exactly as the equivalent tool calls. See shipit_agent.codemode.
     code_mode: bool = False
 
+    # ── lockdown (exfiltration guard) ─────────────────────────────────
+    # Once a tool reports it returned sensitive data, the run may only make
+    # observations — every action is denied for the rest of the run, so the
+    # data cannot leave through another tool. Honours declarations by
+    # default and detects nothing; pass a LockdownPolicy to add detection,
+    # or False to disable. See shipit_agent.lockdown.
+    lockdown: Any = None
+
     # ── self-healing tool calls ───────────────────────────────────────
     # Promote tool calls that small models emit as TEXT (<tool_call> tags,
     # fenced JSON, bare call-shaped JSON) into structured calls. Response-
@@ -745,6 +753,7 @@ class Agent:
             heal_tool_calls=self.heal_tool_calls,
             approvals=self.approvals,
             code_mode=self.code_mode,
+            lockdown=self.lockdown,
         )
         state, response = runtime.run(effective_user_prompt)
 
@@ -905,6 +914,7 @@ class Agent:
             heal_tool_calls=self.heal_tool_calls,
             approvals=self.approvals,
             code_mode=self.code_mode,
+            lockdown=self.lockdown,
         )
         for event in runtime.stream(user_prompt):
             yield event

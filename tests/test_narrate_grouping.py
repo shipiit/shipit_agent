@@ -399,3 +399,47 @@ class TestApprovalRows:
         bare = AgentEvent(type="action_queued", message="", payload={})
         rows = build_transcript([bare, done()])
         assert rows[0].action_id == 0 and rows[0].tool == "?"
+
+
+def denied(tool: str, call_id: str = "1", reason: str = "not permitted"):
+    return AgentEvent(type="tool_denied", message="", payload={
+        "tool": tool, "call_id": call_id, "reason": reason})
+
+
+class TestDenialOrdering:
+    def test_prose_announcing_a_denied_call_lands_first(self) -> None:
+        # A denied call may never emit `tool_called` — the gate can fire
+        # first — so the denial is the only thing that can close the sentence.
+        rows = build_transcript(
+            [text("Sharing it with the team."), denied("slack"), done()]
+        )
+        assert [type(r).__name__ for r in rows] == ["ProseRow", "WorkRow"]
+        assert rows[0].text == "Sharing it with the team."
+        assert rows[1].group.has_error
+
+    def test_a_notice_between_call_and_completion_does_not_duplicate_the_row(
+        self,
+    ) -> None:
+        """Regression: a notice mid-call flushed the run, and the completion
+        then synthesized a second phantom row for the same call."""
+        rows = build_transcript(
+            [
+                called("read_file", "1", path="a.py"),
+                completed("read_file", "1"),
+                AgentEvent(type="lockdown_engaged", message="",
+                           payload={"reason": "customer PII"}),
+                done(),
+            ]
+        )
+        work = [r for r in rows if isinstance(r, WorkRow)]
+        assert len(work) == 1, "the call was rendered twice"
+
+    def test_lockdown_renders_as_a_notice(self) -> None:
+        rows = build_transcript([
+            AgentEvent(type="lockdown_engaged", message="",
+                       payload={"reason": "the customer list"}),
+            done(),
+        ])
+        assert isinstance(rows[0], NoticeRow)
+        assert "Lockdown" in rows[0].text
+        assert "the customer list" in rows[0].text

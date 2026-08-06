@@ -141,6 +141,7 @@ class AgentRuntime:
         heal_tool_calls: bool = True,
         approvals: Any | None = None,
         code_mode: bool = False,
+        lockdown: Any = None,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -169,6 +170,11 @@ class AgentRuntime:
 
         self.approvals = coerce_queue(approvals)
         self.code_mode = code_mode
+        # Once this run reads sensitive data it may only keep reading — the
+        # exfiltration guard. See shipit_agent.lockdown.
+        from shipit_agent.lockdown import coerce_lockdown
+
+        self.lockdown = coerce_lockdown(lockdown)
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
         # signature don't — passing it unconditionally raises TypeError.
@@ -290,6 +296,18 @@ class AgentRuntime:
     def _authorize_tool(
         self, name: str, arguments: dict[str, Any], tool: Any
     ) -> PermissionResult | None:
+        # Lockdown outranks everything, including an explicit allow rule: the
+        # point is that no configuration reached before the sensitive read can
+        # authorize an action after it.
+        if self.lockdown.engaged:
+            from shipit_agent.tools.contracts import contract_for
+
+            read_only = contract_for(name, tool).read_only
+            if self.lockdown.blocks(name, read_only=read_only):
+                return PermissionResult(
+                    decision=PermissionDecision.DENY,
+                    reason=self.lockdown.denial_reason(name),
+                )
         # Guardrail tool rules run FIRST — a content-level deny (e.g. rm -rf /
         # in bash args) wins over any allow rule in the permission engine.
         if self.guardrails is not None:
@@ -605,6 +623,7 @@ class AgentRuntime:
 
         # Guardrails: sanitize the tool output (indirect prompt-injection
         # neutralized, secrets redacted) BEFORE the model reads it.
+        redacted_secret = False
         if self.guardrails is not None and tool_result.output:
             sanitized = self.guardrails.check_tool_output(
                 tool_call.name, tool_result.output
@@ -618,6 +637,7 @@ class AgentRuntime:
                     tool=tool_call.name,
                     reason=sanitized.reason,
                 )
+                redacted_secret = "secret" in str(sanitized.reason or "").lower()
                 tool_result.output = sanitized.text
 
         msg = Message(
@@ -639,6 +659,24 @@ class AgentRuntime:
             iteration=iteration,
             duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
         )
+        # Did this read latch the run into lockdown?
+        trigger = self.lockdown.observe(
+            tool=tool_call.name,
+            arguments=dict(tool_call.arguments),
+            output_metadata=dict(tool_result.metadata),
+            redacted_secret=redacted_secret,
+        )
+        if trigger is not None:
+            self.emit(
+                state,
+                "lockdown_engaged",
+                f"Lockdown: {trigger.reason}",
+                reason=trigger.reason,
+                tool=trigger.tool,
+                source=trigger.source,
+                iteration=iteration,
+            )
+
         if tool_result.metadata.get("interactive"):
             self.emit(
                 state,

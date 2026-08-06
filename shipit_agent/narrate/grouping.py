@@ -251,6 +251,8 @@ _NOTICES = {
     "run_cancelled": "Cancelled",
     "guardrail_triggered": "Guardrail triggered",
     "tool_call_healed": "Recovered a tool call the model wrote as text",
+    "lockdown_engaged": "Lockdown — sensitive data was read, so only "
+                        "read-only tools may run for the rest of this run",
 }
 
 
@@ -307,6 +309,12 @@ class WorkRunAccumulator:
             self._calls.append(call)
             self._by_id[call.call_id] = call
             return
+
+        if kind == "tool_denied":
+            # A denied call may never have emitted `tool_called` (the gate can
+            # fire first), so this is the only place the prose introducing it
+            # gets closed.
+            self._flush_prose()
 
         if kind in ("tool_completed", "tool_failed", "tool_denied"):
             call = self._resolve(payload)

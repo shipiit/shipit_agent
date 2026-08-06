@@ -78,7 +78,7 @@ class TestItActuallyRuns:
         )
         assert calls == [("read_file", {"path": "a.py"})]
         assert out.text == "It defines login()."
-        assert out.metadata["tool_calls"] == 1
+        assert out.metadata["tool_call_count"] == 1
 
     def test_it_reports_iterations_and_usage(self) -> None:
         calls: list = []
@@ -90,7 +90,7 @@ class TestItActuallyRuns:
             parent_context(tools=[recording_tool("read_file", calls)]),
             task="read both",
         )
-        assert out.metadata["tool_calls"] == 2
+        assert out.metadata["tool_call_count"] == 2
         assert out.metadata["iterations"] >= 2
         assert out.metadata["ok"] is True
 
@@ -346,3 +346,82 @@ class TestCompatibility:
             type("Ctx", (), {"prompt": "parent"})(), task="Summarize this"
         )
         assert out.metadata["delegated"] is True
+
+
+class TestMetadataKeyCollisions:
+    """A tool result's metadata is merged onto its message — mind the keys."""
+
+    def test_the_call_count_is_not_under_the_reserved_key(self) -> None:
+        """`tool_calls` on message metadata means the assistant's records.
+
+        Putting an int there made the LiteLLM serializer iterate an integer,
+        which only surfaced when a sub-agent result flowed back into a real
+        conversation. Found live against Gemma on Bedrock.
+        """
+        out = SubAgentTool(llm=ScriptedLLM([("done", [])])).run(
+            parent_context(), task="go"
+        )
+        assert "tool_calls" not in out.metadata
+        assert isinstance(out.metadata["tool_call_count"], int)
+
+    def test_a_sub_agent_result_serializes_for_litellm(self) -> None:
+        from shipit_agent.llms.litellm_adapter import _serialize_message
+        from shipit_agent.models import Message
+
+        out = SubAgentTool(llm=ScriptedLLM([("done", [])])).run(
+            parent_context(), task="go"
+        )
+        message = Message(
+            role="tool", name="sub_agent", content=out.text,
+            metadata={**out.metadata, "tool_call_id": "call_1_1"},
+        )
+        payload = _serialize_message(message)
+        assert payload["role"] == "tool"
+
+    def test_a_non_list_under_the_key_is_ignored_not_fatal(self) -> None:
+        # Any tool can land a value there; it must never break the request.
+        from shipit_agent.llms.litellm_adapter import _serialize_message
+        from shipit_agent.models import Message
+
+        for value in (3, "x", {"a": 1}, None):
+            payload = _serialize_message(
+                Message(role="tool", content="x", metadata={"tool_calls": value})
+            )
+            assert "tool_calls" not in payload
+
+
+class TestSchemaIsUnambiguous:
+    """An all-optional schema invites a weaker model to send `{}`.
+
+    Observed live against Gemma 4 on Bedrock: the tool was called with no
+    arguments at all, and the run spent 47 seconds arriving at "provide
+    `task`". A schema that marks nothing required says nothing is needed.
+    """
+
+    def test_task_is_required(self) -> None:
+        schema = SubAgentTool(llm=ScriptedLLM([])).schema()
+        assert schema["function"]["parameters"]["required"] == ["task"]
+
+    def test_collect_still_works_with_a_task_present(self) -> None:
+        tool = SubAgentTool(llm=ScriptedLLM([("answer", [])]))
+        task_id = tool.run(parent_context(), task="go",
+                           background=True).metadata["task_id"]
+        # A collect call repeats the task text; collect wins.
+        out = tool.run(parent_context(), task="go", collect=task_id)
+        assert out.text == "answer"
+
+    def test_no_builtin_has_parameters_but_nothing_required(self) -> None:
+        """Unless it handles an empty call sensibly, which the exceptions do."""
+        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.tools.base import ToolContext
+
+        handles_empty = {"connections"}  # defaults to action="list"
+        for tool in get_builtin_tools(llm=None, project_root="."):
+            parameters = tool.schema()["function"]["parameters"]
+            properties = list((parameters.get("properties") or {}))
+            required = list(parameters.get("required") or [])
+            if properties and not required:
+                assert getattr(tool, "name", "") in handles_empty, (
+                    f"{tool.name} marks nothing required and is not known to "
+                    f"handle an empty call"
+                )

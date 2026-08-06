@@ -115,7 +115,11 @@ class SubAgentResult:
             "agent_type": self.agent_type,
             "ok": self.ok,
             "iterations": self.iterations,
-            "tool_calls": self.tool_calls,
+            # NOT "tool_calls": the runtime reserves that key on message
+            # metadata for the assistant's tool-call *records*, and a tool
+            # result's metadata is merged onto its message. An int there makes
+            # the LiteLLM serializer iterate an integer.
+            "tool_call_count": self.tool_calls,
             "usage": dict(self.usage),
             "gave_up": self.gave_up,
             "error": self.error,
@@ -221,11 +225,17 @@ class SubAgentTool:
                             "description": (
                                 "A task id from a background call — waits for "
                                 "and returns that task's result. Pass 'all' to "
-                                "collect every outstanding task."
+                                "collect every outstanding task. When "
+                                "collecting, `task` is ignored, so repeat the "
+                                "original task text there."
                             ),
                         },
                     },
-                    "required": [],
+                    # `task` is required even though a collect call does not
+                    # use it. An all-optional schema tells a weaker model that
+                    # nothing is needed, and it sends `{}` — observed live with
+                    # Gemma 4, which called the tool with no arguments at all.
+                    "required": ["task"],
                 },
             },
         }

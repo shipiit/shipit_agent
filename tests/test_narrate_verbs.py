@@ -292,3 +292,37 @@ class TestSummaryOverrides:
             assert summarize("sub_agent", {"collect": "all"}).past == "Farmed out"
         finally:
             unregister_verb("sub_agent")
+
+
+class TestNoDanglingPrepositions:
+    """A verb that reads with an object must not dangle without one.
+
+    Found live: Gemma called grep_files without a pattern, and the row read
+    "Searched for ›" with nothing after it — which looks like a truncation
+    bug rather than a search.
+    """
+
+    @pytest.mark.parametrize("name,expected", [
+        ("grep_files", "Searched"),
+        ("glob_files", "Searched"),
+        ("web_search", "Searched the web"),
+        ("gmail_search", "Searched Gmail"),
+        ("vision", "Looked"),
+    ])
+    def test_a_missing_target_drops_the_preposition(self, name, expected) -> None:
+        assert summarize(name, {}).past_label() == expected
+
+    def test_the_target_is_kept_when_present(self) -> None:
+        assert summarize("grep_files", {"pattern": "TODO"}).past_label() == (
+            "Searched for TODO"
+        )
+
+    def test_present_tense_too(self) -> None:
+        assert summarize("grep_files", {}).present_label() == "Searching"
+
+    def test_no_label_anywhere_ends_in_a_preposition(self) -> None:
+        dangling = {"for", "at", "to", "the", "of", "in", "on", "from", "with"}
+        for name in VERBS:
+            for label in (summarize(name, {}).past_label(),
+                          summarize(name, {}).present_label()):
+                assert label.split()[-1].lower() not in dangling, f"{name}: {label!r}"

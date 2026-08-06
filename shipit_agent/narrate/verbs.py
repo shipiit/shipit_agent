@@ -523,6 +523,25 @@ def is_read_only(name: str, tool: Any = None) -> bool:
     return PermissionEngine().is_read_only(name, tool)
 
 
+# Verbs that read naturally with an object and dangle without one.
+_TRAILING_PREPOSITIONS = frozenset({
+    "for", "at", "to", "the", "of", "in", "on", "from", "with", "into",
+})
+
+
+def _bare(verb: str) -> str:
+    """The verb with no object — ``Searched for`` → ``Searched``.
+
+    A model can call a search tool without a pattern (or with an argument
+    name we do not recognise), and "Searched for ›" with nothing after it
+    reads as a truncation bug rather than a search.
+    """
+    words = verb.split()
+    while len(words) > 1 and words[-1].lower() in _TRAILING_PREPOSITIONS:
+        words.pop()
+    return " ".join(words) or verb
+
+
 @dataclass(frozen=True, slots=True)
 class ToolSummary:
     """One call, narrated. ``target`` is ``None`` for an intransitive verb."""
@@ -536,11 +555,15 @@ class ToolSummary:
 
     def past_label(self) -> str:
         """``Read app.py`` — what the transcript shows once the call lands."""
-        return f"{self.past} {self.target}" if self.target else self.past
+        return (
+            f"{self.past} {self.target}" if self.target else _bare(self.past)
+        )
 
     def present_label(self) -> str:
         """``Reading app.py`` — what it shows while the call is in flight."""
-        return f"{self.present} {self.target}" if self.target else self.present
+        return (
+            f"{self.present} {self.target}" if self.target else _bare(self.present)
+        )
 
 
 def summarize(name: str, arguments: dict[str, Any] | None = None) -> ToolSummary:

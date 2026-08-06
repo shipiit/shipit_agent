@@ -56,17 +56,23 @@ def _serialize_message(message: Any) -> dict[str, Any]:
         **({"name": message.name} if message.name else {}),
     }
     tool_calls = message.metadata.get("tool_calls", [])
+    # A tool's own metadata is merged onto its message, so any tool can land
+    # a value here. Only a list of records is meaningful; anything else is a
+    # key collision and must not take the request down.
+    if not isinstance(tool_calls, (list, tuple)):
+        tool_calls = []
     if tool_calls:
         payload["tool_calls"] = [
             {
                 "id": item.get("id", f"call_{index}"),
                 "type": "function",
                 "function": {
-                    "name": item["name"],
+                    "name": item.get("name", ""),
                     "arguments": json.dumps(item.get("arguments", {}), sort_keys=True),
                 },
             }
             for index, item in enumerate(tool_calls, start=1)
+            if isinstance(item, dict)
         ]
     tool_call_id = message.metadata.get("tool_call_id")
     if message.role == "tool" and tool_call_id:

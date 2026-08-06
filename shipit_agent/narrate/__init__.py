@@ -17,7 +17,9 @@ from .grouping import (
     build_group,
     build_transcript,
 )
+from .json_stream import StreamingToolInputParser, streaming_field_for
 from .renderer import LiveRegion, NarratorRenderer, render_transcript
+from .share import render_transcript_html, transcript_json, write_transcript
 from .verbs import (
     VERBS,
     ToolSummary,
@@ -66,4 +68,9 @@ __all__ = [
     "LiveRegion",
     "NarratorRenderer",
     "render_transcript",
+    "render_transcript_html",
+    "transcript_json",
+    "write_transcript",
+    "StreamingToolInputParser",
+    "streaming_field_for",
 ]

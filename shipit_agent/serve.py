@@ -25,6 +25,31 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 
+# Events forwarded alongside the OpenAI-shaped stream so a rich client can
+# render the full transcript. Deliberately an allow-list: internal loop
+# mechanics (step_started, llm_retry) are not the caller's business.
+_SIDEBAND_EVENTS = frozenset({
+    "tool_called", "tool_completed", "tool_failed", "tool_denied",
+    "action_queued", "usage_tick", "context_compacted", "run_cancelled",
+    "guardrail_triggered",
+})
+
+
+def _jsonable(value: Any) -> Any:
+    """Coerce an event payload into something json.dumps will accept.
+
+    Payloads carry arbitrary tool arguments, and one unserializable value must
+    not be able to kill a stream mid-response.
+    """
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
 class AgentServer:
     """OpenAI-compatible HTTP wrapper around one shipit Agent."""
 
@@ -77,14 +102,24 @@ class AgentServer:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
-    def _chunk_payload(self, delta: dict[str, Any], finish: str | None = None) -> str:
-        body = {
+    def _chunk_payload(
+        self,
+        delta: dict[str, Any],
+        finish: str | None = None,
+        shipit: dict[str, Any] | None = None,
+    ) -> str:
+        body: dict[str, Any] = {
             "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
             "object": "chat.completion.chunk",
             "created": int(time.time()),
             "model": self.model_name,
             "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
         }
+        if shipit is not None:
+            # An additive key: OpenAI clients ignore what they don't know, so
+            # this stays wire-compatible while giving a shipit-aware client
+            # everything the terminal renderer sees.
+            body["shipit"] = _jsonable(shipit)
         return f"data: {json.dumps(body)}\n\n"
 
     # ------------------------------------------------------------------
@@ -191,6 +226,13 @@ class AgentServer:
                                 {"content": event.payload.get("chunk", "")}))
                         elif etype == "run_completed":
                             final = str(event.payload.get("output", "") or "")
+                        elif etype in _SIDEBAND_EVENTS:
+                            # Work rows, queued approvals, running cost. A
+                            # plain OpenAI client ignores the extra key; a
+                            # shipit-aware one renders the same transcript the
+                            # terminal does instead of only the prose.
+                            write(server._chunk_payload(
+                                {}, shipit={"type": etype, **dict(event.payload)}))
                     if not saw_delta and final:
                         write(server._chunk_payload({"content": final}))
                     write(server._chunk_payload({}, finish="stop"))

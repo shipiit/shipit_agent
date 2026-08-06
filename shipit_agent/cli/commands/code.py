@@ -81,6 +81,14 @@ def cmd_code(args: argparse.Namespace) -> int:
 
     from shipit_agent.hitl import ConsoleAskUserTool
 
+    from shipit_agent import ApprovalQueue
+
+    # Deferred approvals replace the blocking prompt: side-effecting calls the
+    # policy marks `ask` are queued and reviewed after the run, so the agent
+    # does not stall on step one while you are away. Tools whose result the
+    # agent reasons over (bash, sql) still block — see tools/contracts.py.
+    queue = ApprovalQueue() if getattr(args, "defer_approvals", False) else None
+
     agent = Agent.for_project(
         llm=build_llm(args.provider, args.model),
         project_root=root,
@@ -88,7 +96,9 @@ def cmd_code(args: argparse.Namespace) -> int:
         tools=[ConsoleAskUserTool()],
         prompt=CODE_PLAYBOOK,
         permission_mode=mode,
-        permission_callback=None if args.yes or args.plan else gated_prompt,
+        approvals=queue,
+        code_mode=getattr(args, "code_mode", False),
+        permission_callback=None if args.yes or args.plan or queue else gated_prompt,
         guardrails=Guardrails.strict(max_tool_calls=args.max_tool_calls)
         if args.guardrails == "strict"
         else Guardrails.standard(),
@@ -101,13 +111,103 @@ def cmd_code(args: argparse.Namespace) -> int:
             ("Mode", {"plan": "plan (read-only)", "acceptEdits": "auto-accept edits",
                       "default": "ask before risky tools"}[mode]),
             ("Guardrails", args.guardrails),
+            *([("Tools", "code mode — connectors in `env`")]
+              if getattr(args, "code_mode", False) else []),
+            *([("Approvals", "deferred — review after the run")] if queue else []),
         ],
         emoji="🛠",
     )
-    answer = agent.run_live(args.task)
+
+    events: list[Any] = []
+    answer = _run(agent, args, events)
     if not answer:
         ui.out(ui.style("(no answer produced)", "dim"))
+
+    if queue is not None and queue.pending():
+        review_pending(queue)
+
+    if getattr(args, "share", None):
+        _write_share(args.share, events, answer, agent)
     return 0
+
+
+def _run(agent: Any, args: argparse.Namespace, events: list[Any]) -> str:
+    """Stream the run through the chosen renderer, keeping the events."""
+    style = getattr(args, "style", "modern")
+    if style == "modern":
+        from shipit_agent.narrate import NarratorRenderer
+
+        renderer: Any = NarratorRenderer(model=getattr(agent.llm, "model", None))
+    else:
+        from shipit_agent.activity import StreamRenderer
+
+        renderer = StreamRenderer(style=style)
+
+    answer = ""
+    for event in agent.stream(args.task):
+        events.append(event)
+        renderer.feed(event)
+        if event.type == "run_completed":
+            answer = str(event.payload.get("output", "") or "")
+    renderer.close()
+    return answer
+
+
+def review_pending(queue: Any) -> None:
+    """Walk the queued actions after the run, one decision at a time.
+
+    This is the payoff of deferring: the whole batch is in front of you at
+    once, with the work already done, instead of interrupting it one call at
+    a time.
+    """
+    from shipit_agent.tools.contracts import ActionKind
+
+    ui.out("")
+    ui.section(f"{len(queue.pending())} action(s) awaiting your approval")
+    for action in list(queue.pending()):
+        ui.out("")
+        ui.out(f"  {ui.style(action.title, 'bold')}")
+        if action.kind_label:
+            ui.out(f"  {ui.style(action.kind_label + '  ·  #' + str(action.id), 'dim')}")
+        for line in action.description.splitlines()[:12]:
+            ui.out(f"    {ui.style(line, 'dim')}")
+
+        choices = "[y]es / [n]o" + ("  / [a]lways this kind" if action.tag else "")
+        sys.stdout.write(ui.style(f"\n  approve? {choices}: ", "warn"))
+        sys.stdout.flush()
+        try:
+            answer = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = "n"
+
+        if answer.startswith("a") and action.tag:
+            queue.enable_auto(
+                ActionKind(action.tag, action.kind_label or action.tag), by="cli"
+            )
+            queue.drain(by="cli")
+        elif answer.startswith("y"):
+            try:
+                queue.approve(action.id, by="cli")
+            except Exception as exc:
+                ui.out(ui.style(f"  failed: {exc}", "err"))
+        else:
+            queue.deny(action.id, by="cli")
+
+    summary = queue.summary()
+    ui.out("")
+    ui.out(ui.style(
+        f"  {summary['counts'].get('approved', 0)} approved · "
+        f"{summary['counts'].get('rejected', 0)} denied", "dim"))
+
+
+def _write_share(path: str, events: list[Any], answer: str, agent: Any) -> None:
+    from shipit_agent.narrate.share import write_transcript
+
+    written = write_transcript(
+        path, events, model=getattr(agent.llm, "model", None)
+    )
+    ui.out("")
+    ui.out(ui.style(f"  transcript written to {written}", "dim"))
 
 
 def register(sub: Any) -> None:
@@ -124,6 +224,17 @@ def register(sub: Any) -> None:
     parser.add_argument("--guardrails", choices=["standard", "strict"],
                         default="standard")
     parser.add_argument("--max-tool-calls", type=int, default=50)
+    parser.add_argument("--code-mode", action="store_true",
+                        help="collapse connectors into `env` bindings reachable "
+                             "from execute_code (~57%% smaller prompts)")
+    parser.add_argument("--defer-approvals", action="store_true",
+                        help="queue side-effecting calls instead of blocking; "
+                             "review them when the run finishes")
+    parser.add_argument("--style", choices=["modern", "rich", "plain"],
+                        default="modern",
+                        help="transcript style (default: modern)")
+    parser.add_argument("--share", metavar="PATH", default=None,
+                        help="write the run as a standalone HTML transcript")
     parser.add_argument("--mcp", default=None,
                         help="comma-separated MCP catalog servers to attach "
                              "(e.g. playwright — lets the agent drive a browser)")

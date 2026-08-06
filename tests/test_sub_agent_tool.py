@@ -413,7 +413,6 @@ class TestSchemaIsUnambiguous:
     def test_no_builtin_has_parameters_but_nothing_required(self) -> None:
         """Unless it handles an empty call sensibly, which the exceptions do."""
         from shipit_agent.builtins import get_builtin_tools
-        from shipit_agent.tools.base import ToolContext
 
         handles_empty = {"connections"}  # defaults to action="list"
         for tool in get_builtin_tools(llm=None, project_root="."):

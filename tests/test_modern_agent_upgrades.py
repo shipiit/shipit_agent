@@ -238,6 +238,7 @@ class TestBackgroundSubAgent:
         out = tool.run(ctx, task="summarize")
         assert out.text == "subagent result"
         assert out.metadata["delegated"] is True
+        assert out.metadata["ok"] is True
 
     def test_unknown_collect_id(self) -> None:
         tool = self._tool()

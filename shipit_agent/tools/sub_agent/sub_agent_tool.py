@@ -1,47 +1,170 @@
+"""``sub_agent`` — delegate a task to a real agent, not a single completion.
+
+This used to be a lie. The old implementation called ``llm.complete()`` once,
+with ``messages=[]`` and ``tools=[]``, and returned the text. No loop, no
+tools, no agent — a sub-agent that could not read a file or run a command.
+
+A subagent is worth having for three reasons, and all three need a real loop:
+
+- **Context isolation.** A search that reads forty files should return three
+  sentences to the parent, not forty files. The parent's context stays clean.
+- **Parallelism.** Independent work runs at once (``background=true`` → task
+  id → ``collect``), instead of serially in one thread of thought.
+- **Focus.** A narrower prompt and a narrower toolset beat a general agent
+  told to please concentrate.
+
+**A subagent can never do more than its parent.** Its tools are a subset of
+the parent's, and it inherits the parent's permission engine, approval queue
+and guardrails verbatim. Delegation is not a privilege-escalation path — if
+the parent must ask before writing a file, so must the child.
+
+Agent types come from the built-in :class:`~shipit_agent.agents.AgentRegistry`
+(40+ roles), so ``agent_type="researcher"`` gets the researcher's prompt and
+tool selection without anyone declaring it twice.
+"""
+
 from __future__ import annotations
 
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass, field
 from itertools import count
+from typing import Any
 
 from shipit_agent.llms.base import LLM
 from shipit_agent.tools.base import ToolContext, ToolOutput
+
 from .prompt import SUB_AGENT_PROMPT
+
+__all__ = ["SubAgentTool", "SubAgentResult", "PARENT_STATE_KEY", "DEPTH_STATE_KEY"]
+
+# The runtime publishes the parent's tools and control plane here so a child
+# can be built that is strictly no more capable.
+PARENT_STATE_KEY = "subagent_parent"
+DEPTH_STATE_KEY = "subagent_depth"
+
+# How deep delegation may go. Without a cap, a model that likes delegating
+# spawns a subagent that spawns a subagent, and the run never terminates.
+MAX_DEPTH = 2
+
+# A subagent that hasn't finished in this many turns is not going to.
+DEFAULT_MAX_ITERATIONS = 12
+
+# Tools a subagent never gets, regardless of what the parent holds.
+_NEVER_INHERITED = frozenset({
+    # Recursion is capped by depth, but a subagent asking the *human* a
+    # question is worse: the parent is mid-turn and nobody is watching the
+    # child's stdout.
+    "ask_user",
+    "ask_user_async",
+    "human_review",
+})
+
+
+def _state(context: Any, attribute: str) -> dict[str, Any]:
+    """Read a mapping off the context, tolerating duck-typed stand-ins.
+
+    Tools are handed a real ``ToolContext``, but embedders and tests pass
+    lighter objects; a missing attribute should not be the difference between
+    delegating and raising.
+    """
+    value = getattr(context, attribute, None)
+    return value if isinstance(value, dict) else {}
+
+
+@dataclass(slots=True)
+class SubAgentResult:
+    """What a delegated task produced."""
+
+    task: str
+    output: str
+    agent_type: str | None = None
+    iterations: int = 0
+    tool_calls: int = 0
+    usage: dict[str, int] = field(default_factory=dict)
+    gave_up: bool = False
+    give_up_reason: str = ""
+    error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return not self.error and not self.gave_up
+
+    def report(self) -> str:
+        """What the parent sees — the answer, plus why if it failed."""
+        if self.error:
+            return f"Sub-agent failed: {self.error}"
+        if self.gave_up:
+            return (
+                f"Sub-agent could not complete the task: {self.give_up_reason}"
+            )
+        return self.output or "(the sub-agent produced no output)"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "task": self.task,
+            "agent_type": self.agent_type,
+            "ok": self.ok,
+            "iterations": self.iterations,
+            "tool_calls": self.tool_calls,
+            "usage": dict(self.usage),
+            "gave_up": self.gave_up,
+            "error": self.error,
+            # Retained from the original tool's contract.
+            "delegated": True,
+        }
 
 
 class SubAgentTool:
-    """Delegate a focused sub-task — synchronously or in the background.
+    """Delegate a focused task to a real agent — foreground or background."""
 
-    Background mode works like Claude Code's task tool: pass
-    ``background=true`` to start the sub-agent and get a task id back
-    immediately, keep working, then call again with ``collect="<id>"``
-    (blocking) to fetch the result.
-    """
+    read_only = False
 
     def __init__(
         self,
         llm: LLM,
         *,
         name: str = "sub_agent",
-        description: str = "Delegate a focused sub-task to a lightweight sub-agent.",
+        description: str = (
+            "Delegate a focused task to a sub-agent with its own context and "
+            "tools. Use for searches that would flood your context, or for "
+            "independent work you can run in parallel."
+        ),
         prompt: str | None = None,
         max_workers: int = 4,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
+        tools: list[Any] | None = None,
     ) -> None:
         self.llm = llm
         self.name = name
         self.description = description
         self.prompt = prompt or SUB_AGENT_PROMPT
+        self.max_iterations = max_iterations
+        # An explicit toolset overrides inheritance entirely — for callers who
+        # want a subagent narrower than any subset the parent happens to hold.
+        self.tools = tools
         self.prompt_instructions = (
-            "Use this for side tasks like summarization, analysis, translation, "
-            "or focused research. Pass background=true to run it while you "
-            "continue, then collect='<task id>' to fetch the result."
+            "Delegate when a task would flood your context (a wide search, a "
+            "long file to summarize) or when several independent pieces of "
+            "work can run at once.\n\n"
+            "The sub-agent starts fresh: it sees only the `task` and `details` "
+            "you give it, not your conversation. Say what you want back.\n\n"
+            "`agent_type` picks a specialist (researcher, code-reviewer, "
+            "data-analyst, …); omit it for a general-purpose one. "
+            "`background=true` returns a task id immediately so you can keep "
+            "working; `collect=\"<id>\"` fetches the result."
         )
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="sub_agent"
         )
-        self._tasks: dict[str, Future[str]] = {}
+        self._tasks: dict[str, Future[SubAgentResult]] = {}
+        self._meta: dict[str, dict[str, Any]] = {}
         self._task_ids = count(1)
+        self._lock = threading.Lock()
 
-    def schema(self) -> dict:
+    # ── schema ───────────────────────────────────────────────────────────
+
+    def schema(self) -> dict[str, Any]:
         return {
             "type": "function",
             "function": {
@@ -50,24 +173,46 @@ class SubAgentTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "task": {"type": "string", "description": "Delegated task"},
-                        "context": {
+                        "task": {
                             "type": "string",
-                            "description": "Optional supporting context",
+                            "description": (
+                                "The task, stated so someone with no other "
+                                "context could do it. Say what to return."
+                            ),
+                        },
+                        # NOT named "context": ToolRunner strips `context`
+                        # and `self` from tool arguments because they collide
+                        # with the positional ToolContext. The original tool
+                        # used that name, so the model's supporting context
+                        # was silently dropped before the tool ever saw it.
+                        "details": {
+                            "type": "string",
+                            "description": (
+                                "Facts the sub-agent needs — paths, ids, "
+                                "constraints. It cannot see your conversation."
+                            ),
+                        },
+                        "agent_type": {
+                            "type": "string",
+                            "description": (
+                                "A specialist role, e.g. 'researcher', "
+                                "'code-reviewer'. Omit for general-purpose."
+                            ),
                         },
                         "background": {
                             "type": "boolean",
                             "description": (
-                                "Start the sub-agent in the background and "
-                                "return a task id immediately."
+                                "Start it and return a task id immediately so "
+                                "you can keep working."
                             ),
                             "default": False,
                         },
                         "collect": {
                             "type": "string",
                             "description": (
-                                "A task id from a previous background call — "
-                                "waits for and returns that task's result."
+                                "A task id from a background call — waits for "
+                                "and returns that task's result. Pass 'all' to "
+                                "collect every outstanding task."
                             ),
                         },
                     },
@@ -76,65 +221,228 @@ class SubAgentTool:
             },
         }
 
-    def _complete(self, task: str, task_context: str, parent_prompt: str) -> str:
-        prompt = f"Sub-agent task:\n{task}"
-        if task_context:
-            prompt += f"\n\nContext:\n{task_context}"
-        response = self.llm.complete(
-            messages=[],
-            tools=[],
-            system_prompt=(
-                "You are a focused sub-agent. Complete the assigned task clearly and directly.\n\n"
-                f"{prompt}"
-            ),
-            metadata={"parent_prompt": parent_prompt},
-        )
-        return response.content or prompt
+    # ── building the child ───────────────────────────────────────────────
 
-    def run(self, context: ToolContext, **kwargs) -> ToolOutput:
+    def _inherited_tools(self, context: ToolContext) -> list[Any]:
+        """The parent's tools, minus this tool and the never-inherited set.
+
+        Removing ``sub_agent`` itself is belt-and-braces alongside the depth
+        cap: a child that cannot see the tool cannot try to use it.
+        """
+        if self.tools is not None:
+            return list(self.tools)
+        parent = _state(context, "state").get(PARENT_STATE_KEY) or {}
+        inherited = []
+        for tool in parent.get("tools") or []:
+            tool_name = getattr(tool, "name", "")
+            if tool_name == self.name or tool_name in _NEVER_INHERITED:
+                continue
+            inherited.append(tool)
+        return inherited
+
+    def _build_agent(
+        self, context: ToolContext, agent_type: str, depth: int
+    ) -> Any:
+        from shipit_agent.agent import Agent
+
+        parent = _state(context, "state").get(PARENT_STATE_KEY) or {}
+        tools = self._inherited_tools(context)
+
+        kwargs: dict[str, Any] = {
+            "llm": self.llm,
+            "tools": tools,
+            "max_iterations": self.max_iterations,
+            # A subagent's whole value is a clean context; auto-matching
+            # skills against its task would refill it with guidance the
+            # parent already applied.
+            "auto_use_skills": False,
+            # The control plane is inherited verbatim. Delegation must not be
+            # a way around a policy the parent is subject to.
+            "permissions": parent.get("permissions"),
+            "approvals": parent.get("approvals"),
+            "guardrails": parent.get("guardrails"),
+            "project_root": parent.get("project_root", "."),
+        }
+
+        agent = None
+        if agent_type:
+            try:
+                # for_role sets its own metadata (role, category), so depth is
+                # stamped afterwards rather than passed in.
+                agent = Agent.for_role(agent_type, **kwargs)
+            except ValueError:
+                # An unknown role is the model guessing; fall through to the
+                # general-purpose agent rather than losing the delegation.
+                agent = None
+        if agent is None:
+            agent = Agent(prompt=self.prompt, **kwargs)
+        agent.metadata = {**agent.metadata, DEPTH_STATE_KEY: depth + 1}
+        return agent
+
+    def _run_task(
+        self,
+        *,
+        task: str,
+        task_context: str,
+        agent_type: str,
+        context: ToolContext,
+        depth: int,
+    ) -> SubAgentResult:
+        result = SubAgentResult(task=task, output="", agent_type=agent_type or None)
+        try:
+            agent = self._build_agent(context, agent_type, depth)
+            brief = task if not task_context else f"{task}\n\nContext:\n{task_context}"
+            run = agent.run(brief)
+        except Exception as exc:  # noqa: BLE001 — reported to the parent as data
+            result.error = f"{type(exc).__name__}: {exc}"
+            return result
+
+        summary = run.summary()
+        result.output = run.output or ""
+        result.iterations = int(summary.get("iterations") or 0)
+        result.tool_calls = int(summary.get("tool_calls") or 0)
+        result.usage = dict(summary.get("usage") or {})
+        result.gave_up = bool(run.metadata.get("gave_up"))
+        result.give_up_reason = str(run.metadata.get("give_up_reason") or "")
+        return result
+
+    # ── run ──────────────────────────────────────────────────────────────
+
+    def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
         collect = str(kwargs.get("collect", "")).strip()
         if collect:
-            future = self._tasks.get(collect)
-            if future is None:
-                known = ", ".join(sorted(self._tasks)) or "none"
-                return ToolOutput(
-                    text=f"No background task '{collect}'. Known tasks: {known}.",
-                    metadata={"ok": False, "collect": collect},
-                )
-            try:
-                text = future.result()
-            except Exception as exc:
-                return ToolOutput(
-                    text=f"Background task '{collect}' failed: {exc}",
-                    metadata={"ok": False, "collect": collect, "error": str(exc)},
-                )
-            self._tasks.pop(collect, None)
-            return ToolOutput(
-                text=text,
-                metadata={"collect": collect, "delegated": True, "background": True},
-            )
+            return self._collect(collect)
 
         task = str(kwargs.get("task", "")).strip()
         if not task:
             return ToolOutput(
-                text="Provide `task` to delegate, or `collect` to fetch a background result.",
+                text=(
+                    "Provide `task` to delegate, or `collect` to fetch a "
+                    "background result."
+                ),
                 metadata={"ok": False},
             )
-        task_context = str(kwargs.get("context", "")).strip()
 
-        if kwargs.get("background"):
-            task_id = f"task-{next(self._task_ids)}"
-            self._tasks[task_id] = self._executor.submit(
-                self._complete, task, task_context, context.prompt
-            )
+        depth = int(_state(context, "metadata").get(DEPTH_STATE_KEY, 0) or 0)
+        if depth >= MAX_DEPTH:
             return ToolOutput(
                 text=(
-                    f"Background sub-agent started: {task_id}. Continue with "
-                    f'other work, then call this tool with collect="{task_id}" '
-                    "to fetch the result."
+                    f"Delegation is capped at {MAX_DEPTH} levels and you are "
+                    f"already at level {depth}. Do this task yourself."
                 ),
-                metadata={"task_id": task_id, "background": True, "task": task},
+                metadata={"ok": False, "error": "max_depth", "depth": depth},
             )
 
-        text = self._complete(task, task_context, context.prompt)
-        return ToolOutput(text=text, metadata={"task": task, "delegated": True})
+        # Accept the old name too, in case a model or caller still sends it —
+        # though ToolRunner strips it, so it will only ever arrive from a
+        # direct call.
+        task_context = str(
+            kwargs.get("details") or kwargs.get("task_context") or ""
+        ).strip()
+        agent_type = str(kwargs.get("agent_type", "")).strip()
+
+        if kwargs.get("background"):
+            with self._lock:
+                task_id = f"task-{next(self._task_ids)}"
+                self._tasks[task_id] = self._executor.submit(
+                    self._run_task,
+                    task=task,
+                    task_context=task_context,
+                    agent_type=agent_type,
+                    context=context,
+                    depth=depth,
+                )
+                self._meta[task_id] = {"task": task, "agent_type": agent_type or None}
+            return ToolOutput(
+                text=(
+                    f"Started {task_id}"
+                    + (f" ({agent_type})" if agent_type else "")
+                    + f": {task}\n"
+                    f'Keep working, then call this tool with collect="{task_id}" '
+                    f'(or collect="all") to fetch the result.'
+                ),
+                metadata={
+                    "task_id": task_id,
+                    "background": True,
+                    "task": task,
+                    "agent_type": agent_type or None,
+                },
+            )
+
+        result = self._run_task(
+            task=task,
+            task_context=task_context,
+            agent_type=agent_type,
+            context=context,
+            depth=depth,
+        )
+        return ToolOutput(text=result.report(), metadata=result.to_dict())
+
+    def _collect(self, collect: str) -> ToolOutput:
+        if collect.lower() == "all":
+            return self._collect_all()
+
+        with self._lock:
+            future = self._tasks.get(collect)
+            known = ", ".join(sorted(self._tasks)) or "none"
+        if future is None:
+            return ToolOutput(
+                text=f"No background task '{collect}'. Outstanding: {known}.",
+                metadata={"ok": False, "collect": collect},
+            )
+        try:
+            result = future.result()
+        except Exception as exc:  # noqa: BLE001
+            with self._lock:
+                self._tasks.pop(collect, None)
+                self._meta.pop(collect, None)
+            return ToolOutput(
+                text=f"Background task '{collect}' failed: {exc}",
+                metadata={"ok": False, "collect": collect, "error": str(exc)},
+            )
+        with self._lock:
+            self._tasks.pop(collect, None)
+            self._meta.pop(collect, None)
+        return ToolOutput(
+            text=result.report(),
+            metadata={**result.to_dict(), "collect": collect, "background": True},
+        )
+
+    def _collect_all(self) -> ToolOutput:
+        """Wait for every outstanding task and return one combined report."""
+        with self._lock:
+            outstanding = list(self._tasks.items())
+        if not outstanding:
+            return ToolOutput(
+                text="No background tasks are outstanding.",
+                metadata={"ok": True, "collected": 0},
+            )
+
+        sections: list[str] = []
+        results: list[dict[str, Any]] = []
+        for task_id, future in outstanding:
+            try:
+                result = future.result()
+                sections.append(f"## {task_id}: {result.task}\n{result.report()}")
+                results.append(result.to_dict())
+            except Exception as exc:  # noqa: BLE001
+                sections.append(f"## {task_id}\nFailed: {exc}")
+                results.append({"task_id": task_id, "ok": False, "error": str(exc)})
+            with self._lock:
+                self._tasks.pop(task_id, None)
+                self._meta.pop(task_id, None)
+
+        return ToolOutput(
+            text="\n\n".join(sections),
+            metadata={"collected": len(results), "results": results},
+        )
+
+    # ── introspection ────────────────────────────────────────────────────
+
+    def outstanding(self) -> list[dict[str, Any]]:
+        """Background tasks still running, for a UI or a run summary."""
+        with self._lock:
+            return [
+                {"task_id": task_id, **self._meta.get(task_id, {})}
+                for task_id in self._tasks
+            ]

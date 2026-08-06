@@ -254,3 +254,41 @@ class TestRegistration:
 
         register_verb("peek_at_thing", VerbSpec("Peeked", "Peeking", "⌕", read_only=True))
         assert summarize("peek_at_thing", {}).read_only
+
+
+class TestSummaryOverrides:
+    """Tools whose verb changes with the call, not just the target."""
+
+    @pytest.mark.parametrize(
+        "args,expected",
+        [
+            ({"task": "Summarize auth"}, "Delegated Summarize auth"),
+            ({"task": "Review", "background": True}, "Started Review"),
+            ({"collect": "all"}, "Collected results"),
+            ({"collect": "task-1"}, "Collected task-1"),
+        ],
+    )
+    def test_sub_agent_reads_correctly_per_call_shape(self, args, expected) -> None:
+        # "Delegated results" would be nonsense — collecting is not delegating.
+        assert summarize("sub_agent", args).past_label() == expected
+
+    def test_present_tense_follows(self) -> None:
+        assert summarize("sub_agent", {"collect": "all"}).present_label() == (
+            "Collecting results"
+        )
+
+    def test_counts_still_use_the_base_verb(self) -> None:
+        assert describe_count("sub_agent", 3) == "Delegated 3 tasks"
+
+    def test_a_registration_beats_the_override(self) -> None:
+        from shipit_agent.narrate.verbs import (
+            VerbSpec,
+            register_verb,
+            unregister_verb,
+        )
+
+        register_verb("sub_agent", VerbSpec("Farmed out", "Farming out", "◆"))
+        try:
+            assert summarize("sub_agent", {"collect": "all"}).past == "Farmed out"
+        finally:
+            unregister_verb("sub_agent")

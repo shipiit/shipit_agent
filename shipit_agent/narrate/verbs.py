@@ -205,6 +205,8 @@ VERBS: dict[str, VerbSpec] = {
                                args=("question", "prompt"), read_only=True),
     "give_up": VerbSpec("Stopped", "Stopping", STOP, args=("reason",),
                         read_only=True, intransitive=True),
+    "sub_agent": VerbSpec("Delegated", "Delegating", CREATE, "task",
+                          args=("task", "agent_type")),
     "human_review": VerbSpec("Requested review", "Requesting review", CHAT,
                              "review", args=("summary", "title"), read_only=True, count_verb=("Requested", "Requesting")),
 
@@ -282,6 +284,29 @@ _TARGET_EXTRACTORS: dict[str, Callable[[dict[str, Any]], str | None]] = {
     "download_file": _url_host,
     "playwright_browse": _url_host,
     "custom_api": _url_host,
+}
+
+
+# ── Whole-summary overrides ──────────────────────────────────────────────
+# For the handful of tools whose *verb* changes with the call, not just the
+# target. `sub_agent` is the case: starting work and collecting its results
+# are different actions behind one tool name, and "Delegated results" reads
+# as nonsense. Returns (past, present, target).
+
+def _summarize_sub_agent(args: dict[str, Any]) -> tuple[str, str, str | None]:
+    collect = args.get("collect")
+    if isinstance(collect, str) and collect.strip():
+        target = "results" if collect.strip().lower() == "all" else collect.strip()
+        return "Collected", "Collecting", target
+    task = args.get("task")
+    target = _clip(task) if isinstance(task, str) and task.strip() else None
+    if args.get("background"):
+        return "Started", "Starting", target
+    return "Delegated", "Delegating", target
+
+
+_SUMMARY_OVERRIDES: dict[str, Callable[[dict[str, Any]], tuple[str, str, str | None]]] = {
+    "sub_agent": _summarize_sub_agent,
 }
 
 
@@ -512,6 +537,15 @@ def summarize(name: str, arguments: dict[str, Any] | None = None) -> ToolSummary
     """
     args = dict(arguments or {})
     spec = spec_for(name)
+    override = _SUMMARY_OVERRIDES.get(name)
+    if override is not None and name not in _OVERRIDES:
+        # A registration wins over the built-in override, so a project can
+        # still re-narrate the tool however it likes.
+        past, present, target = override(args)
+        return ToolSummary(
+            name=name, past=past, present=present, target=target,
+            icon=spec.icon, read_only=is_read_only(name),
+        )
     target = _extract_target(name, args, spec)
     return ToolSummary(
         name=name,

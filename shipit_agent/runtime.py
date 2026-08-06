@@ -986,6 +986,22 @@ class AgentRuntime:
             }
             for tool in registry.values()
         ]
+        # What a sub-agent may inherit. Publishing the control plane here is
+        # what makes delegation non-escalating: a child is built from the
+        # parent's own permissions, approvals and guardrails, never fresh ones.
+        from shipit_agent.tools.sub_agent.sub_agent_tool import (
+            DEPTH_STATE_KEY,
+            PARENT_STATE_KEY,
+        )
+
+        shared_state[PARENT_STATE_KEY] = {
+            "tools": list(registry.values()),
+            "permissions": self.permissions,
+            "approvals": self.approvals,
+            "guardrails": self.guardrails,
+            "project_root": self.metadata.get("project_root", "."),
+        }
+        shared_state[DEPTH_STATE_KEY] = self.metadata.get(DEPTH_STATE_KEY, 0)
         shared_state["memory_store"] = self.memory_store
         shared_state["credential_store"] = self.credential_store
         shared_state["artifact_workspace_root"] = self.metadata.get(

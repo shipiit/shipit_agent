@@ -35,7 +35,7 @@ import socket
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 __all__ = ["BridgeCall", "BridgeServer", "BridgeLimits", "BridgeAddress"]

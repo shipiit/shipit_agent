@@ -6,7 +6,6 @@ import pytest
 
 from shipit_agent.codemode.bindings import (
     DEFAULT_METHOD,
-    Binding,
     BindingMethod,
     binding_name_for,
     build_binding,

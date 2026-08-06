@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from shipit_agent import Agent, ApprovalQueue
 from shipit_agent.codemode import CORE_TOOLS, binding_index, build_bindings

@@ -10,7 +10,7 @@ import time
 from shipit_agent import Agent, FunctionTool, StreamRenderer
 from shipit_agent.llms.base import LLMResponse, ToolCall
 from shipit_agent.models import AgentEvent, Message
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.runtime import AgentRuntime, RuntimeState
 from shipit_agent.tools.base import ToolContext
 from shipit_agent.tools.edit_file import EditFileTool
 from shipit_agent.tools.file_read import FileReadTool
@@ -128,7 +128,9 @@ class TestLLMCompaction:
             Message(role="tool", name="t", content="z" * 300),
             Message(role="user", content="latest"),
         ]
-        compacted, did = runtime._compact_messages(messages)
+        _before = messages
+        compacted = runtime.compact(RuntimeState(), _before, 1)
+        did = compacted is not _before
         assert did
         assert llm.summarize_calls == 1
         summary = next(m for m in compacted if m.metadata.get("compacted"))
@@ -149,7 +151,9 @@ class TestLLMCompaction:
             Message(role="tool", name="t", content="z" * 300),
             Message(role="user", content="latest"),
         ]
-        compacted, did = runtime._compact_messages(messages)
+        _before = messages
+        compacted = runtime.compact(RuntimeState(), _before, 1)
+        did = compacted is not _before
         assert did
         summary = next(m for m in compacted if m.metadata.get("compacted"))
         assert "important-fact" in summary.content  # mechanical fallback kept it

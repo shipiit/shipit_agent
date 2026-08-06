@@ -10,7 +10,6 @@ Keep it dependency-free and standard-library-only for that reason.
 
 from __future__ import annotations
 
-from pathlib import Path
 
 __all__ = ["PREAMBLE", "build_preamble"]
 

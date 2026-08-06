@@ -116,7 +116,7 @@ class TestLabels:
             group = build_group(
                 [call("read_file", "a", path="x.py"), call(name, "b", query="q", path="p")]
             )
-            assert not group.label.split()[-1].lower().strip(",") in dangling, (
+            assert group.label.split()[-1].lower().strip(",") not in dangling, (
                 f"{name}: {group.label!r}"
             )
 

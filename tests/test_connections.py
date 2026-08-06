@@ -8,7 +8,6 @@ import pytest
 
 from shipit_agent.connections import (
     AuthKind,
-    Connection,
     ConnectionRegistry,
     ConnectionState,
     title_for,

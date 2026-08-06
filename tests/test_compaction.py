@@ -6,7 +6,6 @@ import pytest
 
 from shipit_agent.compaction import (
     COMPACTION_SYSTEM_PROMPT,
-    TARGET_RATIO,
     TRIGGER_RATIO,
     CompactionCheckpoint,
     Compactor,

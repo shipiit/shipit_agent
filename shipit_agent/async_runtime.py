@@ -9,9 +9,10 @@ from shipit_agent.integrations import CredentialStore
 from shipit_agent.llms.base import LLM, LLMResponse
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
-from shipit_agent.permissions import PermissionEngine, authorize_tool
+from shipit_agent.permissions import PermissionEngine
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
+from shipit_agent.runtime_core import RuntimeCore
 from shipit_agent.runtime import (
     RuntimeState,
     _isolated_tool_state,
@@ -31,7 +32,7 @@ from shipit_agent.tools.helpers import build_tools_prompt
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
 
 
-class AsyncAgentRuntime:
+class AsyncAgentRuntime(RuntimeCore):
     """Async version of AgentRuntime for use with asyncio/FastAPI/Starlette.
 
     Mirrors the synchronous AgentRuntime but uses ``await`` for LLM calls
@@ -70,6 +71,10 @@ class AsyncAgentRuntime:
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
         approvals: Any | None = None,
+        guardrails: Any | None = None,
+        heal_tool_calls: bool = True,
+        lockdown: Any = None,
+        code_mode: bool = False,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -91,16 +96,17 @@ class AsyncAgentRuntime:
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
         self.permissions = permissions
-        # Deferred-approval queue; mirrors AgentRuntime so the sync and async
-        # loops can never diverge on gate semantics.
-        from shipit_agent.approvals import coerce_queue
-
-        self.approvals = coerce_queue(approvals)
-        self._total_usage: dict[str, int] = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
+        # Everything shared with AgentRuntime — guardrails, lockdown,
+        # approvals, healing, usage, compaction — comes from RuntimeCore, so
+        # the two loops cannot drift apart again.
+        self._init_core(
+            approvals=approvals,
+            guardrails=guardrails,
+            heal_tool_calls=heal_tool_calls,
+            lockdown=lockdown,
+            code_mode=code_mode,
+            context_window_tokens=context_window_tokens,
+        )
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
 
     def registry(self) -> ToolRegistry:
@@ -259,9 +265,7 @@ class AsyncAgentRuntime:
             return None, msg
 
         # ── Permission gate: blocking hooks + rule-based permission engine ──
-        decision = authorize_tool(
-            self.hooks, self.permissions, tool_call.name, tool_call.arguments, tool
-        )
+        decision = self.authorize(tool_call.name, tool_call.arguments, tool)
         if (
             decision is not None
             and decision.needs_approval
@@ -363,6 +367,22 @@ class AsyncAgentRuntime:
         if self.hooks:
             self.hooks.run_after_tool(tool_call.name, tool_result)
 
+        # Guardrails: neutralize indirect injection and redact secrets BEFORE
+        # the model reads the result.
+        tool_result.output, redacted_secret = self.sanitize_tool_output(
+            state, tool_call.name, tool_result.output
+        )
+
+        # Did this read latch the run into lockdown?
+        self.note_lockdown(
+            state,
+            tool=tool_call.name,
+            arguments=dict(tool_call.arguments),
+            output_metadata=dict(tool_result.metadata),
+            redacted_secret=redacted_secret,
+            iteration=iteration,
+        )
+
         msg = Message(
             role="tool",
             name=tool_call.name,
@@ -389,32 +409,28 @@ class AsyncAgentRuntime:
             )
         return tool_result, msg
 
-    def _close_mcps(self) -> None:
-        """Close every attached MCP transport, swallowing close errors.
-
-        Runs even when the agent loop raises, so a failed run never leaks live
-        MCP subprocesses / sockets.
-        """
-        for mcp in self.mcps:
-            close = getattr(mcp, "close", None)
-            if callable(close):
-                try:
-                    close()
-                except Exception:
-                    pass
-
     async def run(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
         # Guarantee MCP cleanup even if registry construction or the loop raises.
         try:
             return await self._run_inner(user_prompt)
         finally:
-            self._close_mcps()
+            self.close_mcps()
 
     async def _run_inner(
         self, user_prompt: str
     ) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
-        shared_state: dict[str, Any] = {}
+
+        # Guardrails: blocked prompts never reach the LLM.
+        user_prompt, refusal = self.check_input(state, user_prompt)
+        if refusal is not None:
+            self.emit(
+                state, "run_completed", "Run blocked by guardrails",
+                output=refusal, content=refusal, format="markdown",
+                usage={}, cancelled=False, guardrail_blocked=True,
+            )
+            return state, LLMResponse(content=refusal)
+
         registry = self.registry()
         tool_prompt = build_tools_prompt(registry.values())
         base_prompt = (
@@ -447,22 +463,8 @@ class AsyncAgentRuntime:
             )
 
         tool_schemas = registry.schemas()
-        shared_state["available_tools"] = [
-            {
-                "name": t.name,
-                "description": t.description,
-                "prompt_instructions": getattr(t, "prompt_instructions", ""),
-            }
-            for t in registry.values()
-        ]
-        shared_state["memory_store"] = self.memory_store
-        shared_state["credential_store"] = self.credential_store
-        shared_state["artifact_workspace_root"] = self.metadata.get(
-            "artifact_workspace_root", ".shipit_workspace/artifacts"
-        )
-        shared_state["workspace_root"] = self.metadata.get(
-            "workspace_root", ".shipit_workspace"
-        )
+        # Built by RuntimeCore, so both loops publish identical tool state.
+        shared_state: dict[str, Any] = self.build_shared_state(registry)
         tool_runner = ToolRunner(registry)
 
         response = LLMResponse(content="")
@@ -470,6 +472,14 @@ class AsyncAgentRuntime:
         # loop, so the trailing append doesn't duplicate the final text.
         appended_response_id: int | None = None
         for iteration in range(1, self.max_iterations + 1):
+            if self._cancel_event.is_set():
+                self.emit(
+                    state, "run_cancelled", "Run cancelled by caller",
+                    iteration=iteration,
+                )
+                if not response.content:
+                    response = LLMResponse(content="[cancelled]")
+                break
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), tool_schemas)
 
@@ -486,7 +496,10 @@ class AsyncAgentRuntime:
                 tools=tool_schemas,
                 base_prompt=base_prompt,
             )
-            self._track_usage(response)
+            self.track_usage(state, response, iteration)
+
+            # Small models often emit the tool call as text; promote it.
+            self.heal(state, response, registry, iteration)
 
             if self.hooks:
                 self.hooks.run_after_llm(response)
@@ -507,6 +520,26 @@ class AsyncAgentRuntime:
                 )
 
             if not response.tool_calls:
+                # Nudge-on-stall: the model narrated an action and called
+                # nothing. One tightly-gated re-prompt recovers the turn.
+                if self.should_nudge(
+                    response,
+                    has_tools=bool(tool_schemas),
+                    last=iteration >= self.max_iterations,
+                ):
+                    self.record_nudge(response)
+                    state.messages.append(
+                        Message(role="assistant", content=response.content)
+                    )
+                    state.messages.append(
+                        Message(role="user", content=self.NUDGE_TEXT)
+                    )
+                    self.emit(
+                        state, "tool_call_healed",
+                        "Nudged: intent without action",
+                        nudge=True, iteration=iteration,
+                    )
+                    continue
                 break
 
             tool_call_records = [
@@ -603,7 +636,7 @@ class AsyncAgentRuntime:
                     base_prompt=base_prompt,
                 )
                 # Account for the summary turn's tokens + fire the hook.
-                self._track_usage(summary)
+                self.track_usage(state, summary, self.max_iterations + 1)
                 if self.hooks:
                     self.hooks.run_after_llm(summary)
                 if summary.content:
@@ -635,6 +668,9 @@ class AsyncAgentRuntime:
         self.session_store.save(
             SessionRecord(session_id=self.session_id, messages=list(state.messages))
         )
+        self.surface_give_up(state.tool_results)
+        response.content = self.sanitize_output(state, response.content)
+
         self.emit(
             state,
             "run_completed",
@@ -647,10 +683,6 @@ class AsyncAgentRuntime:
 
         # MCP transports are closed by run()'s finally (covers the error path).
         return state, response
-
-    def _track_usage(self, response: LLMResponse) -> None:
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-            self._total_usage[key] += response.usage.get(key, 0)
 
     async def stream(self, user_prompt: str) -> AsyncIterator[AgentEvent]:
         """Run the agent and yield events as they're emitted."""

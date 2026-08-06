@@ -20,13 +20,11 @@ from shipit_agent.llms.base import (
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
 from shipit_agent.permissions import (
-    PermissionDecision,
     PermissionEngine,
-    PermissionResult,
-    authorize_tool,
 )
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
+from shipit_agent.runtime_core import RuntimeCore
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -113,7 +111,7 @@ def _is_intent_without_action(text: str | None) -> bool:
     return any(marker in stripped for marker in _INTENT_MARKERS)
 
 
-class AgentRuntime:
+class AgentRuntime(RuntimeCore):
     def __init__(
         self,
         *,
@@ -163,18 +161,17 @@ class AgentRuntime:
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
         self.permissions = permissions
-        self.guardrails = guardrails
-        self.heal_tool_calls = heal_tool_calls
-        # Deferred-approval queue; None keeps the historical blocking gate.
-        from shipit_agent.approvals import coerce_queue
-
-        self.approvals = coerce_queue(approvals)
-        self.code_mode = code_mode
-        # Once this run reads sensitive data it may only keep reading — the
-        # exfiltration guard. See shipit_agent.lockdown.
-        from shipit_agent.lockdown import coerce_lockdown
-
-        self.lockdown = coerce_lockdown(lockdown)
+        # Everything shared with AsyncAgentRuntime — guardrails, lockdown,
+        # approvals, healing, usage, compaction, cancellation — lives in
+        # RuntimeCore so the two loops cannot drift apart again.
+        self._init_core(
+            guardrails=guardrails,
+            heal_tool_calls=heal_tool_calls,
+            approvals=approvals,
+            code_mode=code_mode,
+            lockdown=lockdown,
+            context_window_tokens=context_window_tokens,
+        )
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
         # signature don't — passing it unconditionally raises TypeError.
@@ -182,38 +179,10 @@ class AgentRuntime:
         # Only Anthropic surfaces partial tool arguments today; everywhere
         # else arguments arrive whole, exactly as before.
         self._llm_streams_tool_input = accepts_tool_input_callback(self.llm.complete)
-        self._total_usage: dict[str, int] = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
         # Serializes event emission so parallel tool threads don't interleave
         # writes to a (possibly non-atomic) trace store.
         self._emit_lock = threading.Lock()
-        # Cooperative cancellation — checked between iterations and before
-        # each tool execution. Set from any thread via cancel().
-        self._cancel_event = threading.Event()
-        # Guardrails max_tool_calls ceiling (per run — a runtime is per-run).
-        self._guarded_tool_calls = 0
-        # Nudge-on-stall bookkeeping (cap 1 per run, no identical repeats).
-        self._nudges_used = 0
-        self._last_nudged_text = ""
-        # Built on first compaction; holds the run's checkpoint history.
-        self._compactor_instance: Any = None
-
-    def cancel(self) -> None:
-        """Request cancellation of the in-flight run (thread-safe).
-
-        The loop stops at the next checkpoint — before the next LLM call or
-        tool execution — and returns a normal result with whatever was
-        produced so far, marked ``metadata["cancelled"] = True``.
-        """
-        self._cancel_event.set()
-
-    @property
-    def cancelled(self) -> bool:
-        return self._cancel_event.is_set()
 
     def registry(self) -> ToolRegistry:
         return construct_tool_registry(tools=self.tools, mcps=self.mcps)
@@ -292,36 +261,6 @@ class AgentRuntime:
         self.emit(
             state, "planning_completed", "Planner completed", output=tool_result.output
         )
-
-    def _authorize_tool(
-        self, name: str, arguments: dict[str, Any], tool: Any
-    ) -> PermissionResult | None:
-        # Lockdown outranks everything, including an explicit allow rule: the
-        # point is that no configuration reached before the sensitive read can
-        # authorize an action after it.
-        if self.lockdown.engaged:
-            from shipit_agent.tools.contracts import contract_for
-
-            read_only = contract_for(name, tool).read_only
-            if self.lockdown.blocks(name, read_only=read_only):
-                return PermissionResult(
-                    decision=PermissionDecision.DENY,
-                    reason=self.lockdown.denial_reason(name),
-                )
-        # Guardrail tool rules run FIRST — a content-level deny (e.g. rm -rf /
-        # in bash args) wins over any allow rule in the permission engine.
-        if self.guardrails is not None:
-            ceiling = getattr(self.guardrails, "max_tool_calls", 0)
-            if ceiling and self._guarded_tool_calls >= ceiling:
-                return PermissionResult(
-                    decision=PermissionDecision.DENY,
-                    reason=f"guardrail: tool-call ceiling ({ceiling}) reached",
-                )
-            guard = self.guardrails.check_tool(name, arguments)
-            if guard is not None and not guard.allowed:
-                return guard
-            self._guarded_tool_calls += 1
-        return authorize_tool(self.hooks, self.permissions, name, arguments, tool)
 
     def _install_code_mode(
         self,
@@ -503,7 +442,7 @@ class AgentRuntime:
             return None, msg
 
         # ── Permission gate: blocking hooks + rule-based permission engine ──
-        decision = self._authorize_tool(tool_call.name, tool_call.arguments, tool)
+        decision = self.authorize(tool_call.name, tool_call.arguments, tool)
 
         # An ASK on a deferrable action goes to the approval queue instead of
         # stopping the run: the agent is told it's queued and keeps working,
@@ -793,45 +732,6 @@ class AgentRuntime:
         """Rough token estimate: ~4 chars per token for English text."""
         return len(text) // 4 if text else 0
 
-    def _compactor(self) -> Any:
-        """Lazily build the checkpoint compactor for this run."""
-        existing = getattr(self, "_compactor_instance", None)
-        if existing is not None:
-            return existing
-        from shipit_agent.compaction import Compactor
-
-        instance = Compactor(
-            llm=self.llm,
-            model=getattr(self.llm, "model", None),
-            context_window_tokens=self.context_window_tokens,
-        )
-        self._compactor_instance = instance
-        return instance
-
-    def _compact_messages(
-        self, messages: list[Message]
-    ) -> tuple[list[Message], bool]:
-        """Summarize older turns to free context space.
-
-        Delegates to :class:`shipit_agent.compaction.Compactor`, which cuts at
-        a **turn boundary** (never mid-turn, which providers reject), writes a
-        structured handoff, and records an immutable checkpoint. The canonical
-        message list is left alone — only the replay window moves.
-
-        ``context_window_tokens=0`` keeps compaction off entirely, as before.
-        """
-        if not self.context_window_tokens:
-            return messages, False
-        checkpoint = self._compactor().compact(messages)
-        if checkpoint is None:
-            return messages, False
-        return checkpoint.replay(messages), True
-
-    def _track_usage(self, response: LLMResponse) -> None:
-        """Accumulate token usage across iterations."""
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-            self._total_usage[key] += response.usage.get(key, 0)
-
     def _complete_with_retry(
         self,
         *,
@@ -926,27 +826,13 @@ class AgentRuntime:
                     error=str(exc),
                 )
 
-    def _close_mcps(self) -> None:
-        """Close every attached MCP transport, swallowing close errors.
-
-        Must run even when the agent loop raises, otherwise a failed run
-        leaks live MCP subprocesses / sockets.
-        """
-        for mcp in self.mcps:
-            close = getattr(mcp, "close", None)
-            if callable(close):
-                try:
-                    close()
-                except Exception:
-                    pass
-
     def run(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
         # Guarantee MCP cleanup even if registry construction (which opens MCP
         # transports) or the agent loop raises.
         try:
             return self._run_inner(user_prompt)
         finally:
-            self._close_mcps()
+            self.close_mcps()
 
     def _run_inner(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
@@ -1128,25 +1014,7 @@ class AgentRuntime:
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), tool_schemas)
 
-            # Compact messages if approaching context window limit
-            compacted_messages, did_compact = self._compact_messages(
-                list(state.messages)
-            )
-            if did_compact:
-                self.emit(
-                    state,
-                    "context_compacted",
-                    "Older turns condensed to stay within the context window",
-                    before=len(state.messages),
-                    after=len(compacted_messages),
-                    saved_tokens=(
-                        self._compactor().latest().saved_tokens
-                        if self._compactor().latest()
-                        else 0
-                    ),
-                    checkpoints=len(self._compactor().checkpoints),
-                    iteration=iteration,
-                )
+            compacted_messages = self.compact(state, list(state.messages), iteration)
 
             self.emit(
                 state,
@@ -1161,7 +1029,7 @@ class AgentRuntime:
                 tools=tool_schemas,
                 base_prompt=base_prompt,
             )
-            self._track_usage(response)
+            self.track_usage(state, response, iteration)
             # Running total, so a live renderer can show tokens/cost mid-run
             # instead of only at the end.
             self.emit(
@@ -1339,7 +1207,7 @@ class AgentRuntime:
                 )
                 # The summary turn is a real LLM call — account for its tokens
                 # and fire the after-LLM hook, same as in-loop completions.
-                self._track_usage(summary)
+                self.track_usage(state, summary, self.max_iterations + 1)
                 if self.hooks:
                     self.hooks.run_after_llm(summary)
                 if summary.content:

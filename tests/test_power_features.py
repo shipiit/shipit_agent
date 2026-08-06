@@ -23,7 +23,7 @@ from shipit_agent.llms import LLMResponse, SimpleEchoLLM
 from shipit_agent.llms.base import LLMResponse as BaseLLMResponse
 from shipit_agent.models import Message, ToolCall
 from shipit_agent.policies import RetryPolicy as RP
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.runtime import AgentRuntime, RuntimeState
 from shipit_agent.stores import InMemoryMemoryStore
 from shipit_agent.tools import ToolOutput
 
@@ -315,7 +315,9 @@ class TestContextWindowManagement:
             Message(role="tool", name="t2", content="w" * 200),
             Message(role="user", content="latest question"),
         ]
-        compacted, did_compact = runtime._compact_messages(messages)
+        _before = messages
+        compacted = runtime.compact(RuntimeState(), _before, 1)
+        did_compact = compacted is not _before
         assert did_compact
         assert len(compacted) <= len(messages)
         # Should have a compacted message
@@ -333,7 +335,9 @@ class TestContextWindowManagement:
             Message(role="system", content="prompt"),
             Message(role="user", content="hi"),
         ]
-        result, did_compact = runtime._compact_messages(messages)
+        _before = messages
+        result = runtime.compact(RuntimeState(), _before, 1)
+        did_compact = result is not _before
         assert result == messages
         assert did_compact is False
 
@@ -345,7 +349,9 @@ class TestContextWindowManagement:
             context_window_tokens=0,
         )
         messages = [Message(role="user", content="x" * 10000)]
-        result, did_compact = runtime._compact_messages(messages)
+        _before = messages
+        result = runtime.compact(RuntimeState(), _before, 1)
+        did_compact = result is not _before
         assert result == messages
         assert did_compact is False
 

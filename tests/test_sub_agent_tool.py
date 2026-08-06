@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from shipit_agent import SubAgentTool
 from shipit_agent.llms.base import LLMResponse

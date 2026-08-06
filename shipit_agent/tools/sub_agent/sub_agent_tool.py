@@ -56,6 +56,7 @@ DEPTH_STATE_KEY = "subagent_depth"
 # spawns a subagent that spawns a subagent, and the run never terminates.
 MAX_DEPTH = 2
 
+
 # A subagent that hasn't finished in this many turns is not going to.
 DEFAULT_MAX_ITERATIONS = 12
 
@@ -157,15 +158,24 @@ class SubAgentTool:
         # want a subagent narrower than any subset the parent happens to hold.
         self.tools = tools
         self.prompt_instructions = (
-            "Delegate when a task would flood your context (a wide search, a "
-            "long file to summarize) or when several independent pieces of "
-            "work can run at once.\n\n"
+            "Delegate when a task would flood your context (a wide search, "
+            "a long file to summarize) or when several independent pieces "
+            "of work can run at once.\n\n"
+            "Do NOT delegate work you can do with one tool call. Reading a "
+            "file, listing a directory, one lookup, or writing the answer "
+            "are all faster done yourself, and a sub-agent doing them costs "
+            "an extra model call and loses everything it saw. If you find "
+            "yourself delegating every step, use the tools directly "
+            "instead.\n\n"
             "The sub-agent starts fresh: it sees only the `task` and `details` "
             "you give it, not your conversation. Say what you want back.\n\n"
             "`agent_type` picks a specialist (researcher, code-reviewer, "
             "data-analyst, …); omit it for a general-purpose one. "
             "`background=true` returns a task id immediately so you can keep "
-            "working; `collect=\"<id>\"` fetches the result."
+            "working; `collect=\"<id>\"` fetches the result. Anything you "
+            "start in the background must be collected in this same turn — "
+            "the run ends with your answer, and there is no later turn in "
+            "which results arrive on their own."
         )
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="sub_agent"
@@ -377,6 +387,24 @@ class SubAgentTool:
                 ),
                 metadata={"ok": False},
             )
+        # A sub-agent starts with no memory of this conversation: the task
+        # IS its entire brief. Punctuation is not one. Observed on Gemma 4
+        # reaching for delegation reflexively — `sub_agent(task=",")`, which
+        # the tool accepted and which burned a model call to return an
+        # error. A guard is worth more here than an instruction, because the
+        # instruction is only advice.
+        if not any(character.isalnum() for character in task):
+            return ToolOutput(
+                text=(
+                    f"There is nothing to delegate in {task!r}. A "
+                    f"sub-agent sees none of this conversation, so the task "
+                    f"has to name what to do and what to return. If the "
+                    f"work is one lookup or one file, do it yourself with "
+                    f"the tool for it — that is faster than delegating and "
+                    f"you keep the result."
+                ),
+                metadata={"ok": False, "error": "task_too_thin"},
+            )
 
         depth = int(_state(context, "metadata").get(DEPTH_STATE_KEY, 0) or 0)
         if depth >= MAX_DEPTH:
@@ -414,7 +442,11 @@ class SubAgentTool:
                     + (f" ({agent_type})" if agent_type else "")
                     + f": {task}\n"
                     f'Keep working, then call this tool with collect="{task_id}" '
-                    f'(or collect="all") to fetch the result.'
+                    f'(or collect="all") to fetch the result.\n'
+                    f"You must collect it BEFORE you answer. There is no "
+                    f"later: this turn ends when you write your answer, and "
+                    f"an uncollected task is thrown away. Never tell the "
+                    f"user you will report back — report now, or wait."
                 ),
                 metadata={
                     "task_id": task_id,

@@ -313,7 +313,10 @@ class DelegationPolicy:
             "- Send **each piece** to `sub_agent`, with a task naming the one "
             "thing it must do and the exact shape of the answer you want back.\n"
             "- Run independent pieces at once: `background=true` starts one, "
-            '`collect="<id>"` fetches its result.\n'
+            '`collect="<id>"` fetches its result. Collect every one of them '
+            "before you answer — the run ends with your answer, so a task "
+            "left uncollected is simply lost, and promising the user a "
+            "later report is promising something that cannot happen.\n"
             "- Do not read the material yourself. The point of a sub-agent is "
             "that what it read never enters your context — only its answer does.\n"
             "- Combine the answers yourself; do not delegate the combining."

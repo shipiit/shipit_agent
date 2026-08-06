@@ -424,3 +424,61 @@ class TestSchemaIsUnambiguous:
                     f"{tool.name} marks nothing required and is not known to "
                     f"handle an empty call"
                 )
+
+
+class TestBackgroundIsNotLater:
+    """The failure this guards: the model starts background tasks, tells the
+    user it will "present the consolidated results", and answers. The turn
+    ends, the futures are discarded, and the user waits for a message that
+    is never coming."""
+
+    def test_starting_one_says_it_must_be_collected_first(self) -> None:
+        tool = SubAgentTool(llm=ScriptedLLM([("done", [])]))
+        out = tool.run(parent_context(), task="summarize the file",
+                       background=True)
+        assert "before you answer" in out.text.lower()
+        assert "no later" in out.text.lower(), (
+            "the model has to be told the turn ends with its answer, or it "
+            "writes a promise it cannot keep")
+
+    def test_the_description_says_the_same(self) -> None:
+        tool = SubAgentTool(llm=ScriptedLLM([]))
+        assert "same turn" in tool.prompt_instructions.lower()
+
+
+class TestThinDelegations:
+    """A model that delegates reflexively sends a task with nothing in it.
+
+    Observed on Gemma 4: `sub_agent(task=",")`, which the tool accepted,
+    burning a model call to return an error. The tool has to be hard to
+    misuse, because the instruction not to misuse it is only advice.
+    """
+
+    def test_a_task_with_no_substance_is_refused(self) -> None:
+        tool = SubAgentTool(llm=ScriptedLLM([("done", [])]))
+        out = tool.run(parent_context(), task=",")
+        assert out.metadata["ok"] is False
+        assert "nothing to delegate" in out.text.lower()
+
+    def test_the_refusal_says_what_to_do_instead(self) -> None:
+        tool = SubAgentTool(llm=ScriptedLLM([("done", [])]))
+        out = tool.run(parent_context(), task="...")
+        assert "do it yourself" in out.text.lower(), (
+            "a refusal that does not name the alternative just gets retried")
+
+    def test_a_short_but_real_task_is_not_refused(self) -> None:
+        """The guard is about substance, not length — plenty of honest
+        briefs are three words."""
+        tool = SubAgentTool(llm=ScriptedLLM([("done", [])]))
+        out = tool.run(parent_context(), task="summarize the log")
+        assert out.metadata.get("ok") is not False
+
+    def test_a_real_brief_still_goes_through(self) -> None:
+        tool = SubAgentTool(llm=ScriptedLLM([("found it", [])]))
+        out = tool.run(parent_context(),
+                       task="Read inbox/msg-1.eml and return the sender name")
+        assert out.metadata.get("ok") is not False
+
+    def test_the_description_says_when_not_to_delegate(self) -> None:
+        tool = SubAgentTool(llm=ScriptedLLM([]))
+        assert "do not delegate" in tool.prompt_instructions.lower()

@@ -16,6 +16,7 @@ Tool categories:
     File operations:    read_file, edit_file, write_file, glob_files, grep_files
     Shell & code:       bash, run_code
     Workspace:          workspace_files
+    Apps:               create_app, use_app, set_app_binding, list_blueprints
     Interaction:        ask_user, ask_user_async, human_review, give_up,
                         connections
     Planning:           plan_task, decompose_problem, todo
@@ -41,6 +42,9 @@ from typing import Any
 from shipit_agent.llms.base import LLM
 from shipit_agent.tools.connections import ConnectionsTool
 from shipit_agent.tools.describe_binding import DescribeBindingTool
+from pathlib import Path
+
+from shipit_agent.tools.apps import app_tools
 from shipit_agent.tools.give_up import GiveUpTool
 from shipit_agent.tools import (
     AskUserAsyncTool,
@@ -139,6 +143,14 @@ def get_builtin_tool_map(
         GrepSearchTool(root_dir=project_root),
         NotebookEditTool(root_dir=project_root),
         GitOpsTool(root_dir=project_root),
+        # ── apps ──────────────────────────────────────────────────
+        # Something the agent builds once and runs again: create_app,
+        # set_app_binding, use_app, list_blueprints. They live under the
+        # project so an app outlives the run that wrote it.
+        *app_tools(
+            str(Path(project_root) / ".shipit" / "apps"),
+            workdir=project_root,
+        ),
         # ── interaction ───────────────────────────────────────────
         AskUserTool(),
         AskUserAsyncTool(),

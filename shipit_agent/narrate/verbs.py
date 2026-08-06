@@ -114,6 +114,7 @@ WEB = "◍"
 SEARCH = "⌕"
 LINK = "⚯"
 CREATE = "✚"
+APP = "▣"   # something the agent built and can run again
 DATA = "⛁"
 MAIL = "✉"
 CHAT = "✱"
@@ -205,6 +206,20 @@ VERBS: dict[str, VerbSpec] = {
                               args=("claim", "output"), read_only=True),
     "build_prompt": VerbSpec("Built a prompt", "Building a prompt", THINK,
                              read_only=True, intransitive=True),
+    # ── apps ─────────────────────────────────────────────────────────────
+    # "Used the app" is the phrase from the reference UI, and it is the right
+    # one: what matters is that the agent reached for something it built, not
+    # which function it called.
+    "use_app": VerbSpec("Used the app", "Using the app", APP, "app",
+                        args=("app", "name"), count_verb=("Used", "Using")),
+    "create_app": VerbSpec("Built the app", "Building the app", APP, "app",
+                           args=("name", "title"),
+                           count_verb=("Built", "Building")),
+    "set_app_binding": VerbSpec("Wired", "Wiring", LINK, "binding",
+                                args=("source", "app")),
+    "list_blueprints": VerbSpec("Listed blueprints", "Listing blueprints",
+                                SEARCH, read_only=True, intransitive=True),
+
     "todo": VerbSpec("Updated the todo list", "Updating the todo list", THINK,
                      intransitive=True),
     "connections": VerbSpec("Checked connections", "Checking connections", LINK,

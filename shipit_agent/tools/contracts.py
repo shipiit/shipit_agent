@@ -187,6 +187,16 @@ CONTRACTS: dict[str, ToolContract] = {
     # it is separately gated by its own binding's contract.
     "execute_code": _act(CODE_EXEC, await_decision=True, destructive=True),
     "git_ops": _act(VCS_WRITE, await_decision=True),
+    # ── apps ─────────────────────────────────────────────────────────────
+    # Creating one writes files, and the writes are revertible the same way
+    # write_file's are. Running one executes code the agent wrote: never
+    # auto-approvable, and never deferrable, because the agent reads what it
+    # returned. Wiring a binding changes what an app may reach — an action,
+    # even though nothing runs yet.
+    "list_blueprints": OBSERVE,
+    "create_app": _act(FS_WRITE, await_decision=True, auto=True),
+    "set_app_binding": _act(FS_WRITE, await_decision=True, auto=True),
+    "use_app": _act(CODE_EXEC, await_decision=True, destructive=True),
     # ── web ──────────────────────────────────────────────────────────────
     "web_search": OBSERVE,
     "open_url": OBSERVE,

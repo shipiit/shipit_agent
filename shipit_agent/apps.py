@@ -365,7 +365,7 @@ def run(input, env):
     )
 
     bars = "".join(
-        f"<div class='bar{" top" if index == 0 else ""}'>"
+        f"<div class='bar{' top' if index == 0 else ''}'>"
         f"<div class=amt>{_money(amount)}</div>"
         f"<div class=fill style='height:{(amount / peak * 100) if peak else 0:.1f}%'>"
         f"</div><div class=name>{html.escape(name)}</div></div>"

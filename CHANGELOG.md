@@ -11,6 +11,45 @@ Nothing yet.
 
 ---
 
+## [1.3.0] — 2026-08-06
+
+An agent you have to ask is a tool. An agent that reacts is a colleague.
+This release is the second half: **triggers** — something happens, and the
+agent runs.
+
+### Added
+
+- **`shipit_agent.triggers`** — a trigger registry, a durable queue, and a
+  worker loop.
+  - `registry.on("gmail")` decorates a function that turns an event into a
+    prompt. A trigger builds a *prompt*, not an agent: the run stays on the
+    agent you already configured, with your credentials, permissions and
+    budget, rather than a second agent nobody is watching.
+  - `registry.fire(source, data)` **records and returns**. It runs nothing.
+    A webhook must answer in milliseconds and an agent takes seconds; a
+    sender that times out delivers the same email again.
+  - `registry.drain(agent)` runs what is queued and reports each run.
+  - `registry.run_forever(agent, stop=…)` is the worker, stoppable.
+- **`SqliteTriggerQueue`** — the default, and durable on purpose. An event
+  that arrives while nothing is running must still be there afterwards, or
+  "runs on every email" is a claim that fails quietly at 3am. Claiming takes
+  the row, so two workers can drain one queue; an abandoned claim expires
+  rather than stranding the event.
+- **Poison-event handling** — an event that fails `max_attempts` times stops,
+  instead of hiding everything queued behind it.
+- **`fire_all()`** for batches, and `registry.summary()` for "what is wired,
+  what is waiting" — the data behind a Live badge.
+
+### Notes
+
+A handler returning `None` is how a trigger filters: only RSVPs, only
+failures. That is a skip, not an error, and it still consumes the event.
+
+`InMemoryTriggerQueue` is named the way it is to be hard to reach for by
+accident — it is for tests.
+
+---
+
 ## [1.2.0] — 2026-08-06
 
 One question, asked of every surface: **can you see what the agent did?**

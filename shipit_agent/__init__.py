@@ -112,6 +112,12 @@ from .connections import (
 )
 from .lockdown import LockdownPolicy, LockdownState
 from .streaming import STREAM_GENERATION, Durability, StreamFrame, classify, sse
+from .triggers import (
+    Trigger,
+    TriggerEvent,
+    TriggerRegistry,
+    TriggerRun,
+)
 from .narrate import (
     NarratorRenderer,
     build_transcript,
@@ -392,6 +398,10 @@ __all__ = [
     "ToolContract",
     "contract_for",
     "StreamRenderer",
+    "Trigger",
+    "TriggerEvent",
+    "TriggerRegistry",
+    "TriggerRun",
     "build_transcript",
     "render_transcript",
     "render_transcript_html",

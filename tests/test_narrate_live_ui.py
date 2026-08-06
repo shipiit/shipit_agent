@@ -265,3 +265,39 @@ class TestLiveRowsAreNotDoubleCounted:
         assert view.html().count('class="sa-row') == 1
         view.close()
         assert view.html().count('class="sa-row') == 1
+
+
+class TestTreeShape:
+    def test_the_panel_can_draw_the_tree_instead(self) -> None:
+        page = render_chat_html(a_run(), shape="tree")
+        assert "sa-tree" in page
+        assert "Agent started" in page
+        assert "Tool group" in page
+        assert "Final answer" in page
+
+    def test_the_tree_is_compact(self) -> None:
+        # Structure, not contents — `render_tree(detail=True)` is for that.
+        assert "x = 1" not in render_chat_html(a_run(), shape="tree")
+
+    def test_the_live_tree_stays_open_until_the_run_ends(self) -> None:
+        view = LiveView(display=False, shape="tree")
+        view.feed(event("tool_called", call_id="1", tool="read_file",
+                        arguments={"path": "a.py"}))
+        live = view.html()
+        assert "working…" in live, "an unfinished run must not draw its corner"
+        assert "Final answer" not in live
+        view.close()
+        assert "working…" not in view.html()
+
+    def test_an_unknown_shape_is_rejected(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError, match="tree"):
+            LiveView(display=False, shape="treee")
+
+    def test_the_tree_and_the_chat_read_the_same_run(self) -> None:
+        # One accumulator, two renderings — they cannot drift.
+        tree = render_chat_html(a_run(), shape="tree")
+        chat = render_chat_html(a_run())
+        for text in ("Three I would put on your list.", "Used Slack #eng"):
+            assert text in tree and text in chat

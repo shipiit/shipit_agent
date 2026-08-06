@@ -19,7 +19,7 @@ from .grouping import (
     build_transcript,
 )
 from .json_stream import StreamingToolInputParser, streaming_field_for
-from .live_ui import LiveView, render_chat_html, watch
+from .live_ui import LiveView, render_chat_html, watch, watch_tree
 from .timeline import TimelineBuilder, render_markdown, stream_timeline, timeline
 from .renderer import LiveRegion, NarratorRenderer, render_transcript
 from .tree import TreeRenderer, render_tree
@@ -74,6 +74,7 @@ __all__ = [
     "LiveView",
     "render_chat_html",
     "watch",
+    "watch_tree",
     "TimelineBuilder",
     "timeline",
     "stream_timeline",

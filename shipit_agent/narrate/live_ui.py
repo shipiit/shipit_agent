@@ -45,7 +45,7 @@ from .grouping import (
     WorkRunAccumulator,
 )
 
-__all__ = ["LiveView", "render_chat_html", "watch"]
+__all__ = ["LiveView", "render_chat_html", "watch", "watch_tree"]
 
 # Events that change the *structure* of the panel rather than extend a line of
 # prose. Nobody should wait 50ms to learn that a tool started.
@@ -172,6 +172,10 @@ _STYLE = """
   animation: sa-blink 1s steps(2) infinite;
 }
 @keyframes sa-blink { 50% { opacity: 0 } }
+.sa-live pre.sa-tree {
+  font: 12.5px/1.7 var(--sa-mono); margin: 4px 0 12px;
+  white-space: pre; overflow-x: auto; color: var(--sa-text);
+}
 .sa-live .sa-foot {
   border-top: 1px solid var(--sa-line); padding: 11px 18px;
   font: 12px/1.5 var(--sa-mono); color: var(--sa-faint); text-align: right;
@@ -210,7 +214,11 @@ class LiveView:
         show_output: bool = True,
         output_limit: int = 4000,
         min_interval: float = 0.05,
+        shape: str = "chat",
     ) -> None:
+        if shape not in ("chat", "tree"):
+            raise ValueError(f"Unknown shape {shape!r}. Valid shapes: chat, tree.")
+        self.shape = shape
         self.prompt = prompt
         self.title = title
         self.model = model
@@ -276,14 +284,17 @@ class LiveView:
         return self.html()
 
     def html(self) -> str:
-        rows = self._acc.rows if self._done else self._acc.live_rows()
         body: list[str] = []
         if self.prompt:
             body.append(f'<div class="sa-ask">{_esc(self.prompt)}</div>')
 
-        streaming_index = len(rows) - 1 if not self._done else -1
-        for index, row in enumerate(rows):
-            body.append(self._row_html(row, streaming=index == streaming_index))
+        if self.shape == "tree":
+            body.append(self._tree_html())
+        else:
+            rows = self._acc.rows if self._done else self._acc.live_rows()
+            streaming_index = len(rows) - 1 if not self._done else -1
+            for index, row in enumerate(rows):
+                body.append(self._row_html(row, streaming=index == streaming_index))
 
         state = "done" if self._done else ""
         label = "Done" if self._done else "Live"
@@ -299,6 +310,25 @@ class LiveView:
             f'<div class="sa-foot">{self._footer()}</div>'
             f"</div>"
         )
+
+    def _tree_html(self) -> str:
+        """The compact tree, redrawn each tick, inside the same card.
+
+        It shares this view's accumulator, so the tree and the chat shape are
+        two readings of one run rather than two runs of the same events.
+        """
+        from .tree import TreeRenderer
+
+        renderer = TreeRenderer(
+            color=False,
+            live=False,
+            show_footer=False,
+            # Compact by design: the tree is the *shape* of the run. For
+            # arguments and output, render_tree(..., detail=True).
+            detail=False,
+            accumulator=self._acc,
+        )
+        return f'<pre class="sa-tree">{_esc(renderer.render(live=not self._done))}</pre>'
 
     def _row_html(self, row: Any, *, streaming: bool = False) -> str:
         if isinstance(row, ProseRow):
@@ -409,6 +439,7 @@ def watch(
     *,
     title: str = "Agent run",
     show_output: bool = True,
+    shape: str = "chat",
     **kwargs: Any,
 ) -> str:
     """Run *agent* with the live panel, and return the final answer.
@@ -416,6 +447,23 @@ def watch(
     The notebook equivalent of :meth:`Agent.run_live`::
 
         answer = watch(agent, "Which accounts are at risk?")
+
+    ``shape="tree"`` draws the compact tree instead of the chat rows — the
+    same run, redrawn in place as it grows::
+
+        Agent started
+        │
+        ├─ Understanding request
+        │  Read the inbox, check the guest list, then save.
+        │
+        ├─ Tool group: Read 3 files
+        │  └─ read_file                                completed  4ms
+        │
+        ├─ Decision
+        │  Jordan is not on the list. Add the row.
+        │
+        └─ Final answer
+           RSVP recorded.
 
     The panel keeps updating in the cell's output while the run proceeds; the
     call returns once the run is finished.
@@ -425,6 +473,7 @@ def watch(
         title=title,
         model=getattr(getattr(agent, "llm", None), "model", None),
         show_output=show_output,
+        shape=shape,
         **kwargs,
     )
     answer = ""
@@ -438,6 +487,12 @@ def watch(
     return answer
 
 
+def watch_tree(agent: Any, prompt: str, **kwargs: Any) -> str:
+    """:func:`watch` with the tree shape — structure instead of prose."""
+    kwargs.setdefault("title", "Agent run")
+    return watch(agent, prompt, shape="tree", **kwargs)
+
+
 def render_chat_html(
     source: Iterable[AgentEvent] | Any,
     *,
@@ -445,6 +500,7 @@ def render_chat_html(
     title: str = "Agent run",
     model: str | None = None,
     show_output: bool = True,
+    shape: str = "chat",
 ) -> str:
     """A finished run as the same panel — no IPython, no live updates.
 
@@ -457,6 +513,7 @@ def render_chat_html(
         model=model,
         display=False,
         show_output=show_output,
+        shape=shape,
     )
     for event in getattr(source, "events", source):
         view.feed(event)

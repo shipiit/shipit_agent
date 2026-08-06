@@ -77,8 +77,16 @@ class TestShape:
 
     def test_earlier_prose_is_a_decision(self) -> None:
         out = render_tree(RUN)
-        assert out.count("Decision") == 2
-        assert "Now check for an existing record" in out
+        # The opening prose is the agent saying what it is about to do; every
+        # later one is a decision it reached along the way.
+        assert out.count("Understanding request") == 1
+        assert out.count("Decision") == 1
+        assert out.index("Understanding request") < out.index("Decision")
+
+    def test_the_only_prose_in_a_run_is_the_answer(self) -> None:
+        out = render_tree([text("Done."), done("Done.")])
+        assert "Final answer" in out
+        assert "Understanding request" not in out
 
     def test_a_work_run_becomes_a_tool_group(self) -> None:
         out = render_tree(RUN)
@@ -248,3 +256,49 @@ class TestDetailMode:
         out = render_tree(events, detail=True, output_lines=3)
         assert "line 2" in out and "line 30" not in out
         assert "… 37 more lines" in out
+
+
+class TestLiveTree:
+    def test_it_redraws_in_place_on_a_terminal(self) -> None:
+        buffer = io.StringIO()
+        renderer = TreeRenderer(file=buffer, color=False, live=True)
+        renderer.feed(called("read_file", "1", path="a.py"))
+        first = buffer.getvalue()
+        renderer.feed(completed("read_file", "1"))
+        out = buffer.getvalue()
+        assert "\033[" in out, "a live tree rewinds over what it drew"
+        assert len(out) > len(first)
+
+    def test_the_finished_tree_is_written_once(self) -> None:
+        buffer = io.StringIO()
+        renderer = TreeRenderer(file=buffer, color=False, live=True)
+        for event in RUN:
+            renderer.feed(event)
+        renderer.close()
+        # The drafts are erased; exactly one finished tree remains at the end.
+        tail = buffer.getvalue().split("\033[J")[-1]
+        assert tail.count("Agent started") == 1
+        assert "working…" not in tail
+        assert "└─ Final answer" in tail
+
+    def test_a_live_render_never_claims_the_run_is_over(self) -> None:
+        renderer = TreeRenderer(file=io.StringIO(), color=False, live=False)
+        for event in RUN[:4]:
+            renderer.feed(event)
+        live = renderer.render(live=True)
+        assert "working…" in live
+        assert "Final answer" not in live
+
+    def test_piped_output_does_not_animate(self) -> None:
+        buffer = io.StringIO()          # not a TTY → live defaults off
+        renderer = TreeRenderer(file=buffer, color=False)
+        for event in RUN:
+            renderer.feed(event)
+        assert buffer.getvalue() == ""  # nothing until close()
+        renderer.close()
+        assert "\033[" not in buffer.getvalue()
+
+    def test_in_flight_calls_show_as_running(self) -> None:
+        renderer = TreeRenderer(file=io.StringIO(), color=False, live=False)
+        renderer.feed(called("read_file", "1", path="a.py"))
+        assert "running" in renderer.render(live=True)

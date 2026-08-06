@@ -33,6 +33,7 @@ from __future__ import annotations
 import os
 import sys
 import textwrap
+import time
 from typing import Any
 
 from shipit_agent.models import AgentEvent
@@ -45,6 +46,7 @@ from .grouping import (
     WorkRow,
     WorkRunAccumulator,
 )
+from .renderer import LiveRegion
 
 __all__ = ["TreeRenderer", "render_tree"]
 
@@ -60,6 +62,20 @@ _ANSI = {
 # Where a call's status sits, so statuses line up down the page.
 _STATUS_COLUMN = 52
 
+# Events that change the shape of the tree rather than extend a line of prose.
+# Nobody should wait for a throttle to learn that a tool started.
+_STRUCTURAL = frozenset(
+    {
+        "tool_called",
+        "tool_completed",
+        "tool_failed",
+        "tool_denied",
+        "action_queued",
+        "sub_agent_event",
+        "run_completed",
+    }
+)
+
 
 def _terminal_width(default: int = 100) -> int:
     try:
@@ -71,9 +87,15 @@ def _terminal_width(default: int = 100) -> int:
 class TreeRenderer:
     """Render a run as a tree of decisions and tool groups.
 
-    Buffered by design: a tree needs to know where its last branch is before
-    it can draw the corner, so nothing is emitted until :meth:`close`. Use
-    :class:`NarratorRenderer` when you want live output.
+    On a terminal it redraws **in place** as the run proceeds: the tree grows
+    downward, statuses flip from ``running`` to ``completed`` where they
+    stand, and the trunk stays open (``├─ working…``) until the run ends —
+    drawing the final corner early would claim the agent had finished. When
+    the run closes, the draft is erased and the finished tree written once,
+    so the scrollback holds one clean copy.
+
+    Pass ``live=False`` for a single buffered write (what piped output and
+    notebooks get by default), or ``live=True`` to force in-place updates.
     """
 
     def __init__(
@@ -85,6 +107,9 @@ class TreeRenderer:
         model: str | None = None,
         detail: bool = False,
         output_lines: int = 6,
+        live: bool | None = None,
+        min_interval: float = 0.08,
+        accumulator: WorkRunAccumulator | None = None,
     ) -> None:
         self._file = file if file is not None else sys.stdout
         is_tty = bool(getattr(self._file, "isatty", lambda: False)())
@@ -95,7 +120,19 @@ class TreeRenderer:
         self._model = model
         self._detail = detail
         self._output_lines = output_lines
-        self._acc = WorkRunAccumulator()
+        # A caller that already feeds an accumulator (the notebook panel does)
+        # passes it in, so one run is never accumulated twice.
+        self._acc = accumulator if accumulator is not None else WorkRunAccumulator()
+        self._owns_accumulator = accumulator is None
+        # Redrawing in place needs a terminal to rewind over; piped output
+        # would otherwise collect one copy of the tree per event.
+        self._region = (
+            LiveRegion(self._write, enabled=True)
+            if (is_tty if live is None else live)
+            else None
+        )
+        self._min_interval = min_interval
+        self._last_draw = 0.0
 
     def _supports_unicode(self) -> bool:
         encoding = getattr(self._file, "encoding", None) or ""
@@ -130,9 +167,20 @@ class TreeRenderer:
 
     def feed(self, event: AgentEvent) -> None:
         self._acc.feed(event)
+        if self._region is not None:
+            now = time.monotonic()
+            structural = event.type in _STRUCTURAL
+            if structural or (now - self._last_draw) >= self._min_interval:
+                self._last_draw = now
+                self._region.draw(self.render(live=True).splitlines())
 
     def close(self) -> None:
-        self._acc.finish()
+        if self._owns_accumulator:
+            self._acc.finish()
+        if self._region is not None:
+            # Erase the growing draft and write the finished tree once, so the
+            # scrollback holds one clean copy rather than every intermediate.
+            self._region.clear()
         self._write(self.render())
 
     def _write(self, text: str) -> None:
@@ -143,26 +191,56 @@ class TreeRenderer:
 
     # ── render ───────────────────────────────────────────────────────────
 
-    def render(self) -> str:
-        rows = [r for r in self._acc.rows if not _is_empty(r)]
+    def render(self, *, live: bool = False) -> str:
+        """The tree as text.
+
+        ``live=True`` includes the work that has not settled yet and leaves
+        the trunk open at the bottom — the run is not over, so drawing the
+        final corner would be a lie.
+        """
+        source = self._acc.live_rows() if live else self._acc.rows
+        rows = [r for r in source if not _is_empty(r)]
         lines: list[str] = [self._c("bold", "Agent started")]
 
         # The last prose row is the answer; everything before it is a step
         # along the way. Naming them differently is the whole point of the
-        # tree — you can see where the agent *decided* something.
-        last_prose = max(
-            (i for i, r in enumerate(rows) if isinstance(r, ProseRow)), default=-1
+        # tree — you can see where the agent *decided* something. While the
+        # run is live there is no answer yet: the last prose is still a step.
+        last_prose = (
+            -1
+            if live
+            else max(
+                (i for i, r in enumerate(rows) if isinstance(r, ProseRow)), default=-1
+            )
         )
+        # The opening prose — before any tool has run — is the agent saying
+        # what it is about to do, not a decision it reached.
+        first_prose = next(
+            (i for i, r in enumerate(rows) if isinstance(r, ProseRow)), -1
+        )
+        opening = first_prose if first_prose == 0 and last_prose != 0 else -1
 
         for index, row in enumerate(rows):
-            last = index == len(rows) - 1
+            last = index == len(rows) - 1 and not live
             branch = self._corner if last else self._tee
             # A trunk under every branch except the final one.
             trunk = "   " if last else f"{self._pipe}  "
             lines.append(self._pipe)
             lines.extend(
-                self._render_row(row, branch, trunk, is_answer=index == last_prose)
+                self._render_row(
+                    row,
+                    branch,
+                    trunk,
+                    is_answer=index == last_prose,
+                    is_opening=index == opening,
+                )
             )
+
+        if live:
+            # An open trunk: more is coming.
+            lines.append(self._pipe)
+            lines.append(self._c("dim", f"{self._tee} working…"))
+            return "\n".join(lines) + "\n"
 
         if self._show_footer:
             footer = self._footer()
@@ -172,10 +250,21 @@ class TreeRenderer:
         return "\n".join(lines) + "\n"
 
     def _render_row(
-        self, row: Any, branch: str, trunk: str, *, is_answer: bool
+        self,
+        row: Any,
+        branch: str,
+        trunk: str,
+        *,
+        is_answer: bool,
+        is_opening: bool = False,
     ) -> list[str]:
         if isinstance(row, ProseRow):
-            title = "Final answer" if is_answer else "Decision"
+            if is_answer:
+                title = "Final answer"
+            elif is_opening:
+                title = "Understanding request"
+            else:
+                title = "Decision"
             colour = "bold" if is_answer else "accent"
             lines = [f"{branch} {self._c(colour, title)}"]
             lines += [f"{trunk}{line}" for line in self._wrap(row.text, len(trunk))]

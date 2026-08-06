@@ -196,6 +196,16 @@ class Agent:
     # or False to disable. See shipit_agent.lockdown.
     lockdown: Any = None
 
+    # ── automatic delegation ──────────────────────────────────────────
+    # Reach for sub-agents without being asked: guarantee a `sub_agent` tool
+    # exists, and when a task carries delegation signals (a per-item verb, an
+    # enumerated work list, a wide sweep) append a directive naming what was
+    # detected. The model still decides — it decides with the tool present
+    # and the case put plainly. Off by default: every delegation is a real
+    # agent loop with real calls. `True`, a DelegationPolicy, or a dict of
+    # its fields. See shipit_agent.delegation.
+    delegation: Any = None
+
     # ── self-healing tool calls ───────────────────────────────────────
     # Promote tool calls that small models emit as TEXT (<tool_call> tags,
     # fenced JSON, bare call-shaped JSON) into structured calls. Response-
@@ -220,6 +230,9 @@ class Agent:
 
     # ── internal: handle to the in-flight runtime (for cancel()) ──────
     _active_runtime: Any = field(default=None, repr=False, compare=False)
+    # The sub_agent built for `delegation=`, kept so its thread pool is
+    # created once per agent rather than once per run.
+    _auto_sub_agent: Any = field(default=None, repr=False, compare=False)
 
     # ──────────────────────────────────────────────────────────────────
     # Lifecycle
@@ -551,6 +564,24 @@ class Agent:
             effective = holder.prompt
         return effective
 
+    def _delegation_policy(self) -> Any:
+        from shipit_agent.delegation import coerce_delegation
+
+        return coerce_delegation(self.delegation)
+
+    def _delegated_prompt(self, user_prompt: str) -> str:
+        """The task with a delegation directive, when it warrants one.
+
+        Appended to the *task*, not the system prompt. Measured against Gemma
+        4 with three reports to summarize: in the system prompt it delegated
+        zero times; the same text on the task, six. A small model reads the
+        system prompt as background and the task as instructions.
+        """
+        policy = self._delegation_policy()
+        if policy is None or not isinstance(user_prompt, str):
+            return user_prompt
+        return policy.apply(user_prompt, llm=self.llm)
+
     def _effective_tools(
         self, user_prompt: str, *, selected_skills: list[Skill] | None = None
     ) -> list[Any]:
@@ -581,6 +612,18 @@ class Agent:
 
             effective.setdefault("execute_code", ExecuteCodeTool())
             effective.setdefault("describe_binding", DescribeBindingTool())
+
+        # An agent told to delegate needs something to delegate *to*. Built
+        # once and cached: a SubAgentTool owns a thread pool, so one per run
+        # would leak a pool per run.
+        policy = self._delegation_policy()
+        if policy is not None and "sub_agent" not in effective:
+            if self._auto_sub_agent is None:
+                self._auto_sub_agent = policy.build_tool(
+                    self.llm, list(effective.values())
+                )
+            if self._auto_sub_agent is not None:
+                effective["sub_agent"] = self._auto_sub_agent
 
         if not selected_skills:
             tools_list = list(effective.values())
@@ -707,7 +750,9 @@ class Agent:
         5. Optionally parse the output against ``output_schema``.
         6. Return ``AgentResult`` with output, messages, events, and metadata.
         """
-        user_prompt = self._expand_slash_command(user_prompt)
+        user_prompt = self._delegated_prompt(
+            self._expand_slash_command(user_prompt)
+        )
         # Append schema instructions to the USER prompt (not system prompt)
         # so the model can still use tools normally and only formats the
         # final answer as JSON. Bedrock returns empty content when schema
@@ -914,7 +959,9 @@ class Agent:
         ``timestamp``; see :data:`shipit_agent.models.EventType` for the
         vocabulary.
         """
-        user_prompt = self._expand_slash_command(user_prompt)
+        user_prompt = self._delegated_prompt(
+            self._expand_slash_command(user_prompt)
+        )
         if self.rag is not None:
             self.rag.begin_run()
 

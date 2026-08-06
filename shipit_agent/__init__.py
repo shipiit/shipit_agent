@@ -112,7 +112,14 @@ from .connections import (
 )
 from .lockdown import LockdownPolicy, LockdownState
 from .streaming import STREAM_GENERATION, Durability, StreamFrame, classify, sse
-from .narrate import NarratorRenderer, build_transcript, render_transcript, summarize
+from .narrate import (
+    NarratorRenderer,
+    build_transcript,
+    render_transcript,
+    render_transcript_html,
+    summarize,
+    write_transcript,
+)
 from .narrate.json_stream import StreamingToolInputParser
 # `ActionKind` is already public from .computer_use — alias rather than shadow it.
 from .tools.contracts import ActionKind as ToolActionKind
@@ -386,6 +393,8 @@ __all__ = [
     "StreamRenderer",
     "build_transcript",
     "render_transcript",
+    "render_transcript_html",
+    "write_transcript",
     "summarize",
     "SemanticMemory",
     "Step",

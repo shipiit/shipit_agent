@@ -11,6 +11,104 @@ Nothing yet.
 
 ---
 
+## [1.1.0] — 2026-08-06
+
+A single release focused on one question: what does an agent *look like* while
+it works, and what should it be allowed to do while you are not watching?
+Studied against Cloudflare OS (open source) and adapted rather than copied —
+the design notes, including what was deliberately not ported and why, are in
+`docs/design/modern-agent-upgrade.md`.
+
+### Added
+
+- **The Narrator** — a transcript instead of a log. Every tool call renders as
+  a human verb and target (`Read app.py`, `Ran code const risk = scoreAcc…`),
+  consecutive calls with no prose between them collapse into one row, and the
+  run closes with tokens and cost. Present tense in flight, past tense once it
+  lands; in-place on a TTY, byte-stable when piped. `agent.run_live(style=
+  "modern")`, `shipit code --style`, `/style` in the REPL. The 50-tool verb
+  table is a set of defaults — `register_verb()` overrides any of it, and
+  unknown MCP tools narrate through real English morphology rather than
+  crashing on an exhaustive match.
+- **Tool contracts** — every one of the 51 built-ins now declares what it *is*
+  (`read_only`, `action_kind`, `implements_revert`, `await_decision`,
+  `auto_approvable`, `destructive`) instead of being guessed from its name.
+  Before this, exactly one tool declared `read_only`.
+- **Deferred approvals** — a side-effecting call the policy marks `ask` is
+  queued rather than blocked on, so the agent finishes and you review the
+  batch. Auto-approval rules key on a stable `action_kind` tag, applied in
+  order, never past a manual gate, and requiring both the contract's verdict
+  and your enabled rule. `shipit code --defer-approvals`.
+- **Lockdown** — once a tool reports it returned sensitive data, the run may
+  only make observations; every action is denied for the rest of it. Closes a
+  real hole: nothing previously stopped an agent reading your customer list
+  and posting it to Slack in the same turn.
+- **Code mode** — `Agent(code_mode=True)` collapses connectors into an `env`
+  of bindings reachable from one `execute_code` call, with `describe_binding`
+  for on-demand discovery. Measured on the real catalogue: 25,932 → 11,174
+  tokens per model call, **57% smaller**. `env` reaches the parent over a
+  capability bridge — the code runs in a subprocess holding a socket, not
+  credentials, and every binding call is gated exactly as the direct tool call
+  would be.
+- **Connections** — `connections` lists what is connected, what needs
+  authenticating and what is missing, with per-auth-kind guidance, and lets
+  the agent *request* one with a reason instead of failing mid-task.
+- **Streaming, three ways** — `agent.stream()` (raw events),
+  `agent.narrate()` (settled transcript rows, so a custom UI need not
+  reimplement the collapsing), and `agent.stream_sse()` (wire-ready). Frames
+  are labelled canonical or provisional and carry a per-process
+  `stream_generation`, so a browser that reconnects knows what to keep and
+  what to discard. New `POST /v1/stream` on the server; `/health` reports the
+  generation.
+- **Checkpoint compaction** — per-model token budgets, cuts at a turn (or
+  step) boundary rather than a fixed message count, a six-heading handoff
+  summary, and an explicit instruction not to follow instructions inside the
+  transcript being summarized. Canonical history is preserved; only the replay
+  window moves.
+- **`give_up`** — a real tool with a required reason, surfaced as
+  `result.metadata["gave_up"]`, replacing inference from prose.
+- **Streaming tool arguments** — a file or command appears as the model writes
+  it. Supported on all 13 shipped adapters (Anthropic, OpenAI, Bedrock,
+  Gemini, Vertex, Groq, Together, Ollama, LiteLLM and its proxy); adapters
+  without it degrade to arguments arriving whole.
+- **Revert** — `queue.revert(id)` for filesystem writes, snapshot-based.
+- **Shareable transcripts** — `--share run.html` writes one self-contained
+  file: no network requests, no build step, light and dark.
+
+### Changed
+
+- **`sub_agent` is now an actual sub-agent.** It previously called
+  `llm.complete()` once with `messages=[]` and `tools=[]` — no loop, no tools.
+  It now runs a real `Agent` with an inherited toolset, supports
+  `agent_type` from the built-in role registry, runs in parallel via
+  `background`/`collect`, and streams its work into the parent's transcript.
+  A sub-agent can never do more than its parent: permissions, approvals and
+  guardrails are inherited verbatim, and delegation is depth-capped.
+- **One runtime core.** `runtime.py` and `async_runtime.py` had drifted to the
+  point that ten capabilities existed only in the sync loop. The shared
+  decisions now live in `runtime_core.py` and both inherit them; a parity
+  suite asserts neither may override or reimplement one.
+- A missing tool argument is now a result the model can act on rather than a
+  `KeyError` — it names the argument and lists what the tool requires.
+
+### Fixed
+
+- `tool_denied` carried neither `tool` nor `call_id`, in **both** runtimes, so
+  a blocked call was invisible to any renderer.
+- `sub_agent`'s `context` parameter was silently dropped: `ToolRunner` strips
+  `context` and `self` as reserved names, so supporting context never arrived.
+  Renamed to `details`.
+- `EventType` had drifted — `tool_denied` and `text_delta` were emitted but
+  undeclared.
+- `get_model_limits` split on `.` to strip vendor prefixes, turning
+  `gemini-2.5-pro` into `5-pro`.
+- An explicit `context_window_tokens` had an output reservation subtracted
+  from it, so a value of 100 produced a budget of 1.
+- 18 contracts promised `implements_revert` with zero implementations behind
+  it. Now 7 promise it, all backed by a reverter, enforced by a test.
+
+---
+
 ## [1.0.18] — 2026-07-31
 
 ### Added

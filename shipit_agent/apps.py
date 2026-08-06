@@ -51,6 +51,7 @@ from typing import Any
 
 __all__ = [
     "App",
+    "app_docstring",
     "AppManifest",
     "AppRunResult",
     "AppStore",
@@ -195,7 +196,11 @@ from pathlib import Path
 
 
 def run(input, env):
-    path = Path(input["path"])
+    # A model will call this `path`, `file` or `csv` depending on the day.
+    location = input.get("path") or input.get("file") or input.get("csv")
+    if not location:
+        raise KeyError("pass the CSV location as `path`")
+    path = Path(location)
     with path.open() as handle:
         rows = list(csv.DictReader(handle))
 
@@ -396,6 +401,24 @@ class AppStore:
 
 
 # ── running ──────────────────────────────────────────────────────────────
+
+
+def app_docstring(app: "App") -> str:
+    """The app's module docstring — what it expects, in its own words.
+
+    Returned to the agent when a run fails, because "the app raised KeyError"
+    without saying what the app wanted costs a retry that guessing cannot fix.
+    """
+    try:
+        source = app.entrypoint.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    import ast
+
+    try:
+        return (ast.get_docstring(ast.parse(source)) or "").strip()
+    except SyntaxError:
+        return ""
 
 
 @dataclass(slots=True)

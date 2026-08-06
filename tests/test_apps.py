@@ -395,3 +395,32 @@ def test_the_csv_blueprint_accepts_either_argument_name(tmp_path) -> None:
     for key in ("group_by", "column"):
         result = run_app(app, {"path": str(csv_path), key: "status"})
         assert result.value["counts"] == {"confirmed": 1, "maybe": 1}
+
+
+class TestFailureIsInformative:
+    def test_a_failed_run_shows_what_the_app_expects(self, tools) -> None:
+        tools["create_app"].run(ctx(), name="strict", title="Strict", code='''
+"""Expects: path (str) — the CSV to read."""
+
+
+def run(input, env):
+    return {"path": input["path"]}
+''')
+        out = tools["use_app"].run(ctx(), app="strict", input={"wrong": 1})
+        assert "Expects: path" in out.text, (
+            "a KeyError without the app's own description costs a blind retry"
+        )
+
+    def test_the_csv_blueprint_takes_path_file_or_csv(self, tmp_path) -> None:
+        csv_path = tmp_path / "g.csv"
+        csv_path.write_text("name,status\nDana,confirmed\n")
+        store = AppStore(tmp_path / "apps")
+        app = store.create("flex", title="Flex", blueprint="csv_summary")
+        for key in ("path", "file", "csv"):
+            assert run_app(app, {key: str(csv_path)}).ok, key
+
+    def test_no_location_at_all_says_so(self, tmp_path) -> None:
+        store = AppStore(tmp_path / "apps")
+        app = store.create("flex", title="Flex", blueprint="csv_summary")
+        result = run_app(app, {})
+        assert not result.ok and "`path`" in result.error

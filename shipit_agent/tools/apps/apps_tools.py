@@ -21,7 +21,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from shipit_agent.apps import AppStore, blueprint_catalogue, run_app
+from shipit_agent.apps import (
+    AppStore,
+    app_docstring,
+    blueprint_catalogue,
+    run_app,
+)
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.describe_binding.describe_binding_tool import (
     BINDINGS_STATE_KEY,
@@ -295,6 +300,11 @@ class UseAppTool(_AppTool):
             parts.append(json.dumps(result.value, indent=2, default=str))
         else:
             parts.append(f"The app failed: {result.error or 'no result'}")
+            # What the app says about itself, so the retry is informed rather
+            # than another guess at the argument names.
+            doc = app_docstring(app)
+            if doc:
+                parts.append(f"What `{app.name}` expects:\n{doc}")
         if result.stdout:
             parts.append(f"stdout:\n{result.stdout}")
 

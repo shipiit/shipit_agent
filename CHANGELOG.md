@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [1.2.0] — 2026-08-06
+
+One question, asked of every surface: **can you see what the agent did?**
+A run now reports itself well enough to draw a product from — and, where the
+agent used to answer and forget, it can leave something behind.
+
 ### Added
+
+#### Watching a run
 
 - **The tree view** — the *shape* of a run instead of its prose: every call
   named with its status, the opening intent labelled "Understanding request",
@@ -15,18 +27,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   terminal it redraws in place while the run proceeds, keeping the trunk open
   (`├─ working…`) until it ends, then erases the draft and writes one clean
   tree. `agent.run_live(style="tree")`, `render_tree(events, detail=True)`.
-- **The live notebook panel** — an HTML chat card that redraws in a Jupyter
-  cell as the agent works: tokens land with a caret, tool rows appear in
-  flight and settle, real output folds away behind each call, approval cards
-  interrupt. `watch(agent, prompt)`, or `shape="tree"` for the tree.
-  `render_chat_html(events)` for a finished run. Every selector is scoped so
-  the styles cannot leak into the surrounding page.
+- **The live panel** — an HTML chat card that redraws in a Jupyter cell as the
+  agent works: tokens land with a caret, tool rows appear in flight and
+  settle, real output folds away behind each call, cards interrupt the flow,
+  and the footer counts tokens. `watch(agent, prompt)`, `shape="tree"` for the
+  tree, `render_chat_html(events)` for a finished run. Every selector is
+  scoped so the styles cannot leak into the page around it, and redraws are
+  throttled — a full re-render per token is O(n²) DOM churn that stutters
+  exactly when the answer gets long.
 - **The UI timeline** — the runtime's events translated into what a frontend
   draws: `reasoning_summary`, `tool_group_started`, `tool_call_started`,
-  `tool_call_completed`, `agent_decision`, `final_response`. Plain JSON,
-  causal (a group's settled title arrives in its `completed` step, so a
-  client never undraws a row). `stream_timeline(agent, prompt)`, and
-  `render_markdown(events)` for the same run as a report.
+  `tool_call_completed`, `agent_decision`, `artifact_created`,
+  `final_response`. Plain JSON, and causal — a group's settled title arrives
+  in its `completed` step, so a client never has to undraw a row.
+  `stream_timeline(agent, prompt)`; `render_markdown(events)` prints the same
+  run as a report.
+- **Progress narration** — `Agent(progress_summaries=True, decision_llm=…)`.
+  A second, cheap model says what the agent is doing while it does it. It
+  never reads the system prompt or `reasoning_content` and is called with
+  `tools=[]`, so what it reports is what an observer could have watched
+  happen; a failure emits `progress_summary_failed` and the run continues.
+  Off by default: it adds a real LLM call per step.
+- **Tool groups** — one per iteration, carried on `tool_called` /
+  `tool_completed` as `group_id`, so a UI can draw one expandable box per turn
+  (`2 tools · 13.0ms`) however much narration lands between the calls.
+- **`final_answer`** — the answer as its own event, just before
+  `run_completed`, so a client does not have to infer which event carries it.
+
+#### Leaving something behind
+
+- **Apps** — `list_blueprints`, `create_app`, `set_app_binding`, `use_app`,
+  shipped as builtins under `<project>/.shipit/apps`. The agent writes a
+  program into the workspace, wires resources into it, and runs it — today,
+  and next week, with no model in the loop. An app is a directory with
+  `app.py` exporting `run(input, env)`; it runs in a subprocess with no
+  credentials, and its `env` crosses the same capability bridge code mode
+  uses, so every resource call is gated exactly as the equivalent tool call
+  would be. An app sees only the bindings its manifest names.
+- **Six blueprints** — `report`, `csv_summary`, `page`, and three that produce
+  something worth looking at: `dashboard` (headline cards and a bar chart),
+  `sheet` (column letters, row numbers, flagged cells) and `workflow` (a
+  pipeline as boxes and connectors). All self-contained — no CDN, no fonts, no
+  script tags — because an artifact that needs the network is not one you can
+  send anyone.
+- **Artifact cards** — a file a run produced is a card, not a path in a log:
+  `Q2 Kickoff Brief · Doc · Click to open`, in the panel, the tree and the
+  timeline. Any tool that declares a path in its result metadata gets one.
+
+#### Reaching further
+
 - **Automatic delegation** — `Agent(delegation=True)`. The `sub_agent` tool is
   guaranteed to exist, built from the agent's own LLM and its read-only tools;
   the task is sized by a model (`ModelAssessor`, one cheap cached call) with a
@@ -34,14 +83,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   appended to the *task*, not the system prompt — measured against Gemma 4,
   that difference is 0 delegations versus 6. It never delegates behind the
   model's back.
+- **Connection requests** — the registry knew what was connected; nothing
+  turned "I need Slack" into something a user could answer. The agent's
+  request now emits `connection_requested` from both loops, the panel draws a
+  card with the reason, and `registry.resolve(id, accepted=…, credential=…)`
+  closes the loop — on accept the credential is stored, so the next state
+  check reads CONNECTED rather than asking again.
 
 ### Fixed
 
+- The async runtime's `tool_completed` was missing `tool` and `call_id`, so
+  its transcript could only guess which outcome belonged to which call.
+- `read_file` produced artifact cards for files it merely read.
+- An artifact card split the tool group that made it.
 - `run_live()` raises on an unknown `style` instead of silently rendering the
   default view.
 - `write_transcript()` accepted `title` and `model` but dropped `prompt`.
+- `use_app` wrote a file and never declared it, so the run produced a page and
+  the transcript showed a JSON blob.
+- Apps ran in their own install directory, so an app given
+  `path="guests.csv"` found nothing. `AppStore.run()` runs them where the
+  agent works.
 - `deny=["*"]` denying allow-listed tools is now documented where you meet it,
   with the correct pattern (`allow=[…], default_decision=DENY`) beside it.
+
+### Notes
+
+- `progress_summaries` and `delegation` are both **off by default**. Each adds
+  real LLM calls, and a runtime that doubles your bill on upgrade is not one
+  you can trust.
+- Two live notebooks ship with their outputs committed, run against
+  `bedrock-mantle/google.gemma-4-26b-a4b`:
+  `74_live_streaming_gemma.ipynb`, `75_live_ui_and_subagents.ipynb` and
+  `76_apps_and_analysis.ipynb`.
+- Still open, and named rather than hidden: the async runtime has no progress
+  narration and no tool groups, and `Agent.decision_llm` sits second in the
+  field order, so `Agent(llm, "prompt")` positionally assigns the prompt to
+  it. Both are tracked in `docs/design/cloudflare-os-gap.md`.
 
 ---
 

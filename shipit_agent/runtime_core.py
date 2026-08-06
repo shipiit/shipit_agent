@@ -309,6 +309,28 @@ class RuntimeCore:
 
         return sink
 
+    def note_connection_request(self, state: Any, tool_name: str, metadata: Any) -> None:
+        """Surface a connection the agent asked for as its own event.
+
+        A missing connection is a decision for the *user*, exactly like an
+        approval — so it gets an event a UI can draw a card from rather than
+        living only inside one tool result's text. Shared by both loops, for
+        the usual reason: every past divergence between them was a bug.
+        """
+        data = dict(metadata or {})
+        if not data.get("requested") or not data.get("connection_id"):
+            return
+        self.emit(
+            state,
+            "connection_requested",
+            f"Connection needed: {data.get('title') or data['connection_id']}",
+            tool=tool_name,
+            connection_id=data["connection_id"],
+            title=data.get("title") or data["connection_id"],
+            reason=data.get("reason", ""),
+            auth=data.get("auth", "unknown"),
+        )
+
     def build_shared_state(self, registry: Any, state: Any = None) -> dict[str, Any]:
         """What every tool can see. Identical in both loops, by construction."""
         from shipit_agent.connections import ConnectionRegistry

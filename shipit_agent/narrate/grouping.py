@@ -43,6 +43,8 @@ __all__ = [
     "ProseRow",
     "WorkRow",
     "ApprovalRow",
+    "ConnectionRow",
+    "DecisionRow",
     "SubAgentRow",
     "NoticeRow",
     "TranscriptRow",
@@ -262,6 +264,41 @@ class ApprovalRow:
 
 
 @dataclass(slots=True)
+class DecisionRow:
+    """A progress update the agent generated about its own run.
+
+    Distinct from :class:`ProseRow`, which is the model's answer to the user.
+    This is narration — "reading the guest list to see who replied" — produced
+    by the progress model from observable actions and results only.
+    """
+
+    text: str
+    kind: str = "decision"          # "decision" | "observation"
+    next_action: str = ""
+    iteration: Any = None
+
+    @property
+    def label(self) -> str:
+        return "Decision" if self.kind == "decision" else "Observed"
+
+
+@dataclass(slots=True)
+class ConnectionRow:
+    """The agent asking you to connect something.
+
+    Never collapsed, for the same reason an approval is not: the reason is
+    what you read in order to answer, so hiding it behind a disclosure puts a
+    step in front of every decision.
+    """
+
+    connection_id: str
+    title: str
+    reason: str
+    auth: str = "unknown"
+    tool: str = ""
+
+
+@dataclass(slots=True)
 class SubAgentRow:
     """Work a delegated agent did, attributed to it.
 
@@ -301,7 +338,15 @@ class NoticeRow:
     text: str
 
 
-TranscriptRow = ProseRow | WorkRow | ApprovalRow | SubAgentRow | NoticeRow
+TranscriptRow = (
+    ProseRow
+    | WorkRow
+    | ApprovalRow
+    | ConnectionRow
+    | DecisionRow
+    | SubAgentRow
+    | NoticeRow
+)
 
 
 _NOTICES = {
@@ -418,6 +463,41 @@ class WorkRunAccumulator:
                     title=str(payload.get("title") or payload.get("tool", "?")),
                     tag=payload.get("tag"),
                     auto_approved=bool(payload.get("auto_approved")),
+                )
+            )
+            return
+
+        if kind in ("agent_decision", "agent_observation"):
+            summary = str(payload.get("summary") or event.message or "").strip()
+            if not summary:
+                return
+            # A decision explains the work that follows, so it closes the run
+            # before it; an observation explains the work that just happened,
+            # so it closes that one. Both flush, for opposite reasons.
+            self._flush_work()
+            self._flush_prose()
+            self._rows.append(
+                DecisionRow(
+                    text=summary,
+                    kind="decision" if kind == "agent_decision" else "observation",
+                    next_action=str(payload.get("next_action") or ""),
+                    iteration=payload.get("iteration"),
+                )
+            )
+            return
+
+        if kind == "connection_requested":
+            # Like an approval, this interrupts the work run: it is a question
+            # for the user, not another step.
+            self._flush_work()
+            self._flush_prose()
+            self._rows.append(
+                ConnectionRow(
+                    connection_id=str(payload.get("connection_id") or ""),
+                    title=str(payload.get("title") or payload.get("connection_id") or ""),
+                    reason=str(payload.get("reason") or ""),
+                    auth=str(payload.get("auth") or "unknown"),
+                    tool=str(payload.get("tool") or ""),
                 )
             )
             return

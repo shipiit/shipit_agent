@@ -396,9 +396,14 @@ class AsyncAgentRuntime(RuntimeCore):
             state,
             "tool_completed",
             f"Tool completed: {tool_call.name}",
+            # Renderers pair an outcome to its call by (tool, call_id); without
+            # them this loop's transcript could only guess.
+            tool=tool_call.name,
+            call_id=tool_call_record["id"],
             output=tool_result.output,
             iteration=iteration,
         )
+        self.note_connection_request(state, tool_call.name, tool_result.metadata)
         if tool_result.metadata.get("interactive"):
             self.emit(
                 state,

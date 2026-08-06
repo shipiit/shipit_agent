@@ -240,6 +240,50 @@ class ConnectionRegistry:
         self.requests.append(request)
         return request
 
+    def resolve(
+        self,
+        connection_id: str,
+        *,
+        accepted: bool,
+        credential: Any = None,
+        by: str = "user",
+    ) -> ConnectionRequest | None:
+        """Answer a pending request — the other half of the UI card.
+
+        On accept with a ``credential``, it is written to the credential store,
+        so the very next state check reads ``CONNECTED`` rather than the user
+        being told to connect something they just connected. Returns the
+        request that was answered, or ``None`` if there was none pending.
+        """
+        for request in self.pending_requests():
+            if request.connection_id != connection_id:
+                continue
+            request.resolved = True
+            request.accepted = accepted
+            request.resolved_by = by
+            if accepted and credential is not None and self.credential_store:
+                self._store_credential(connection_id, credential)
+            return request
+        return None
+
+    def _store_credential(self, connection_id: str, credential: Any) -> None:
+        """Write a credential in whichever shape this store accepts."""
+        from shipit_agent.integrations import CredentialRecord
+
+        record = credential
+        if isinstance(credential, dict):
+            record = CredentialRecord(
+                key=connection_id, provider=connection_id, secrets=dict(credential)
+            )
+        elif not isinstance(credential, CredentialRecord):
+            # A bare string is the common case — a pasted API key or token.
+            record = CredentialRecord(
+                key=connection_id,
+                provider=connection_id,
+                secrets={"token": str(credential)},
+            )
+        self.credential_store.set(record)
+
     def pending_requests(self) -> list[ConnectionRequest]:
         return [r for r in self.requests if not r.resolved]
 

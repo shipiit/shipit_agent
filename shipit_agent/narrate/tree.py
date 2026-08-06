@@ -40,6 +40,8 @@ from shipit_agent.models import AgentEvent
 
 from .grouping import (
     ApprovalRow,
+    ConnectionRow,
+    DecisionRow,
     NoticeRow,
     ProseRow,
     SubAgentRow,
@@ -270,6 +272,11 @@ class TreeRenderer:
             lines += [f"{trunk}{line}" for line in self._wrap(row.text, len(trunk))]
             return lines
 
+        if isinstance(row, DecisionRow):
+            lines = [f"{branch} {self._c('accent', row.label)}"]
+            lines += [f"{trunk}{line}" for line in self._wrap(row.text, len(trunk))]
+            return lines
+
         if isinstance(row, WorkRow):
             group = row.group
             lines = [f"{branch} {self._c('bold', 'Tool group')}: {group.label}"]
@@ -290,6 +297,18 @@ class TreeRenderer:
             lines.append(
                 f"{trunk}{self._pad(row.title, row.tag or state, prefix=len(trunk))}"
             )
+            return lines
+
+        if isinstance(row, ConnectionRow):
+            lines = [f"{branch} {self._c('accent', 'Connection needed')}"]
+            lines.append(
+                f"{trunk}{self._pad(row.title, row.auth, prefix=len(trunk))}"
+            )
+            if row.reason:
+                lines += [
+                    f"{trunk}{line}"
+                    for line in self._wrap(row.reason, len(trunk))
+                ]
             return lines
 
         if isinstance(row, NoticeRow):

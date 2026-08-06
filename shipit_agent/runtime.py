@@ -116,6 +116,8 @@ class AgentRuntime(RuntimeCore):
         self,
         *,
         llm: LLM,
+        decision_llm: LLM | None = None,
+        progress_summaries: bool = True,
         prompt: str,
         tools: list[Tool] | None = None,
         mcps: list[MCPServer] | None = None,
@@ -142,6 +144,8 @@ class AgentRuntime(RuntimeCore):
         lockdown: Any = None,
     ) -> None:
         self.llm = llm
+        self.decision_llm = decision_llm or llm
+        self.progress_summaries = progress_summaries
         self.prompt = prompt
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
@@ -411,6 +415,7 @@ class AgentRuntime(RuntimeCore):
         tool_call_record: dict[str, Any],
         context: ToolContext,
         iteration: int,
+        group_id: str | None = None,
     ) -> tuple[ToolResult | None, Message]:
         """Execute a single tool call and return (tool_result, message).
 
@@ -515,6 +520,7 @@ class AgentRuntime(RuntimeCore):
             f"Tool called: {tool_call.name}",
             tool=tool_call.name,
             call_id=tool_call_record["id"],
+            group_id=group_id,
             arguments=tool_call.arguments,
             iteration=iteration,
         )
@@ -594,10 +600,12 @@ class AgentRuntime(RuntimeCore):
             f"Tool completed: {tool_call.name}",
             tool=tool_call.name,
             call_id=tool_call_record["id"],
+            group_id=group_id,
             output=tool_result.output,
             iteration=iteration,
             duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
         )
+        self.note_connection_request(state, tool_call.name, tool_result.metadata)
         # Did this read latch the run into lockdown?
         trigger = self.lockdown.observe(
             tool=tool_call.name,
@@ -638,6 +646,7 @@ class AgentRuntime(RuntimeCore):
         base_prompt: str,
         shared_state: dict[str, Any],
         iteration: int,
+        group_id: str | None = None,
     ) -> list[ToolResult]:
         """Execute tool calls — in parallel if enabled, otherwise sequentially."""
         results: list[ToolResult] = []
@@ -678,6 +687,7 @@ class AgentRuntime(RuntimeCore):
                             session_id=self.session_id,
                         ),
                         iteration=iteration,
+                        group_id=group_id,
                     )
                     futures_map[future] = idx
 
@@ -719,6 +729,7 @@ class AgentRuntime(RuntimeCore):
                     tool_call_record=tool_call_records[idx],
                     context=_make_context(),
                     iteration=iteration,
+                    group_id=group_id,
                 )
                 if tool_result is not None:
                     state.tool_results.append(tool_result)
@@ -731,6 +742,164 @@ class AgentRuntime(RuntimeCore):
     def _estimate_tokens(text: str) -> int:
         """Rough token estimate: ~4 chars per token for English text."""
         return len(text) // 4 if text else 0
+
+    @staticmethod
+    def _bounded_text(value: Any, *, limit: int = 1800) -> str:
+        """Return a compact, display-safe string for summary prompts."""
+        text = str(value or "").strip()
+        if len(text) <= limit:
+            return text
+        return text[:limit].rstrip() + "…"
+
+    def _recent_public_context(
+        self,
+        state: RuntimeState,
+        *,
+        max_messages: int = 10,
+        max_chars_per_message: int = 1400,
+    ) -> str:
+        """Build bounded context from observable messages only.
+
+        System prompts and hidden reasoning are intentionally excluded. The
+        progress model receives only user requests, assistant-visible text,
+        and actual tool outputs.
+        """
+        lines: list[str] = []
+        for message in state.messages[-max_messages:]:
+            if message.role == "system":
+                continue
+            content = self._bounded_text(
+                message.content, limit=max_chars_per_message
+            )
+            if not content:
+                continue
+            if message.role == "tool":
+                label = f"TOOL RESULT ({message.name or 'unknown'})"
+            elif message.role == "assistant":
+                label = "AGENT MESSAGE"
+            elif message.role == "user":
+                label = "USER"
+            else:
+                label = message.role.upper()
+            lines.append(f"{label}:\n{content}")
+        return "\n\n".join(lines)
+
+    def _call_progress_model(
+        self,
+        *,
+        state: RuntimeState,
+        prompt: str,
+        purpose: str,
+        iteration: int,
+    ) -> str:
+        """Call the summary model without tools or streaming callbacks.
+
+        Failures never interrupt the real agent run; they produce a diagnostic
+        event and an empty summary instead.
+        """
+        if not self.progress_summaries:
+            return ""
+        try:
+            result = self.decision_llm.complete(
+                messages=[Message(role="user", content=prompt)],
+                tools=[],
+                system_prompt=(
+                    "You write brief, factual progress updates for an AI agent "
+                    "UI. Use only observable actions and results. Never reveal "
+                    "private chain-of-thought, hidden reasoning, or unsupported "
+                    "assumptions."
+                ),
+                metadata={
+                    **dict(self.metadata),
+                    "purpose": purpose,
+                    "iteration": iteration,
+                },
+            )
+            return self._bounded_text(result.content, limit=700)
+        except Exception as exc:
+            self.emit(
+                state,
+                "progress_summary_failed",
+                "Progress summary generation failed",
+                purpose=purpose,
+                iteration=iteration,
+                error=str(exc),
+            )
+            return ""
+
+    def _generate_decision_summary(
+        self,
+        *,
+        state: RuntimeState,
+        response: LLMResponse,
+        user_prompt: str,
+        iteration: int,
+    ) -> str:
+        """Generate the next-action summary from the real agent response."""
+        calls = list(response.tool_calls or [])
+        selected_actions = (
+            "\n".join(
+                f"- {call.name}: {self._bounded_text(dict(call.arguments), limit=700)}"
+                for call in calls
+            )
+            if calls
+            else "- No tool selected; the agent is preparing its final answer."
+        )
+        prompt = f"""Create one concise progress update for a user watching an agent.
+
+Original request:
+{self._bounded_text(user_prompt, limit=1600)}
+
+Recent observable execution:
+{self._recent_public_context(state) or "No prior tool results yet."}
+
+The real agent selected these next actions:
+{selected_actions}
+
+Write 1-2 short sentences (maximum 45 words) explaining what the agent will do
+next and why. Do not invent results. Do not use a markdown heading.
+""".strip()
+        return self._call_progress_model(
+            state=state,
+            prompt=prompt,
+            purpose="agent_decision_summary",
+            iteration=iteration,
+        )
+
+    def _generate_observation_summary(
+        self,
+        *,
+        state: RuntimeState,
+        tool_results: list[ToolResult],
+        user_prompt: str,
+        iteration: int,
+    ) -> str:
+        """Summarize actual tool outputs after an execution group completes."""
+        if not tool_results or not self.progress_summaries:
+            return ""
+        rendered = "\n\n".join(
+            f"Tool: {result.name}\nResult:\n"
+            f"{self._bounded_text(result.output, limit=2200) or '[No output]'}"
+            for result in tool_results
+        )
+        prompt = f"""Summarize this completed agent step for the user.
+
+Original request:
+{self._bounded_text(user_prompt, limit=1600)}
+
+Actual tool results:
+{rendered}
+
+Write 1-2 short sentences (maximum 45 words) stating what was found, changed,
+or failed. Use only the shown results. Do not predict the next tool and do not
+use a markdown heading.
+""".strip()
+        return self._call_progress_model(
+            state=state,
+            prompt=prompt,
+            purpose="agent_observation_summary",
+            iteration=iteration,
+        )
 
     def _complete_with_retry(
         self,
@@ -1042,6 +1211,31 @@ class AgentRuntime(RuntimeCore):
                     content=response.reasoning_content,
                 )
 
+            if response.tool_calls:
+                decision_summary = self._generate_decision_summary(
+                    state=state,
+                    response=response,
+                    user_prompt=user_prompt,
+                    iteration=iteration,
+                )
+                if decision_summary:
+                    self.emit(
+                        state,
+                        "agent_decision",
+                        "Agent decision",
+                        summary=decision_summary,
+                        next_action="call_tools",
+                        tools=[
+                            {
+                                "name": call.name,
+                                "arguments": dict(call.arguments),
+                            }
+                            for call in response.tool_calls
+                        ],
+                        iteration=iteration,
+                        generated_by_model=True,
+                    )
+
             if not response.tool_calls:
                 # Nudge-on-stall: the model narrated an action ("Let me
                 # search…") but called nothing. One tightly-gated re-prompt —
@@ -1079,6 +1273,24 @@ class AgentRuntime(RuntimeCore):
                         iteration=iteration,
                     )
                     continue
+
+                final_decision = self._generate_decision_summary(
+                    state=state,
+                    response=response,
+                    user_prompt=user_prompt,
+                    iteration=iteration,
+                )
+                if final_decision:
+                    self.emit(
+                        state,
+                        "agent_decision",
+                        "Agent decision",
+                        summary=final_decision,
+                        next_action="finish",
+                        tools=[],
+                        iteration=iteration,
+                        generated_by_model=True,
+                    )
                 break
 
             tool_call_records = [
@@ -1101,7 +1313,21 @@ class AgentRuntime(RuntimeCore):
             )
             appended_response_id = id(response)
 
-            self._execute_tool_calls(
+            group_id = f"tool_group_{iteration}"
+            self.emit(
+                state,
+                "tool_group_started",
+                "Tool group started",
+                group_id=group_id,
+                iteration=iteration,
+                tool_count=len(tool_call_records),
+                tools=[
+                    {"name": record["name"], "call_id": record["id"]}
+                    for record in tool_call_records
+                ],
+            )
+
+            iteration_results = self._execute_tool_calls(
                 state=state,
                 registry=registry,
                 tool_runner=tool_runner,
@@ -1111,7 +1337,35 @@ class AgentRuntime(RuntimeCore):
                 base_prompt=base_prompt,
                 shared_state=shared_state,
                 iteration=iteration,
+                group_id=group_id,
             )
+
+            observation_summary = self._generate_observation_summary(
+                state=state,
+                tool_results=iteration_results,
+                user_prompt=user_prompt,
+                iteration=iteration,
+            )
+            self.emit(
+                state,
+                "tool_group_completed",
+                "Tool group completed",
+                group_id=group_id,
+                iteration=iteration,
+                tool_count=len(tool_call_records),
+                completed_count=len(iteration_results),
+                summary=observation_summary,
+            )
+            if observation_summary:
+                self.emit(
+                    state,
+                    "agent_observation",
+                    "Agent reviewed tool results",
+                    summary=observation_summary,
+                    iteration=iteration,
+                    next_action="evaluate_results",
+                    generated_by_model=True,
+                )
 
             # Mid-run re-planning: if replan_interval is set and we've
             # completed that many iterations, run the planner again to
@@ -1234,6 +1488,13 @@ class AgentRuntime(RuntimeCore):
             self.metadata["give_up_reason"] = gave_up.metadata.get("give_up_reason", "")
             self.metadata["give_up_needs"] = gave_up.metadata.get("give_up_needs", [])
 
+        self.emit(
+            state,
+            "final_answer",
+            "Final answer generated",
+            content=response.content,
+            format="markdown",
+        )
         self.emit(
             state,
             "run_completed",

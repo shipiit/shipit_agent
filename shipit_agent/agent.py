@@ -124,6 +124,14 @@ class Agent:
 
     # ── core ──────────────────────────────────────────────────────────
     llm: Any
+    # Optional cheap/fast model used only for public progress summaries.
+    # Falls back to ``llm`` when omitted.
+    decision_llm: Any = None
+    # Emit model-generated ``agent_decision`` / ``agent_observation`` events.
+    # Off by default: each one is a real extra LLM call per iteration, so
+    # turning it on doubles the calls a run makes. Opt in per agent, and give
+    # it a cheap `decision_llm` when you do.
+    progress_summaries: bool = False
     prompt: str = DEFAULT_AGENT_PROMPT
     tools: list[Any] = field(default_factory=list)
     mcps: list[Any] = field(default_factory=list)
@@ -775,6 +783,8 @@ class Agent:
 
         runtime = self._active_runtime = AgentRuntime(
             llm=self.llm,
+            decision_llm=self.decision_llm,
+            progress_summaries=self.progress_summaries,
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
             mcps=self.mcps,
@@ -973,6 +983,8 @@ class Agent:
 
         runtime = self._active_runtime = AgentRuntime(
             llm=self.llm,
+            decision_llm=self.decision_llm,
+            progress_summaries=self.progress_summaries,
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
             mcps=self.mcps,

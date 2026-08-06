@@ -18,6 +18,17 @@ EventType = Literal[
     "tool_failed",
     "tool_denied",
     "action_queued",
+    "connection_requested",
+    # Model-generated progress narration (Agent(progress_summaries=True)).
+    "agent_decision",
+    "agent_observation",
+    "progress_summary_failed",
+    # One iteration's tool calls, so a UI can draw them as one expandable box.
+    "tool_group_started",
+    "tool_group_completed",
+    # The answer, as its own event: a client should not have to infer it from
+    # run_completed's payload.
+    "final_answer",
     "text_delta",
     "tool_input_started",
     "tool_input_delta",

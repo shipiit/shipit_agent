@@ -143,6 +143,10 @@ class ConnectionRequest:
     auth: AuthKind = AuthKind.UNKNOWN
     requested_at: float = field(default_factory=time.time)
     resolved: bool = False
+    # `accepted` is only meaningful once resolved: a denied request is
+    # answered, not pending, and the agent must not keep asking.
+    accepted: bool = False
+    resolved_by: str = ""
 
     def describe(self) -> str:
         name = self.title or self.connection_id
@@ -155,4 +159,6 @@ class ConnectionRequest:
             "reason": self.reason,
             "auth": self.auth.value,
             "resolved": self.resolved,
+            "accepted": self.accepted,
+            "resolved_by": self.resolved_by,
         }

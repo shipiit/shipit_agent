@@ -37,6 +37,8 @@ from shipit_agent.models import AgentEvent
 
 from .grouping import (
     ApprovalRow,
+    ConnectionRow,
+    DecisionRow,
     CallRecord,
     NoticeRow,
     ProseRow,
@@ -157,6 +159,24 @@ _STYLE = """
   margin-top: 11px; font-size: 13px; color: var(--sa-muted);
 }
 .sa-live .sa-choices .sa-primary { color: var(--sa-text); font-weight: 600; }
+.sa-live .sa-decision {
+  border-left: 2px solid var(--sa-accent); padding: 2px 0 2px 12px;
+  margin: 14px 0; color: var(--sa-muted);
+}
+.sa-live .sa-decision .sa-step {
+  display: block; font: 11px/1.6 var(--sa-mono);
+  text-transform: uppercase; letter-spacing: .06em; color: var(--sa-accent);
+}
+.sa-live .sa-connect {
+  border: 1px solid var(--sa-line); border-radius: 12px;
+  padding: 13px 15px; margin: 16px 0; background: var(--sa-accent-soft);
+}
+.sa-live .sa-connect .sa-what { font-weight: 600; margin-bottom: 4px; }
+.sa-live .sa-connect .sa-plug { color: var(--sa-accent); margin-right: 8px; }
+.sa-live .sa-connect .sa-reason { margin-bottom: 6px; }
+.sa-live .sa-connect .sa-meta {
+  font: 12px/1.6 var(--sa-mono); color: var(--sa-faint);
+}
 .sa-live .sa-sub {
   border-left: 2px solid var(--sa-accent-soft);
   padding-left: 13px; margin: 14px 0;
@@ -347,6 +367,13 @@ class LiveView:
             caret = '<span class="sa-caret"></span>' if streaming else ""
             return f'<div class="sa-prose">{_esc(row.text)}{caret}</div>'
 
+        if isinstance(row, DecisionRow):
+            return (
+                f'<div class="sa-decision sa-{_esc(row.kind)}">'
+                f'<span class="sa-step">{_esc(row.label)}</span>'
+                f"{_esc(row.text)}</div>"
+            )
+
         if isinstance(row, WorkRow):
             return self._work_html(row.group.icon, row.group.label, row.group.calls)
 
@@ -356,6 +383,9 @@ class LiveView:
 
         if isinstance(row, ApprovalRow):
             return self._approval_html(row)
+
+        if isinstance(row, ConnectionRow):
+            return self._connection_html(row)
 
         if isinstance(row, NoticeRow):
             return f'<div class="sa-notice">{_esc(row.text)}</div>'
@@ -427,6 +457,28 @@ class LiveView:
             f"{_esc(row.title)}</div>"
             f'<div class="sa-meta">{_esc(meta)}</div>'
             f"{choices}</div>"
+        )
+
+    def _connection_html(self, row: ConnectionRow) -> str:
+        """`BigQuery — analytics.usage · Connect` — the ask, and the reason.
+
+        The reason is the whole card: a user deciding whether to hand over an
+        account is answering *why*, not *what*.
+        """
+        how = {
+            "oauth": "sign in",
+            "api_key": "paste an API key",
+            "token": "paste a token",
+        }.get(row.auth, "connect it")
+        return (
+            f'<div class="sa-connect">'
+            f'<div class="sa-what"><span class="sa-plug">⚯</span>'
+            f"{_esc(row.title)}</div>"
+            f'<div class="sa-reason">{_esc(row.reason)}</div>'
+            f'<div class="sa-meta">{_esc(row.connection_id)} · {_esc(how)}</div>'
+            f'<div class="sa-choices"><span>Not now</span>'
+            f'<span class="sa-primary">Connect</span></div>'
+            f"</div>"
         )
 
     def _footer(self) -> str:

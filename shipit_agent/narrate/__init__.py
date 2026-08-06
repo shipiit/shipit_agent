@@ -7,6 +7,8 @@ reads. ``verbs`` is the vocabulary; ``grouping`` and ``renderer`` land next.
 
 from .grouping import (
     ApprovalRow,
+    ConnectionRow,
+    DecisionRow,
     CallRecord,
     NoticeRow,
     ProseRow,
@@ -59,6 +61,8 @@ __all__ = [
     "unregister_verb",
     # grouping
     "ApprovalRow",
+    "ConnectionRow",
+    "DecisionRow",
     "CallRecord",
     "NoticeRow",
     "ProseRow",

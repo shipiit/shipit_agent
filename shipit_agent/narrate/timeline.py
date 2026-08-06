@@ -174,6 +174,37 @@ class TimelineBuilder:
                 }
             ]
 
+        if kind in ("agent_decision", "agent_observation"):
+            summary = str(payload.get("summary") or event.message or "").strip()
+            if not summary:
+                return out
+            # The runtime generated this one, so it is preferred over the
+            # decision this builder would otherwise infer from prose.
+            self._prose = []
+            out += self._close_group()
+            return out + [
+                {
+                    "type": kind,
+                    "content": summary,
+                    "next_action": str(payload.get("next_action") or ""),
+                    "iteration": payload.get("iteration"),
+                    "generated_by_model": bool(payload.get("generated_by_model")),
+                }
+            ]
+
+        if kind == "connection_requested":
+            out += self._close_group()
+            out += self._close_prose(next_action="ask")
+            return out + [
+                {
+                    "type": "connection_required",
+                    "connection_id": str(payload.get("connection_id") or ""),
+                    "title": str(payload.get("title") or ""),
+                    "reason": str(payload.get("reason") or ""),
+                    "auth": str(payload.get("auth") or "unknown"),
+                }
+            ]
+
         if kind == "sub_agent_event":
             inner = dict(payload.get("inner") or {})
             if payload.get("inner_type") != "tool_called":
@@ -361,6 +392,16 @@ def render_markdown(
                 ]
         elif kind == "tool_group_completed":
             lines += ["---", ""]
+        elif kind == "agent_observation":
+            section += 1
+            lines += [
+                f"### {section}. Observation",
+                "",
+                str(step["content"]),
+                "",
+                "---",
+                "",
+            ]
         elif kind == "agent_decision":
             section += 1
             lines += [
@@ -379,6 +420,18 @@ def render_markdown(
                 f"### {section}. Approval required",
                 "",
                 f"{step['title']} — `{step.get('tag') or step['tool_name']}`",
+                "",
+                "---",
+                "",
+            ]
+        elif kind == "connection_required":
+            section += 1
+            lines += [
+                f"### {section}. Connection required",
+                "",
+                f"**{step['title']}** — {step['reason']}",
+                "",
+                f"`{step['connection_id']}` · {step['auth']}",
                 "",
                 "---",
                 "",

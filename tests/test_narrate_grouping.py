@@ -180,6 +180,55 @@ class TestDetailLines:
         assert group.detail_lines == ["app.py", "zzz.py"]
 
 
+class TestIcons:
+    def test_a_run_of_one_tool_keeps_that_tools_glyph(self) -> None:
+        from shipit_agent.narrate.verbs import FILE
+
+        group = build_group([call("read_file", str(i), path=f"{i}.py") for i in range(3)])
+        assert group.icon == FILE
+
+    def test_a_single_call_keeps_its_glyph(self) -> None:
+        from shipit_agent.narrate.verbs import LINK
+
+        assert build_group([call("connections", action="list")]).icon == LINK
+
+    def test_a_sweep_across_different_read_only_tools_uses_search(self) -> None:
+        from shipit_agent.narrate.verbs import SEARCH
+
+        group = build_group([
+            call("read_file", "a", path="x"),
+            call("web_search", "b", query="y"),
+            call("grep_files", "c", pattern="z"),
+        ])
+        assert group.icon == SEARCH
+
+    def test_a_mixed_run_with_an_action_uses_the_first_tools_glyph(self) -> None:
+        from shipit_agent.narrate.verbs import FILE
+
+        group = build_group([
+            call("read_file", "a", path="x"),
+            call("bash", "b", command="ls"),
+        ])
+        assert group.icon == FILE
+
+
+class TestLoopMechanicsAreHidden:
+    def test_healing_and_nudging_produce_no_row(self) -> None:
+        """The user is never shown the loop's internal structure.
+
+        "Recovered a tool call" after a good final answer reads as though
+        something went wrong, and the nudge heuristic fires on ordinary
+        phrasing like "I'll post it".
+        """
+        rows = build_transcript([
+            text("Connect Slack and I'll post it."),
+            AgentEvent(type="tool_call_healed", message="",
+                       payload={"nudge": True}),
+            done(),
+        ])
+        assert [type(r).__name__ for r in rows] == ["ProseRow"]
+
+
 class TestGroupState:
     def test_error_is_flagged(self) -> None:
         records = [call("bash", "a", command="ls")]

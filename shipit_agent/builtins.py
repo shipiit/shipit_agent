@@ -16,7 +16,8 @@ Tool categories:
     File operations:    read_file, edit_file, write_file, glob_files, grep_files
     Shell & code:       bash, run_code
     Workspace:          workspace_files
-    Interaction:        ask_user, ask_user_async, human_review, give_up
+    Interaction:        ask_user, ask_user_async, human_review, give_up,
+                        connections
     Planning:           plan_task, decompose_problem, todo
     Reasoning:          synthesize_evidence, decision_matrix, verify_output
     Building:           build_artifact, build_prompt, render_dashboard
@@ -38,6 +39,7 @@ from __future__ import annotations
 from typing import Any
 
 from shipit_agent.llms.base import LLM
+from shipit_agent.tools.connections import ConnectionsTool
 from shipit_agent.tools.describe_binding import DescribeBindingTool
 from shipit_agent.tools.give_up import GiveUpTool
 from shipit_agent.tools import (
@@ -156,6 +158,8 @@ def get_builtin_tool_map(
         # Progressive discovery: learn one binding's API instead of carrying
         # every integration's schema in the prompt (see shipit_agent.codemode).
         DescribeBindingTool(),
+        # What is connected, and what the agent needs you to connect.
+        ConnectionsTool(),
         # ── building ──────────────────────────────────────────────
         ArtifactBuilderTool(),
         DocumentBuilderTool(workspace_root=f"{workspace_root}/documents"),

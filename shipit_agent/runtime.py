@@ -1040,6 +1040,18 @@ class AgentRuntime:
             "project_root": self.metadata.get("project_root", "."),
         }
         shared_state[DEPTH_STATE_KEY] = self.metadata.get(DEPTH_STATE_KEY, 0)
+        # What the agent can reach, and what it needs from the user.
+        from shipit_agent.connections import ConnectionRegistry
+        from shipit_agent.tools.connections.connections_tool import (
+            REGISTRY_STATE_KEY,
+        )
+
+        self.connections = ConnectionRegistry(
+            credential_store=self.credential_store,
+            tools=registry.values(),
+            mcps=self.mcps,
+        )
+        shared_state[REGISTRY_STATE_KEY] = self.connections
         shared_state["memory_store"] = self.memory_store
         shared_state["credential_store"] = self.credential_store
         shared_state["artifact_workspace_root"] = self.metadata.get(

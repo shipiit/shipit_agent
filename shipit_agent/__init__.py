@@ -104,6 +104,12 @@ from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
 from .activity import StreamRenderer, format_activity, format_event_line
 from .approvals import ActionState, ApprovalQueue, PendingAction
 from .compaction import CompactionCheckpoint, Compactor, get_model_limits
+from .connections import (
+    AuthKind,
+    Connection,
+    ConnectionRegistry,
+    ConnectionState,
+)
 from .lockdown import LockdownPolicy, LockdownState
 from .narrate import NarratorRenderer, build_transcript, render_transcript, summarize
 from .narrate.json_stream import StreamingToolInputParser
@@ -357,6 +363,10 @@ __all__ = [
     "ActionState",
     "ApprovalQueue",
     "CompactionCheckpoint",
+    "AuthKind",
+    "Connection",
+    "ConnectionRegistry",
+    "ConnectionState",
     "LockdownPolicy",
     "LockdownState",
     "Compactor",

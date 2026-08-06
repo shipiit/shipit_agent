@@ -191,9 +191,14 @@ def build_group(calls: list[CallRecord], *, present: bool = False) -> WorkGroup 
     details = _detail_lines(calls)
     return WorkGroup(
         key=calls[0].call_id,
-        # An all-observation run gets the search glyph; otherwise the first
-        # call's icon stands for the run.
-        icon=SEARCH if all(c.read_only for c in calls) else icon_for(calls[0].name),
+        # A run of *different* read-only tools is a resource sweep, and the
+        # search glyph describes it. A single call — or a run of one tool —
+        # keeps its own icon, which says more.
+        icon=(
+            SEARCH
+            if len({c.name for c in calls}) > 1 and all(c.read_only for c in calls)
+            else icon_for(calls[0].name)
+        ),
         label=_compose_label(calls, present=present),
         # A single target already appears in the label; repeating it is noise.
         detail_lines=details if len(details) > 1 else [],
@@ -250,7 +255,6 @@ _NOTICES = {
     "context_compacted": "Older turns condensed to stay in the context window",
     "run_cancelled": "Cancelled",
     "guardrail_triggered": "Guardrail triggered",
-    "tool_call_healed": "Recovered a tool call the model wrote as text",
     "lockdown_engaged": "Lockdown — sensitive data was read, so only "
                         "read-only tools may run for the rest of this run",
 }

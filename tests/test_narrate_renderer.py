@@ -67,9 +67,10 @@ ACCOUNTS_AT_RISK = [
 
 class TestPipedOutput:
     def test_matches_the_reference_transcript(self) -> None:
-        # An all-observation run takes the search glyph, as in the reference UI.
+        # A run of one tool keeps that tool's glyph; the search glyph is for
+        # a sweep across *different* read-only tools.
         assert render(ACCOUNTS_AT_RISK) == (
-            "  ⌕ Read 3 files ›\n"
+            "  ▤ Read 3 files ›\n"
             "    Enterprise Accounts · Open Tickets · Usage by Account\n"
             "\n"
             "Let me look at usage trends, open tickets and renewal dates together.\n"

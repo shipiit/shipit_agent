@@ -191,6 +191,8 @@ VERBS: dict[str, VerbSpec] = {
                              read_only=True, intransitive=True),
     "todo": VerbSpec("Updated the todo list", "Updating the todo list", THINK,
                      intransitive=True),
+    "connections": VerbSpec("Checked connections", "Checking connections", LINK,
+                            read_only=True, intransitive=True),
     "describe_binding": VerbSpec("Inspected", "Inspecting", SEARCH, "binding",
                                 args=("name",), read_only=True),
     "tool_search": VerbSpec("Looked for a tool", "Looking for a tool", SEARCH,
@@ -305,8 +307,20 @@ def _summarize_sub_agent(args: dict[str, Any]) -> tuple[str, str, str | None]:
     return "Delegated", "Delegating", target
 
 
+def _summarize_connections(args: dict[str, Any]) -> tuple[str, str, str | None]:
+    action = str(args.get("action") or "list").lower()
+    target = args.get("connection")
+    target = _clip(target) if isinstance(target, str) and target.strip() else None
+    if action == "request":
+        return "Requested a connection to", "Requesting a connection to", target
+    if action == "check":
+        return "Checked", "Checking", target
+    return "Listed connectable resources", "Listing connectable resources", None
+
+
 _SUMMARY_OVERRIDES: dict[str, Callable[[dict[str, Any]], tuple[str, str, str | None]]] = {
     "sub_agent": _summarize_sub_agent,
+    "connections": _summarize_connections,
 }
 
 

@@ -242,6 +242,8 @@ CONTRACTS: dict[str, ToolContract] = {
     "build_prompt": OBSERVE,
     "tool_search": OBSERVE,
     "describe_binding": OBSERVE,
+    # Listing and requesting connections changes nothing itself.
+    "connections": OBSERVE,
     "todo": _act(AGENT_STATE, auto=True),
     "memory": _act(MEMORY_WRITE, auto=True),
 }

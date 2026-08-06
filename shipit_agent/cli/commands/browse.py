@@ -20,7 +20,7 @@ from shipit_agent.cli.llm import build_llm
 
 
 def cmd_browse(args: argparse.Namespace) -> int:
-    from shipit_agent import StreamRenderer
+    from shipit_agent.narrate import NarratorRenderer
     from shipit_agent.computer_use import (
         ComputerUseAgent,
         PlaywrightBrowserSession,
@@ -47,7 +47,7 @@ def cmd_browse(args: argparse.Namespace) -> int:
         ui.out(ui.style(str(exc), "err"))
         return 1
 
-    renderer = StreamRenderer(style="auto")
+    renderer = NarratorRenderer(style="auto")
     try:
         agent = ComputerUseAgent(
             llm=build_llm(args.provider, args.model),

@@ -6,6 +6,13 @@ Gatekeeper approval model (and where it deliberately diverges).
 """
 
 from .models import ActionState, ApplyFn, PendingAction
+from .revert import (
+    FileSnapshotReverter,
+    Reverter,
+    can_revert,
+    register_reverter,
+    reverter_for,
+)
 from .queue import (
     ApprovalQueue,
     AutoApprovalDrainer,
@@ -20,7 +27,12 @@ __all__ = [
     "ApprovalQueue",
     "AutoApprovalDrainer",
     "AutoApproveRule",
+    "FileSnapshotReverter",
     "PendingAction",
+    "Reverter",
+    "can_revert",
+    "register_reverter",
+    "reverter_for",
     "coerce_queue",
     "iter_pending",
 ]

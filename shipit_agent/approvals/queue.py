@@ -230,6 +230,18 @@ class ApprovalQueue:
                 return action  # already decided; approving twice is a no-op
             apply_fn = action.apply_fn
 
+        # Snapshot before the effect lands, or revert has nothing to restore.
+        # A failure to capture is not fatal — the action still applies, and
+        # `can_revert` then correctly reports False.
+        from shipit_agent.approvals.revert import reverter_for
+
+        reverter = reverter_for(action.tool)
+        if reverter is not None and action.contract.implements_revert:
+            try:
+                action.snapshot = reverter.capture(action.tool, action.arguments)
+            except Exception:
+                action.snapshot = None
+
         try:
             result = apply_fn() if apply_fn is not None else None
         except Exception as exc:
@@ -278,6 +290,24 @@ class ApprovalQueue:
             except Exception:
                 break
         return applied
+
+    def revert(self, action_id: int) -> PendingAction:
+        """Undo an applied action, if its tool supports it."""
+        with self._lock:
+            action = self._actions.get(action_id)
+        if action is None:
+            raise KeyError(f"no such action: {action_id}")
+        action.revert()
+        self._notify(action)
+        return action
+
+    def revertable(self) -> list[PendingAction]:
+        """Applied actions that can still be undone, newest first."""
+        return sorted(
+            (a for a in self.all() if a.can_revert),
+            key=lambda a: a.id,
+            reverse=True,
+        )
 
     def deny_all(self, *, by: str = "user", reason: str = "") -> list[PendingAction]:
         return [self.deny(a.id, by=by, reason=reason) for a in self.pending()]

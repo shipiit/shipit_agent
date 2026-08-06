@@ -31,7 +31,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(json.dumps(
             {"output": result.output, "summary": result.summary()}, indent=2))
     else:
-        agent.run_live(args.prompt)
+        agent.run_live(args.prompt, style=getattr(args, "style", "modern"))
     return 0
 
 
@@ -51,6 +51,9 @@ def cmd_version(_args: argparse.Namespace) -> int:
 def register(sub: Any) -> None:
     run_p = sub.add_parser("run", help="One-shot prompt with live tool cards")
     run_p.add_argument("prompt")
+    run_p.add_argument("--style", choices=["modern", "rich", "plain"],
+                       default="modern",
+                       help="transcript style (default: modern)")
     run_p.add_argument("--json", action="store_true",
                        help="print result + metrics as JSON")
     _agent_options(run_p)

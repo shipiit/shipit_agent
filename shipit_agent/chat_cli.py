@@ -447,8 +447,11 @@ def agent_chat_session(agent: Any, *, session_id: str, session_store: Any) -> An
 class ChatREPL:
     """Modern multi-agent chat REPL."""
 
+    render_style: str = "modern"
+
     SLASH_COMMANDS = (
         "/help",
+        "/style",
         "/agent",
         "/agents",
         "/tools",
@@ -663,6 +666,9 @@ class ChatREPL:
         if cmd == "/agent":
             self._switch_agent(arg, output)
             return None
+        if cmd == "/style":
+            self._set_style(arg, output)
+            return None
         if cmd == "/agents":
             self._print_agent_types(output)
             return None
@@ -823,9 +829,29 @@ class ChatREPL:
             decision=PermissionDecision.DENY, reason="user declined"
         )
 
-    def handle_user_turn(self, user_text: str, *, output=print) -> None:
+    def _make_renderer(self) -> Any:
+        """The transcript renderer for a turn.
+
+        Defaults to the Narrator — human verbs, collapsed work runs, a
+        tokens/cost footer. `/style rich` or `/style plain` falls back to the
+        original Claude-Code-style cards.
+        """
+        style = getattr(self, "render_style", "modern")
+        if style == "modern":
+            from shipit_agent.narrate import NarratorRenderer
+
+            return NarratorRenderer(
+                style="plain" if self.quiet else "auto",
+                show_footer=not self.quiet,
+                model=current_model_name(self.provider),
+            )
         from shipit_agent.activity import StreamRenderer
 
+        return StreamRenderer(
+            style="plain" if self.quiet else style, show_summary=False
+        )
+
+    def handle_user_turn(self, user_text: str, *, output=print) -> None:
         try:
             final_text = ""
             captured_sources: list[Any] = []
@@ -836,10 +862,7 @@ class ChatREPL:
             else:
                 events = stream_any_agent(self.agent, user_text)
 
-            # Claude-Code-style live view: tokens inline, ⏺/⎿ tool cards.
-            renderer = StreamRenderer(
-                style="plain" if self.quiet else "auto", show_summary=False
-            )
+            renderer = self._make_renderer()
             output()
             for event in events:
                 etype = getattr(event, "type", "")
@@ -850,6 +873,12 @@ class ChatREPL:
                         else None
                     )
                     final_text = payload_out or final_text
+                    if getattr(self, "render_style", "modern") == "modern":
+                        # The Narrator closes the turn itself: it prints the
+                        # answer when the adapter never streamed, and the
+                        # tokens/cost footer either way.
+                        renderer.feed(event)
+                        saw_delta = True
                     continue
                 if etype == "rag_sources":
                     captured_sources = list(event.payload.get("sources", [])) or []
@@ -944,6 +973,15 @@ class ChatREPL:
             + dim(" to quit")
         )
         output()
+
+    def _set_style(self, arg: str, output) -> None:
+        """`/style modern|rich|plain` — switch the transcript renderer."""
+        choice = (arg or "").strip().lower()
+        if choice not in ("modern", "rich", "plain"):
+            output(dim(f"  style: {self.render_style}  (modern | rich | plain)"))
+            return
+        self.render_style = choice
+        output(dim(f"  style → {choice}"))
 
     def _print_help(self, output) -> None:
         output(bold("Slash commands:"))

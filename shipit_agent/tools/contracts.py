@@ -68,8 +68,11 @@ class ToolContract:
     ``action_kind`` — required for an action to be auto-approvable at all;
     ``None`` means every call is a manual gate, permanently.
 
-    ``implements_revert`` — can the effect be undone? Drives whether an undo
-    affordance is offered.
+    ``implements_revert`` — can the effect be undone? Only true when a
+    reverter is registered in :mod:`shipit_agent.approvals.revert`; a test
+    enforces that, because an undo affordance that does nothing is worse than
+    none. Filesystem writes qualify; connector writes need a per-vendor
+    inverse operation and currently declare false.
 
     ``await_decision`` — the agent must **stop** and wait for the decision
     rather than continuing with the action queued. Set it when the call returns
@@ -183,7 +186,7 @@ CONTRACTS: dict[str, ToolContract] = {
     # says nothing about what this particular call does. Each env call inside
     # it is separately gated by its own binding's contract.
     "execute_code": _act(CODE_EXEC, await_decision=True, destructive=True),
-    "git_ops": _act(VCS_WRITE, revert=True, await_decision=True),
+    "git_ops": _act(VCS_WRITE, await_decision=True),
     # ── web ──────────────────────────────────────────────────────────────
     "web_search": OBSERVE,
     "open_url": OBSERVE,
@@ -196,7 +199,7 @@ CONTRACTS: dict[str, ToolContract] = {
     # SQL is one tool for reads and writes; the contract takes the stricter
     # reading, and the tool's own `read_only` (it has one) refines per call.
     "sql": _act(DB_WRITE, await_decision=True, destructive=True),
-    "google_sheets": _act(DB_WRITE, revert=True, await_decision=True),
+    "google_sheets": _act(DB_WRITE, await_decision=True),
     # ── documents & deliverables ─────────────────────────────────────────
     "build_document": _act(ARTIFACT_WRITE, revert=True, auto=True),
     "build_artifact": _act(ARTIFACT_WRITE, revert=True, auto=True),
@@ -213,13 +216,13 @@ CONTRACTS: dict[str, ToolContract] = {
     "zendesk": _act(COMMS_SEND, auto=True),
     "github": _act(VCS_WRITE, await_decision=True),
     "gitlab": _act(VCS_WRITE, await_decision=True),
-    "jira": _act(ISSUE_WRITE, revert=True, auto=True),
-    "linear": _act(ISSUE_WRITE, revert=True, auto=True),
-    "notion": _act(DOC_WRITE, revert=True, auto=True),
-    "confluence": _act(DOC_WRITE, revert=True, auto=True),
-    "figma": _act(DOC_WRITE, revert=True),
-    "google_drive": _act(DOC_WRITE, revert=True, await_decision=True),
-    "google_calendar": _act(CALENDAR_WRITE, revert=True),
+    "jira": _act(ISSUE_WRITE, auto=True),
+    "linear": _act(ISSUE_WRITE, auto=True),
+    "notion": _act(DOC_WRITE, auto=True),
+    "confluence": _act(DOC_WRITE, auto=True),
+    "figma": _act(DOC_WRITE),
+    "google_drive": _act(DOC_WRITE, await_decision=True),
+    "google_calendar": _act(CALENDAR_WRITE),
     "salesforce": _act(CRM_WRITE, await_decision=True),
     "stripe": _act(PAYMENT_WRITE, await_decision=True, destructive=True),
     # ── humans ───────────────────────────────────────────────────────────
@@ -239,8 +242,8 @@ CONTRACTS: dict[str, ToolContract] = {
     "build_prompt": OBSERVE,
     "tool_search": OBSERVE,
     "describe_binding": OBSERVE,
-    "todo": _act(AGENT_STATE, revert=True, auto=True),
-    "memory": _act(MEMORY_WRITE, revert=True, auto=True),
+    "todo": _act(AGENT_STATE, auto=True),
+    "memory": _act(MEMORY_WRITE, auto=True),
 }
 
 

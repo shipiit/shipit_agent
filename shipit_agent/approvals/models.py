@@ -50,6 +50,9 @@ class PendingAction:
     auto_approved: bool = False
     result: Any = None
     error: str | None = None
+    reverted: bool = False
+    # Captured just before the action applies, by the tool's reverter.
+    snapshot: Any = field(default=None, repr=False)
 
     # ── classification ───────────────────────────────────────────────────
 
@@ -73,7 +76,41 @@ class PendingAction:
 
     @property
     def can_revert(self) -> bool:
-        return self.contract.implements_revert
+        """Is undo possible *right now*?
+
+        Needs four things: the contract to claim it, a reverter to be
+        registered, the action to have actually applied — you cannot undo
+        something that never ran — and a snapshot to have been captured.
+        Capture is best-effort, so a write whose target could not be
+        identified applies fine but is honestly not revertible.
+        """
+        from shipit_agent.approvals.revert import can_revert as _implemented
+
+        return (
+            self.contract.implements_revert
+            and _implemented(self.tool)
+            and self.state is ActionState.APPROVED
+            and self.snapshot is not None
+            and not self.reverted
+        )
+
+    def revert(self) -> None:
+        """Undo this action. Raises if it cannot."""
+        from shipit_agent.approvals.revert import reverter_for
+
+        if self.reverted:
+            return
+        if self.state is not ActionState.APPROVED:
+            raise ValueError(f"action {self.id} was never applied")
+        reverter = reverter_for(self.tool)
+        if reverter is None or not self.contract.implements_revert:
+            raise NotImplementedError(f"{self.tool} cannot be reverted")
+        if self.snapshot is None:
+            raise ValueError(
+                f"nothing was captured for action {self.id}; cannot revert"
+            )
+        reverter.restore(self.snapshot)
+        self.reverted = True
 
     def eligible_for_auto(self, enabled_tags: set[str]) -> bool:
         """Both signals, per Cloudflare's rule — neither alone is enough.

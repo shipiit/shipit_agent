@@ -218,14 +218,20 @@ def write_transcript(
     *,
     title: str = "Agent run",
     model: str | None = None,
+    prompt: str | None = None,
 ) -> Path:
-    """Write the transcript to *path* and return the resolved path."""
+    """Write the transcript to *path* and return the resolved path.
+
+    ``prompt`` is the ask the run answered; when omitted it is taken from the
+    run's ``run_started`` event, like :func:`render_transcript_html`.
+    """
     target = Path(path).expanduser()
     if target.suffix.lower() not in (".html", ".htm"):
         target = target.with_suffix(".html")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        render_transcript_html(source, title=title, model=model), encoding="utf-8"
+        render_transcript_html(source, title=title, model=model, prompt=prompt),
+        encoding="utf-8",
     )
     return target.resolve()
 

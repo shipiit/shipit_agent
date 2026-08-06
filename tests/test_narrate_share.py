@@ -199,3 +199,13 @@ class TestRobustness:
             done(),
         ])
         assert len(page) < 40_000
+
+
+def test_write_transcript_forwards_the_prompt(tmp_path) -> None:
+    """It accepted `title` and `model` but silently dropped `prompt`."""
+    from shipit_agent.models import AgentEvent
+    from shipit_agent.narrate.share import write_transcript
+
+    events = [AgentEvent(type="run_completed", message="", payload={"output": "hi"})]
+    path = write_transcript(tmp_path / "t.html", events, prompt="Summarize the inbox")
+    assert "Summarize the inbox" in path.read_text()

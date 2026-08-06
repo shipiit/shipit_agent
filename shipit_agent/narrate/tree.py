@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 import sys
+import textwrap
 from typing import Any
 
 from shipit_agent.models import AgentEvent
@@ -236,7 +237,11 @@ class TreeRenderer:
         if arguments:
             rendered = ", ".join(f"{k}={v!r}" for k, v in arguments.items())
             lines.append(self._c("dim", f"↳ {rendered[:160]}"))
-        body = (getattr(call, "error", "") or getattr(call, "output", "")).strip()
+        # Dedented, not stripped: stripping would pull the *first* line flush
+        # left and leave the rest indented, which reads as broken output.
+        body = textwrap.dedent(
+            getattr(call, "error", "") or getattr(call, "output", "")
+        ).strip("\n")
         if body:
             shown = body.splitlines()[: self._output_lines]
             lines += [self._c("dim", f"  {line[:120]}") for line in shown]
@@ -272,8 +277,6 @@ class TreeRenderer:
         return f"{left}{' ' * gap}{right}"
 
     def _wrap(self, text: str, indent: int) -> list[str]:
-        import textwrap
-
         width = max(30, _terminal_width() - indent - 2)
         out: list[str] = []
         for paragraph in text.strip().splitlines():

@@ -606,6 +606,7 @@ class AgentRuntime(RuntimeCore):
             duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
         )
         self.note_connection_request(state, tool_call.name, tool_result.metadata)
+        self.note_artifacts(state, tool_call.name, tool_result)
         # Did this read latch the run into lockdown?
         trigger = self.lockdown.observe(
             tool=tool_call.name,

@@ -40,6 +40,7 @@ from shipit_agent.models import AgentEvent
 
 from .grouping import (
     ApprovalRow,
+    ArtifactRow,
     ConnectionRow,
     DecisionRow,
     NoticeRow,
@@ -298,6 +299,12 @@ class TreeRenderer:
                 f"{trunk}{self._pad(row.title, row.tag or state, prefix=len(trunk))}"
             )
             return lines
+
+        if isinstance(row, ArtifactRow):
+            return [
+                f"{branch} {self._c('bold', 'Artifact')}: {row.title or row.name}",
+                f"{trunk}{self._c('dim', f'{row.kind} · {row.path}')}",
+            ]
 
         if isinstance(row, ConnectionRow):
             lines = [f"{branch} {self._c('accent', 'Connection needed')}"]

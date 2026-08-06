@@ -216,7 +216,8 @@ class TestRendering:
         assert "Summarize the auth module" in output
         # Nested deeper than the parent's own rows.
         nested = [line for line in output.splitlines() if "searched for TODO" in line][0]
-        parent = [line for line in output.splitlines() if "Started 2 tasks" in line][0]
+        parent = [line for line in output.splitlines()
+                  if "Delegated 2 tasks" in line][0]
         assert len(nested) - len(nested.lstrip()) > len(parent) - len(parent.lstrip())
 
     def test_a_childs_prose_is_not_repeated(self) -> None:
@@ -233,7 +234,14 @@ class TestRendering:
 
 class TestLabelShapes:
     def test_starting_and_collecting_are_counted_separately(self) -> None:
-        """"Delegated 3 tasks" was wrong: two delegations and a collection."""
+        """Two delegations and a collection are never "Delegated 3 tasks".
+
+        They now land in two rows rather than one composite label, because
+        the runtime declares a tool group per iteration and the starts and
+        the collection happened in different turns. Same distinction, drawn
+        where the run actually drew it.
+        """
         rows = build_transcript(build().run("review both").events)
-        work = next(r for r in rows if isinstance(r, WorkRow))
-        assert work.group.label == "Started 2 tasks, collected results"
+        labels = [r.group.label for r in rows if isinstance(r, WorkRow)]
+        assert labels[0] == "Delegated 2 tasks"
+        assert any("ollect" in label for label in labels[1:]), labels

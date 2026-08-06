@@ -301,3 +301,71 @@ class TestTreeShape:
         chat = render_chat_html(a_run())
         for text in ("Three I would put on your list.", "Used Slack #eng"):
             assert text in tree and text in chat
+
+
+class TestArtifactCards:
+    """A file the run produced is a card, not a path in a log."""
+
+    @staticmethod
+    def _run(tmp_path):
+        brief = tmp_path / "q2_kickoff_brief.md"
+        brief.write_text("# Q2 Kickoff Brief\n")
+        sheet = tmp_path / "q2_workstreams.csv"
+        sheet.write_text("workstream,owner\n")
+        return brief, sheet, [
+            event("text_delta", chunk="I'll start with the brief."),
+            # Built directly: the `event` helper takes `kind` as the event
+            # type, and an artifact payload has a `kind` of its own.
+            AgentEvent(type="artifact_created", message="", payload={
+                "path": str(brief), "title": "Q2 Kickoff Brief",
+                "kind": "Doc", "tool": "build_document"}),
+            AgentEvent(type="artifact_created", message="", payload={
+                "path": str(sheet), "title": "Q2 Workstreams",
+                "kind": "Sheet", "tool": "build_document"}),
+            event("run_completed", output="Both are ready.", usage={}),
+        ]
+
+    def test_each_artifact_gets_a_card(self, tmp_path) -> None:
+        _, _, events = self._run(tmp_path)
+        page = render_chat_html(events)
+        assert page.count('class="sa-artifact"') == 2
+        assert "Q2 Kickoff Brief" in page and "Doc · Click to open" in page
+        assert "Q2 Workstreams" in page and "Sheet · Click to open" in page
+
+    def test_the_card_links_to_the_file(self, tmp_path) -> None:
+        brief, _, events = self._run(tmp_path)
+        assert brief.resolve().as_uri() in render_chat_html(events)
+
+    def test_the_sentence_announcing_it_settles_first(self, tmp_path) -> None:
+        _, _, events = self._run(tmp_path)
+        page = render_chat_html(events)
+        # The element, not the CSS rule — the stylesheet comes first always.
+        # `start with the brief` rather than the whole sentence: the
+        # apostrophe is escaped in the output, as it must be.
+        assert page.index("start with the brief") < page.index(
+            '<a class="sa-artifact"'
+        )
+
+    def test_the_answer_is_still_the_answer(self, tmp_path) -> None:
+        _, _, events = self._run(tmp_path)
+        assert "Both are ready." in render_chat_html(events)
+
+
+class TestWorkRowMeta:
+    """The right-hand `2 tools · 13ms`, as the reference UI shows it."""
+
+    def test_a_row_counts_its_calls_and_time(self) -> None:
+        page = render_chat_html(a_run())
+        assert "2 tools" in page
+        assert "13.0ms" in page        # 4ms + 9ms, one decimal under 100ms
+
+    def test_one_call_is_singular(self) -> None:
+        events = [
+            event("tool_called", call_id="1", tool="read_file", arguments={}),
+            event("tool_completed", call_id="1", tool="read_file", output="x",
+                  duration_ms=3.3),
+            event("run_completed", output="done", usage={}),
+        ]
+        page = render_chat_html(events)
+        assert "1 tool ·" in page and "1 tools" not in page
+        assert "3.3ms" in page, "sub-100ms keeps a decimal, as the UI shows it"

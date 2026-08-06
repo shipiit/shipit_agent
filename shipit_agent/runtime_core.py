@@ -48,6 +48,61 @@ def is_intent_without_action(text: str | None) -> bool:
     return any(marker in stripped for marker in INTENT_MARKERS)
 
 
+# What a file extension means to a person. Anything unlisted is "File" —
+# a wrong label is worse than a plain one.
+_ARTIFACT_KINDS = {
+    ".html": "Page", ".htm": "Page",
+    ".md": "Doc", ".txt": "Doc", ".rtf": "Doc", ".pdf": "PDF", ".docx": "Doc",
+    ".csv": "Sheet", ".tsv": "Sheet", ".xlsx": "Sheet", ".xls": "Sheet",
+    ".json": "Data", ".yaml": "Data", ".yml": "Data", ".xml": "Data",
+    ".png": "Image", ".jpg": "Image", ".jpeg": "Image", ".svg": "Image",
+    ".gif": "Image", ".webp": "Image",
+    ".pptx": "Deck", ".key": "Deck",
+    ".py": "Code", ".js": "Code", ".ts": "Code", ".sql": "Code", ".sh": "Code",
+    ".zip": "Archive", ".tar": "Archive", ".gz": "Archive",
+}
+
+# Metadata keys a tool uses to say "I wrote this".
+_PATH_KEYS = ("path", "file", "filepath", "file_path", "output_path", "artifact")
+_PATH_LIST_KEYS = ("paths", "files", "artifacts", "outputs")
+
+
+def _artifact_kind(path: Any) -> str:
+    from pathlib import Path as _Path
+
+    return _ARTIFACT_KINDS.get(_Path(path).suffix.lower(), "File")
+
+
+def _declared_paths(metadata: dict) -> list:
+    """Paths a tool declared, that exist on disk, in first-seen order."""
+    from pathlib import Path as _Path
+
+    candidates: list[str] = []
+    for key in _PATH_KEYS:
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            candidates.append(value)
+    for key in _PATH_LIST_KEYS:
+        value = metadata.get(key)
+        if isinstance(value, (list, tuple)):
+            candidates += [item for item in value if isinstance(item, str)]
+
+    found: list = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            path = _Path(candidate)
+            # A path that does not exist is a plan, not an artifact.
+            if path.is_file():
+                found.append(path)
+        except OSError:
+            continue
+    return found
+
+
 class RuntimeCore:
     """Shared, synchronous decisions for both agent loops.
 
@@ -308,6 +363,29 @@ class RuntimeCore:
             )
 
         return sink
+
+    def note_artifacts(self, state: Any, tool_name: str, result: Any) -> None:
+        """Emit a card for each file a tool left behind.
+
+        A run that produces something — a page, a workbook, a document — has
+        made a *thing*, and the thing is usually the point. Surfacing it as
+        its own event is what lets a UI show "Q2 Kickoff Brief · Doc" instead
+        of a path buried in tool output.
+
+        Only paths a tool declared in its metadata are reported: scraping them
+        out of free text would invent artifacts from any string with a slash.
+        """
+        metadata = dict(getattr(result, "metadata", None) or {})
+        for path in _declared_paths(metadata):
+            self.emit(
+                state,
+                "artifact_created",
+                f"Artifact: {path.name}",
+                tool=tool_name,
+                path=str(path),
+                title=metadata.get("title") or path.stem.replace("_", " ").title(),
+                kind=_artifact_kind(path),
+            )
 
     def note_connection_request(self, state: Any, tool_name: str, metadata: Any) -> None:
         """Surface a connection the agent asked for as its own event.

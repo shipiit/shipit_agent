@@ -424,3 +424,97 @@ def run(input, env):
         app = store.create("flex", title="Flex", blueprint="csv_summary")
         result = run_app(app, {})
         assert not result.ok and "`path`" in result.error
+
+
+class TestStoreRun:
+    """`store.run()` exists because `run_app()` alone gets the cwd wrong."""
+
+    READS = '''
+from pathlib import Path
+
+
+def run(input, env):
+    return {"found": Path(input["path"]).exists()}
+'''
+
+    def test_it_runs_where_the_agent_works(self, tmp_path) -> None:
+        (tmp_path / "data.csv").write_text("a\n1\n")
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        store.create("peek", title="Peek", files={"app.py": self.READS})
+        assert store.run("peek", {"path": "data.csv"}).value["found"]
+
+    def test_run_app_alone_still_defaults_to_the_app_directory(self, tmp_path) -> None:
+        (tmp_path / "data.csv").write_text("a\n1\n")
+        store = AppStore(tmp_path / ".shipit" / "apps")
+        app = store.create("peek", title="Peek", files={"app.py": self.READS})
+        assert not run_app(app, {"path": "data.csv"}).value["found"]
+
+
+class TestArtifactEvents:
+    """The runtime reports files a tool declared — and only those."""
+
+    def test_a_declared_path_becomes_an_artifact(self, tmp_path) -> None:
+        from shipit_agent.runtime_core import _artifact_kind, _declared_paths
+
+        page = tmp_path / "revenue.html"
+        page.write_text("<h1>hi</h1>")
+        found = _declared_paths({"path": str(page)})
+        assert [p.name for p in found] == ["revenue.html"]
+        assert _artifact_kind(page) == "Page"
+
+    def test_a_path_that_does_not_exist_is_not_an_artifact(self, tmp_path) -> None:
+        from shipit_agent.runtime_core import _declared_paths
+
+        assert _declared_paths({"path": str(tmp_path / "nope.html")}) == []
+
+    def test_lists_are_read_too(self, tmp_path) -> None:
+        from shipit_agent.runtime_core import _declared_paths
+
+        for name in ("a.csv", "b.csv"):
+            (tmp_path / name).write_text("x\n")
+        found = _declared_paths({"paths": [str(tmp_path / "a.csv"),
+                                           str(tmp_path / "b.csv")]})
+        assert len(found) == 2
+
+    def test_free_text_is_never_scraped(self, tmp_path) -> None:
+        """Guessing paths out of output would invent artifacts constantly."""
+        from shipit_agent.runtime_core import _declared_paths
+
+        real = tmp_path / "real.csv"
+        real.write_text("x\n")
+        assert _declared_paths({"output": f"wrote {real}"}) == []
+
+    def test_kinds_are_named_for_people(self) -> None:
+        from shipit_agent.runtime_core import _artifact_kind
+
+        assert _artifact_kind("a.csv") == "Sheet"
+        assert _artifact_kind("a.md") == "Doc"
+        assert _artifact_kind("a.pptx") == "Deck"
+        assert _artifact_kind("a.wat") == "File"
+
+
+class TestUseAppDeclaresWhatItMade:
+    """An app that writes a file must say so, or there is no card to draw."""
+
+    def test_a_produced_file_is_declared(self, tools, tmp_path) -> None:
+        tools["create_app"].run(ctx(), name="pager", title="Guest page",
+                                blueprint="page")
+        out = tools["use_app"].run(
+            ctx(), app="pager",
+            input={"rows": [{"name": "Dana"}], "output": "guests.html"},
+        )
+        assert out.metadata["ok"]
+        assert out.metadata["path"].endswith("guests.html")
+        assert out.metadata["title"] == "Guest page"
+
+    def test_an_app_that_writes_nothing_declares_nothing(self, tools) -> None:
+        tools["create_app"].run(ctx(), name="quiet", title="Quiet",
+                                blueprint="report")
+        out = tools["use_app"].run(ctx(), app="quiet", input={"rows": [{"a": 1}]})
+        assert "path" not in out.metadata
+
+    def test_a_path_that_was_never_written_is_not_declared(self) -> None:
+        from shipit_agent.tools.apps.apps_tools import _produced_path
+
+        assert _produced_path({"path": "/nowhere/nothing.html"}) is None
+        assert _produced_path("not a dict") is None

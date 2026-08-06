@@ -19,6 +19,8 @@ EventType = Literal[
     "tool_denied",
     "action_queued",
     "connection_requested",
+    # A file a tool left behind — a page, a workbook, a document.
+    "artifact_created",
     # Model-generated progress narration (Agent(progress_summaries=True)).
     "agent_decision",
     "agent_observation",

@@ -494,3 +494,74 @@ class TestDenialOrdering:
         assert isinstance(rows[0], NoticeRow)
         assert "Lockdown" in rows[0].text
         assert "the customer list" in rows[0].text
+
+
+class TestDeclaredGroups:
+    """`tool_group_started/completed` overrides the prose-breaks-a-run rule.
+
+    With `progress_summaries=True` there is narration between every call. The
+    old rule would then render one row per call — technically correct, and
+    useless: the reference UI shows `2 tools · 13ms`, not two rows of one.
+    """
+
+    @staticmethod
+    def _events(group: str | None):
+        def event(kind, **payload):
+            return AgentEvent(type=kind, message="", payload=payload)
+
+        return [
+            event("agent_decision", summary="Reading both files."),
+            event("tool_called", call_id="1", tool="read_file",
+                  arguments={"path": "a.py"}, group_id=group),
+            event("tool_completed", call_id="1", tool="read_file", output="x",
+                  duration_ms=4, group_id=group),
+            event("text_delta", chunk="…narration between calls…"),
+            event("tool_called", call_id="2", tool="read_file",
+                  arguments={"path": "b.py"}, group_id=group),
+            event("tool_completed", call_id="2", tool="read_file", output="y",
+                  duration_ms=6, group_id=group),
+            event("run_completed", output="done", usage={}),
+        ]
+
+    def test_a_declared_group_survives_narration(self) -> None:
+        rows = build_transcript(self._events("tool_group_1"))
+        work = [r for r in rows if isinstance(r, WorkRow)]
+        assert len(work) == 1, "one declared group is one row"
+        assert len(work[0].group.calls) == 2
+
+    def test_without_a_group_prose_still_breaks_the_run(self) -> None:
+        rows = build_transcript(self._events(None))
+        assert len([r for r in rows if isinstance(r, WorkRow)]) == 2
+
+    def test_a_new_group_starts_a_new_row(self) -> None:
+        def event(kind, **payload):
+            return AgentEvent(type=kind, message="", payload=payload)
+
+        rows = build_transcript([
+            event("tool_called", call_id="1", tool="read_file",
+                  arguments={}, group_id="g1"),
+            event("tool_completed", call_id="1", tool="read_file", output="x",
+                  group_id="g1"),
+            event("tool_called", call_id="2", tool="write_file",
+                  arguments={}, group_id="g2"),
+            event("tool_completed", call_id="2", tool="write_file", output="y",
+                  group_id="g2"),
+            event("run_completed", output="done", usage={}),
+        ])
+        assert len([r for r in rows if isinstance(r, WorkRow)]) == 2
+
+    def test_group_completed_closes_the_row(self) -> None:
+        def event(kind, **payload):
+            return AgentEvent(type=kind, message="", payload=payload)
+
+        rows = build_transcript([
+            event("tool_called", call_id="1", tool="read_file",
+                  arguments={}, group_id="g1"),
+            event("tool_completed", call_id="1", tool="read_file", output="x",
+                  group_id="g1"),
+            event("tool_group_completed", group_id="g1"),
+            event("text_delta", chunk="An answer."),
+            event("run_completed", output="An answer.", usage={}),
+        ])
+        kinds = [type(r).__name__ for r in rows]
+        assert kinds == ["WorkRow", "ProseRow"]

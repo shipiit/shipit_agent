@@ -373,6 +373,17 @@ class AppStore:
         self._write_manifest(path, manifest)
         return App(path=path, manifest=manifest)
 
+    def run(self, name: str, payload: dict[str, Any] | None = None, **kwargs: Any):
+        """Run one of this store's apps, where this store's apps run.
+
+        :func:`run_app` on its own defaults to the app's install directory,
+        which is right for an app that only touches its own files and wrong
+        for one handed ``path="bookings.csv"``. Going through the store keeps
+        the working directory consistent with what the agent's own tools see.
+        """
+        kwargs.setdefault("cwd", self.workdir)
+        return run_app(self.get(name), payload, **kwargs)
+
     def bind(self, name: str, *, source: str, as_name: str | None = None) -> App:
         """Wire one of the agent's bindings into the app's own env."""
         app = self.get(name)

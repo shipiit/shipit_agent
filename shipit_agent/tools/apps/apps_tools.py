@@ -308,17 +308,48 @@ class UseAppTool(_AppTool):
         if result.stdout:
             parts.append(f"stdout:\n{result.stdout}")
 
+        metadata: dict[str, Any] = {
+            "app": app.name,
+            "ok": result.ok,
+            "env_calls": result.env_calls,
+            "exit_code": result.exit_code,
+            "timed_out": result.timed_out,
+            "value": result.value,
+        }
+        # An app that wrote a file has made a *thing*. Declaring its path is
+        # what turns it into a card in the transcript instead of a string
+        # buried in the return value.
+        produced = _produced_path(result.value)
+        if produced:
+            metadata["path"] = produced
+            metadata["title"] = app.manifest.title or app.name
+
         return ToolOutput(
             text=clip_text("\n\n".join(parts), max_chars=_MAX_OUTPUT),
-            metadata={
-                "app": app.name,
-                "ok": result.ok,
-                "env_calls": result.env_calls,
-                "exit_code": result.exit_code,
-                "timed_out": result.timed_out,
-                "value": result.value,
-            },
+            metadata=metadata,
         )
+
+
+def _produced_path(value: Any) -> str | None:
+    """A file an app says it wrote, if it exists.
+
+    Apps return whatever they like; by convention a produced file comes back
+    under ``path``, ``file`` or ``output``. Only a path that is really on disk
+    is reported — a plan is not an artifact.
+    """
+    from pathlib import Path
+
+    if not isinstance(value, dict):
+        return None
+    for key in ("path", "file", "output", "output_path"):
+        candidate = value.get(key)
+        if isinstance(candidate, str) and candidate:
+            try:
+                if Path(candidate).is_file():
+                    return str(Path(candidate).resolve())
+            except OSError:
+                continue
+    return None
 
 
 def app_tools(

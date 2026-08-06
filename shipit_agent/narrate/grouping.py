@@ -43,6 +43,7 @@ __all__ = [
     "ProseRow",
     "WorkRow",
     "ApprovalRow",
+    "ArtifactRow",
     "ConnectionRow",
     "DecisionRow",
     "SubAgentRow",
@@ -283,6 +284,22 @@ class DecisionRow:
 
 
 @dataclass(slots=True)
+class ArtifactRow:
+    """A file the run produced, as a card rather than a path in a log."""
+
+    path: str
+    title: str
+    kind: str = "File"
+    tool: str = ""
+
+    @property
+    def name(self) -> str:
+        from pathlib import Path
+
+        return Path(self.path).name
+
+
+@dataclass(slots=True)
 class ConnectionRow:
     """The agent asking you to connect something.
 
@@ -342,6 +359,7 @@ TranscriptRow = (
     ProseRow
     | WorkRow
     | ApprovalRow
+    | ArtifactRow
     | ConnectionRow
     | DecisionRow
     | SubAgentRow
@@ -372,6 +390,12 @@ class WorkRunAccumulator:
         self._by_id: dict[str, CallRecord] = {}
         self._prose: list[str] = []
         self._rows: list[TranscriptRow] = []
+        # The runtime's own grouping, when it emits one. With progress
+        # narration on, prose lands between every call — and the old rule
+        # ("prose breaks a run") would then put every single call in a row of
+        # its own. A declared group is authoritative: it says which calls
+        # belong together regardless of what was said between them.
+        self._group_id: str | None = None
         self.usage: dict[str, int] = {}
         # The tool argument currently being written, keyed by call id, so a
         # live view can show a file appearing rather than nothing until the
@@ -395,14 +419,21 @@ class WorkRunAccumulator:
         if kind == "text_delta":
             chunk = str(payload.get("chunk", ""))
             if chunk:
-                # Prose breaks a work run — that is the whole grouping rule.
-                self._flush_work()
+                # Prose breaks a work run — unless the runtime declared the
+                # group, in which case the group decides where it ends.
+                if self._group_id is None:
+                    self._flush_work()
                 self._prose.append(chunk)
             return
 
         if kind == "tool_called":
             # The argument finished streaming; the settled row takes over.
             self.writing.pop(str(payload.get("call_id") or ""), None)
+            group = payload.get("group_id")
+            if group is not None and group != self._group_id:
+                # A new declared group closes the previous one.
+                self._flush_work()
+                self._group_id = str(group)
             self._flush_prose()
             call = CallRecord(
                 call_id=str(payload.get("call_id") or f"call_{len(self._calls)}"),
@@ -486,6 +517,22 @@ class WorkRunAccumulator:
             )
             return
 
+        if kind == "artifact_created":
+            # An artifact belongs after the work that made it and after the
+            # sentence introducing it — both settle before the card is drawn,
+            # or the prose ends up below the thing it was announcing.
+            self._flush_work()
+            self._flush_prose()
+            self._rows.append(
+                ArtifactRow(
+                    path=str(payload.get("path") or ""),
+                    title=str(payload.get("title") or ""),
+                    kind=str(payload.get("kind") or "File"),
+                    tool=str(payload.get("tool") or ""),
+                )
+            )
+            return
+
         if kind == "connection_requested":
             # Like an approval, this interrupts the work run: it is a question
             # for the user, not another step.
@@ -500,6 +547,13 @@ class WorkRunAccumulator:
                     tool=str(payload.get("tool") or ""),
                 )
             )
+            return
+
+        if kind == "tool_group_completed":
+            # The runtime says this batch is done; anything after it belongs
+            # to the next row.
+            self._flush_work()
+            self._group_id = None
             return
 
         if kind == "usage_tick":

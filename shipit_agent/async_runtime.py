@@ -404,6 +404,7 @@ class AsyncAgentRuntime(RuntimeCore):
             iteration=iteration,
         )
         self.note_connection_request(state, tool_call.name, tool_result.metadata)
+        self.note_artifacts(state, tool_call.name, tool_result)
         if tool_result.metadata.get("interactive"):
             self.emit(
                 state,

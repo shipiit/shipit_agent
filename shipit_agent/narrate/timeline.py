@@ -192,6 +192,17 @@ class TimelineBuilder:
                 }
             ]
 
+        if kind == "artifact_created":
+            return out + [
+                {
+                    "type": "artifact_created",
+                    "path": str(payload.get("path") or ""),
+                    "title": str(payload.get("title") or ""),
+                    "kind": str(payload.get("kind") or "File"),
+                    "tool": str(payload.get("tool") or ""),
+                }
+            ]
+
         if kind == "connection_requested":
             out += self._close_group()
             out += self._close_prose(next_action="ask")
@@ -392,6 +403,8 @@ def render_markdown(
                 ]
         elif kind == "tool_group_completed":
             lines += ["---", ""]
+        elif kind == "artifact_created":
+            lines += [f"📎 **{step['title']}** — {step['kind']} · `{step['path']}`", ""]
         elif kind == "agent_observation":
             section += 1
             lines += [

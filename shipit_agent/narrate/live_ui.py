@@ -31,12 +31,14 @@ from __future__ import annotations
 
 import html
 import time
+from pathlib import Path
 from typing import Any, Iterable
 
 from shipit_agent.models import AgentEvent
 
 from .grouping import (
     ApprovalRow,
+    ArtifactRow,
     ConnectionRow,
     DecisionRow,
     CallRecord,
@@ -130,6 +132,10 @@ _STYLE = """
   font: 12.5px/1.6 var(--sa-mono); color: var(--sa-faint);
   overflow-wrap: anywhere;
 }
+.sa-live .sa-count {
+  font: 12px/1.6 var(--sa-mono); color: var(--sa-faint);
+  white-space: nowrap; padding-top: 1px;
+}
 .sa-live .sa-run { color: var(--sa-accent); }
 .sa-live .sa-err b { color: var(--sa-danger); }
 .sa-live details.sa-call { margin: 6px 0 0; }
@@ -167,6 +173,22 @@ _STYLE = """
   display: block; font: 11px/1.6 var(--sa-mono);
   text-transform: uppercase; letter-spacing: .06em; color: var(--sa-accent);
 }
+.sa-live a.sa-artifact {
+  display: flex; align-items: center; gap: 13px;
+  border: 1px solid var(--sa-line); border-radius: 12px;
+  padding: 12px 15px; margin: 14px 0; text-decoration: none;
+  color: inherit; transition: border-color .15s;
+}
+.sa-live a.sa-artifact:hover { border-color: var(--sa-accent); }
+.sa-live .sa-file {
+  width: 34px; height: 34px; border-radius: 9px; background: var(--sa-chip);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; color: var(--sa-muted); flex: 0 0 34px;
+}
+.sa-live .sa-art-body { flex: 1; min-width: 0; }
+.sa-live .sa-art-body b { display: block; font-weight: 600; }
+.sa-live .sa-art-meta { font-size: 12.5px; color: var(--sa-faint); }
+.sa-live .sa-open { color: var(--sa-faint); }
 .sa-live .sa-connect {
   border: 1px solid var(--sa-line); border-radius: 12px;
   padding: 13px 15px; margin: 16px 0; background: var(--sa-accent-soft);
@@ -387,6 +409,9 @@ class LiveView:
         if isinstance(row, ConnectionRow):
             return self._connection_html(row)
 
+        if isinstance(row, ArtifactRow):
+            return self._artifact_html(row)
+
         if isinstance(row, NoticeRow):
             return f'<div class="sa-notice">{_esc(row.text)}</div>'
         return ""
@@ -408,13 +433,19 @@ class LiveView:
             if targets
             else ""
         )
+        # The right-hand meta, as the reference UI shows it: how many calls
+        # this row stands for, and how long they took together.
+        elapsed = sum(call.duration_ms for call in calls)
+        meta = f"{len(calls)} tool{'s' if len(calls) != 1 else ''}"
+        if elapsed:
+            meta += f" · {elapsed:.1f}ms" if elapsed < 100 else f" · {elapsed:.0f}ms"
         return (
             f'<div class="{klass}">'
             f'<span class="sa-glyph">{_esc(icon)}</span>'
             f'<span class="sa-label"><b>{_esc(label)}</b>'
             f'{" ›" if not running else " …"}{detail}'
             f'{"".join(self._call_html(call) for call in calls)}'
-            f"</span></div>"
+            f'</span><span class="sa-count">{_esc(meta)}</span></div>'
         )
 
     def _call_html(self, call: CallRecord) -> str:
@@ -457,6 +488,27 @@ class LiveView:
             f"{_esc(row.title)}</div>"
             f'<div class="sa-meta">{_esc(meta)}</div>'
             f"{choices}</div>"
+        )
+
+    def _artifact_html(self, row: ArtifactRow) -> str:
+        """`Q2 Kickoff Brief · Doc · Click to open` — the thing you keep.
+
+        The link is a plain ``file://`` URL: no server, no viewer, nothing to
+        install. In a notebook it opens the file; in a page you would swap it
+        for whatever your app routes to.
+        """
+        glyph = {
+            "Page": "◍", "Doc": "▤", "Sheet": "⊞", "Data": "⛁",
+            "Image": "◫", "Deck": "▧", "Code": "❯", "PDF": "▤",
+            "Archive": "▩",
+        }.get(row.kind, "▤")
+        href = Path(row.path).resolve().as_uri() if row.path else ""
+        return (
+            f'<a class="sa-artifact" href="{_esc(href)}" target="_blank">'
+            f'<span class="sa-file">{glyph}</span>'
+            f'<span class="sa-art-body"><b>{_esc(row.title or row.name)}</b>'
+            f'<span class="sa-art-meta">{_esc(row.kind)} · Click to open</span>'
+            f"</span><span class=\"sa-open\">↗</span></a>"
         )
 
     def _connection_html(self, row: ConnectionRow) -> str:

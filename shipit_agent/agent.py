@@ -867,11 +867,26 @@ class Agent:
         return output
 
     def stream(self, user_prompt: str):
-        """Stream agent events (tool calls, completions, etc.) as they happen.
+        """Stream agent events as they happen.
 
-        Same skill pipeline as ``run()`` but yields ``AgentEvent`` objects
-        instead of blocking until completion. Useful for UIs that want
-        real-time progress feedback.
+        Same pipeline as :meth:`run`, but yields :class:`AgentEvent` objects
+        instead of blocking. This is the low-level feed — every event, in
+        order::
+
+            for event in agent.stream("Fix the failing test"):
+                if event.type == "text_delta":
+                    print(event.payload["chunk"], end="", flush=True)
+
+        Most callers want one of the three wrappers built on it instead:
+
+        - :meth:`run_live` — the finished transcript, printed for you
+        - :meth:`narrate` — the same rows as objects, for your own UI
+        - ``shipit_agent.streaming.sse`` — framed for a browser, with each
+          event labelled canonical or provisional
+
+        Every event carries ``type``, ``message``, ``payload`` and
+        ``timestamp``; see :data:`shipit_agent.models.EventType` for the
+        vocabulary.
         """
         user_prompt = self._expand_slash_command(user_prompt)
         if self.rag is not None:
@@ -933,6 +948,55 @@ class Agent:
     # ──────────────────────────────────────────────────────────────────
     # Utilities
     # ──────────────────────────────────────────────────────────────────
+
+    def narrate(self, user_prompt: str):
+        """Stream *transcript rows* rather than raw events.
+
+        The same collapsing the terminal renderer does — verbs, work runs,
+        approvals, sub-agent activity — handed to you as objects so you can
+        render them however you like::
+
+            for row in agent.narrate("Which accounts are at risk?"):
+                match row:
+                    case ProseRow(text):        print(text)
+                    case WorkRow(group):        print("·", group.label)
+                    case ApprovalRow() as a:    prompt_user(a)
+
+        A row is yielded when it settles — prose closes a work run, and a
+        work run closes prose — so you never have to decide when a group is
+        finished. Raw events are still there via :meth:`stream` if you need
+        them.
+        """
+        from shipit_agent.narrate.grouping import WorkRunAccumulator
+
+        accumulator = WorkRunAccumulator()
+        for event in self.stream(user_prompt):
+            for row in accumulator.feed(event):
+                yield row
+        for row in accumulator.finish():
+            yield row
+
+    def stream_sse(self, user_prompt: str):
+        """Stream the run as Server-Sent Events, ready for the wire::
+
+            @app.get("/run")
+            def run():
+                return StreamingResponse(
+                    agent.stream_sse(prompt), media_type="text/event-stream"
+                )
+
+        Opens with a ``stream_hello`` carrying this process's generation, so a
+        reconnecting client knows whether to keep what it already drew, and
+        closes with ``[DONE]``. See :mod:`shipit_agent.streaming`.
+        """
+        from shipit_agent.streaming import hello_frame, sse
+
+        yield sse(hello_frame())
+        sequence = 0
+        for event in self.stream(user_prompt):
+            sequence += 1
+            yield sse(event, sequence=sequence)
+        yield "event: done\ndata: [DONE]\n\n"
 
     def doctor(self, *, env: dict[str, str] | None = None) -> DoctorReport:
         """Run diagnostics and return a health report for this agent."""

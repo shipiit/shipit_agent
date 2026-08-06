@@ -111,6 +111,7 @@ from .connections import (
     ConnectionState,
 )
 from .lockdown import LockdownPolicy, LockdownState
+from .streaming import STREAM_GENERATION, Durability, StreamFrame, classify, sse
 from .narrate import NarratorRenderer, build_transcript, render_transcript, summarize
 from .narrate.json_stream import StreamingToolInputParser
 # `ActionKind` is already public from .computer_use — alias rather than shadow it.
@@ -367,7 +368,12 @@ __all__ = [
     "Connection",
     "ConnectionRegistry",
     "ConnectionState",
+    "Durability",
     "LockdownPolicy",
+    "STREAM_GENERATION",
+    "StreamFrame",
+    "classify",
+    "sse",
     "LockdownState",
     "Compactor",
     "StreamingToolInputParser",

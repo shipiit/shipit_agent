@@ -140,7 +140,17 @@ class AgentServer:
 
             def do_GET(self) -> None:
                 if self.path == "/health":
-                    self._json(200, {"status": "ok", "model": server.model_name})
+                    from shipit_agent.streaming import STREAM_GENERATION
+
+                    self._json(200, {
+                        "status": "ok",
+                        "model": server.model_name,
+                        # A changed generation means this process restarted and
+                        # any in-flight provisional state a client holds is
+                        # stale. Exposed here so a client can check without
+                        # opening a stream.
+                        "stream_generation": STREAM_GENERATION,
+                    })
                     return
                 if self.path == "/v1/models":
                     if not server._authorized(self.headers):
@@ -162,7 +172,76 @@ class AgentServer:
                     return
                 self._json(404, {"error": {"message": f"no route {self.path}"}})
 
+            def _run_sse(self) -> None:
+                """The full transcript as Server-Sent Events.
+
+                The OpenAI-shaped endpoint gives a chat client prose. This
+                gives a *transcript* client everything the terminal renderer
+                sees — work rows, queued approvals, running cost — each frame
+                labelled canonical or provisional so a reconnect knows what to
+                keep and what to throw away.
+                """
+                from shipit_agent.streaming import hello_frame, sse
+
+                if not server._authorized(self.headers):
+                    self._json(401, {"error": {"message": "invalid api key"}})
+                    return
+                try:
+                    length = int(self.headers.get("Content-Length") or 0)
+                    body = json.loads(self.rfile.read(length) or b"{}")
+                except (ValueError, OSError):
+                    self._json(400, {"error": {"message": "invalid JSON body"}})
+                    return
+
+                prompt = str(body.get("prompt") or body.get("input") or "")
+                if not prompt:
+                    self._json(400, {"error": {"message": "`prompt` is required"}})
+                    return
+
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                # One request is one run is one stream. Closing at the end
+                # gives the client a real EOF instead of a socket that never
+                # finishes — and there is nothing to reuse the connection for.
+                self.send_header("Connection", "close")
+                self.close_connection = True
+                # Without this an intermediate proxy will buffer the whole
+                # response and deliver it at the end, which is the one thing
+                # a stream must not do.
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+
+                def write(chunk: str) -> None:
+                    self.wfile.write(chunk.encode("utf-8"))
+                    self.wfile.flush()
+
+                try:
+                    # Hello first, before anything else, so a reconnecting
+                    # client can compare generations before deciding what to
+                    # do with the state it already holds.
+                    write(sse(hello_frame()))
+                    sequence = 0
+                    for event in server.agent.stream(prompt):
+                        sequence += 1
+                        write(sse(event, sequence=sequence))
+                    write("event: done\ndata: [DONE]\n\n")
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # the client hung up; nothing to clean up
+                except Exception as exc:  # noqa: BLE001
+                    try:
+                        write(
+                            "event: error\ndata: "
+                            + json.dumps({"error": str(exc)})
+                            + "\n\n"
+                        )
+                    except OSError:
+                        pass
+
             def do_POST(self) -> None:
+                if self.path in ("/v1/stream", "/stream"):
+                    self._run_sse()
+                    return
                 if self.path not in ("/v1/chat/completions", "/chat/completions"):
                     self._json(404, {"error": {"message": f"no route {self.path}"}})
                     return

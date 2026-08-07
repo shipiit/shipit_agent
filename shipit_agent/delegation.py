@@ -143,17 +143,24 @@ class StructuralAssessor:
 _ASSESS_PROMPT = """\
 You are sizing a task for an agent that can delegate work to sub-agents.
 
-A sub-agent is a separate agent with its own context. Delegating pays off
-when a task splits into pieces that can be worked on independently and whose
-intermediate material (long files, wide searches, many records) does not need
-to be in one place. It costs more than it saves for a single lookup, a single
-edit, or work where every step depends on the last.
+Count only the pieces the task ITSELF names — files it lists, targets it
+enumerates, a quantity it states. Do not invent a decomposition: almost any
+task *could* be split some way, and imagining one is how a single question
+turns into five agents doing worse than one.
+
+Say false for anything a single tool call answers. "Look for the latest AI
+news" is one search, not one per topic. "Read the file and summarise it" is
+one read. Delegating those costs an extra model call each and loses
+everything the child saw.
+
+Say true when the task names several independent pieces AND their material
+(long files, wide searches, many records) does not need to be in one place.
 
 TASK:
 {task}
 
 Answer with JSON and nothing else:
-{{"decompose": true|false, "items": <how many independent pieces, 0 if none>,
+{{"decompose": true|false, "items": <pieces the task names, 0 if none>,
  "reason": "<one clause, under 12 words>"}}\
 """
 
@@ -189,8 +196,21 @@ class ModelAssessor:
         if structural.items > items:
             items = structural.items
             reasons += structural.reasons
+        # The floor works both ways. It has always raised a model that
+        # undercounted a task naming eight files; it now also declines a
+        # model that invents pieces the task never mentioned. Gemma 4 on
+        # "Can you look for the latest AI news?" answered `decompose: true,
+        # items: 3, "news can be split by topic or source"` — three agents
+        # for one search, and none of those topics appear in the request.
+        # A yes has to be corroborated by something actually in the text.
+        delegate = bool(decompose) or items >= max(2, self.min_items)
+        if delegate and not structural and not structural.items:
+            delegate = False
+            # The count stays — it is what the model saw, and useful when
+            # someone asks why. Only the verdict is overruled.
+            reasons = ["the task names no separable pieces"] + reasons
         advice = DelegationAdvice(
-            delegate=bool(decompose) or items >= max(2, self.min_items),
+            delegate=delegate,
             items=items,
             reasons=reasons or structural.reasons,
             source="model",

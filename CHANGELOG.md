@@ -11,6 +11,23 @@ Nothing yet.
 
 ---
 
+## [1.3.2] — 2026-08-07
+
+### Fixed
+
+- **A model may no longer invent a decomposition.** Asked "Can you look for
+  the latest AI news?", Gemma 4 answered `decompose: true, items: 3, "news
+  can be split by topic or source"` — three sub-agents for one web search,
+  and not one of those topics appears in the request. The assessor was
+  asking "could this be split?", and almost anything could. It now counts
+  only the pieces the task itself names, is told plainly that a single
+  search or a single read is one call, and a model's yes must be
+  corroborated by something actually in the text. The structural floor
+  already raised a model that undercounted; it now also declines one that
+  overcounted. The count it saw is still reported — overruled, not erased.
+
+---
+
 ## [1.3.1] — 2026-08-07
 
 ### Fixed

@@ -269,7 +269,7 @@ class TestModelAssessor:
 
     def test_a_clean_verdict_is_used(self) -> None:
         llm = self.Replying('{"decompose": true, "items": 9, "reason": "nine repos"}')
-        advice = ModelAssessor().assess("Check the repos", llm=llm)
+        advice = ModelAssessor().assess("Check a.py, b.py and c.py", llm=llm)
         assert advice and advice.items == 9
         assert advice.reasons == ["nine repos"]
         assert advice.source == "model"
@@ -278,7 +278,27 @@ class TestModelAssessor:
         llm = self.Replying(
             'Sure!\n```json\n{"decompose": true, "items": 4, "reason": "four"}\n```'
         )
-        assert ModelAssessor().assess("x", llm=llm).items == 4
+        assert ModelAssessor().assess("Read a.py, b.py", llm=llm).items == 4
+
+    def test_an_invented_decomposition_is_overruled(self) -> None:
+        """Gemma 4, asked "Can you look for the latest AI news?", answered
+        `decompose: true, items: 3, "news can be split by topic or source"`
+        — three agents for one search, and not one of those topics appears
+        in the request. Almost any task *could* be split; a yes has to be
+        corroborated by something actually in the text."""
+        llm = self.Replying(
+            '{"decompose": true, "items": 3, "reason": "split by topic"}')
+        advice = ModelAssessor().assess(
+            "Can you look for the latest AI news?", llm=llm)
+        assert not advice
+        assert "names no separable pieces" in advice.reasons[0]
+
+    def test_the_count_it_saw_is_still_reported(self) -> None:
+        """Overruled, not erased — the number is what someone asking "why
+        did it not delegate" needs to see."""
+        llm = self.Replying(
+            '{"decompose": true, "items": 3, "reason": "split by topic"}')
+        assert ModelAssessor().assess("Find the news", llm=llm).items == 3
 
     def test_a_refusal_to_decompose_is_honoured(self) -> None:
         llm = self.Replying('{"decompose": false, "items": 0, "reason": "one edit"}')

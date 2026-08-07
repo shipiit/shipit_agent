@@ -368,3 +368,44 @@ class TestTheToolboxMatchesTheAdvice:
                 getattr(t, "name", "") for t in agent._effective_tools(task)}
             directed = agent._delegated_prompt(task) != task
             assert attached == directed, task
+
+
+class TestBreadth:
+    """"Go through every document attached" names no number and no
+    filename, and is exactly the work worth splitting. Counting lists,
+    targets and quantities missed it, so the corroboration floor added in
+    1.3.2 would have declined it too.
+
+    The signal is grammar, not vocabulary: a distributive determiner over a
+    noun. That holds for wording nobody anticipated, which a keyword list
+    does not.
+    """
+
+    def assess(self, prompt: str):
+        from shipit_agent.delegation import StructuralAssessor
+
+        return StructuralAssessor().assess(prompt)
+
+    def test_every_over_a_set_counts(self) -> None:
+        assert self.assess("Go through every document attached.")
+
+    def test_each_of_counts(self) -> None:
+        assert self.assess("Audit each of our repos for exposed secrets.")
+
+    def test_all_the_counts(self) -> None:
+        assert self.assess("Review all the open PRs and flag risky ones.")
+
+    def test_the_count_is_not_invented(self) -> None:
+        """Breadth says "more than one", not how many. Guessing a number
+        here would feed a fake quantity to the min_items filter."""
+        assert self.assess("Check every service.").items == 0
+
+    def test_an_adverbial_all_is_not_breadth(self) -> None:
+        for phrase in ("Is it all good?", "Tell me all about it.",
+                       "Is that all right?"):
+            assert not self.assess(phrase), phrase
+
+    def test_a_single_thing_is_still_a_single_thing(self) -> None:
+        for phrase in ("Fix the typo.", "Summarise this file.",
+                       "Can you look for the latest AI news?"):
+            assert not self.assess(phrase), phrase

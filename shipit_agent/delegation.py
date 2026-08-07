@@ -103,6 +103,24 @@ _QUANTITY = re.compile(
 )
 
 
+# Breadth: a distributive determiner over a noun — "every document",
+# "each of the repos", "all the open PRs". Grammar rather than vocabulary,
+# so it holds for wording nobody anticipated. The count is unknown, which is
+# the point: "go through every document attached" names no number and no
+# filename, and is exactly the work that should be split.
+_BREADTH = re.compile(
+    r"\b(?:every|each|all)\s+(?:of\s+)?(?:the\s+|your\s+|our\s+|my\s+)?"
+    r"(?:[a-z-]+\s+){0,2}[a-z]{3,}\b",
+    re.IGNORECASE,
+)
+# …but not when the "all" is an adverb or an idiom rather than a scope.
+_NOT_BREADTH = re.compile(
+    r"\ball\s+(?:right|good|set|done|clear|about|along|over|"
+    r"the\s+same|of\s+it|of\s+this|of\s+that)\b",
+    re.IGNORECASE,
+)
+
+
 @dataclass(slots=True)
 class StructuralAssessor:
     """Count the structure of a task: lists, targets, stated quantities.
@@ -133,8 +151,15 @@ class StructuralAssessor:
         if stated > 1:
             reasons.append(f"the task states a quantity of {stated}")
 
+        # Breadth carries no number — "every document attached" could be two
+        # or twenty. It still separates, so it counts as a reason to
+        # delegate without inflating the count with a guess.
+        broad = bool(_BREADTH.search(prompt)) and not _NOT_BREADTH.search(prompt)
+        if broad:
+            reasons.append("the task applies to every item in a set")
+
         items = max(listed, targets, stated)
-        return DelegationAdvice(items > 1, items=items,
+        return DelegationAdvice(items > 1 or broad, items=items,
                                 reasons=reasons, source="structural")
 
 

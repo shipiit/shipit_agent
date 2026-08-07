@@ -11,6 +11,22 @@ Nothing yet.
 
 ---
 
+## [1.3.3] — 2026-08-07
+
+### Added
+
+- **Breadth as a structural signal.** "Go through every document attached"
+  names no number and no filename, so counting lists, targets and quantities
+  missed it — and 1.3.2's corroboration floor would then have declined it.
+  A distributive determiner over a noun ("every document", "each of our
+  repos", "all the open PRs") now counts. It is grammar rather than
+  vocabulary, so it holds for wording nobody anticipated, and it reports no
+  count: breadth says "more than one", not how many, and inventing a number
+  would feed a fake quantity to the `min_items` filter. An adverbial "all"
+  — "is it all good", "tell me all about it" — is not breadth.
+
+---
+
 ## [1.3.2] — 2026-08-07
 
 ### Fixed

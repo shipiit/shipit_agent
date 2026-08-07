@@ -11,6 +11,33 @@ Nothing yet.
 
 ---
 
+## [1.3.1] — 2026-08-07
+
+### Fixed
+
+- **`delegation=` no longer attaches `sub_agent` on every turn.** Asked
+  "look for the latest AI news", an agent with automatic delegation on
+  spawned three research sub-agents instead of running one web search. The
+  tool was attached unconditionally on the reasoning that a model deciding
+  mid-run to delegate must find it there; measured against a smaller model,
+  that reasoning fails — a tool on the table gets used, and given a choice
+  between a search and a research crew it takes the crew. The policy already
+  judges each task for the directive, and the toolbox now follows the same
+  judgement. An explicitly passed `SubAgentTool` is untouched.
+- **`sub_agent` refuses a task with no substance in it.** Observed:
+  `sub_agent(task=",")`, which the tool accepted, spending a model call to
+  return an error. A child sees nothing of the parent's conversation, so the
+  task is its entire brief. The refusal names the alternative, because one
+  that does not just gets retried.
+- **Background delegation says there is no "later".** The tool and the
+  directive now state that anything started with `background=true` must be
+  collected in the same turn — a run ends with its answer, and an
+  uncollected task is discarded. Without this, models announced background
+  work and promised to report back on results that were never coming.
+- A dashboard blueprint f-string that only parsed on Python 3.12+.
+
+---
+
 ## [1.3.0] — 2026-08-06
 
 An agent you have to ask is a tool. An agent that reacts is a colleague.

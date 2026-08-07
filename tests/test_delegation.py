@@ -111,18 +111,42 @@ class TestDirective:
         assert "sub_agent" in policy.apply(task)
 
 
+#: A task the policy agrees is separable — these tests are about attaching
+#: and pooling the tool, not about whether it should be attached.
+SEPARABLE = "Audit all 5 reports and summarise each one."
+
+
 class TestToolAttachment:
     def test_a_sub_agent_appears_when_the_agent_has_none(self) -> None:
         agent = Agent(llm=FakeLLM(), tools=[Reader()], auto_use_skills=False,
                       delegation=True)
-        names = {getattr(t, "name", "") for t in agent._effective_tools("Audit all.")}
+        names = {getattr(t, "name", "")
+                 for t in agent._effective_tools(SEPARABLE)}
         assert "sub_agent" in names
 
-    def test_it_is_present_even_for_a_narrow_task(self) -> None:
-        """The *directive* is conditional; the tool is not — a model that
-        decides mid-run to delegate must find the tool there."""
+    def test_it_is_absent_for_a_narrow_task(self) -> None:
+        """The toolbox matches the advice.
+
+        This used to be the other way round — the tool was attached on every
+        turn on the reasoning that a model deciding mid-run to delegate must
+        find it there. Measured against Gemma 4, that reasoning fails: asked
+        "look for the latest AI news", it spawned three research children
+        rather than running one web search. A tool on the table gets used,
+        and a weaker model reaches for the most impressive one. The policy
+        already judges each task for the directive; the tool follows it.
+        """
         agent = Agent(llm=FakeLLM(), tools=[Reader()], auto_use_skills=False,
                       delegation=True)
+        names = {getattr(t, "name", "") for t in agent._effective_tools("Read a.py")}
+        assert "sub_agent" not in names
+
+    def test_an_explicit_sub_agent_tool_is_never_withheld(self) -> None:
+        """Only what `delegation=` injects is conditional. A caller who
+        passed the tool made a decision, and this must not override it."""
+        from shipit_agent.tools.sub_agent import SubAgentTool
+
+        agent = Agent(llm=FakeLLM(), tools=[Reader(), SubAgentTool(llm=FakeLLM())],
+                      auto_use_skills=False)
         names = {getattr(t, "name", "") for t in agent._effective_tools("Read a.py")}
         assert "sub_agent" in names
 
@@ -134,8 +158,10 @@ class TestToolAttachment:
     def test_the_pool_is_built_once_per_agent(self) -> None:
         agent = Agent(llm=FakeLLM(), tools=[Reader()], auto_use_skills=False,
                       delegation=True)
-        first = {t.name: t for t in agent._effective_tools("Audit all.")}["sub_agent"]
-        second = {t.name: t for t in agent._effective_tools("Audit all.")}["sub_agent"]
+        first = {t.name: t
+                 for t in agent._effective_tools(SEPARABLE)}["sub_agent"]
+        second = {t.name: t
+                  for t in agent._effective_tools(SEPARABLE)}["sub_agent"]
         assert first is second, "a thread pool per run would leak one per run"
 
     def test_an_explicit_sub_agent_is_not_replaced(self) -> None:
@@ -144,7 +170,8 @@ class TestToolAttachment:
         mine = SubAgentTool(llm=FakeLLM(), max_iterations=2)
         agent = Agent(llm=FakeLLM(), tools=[Reader(), mine], auto_use_skills=False,
                       delegation=True)
-        tools = {getattr(t, "name", ""): t for t in agent._effective_tools("Audit all.")}
+        tools = {getattr(t, "name", ""): t
+                 for t in agent._effective_tools(SEPARABLE)}
         assert tools["sub_agent"] is mine
 
     def test_children_get_read_only_tools_by_default(self) -> None:
@@ -285,3 +312,39 @@ class TestModelAssessor:
 
     def test_it_is_the_default_assessor(self) -> None:
         assert isinstance(DelegationPolicy().assessor, ModelAssessor)
+
+
+class TestTheToolboxMatchesTheAdvice:
+    """Observed on Gemma 4: asked "Can you look for the latest AI news?",
+    the agent spawned three research sub-agents instead of running one web
+    search. `delegation=` was attaching `sub_agent` on every turn, and a
+    tool on the table gets used.
+    """
+
+    def test_a_one_step_question_gets_no_sub_agent(self) -> None:
+        agent = Agent(llm=FakeLLM(), tools=[Reader()], auto_use_skills=False,
+                      delegation=True)
+        names = {getattr(t, "name", "")
+                 for t in agent._effective_tools(
+                     "Can you look for the latest AI news?")}
+        assert "sub_agent" not in names
+
+    def test_a_separable_task_still_gets_one(self) -> None:
+        agent = Agent(llm=FakeLLM(), tools=[Reader()], auto_use_skills=False,
+                      delegation=True)
+        names = {getattr(t, "name", "")
+                 for t in agent._effective_tools(
+                     "Read all 4 reports and summarise each one.")}
+        assert "sub_agent" in names
+
+    def test_the_tool_and_the_directive_agree(self) -> None:
+        """A directive telling the model to delegate, with no tool to
+        delegate with, is the failure this pairing prevents."""
+        agent = Agent(llm=FakeLLM(), tools=[Reader()], auto_use_skills=False,
+                      delegation=True)
+        for task in ("Read a.py",
+                     "Read all 4 reports and summarise each one."):
+            attached = "sub_agent" in {
+                getattr(t, "name", "") for t in agent._effective_tools(task)}
+            directed = agent._delegated_prompt(task) != task
+            assert attached == directed, task

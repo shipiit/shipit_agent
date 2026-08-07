@@ -577,6 +577,23 @@ class Agent:
 
         return coerce_delegation(self.delegation)
 
+    def _delegation_warranted(self, user_prompt: str) -> bool:
+        """Does this task look like sub-agent work?
+
+        Explicit `tools=[SubAgentTool()]` is unaffected — that is a caller
+        deciding, and this only governs what `delegation=` injects.
+        """
+        policy = self._delegation_policy()
+        if policy is None:
+            return False
+        if not isinstance(user_prompt, str) or not user_prompt.strip():
+            return False
+        try:
+            return bool(policy.assess(user_prompt, llm=self.llm))
+        except Exception:                                  # noqa: BLE001
+            # An assessor that fails must not silently remove a capability.
+            return True
+
     def _delegated_prompt(self, user_prompt: str) -> str:
         """The task with a delegation directive, when it warrants one.
 
@@ -621,10 +638,19 @@ class Agent:
             effective.setdefault("execute_code", ExecuteCodeTool())
             effective.setdefault("describe_binding", DescribeBindingTool())
 
-        # An agent told to delegate needs something to delegate *to*. Built
-        # once and cached: a SubAgentTool owns a thread pool, so one per run
-        # would leak a pool per run.
+        # An agent told to delegate needs something to delegate *to* — but
+        # only for a task worth delegating. `delegation=` used to inject
+        # `sub_agent` on every turn, so "look for the latest AI news" was
+        # answered by spawning three research children instead of running
+        # one web search: a tool on the table gets used, and a weaker model
+        # reaches for the most impressive one.
+        #
+        # The policy already judges each task, because the directive depends
+        # on it. Asking it here costs nothing extra (the assessment is
+        # cached per task) and makes the toolbox match the advice.
         policy = self._delegation_policy()
+        if policy is not None and not self._delegation_warranted(user_prompt):
+            policy = None
         if policy is not None and "sub_agent" not in effective:
             if self._auto_sub_agent is None:
                 self._auto_sub_agent = policy.build_tool(

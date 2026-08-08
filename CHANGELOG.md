@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`shipit doctor` prints a report instead of a dataclass.** It printed
+  `DoctorReport(checks=[DoctorCheck(name=…` — one 2,000-character line you
+  had to read like a stack trace, for a command whose entire purpose is to
+  be scanned. Failures and warnings now come first and carry their details;
+  passing checks are one line. `--json` for the full structure, and a
+  failing check is a non-zero exit in both — so `shipit doctor && deploy`
+  stops at a broken agent, and a script piping `--json` to `jq` cannot see
+  success where the terminal showed a failure.
+- **A wrong API key says so.** Any uncaught error from a command printed a
+  traceback, so the usual first-run failure — bad or missing credentials —
+  arrived as thirty frames of the provider SDK with a 401 at the bottom.
+  The message is now summarised, credential failures name
+  `shipit doctor --provider <name>` as the way to find the variable, and
+  `SHIPIT_DEBUG=1` still prints the traceback in full. Ctrl-C exits 130
+  rather than reporting itself as a crash.
 
 ---
 

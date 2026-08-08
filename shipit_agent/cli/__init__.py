@@ -85,7 +85,52 @@ def main(argv: list[str] | None = None) -> int:
     if fn is None:
         parser.print_help()
         return 0
-    return fn(args)
+    try:
+        return fn(args)
+    except KeyboardInterrupt:
+        return 130
+    except Exception as exc:  # noqa: BLE001 — the CLI boundary
+        return _report(exc)
+
+
+#: Substrings that mean "your credentials are wrong", across providers.
+_CREDENTIAL_HINTS = (
+    "api key", "api_key", "unauthorized", "authentication",
+    "credential", "401", "403", "expired token",
+)
+
+
+def _report(exc: Exception) -> int:
+    """Turn an uncaught error into something a person can act on.
+
+    A wrong API key used to print thirty frames of `openai/_base_client.py`
+    ending in a 401 — the answer is in there, under everything that is not
+    the answer. Credentials are the overwhelmingly common failure on a
+    first run, so they get told what to check.
+
+    The traceback is not thrown away, only moved: `SHIPIT_DEBUG=1` prints
+    it in full, because the summary is a worse tool once you are the one
+    debugging the adapter.
+    """
+    import os
+
+    from . import ui
+
+    if os.environ.get("SHIPIT_DEBUG"):
+        raise exc
+
+    message = str(exc).strip() or exc.__class__.__name__
+    ui.out()
+    ui.out(f"  {ui.style('error', 'err')}  {message}")
+
+    lowered = message.lower()
+    if any(hint in lowered for hint in _CREDENTIAL_HINTS):
+        ui.out(f"  {ui.style('hint', 'dim')}   check the provider's API key "
+               f"in your environment — `shipit doctor --provider <name>` "
+               f"names the variable it wants.")
+    ui.out(f"  {ui.style('debug', 'dim')}  SHIPIT_DEBUG=1 for the traceback")
+    ui.out()
+    return 1
 
 
 if __name__ == "__main__":  # pragma: no cover

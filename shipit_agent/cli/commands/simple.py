@@ -6,6 +6,7 @@ import argparse
 import json
 from typing import Any
 
+from shipit_agent.cli import ui
 from shipit_agent.cli.llm import build_agent
 
 
@@ -35,10 +36,59 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+#: Marker and palette tone per check status.
+_STATUS = {
+    "pass": ("✓", "ok"),
+    "warn": ("!", "warn"),
+    "fail": ("✗", "err"),
+}
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
+    """Render the health report.
+
+    This printed the dataclass — one 2,000-character line of
+    `DoctorReport(checks=[DoctorCheck(name=…` that you had to read like a
+    stack trace. The point of a health check is to be scanned, so failures
+    and warnings come first and carry their details; passing checks are one
+    line each, because their details are only interesting when something
+    is wrong.
+    """
     agent = build_agent(args)
-    print(agent.doctor())
-    return 0
+    report = agent.doctor()
+
+    # Both branches report the same verdict: a script that pipes --json
+    # to jq must not see success where the terminal shows a failure.
+    code = 0 if report.passed else 1
+
+    if getattr(args, "json", False):
+        print(json.dumps(report.to_dict(), indent=2, default=str))
+        return code
+
+    ui.out()
+    ui.out(ui.style("Agent health", "title"))
+    ui.rule()
+
+    ordered = report.failures + report.warnings + [
+        check for check in report.checks if check.status == "pass"
+    ]
+    for check in ordered:
+        mark, tone = _STATUS.get(check.status, ("·", "dim"))
+        ui.out(f"  {ui.style(mark, tone)} {ui.style(check.name, 'bold'):<26} "
+               f"{check.message}")
+        if check.status != "pass":
+            for key, value in check.details.items():
+                ui.out(f"      {ui.style(f'{key}:', 'dim')} {value}")
+
+    ui.rule()
+    counts = (f"{len(report.checks)} checks · {len(report.failures)} failed · "
+              f"{len(report.warnings)} warnings")
+    ui.out("  " + ui.style(counts, "ok" if report.passed else "err"))
+    ui.out()
+
+    # A failing check is a failing command — `shipit doctor && deploy`
+    # should not proceed past a broken agent.
+    return code
 
 
 def cmd_version(_args: argparse.Namespace) -> int:
@@ -60,6 +110,8 @@ def register(sub: Any) -> None:
     run_p.set_defaults(fn=cmd_run)
 
     doctor_p = sub.add_parser("doctor", help="Agent health report")
+    doctor_p.add_argument("--json", action="store_true",
+                          help="print the full report as JSON")
     _agent_options(doctor_p)
     doctor_p.set_defaults(fn=cmd_doctor)
 

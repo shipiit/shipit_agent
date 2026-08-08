@@ -244,3 +244,31 @@ class TestWorker:
         worker.join(timeout=2)
         assert agent.prompts, "the worker drained the queue"
         assert not worker.is_alive(), "and it stopped when asked"
+
+
+class TestThePublicSurface:
+    """A documented import that does not resolve is a broken example.
+
+    `TriggerRegistry` was exported without `SqliteTriggerQueue`, so the
+    durable setup — the one the guide leads with, and the default anybody
+    running this in production wants — could not be written from the
+    top-level import at all.
+    """
+
+    def test_everything_the_guides_import_is_exported(self) -> None:
+        import shipit_agent
+
+        for name in ("TriggerRegistry", "Trigger", "TriggerEvent",
+                     "TriggerRun", "SqliteTriggerQueue",
+                     "InMemoryTriggerQueue", "fire_all"):
+            assert hasattr(shipit_agent, name), (
+                f"{name} is used in the docs and not exported")
+
+    def test_the_durable_setup_works_from_the_top_level_import(
+            self, tmp_path) -> None:
+        from shipit_agent import SqliteTriggerQueue, TriggerRegistry
+
+        registry = TriggerRegistry(
+            queue=SqliteTriggerQueue(tmp_path / "triggers.db"))
+        registry.fire("gmail", {"body": "x"})
+        assert registry.queue.pending() == 1

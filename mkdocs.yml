@@ -155,6 +155,8 @@ nav:
       - Sessions & Memory: guides/sessions.md
       - Scheduled Agents: guides/scheduled-agents.md
       - Agents as Tools: guides/agents-as-tools.md
+      - Delegation: guides/delegation.md
+      - Triggers: guides/triggers.md
       # Power features
       - Parallel Execution: guides/parallel-execution.md
       - Hooks & Middleware: guides/hooks.md

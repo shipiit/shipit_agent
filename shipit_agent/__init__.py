@@ -113,11 +113,15 @@ from .connections import (
 from .lockdown import LockdownPolicy, LockdownState
 from .streaming import STREAM_GENERATION, Durability, StreamFrame, classify, sse
 from .triggers import (
+    InMemoryTriggerQueue,
+    SqliteTriggerQueue,
     Trigger,
     TriggerEvent,
     TriggerRegistry,
     TriggerRun,
+    fire_all,
 )
+from .delegation import DelegationAdvice, DelegationPolicy
 from .narrate import (
     NarratorRenderer,
     build_transcript,
@@ -411,6 +415,11 @@ __all__ = [
     "Trigger",
     "TriggerEvent",
     "TriggerRegistry",
+    "SqliteTriggerQueue",
+    "InMemoryTriggerQueue",
+    "fire_all",
+    "DelegationPolicy",
+    "DelegationAdvice",
     "TriggerRun",
     "build_transcript",
     "render_transcript",

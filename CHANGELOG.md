@@ -11,6 +11,23 @@ Nothing yet.
 
 ---
 
+## [1.5.1] — 2026-08-08
+
+### Added
+
+- **Guides for three features that shipped without them.** Triggers,
+  delegation, and agents as tools each had public API and no page
+  explaining when to reach for it.
+- **`SqliteTriggerQueue`, `InMemoryTriggerQueue`, `fire_all`,
+  `DelegationPolicy` and `DelegationAdvice` are exported from the package
+  root.** Found by checking that every import in the new guides resolves:
+  `TriggerRegistry` was exported without the queue you configure it with,
+  so the durable setup — the default anybody running this in production
+  wants — could not be written from the top-level import at all. A test
+  now pins the surface the documentation uses.
+
+---
+
 ## [1.5.0] — 2026-08-08
 
 ### Added

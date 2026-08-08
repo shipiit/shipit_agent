@@ -108,7 +108,16 @@ class TestItReallyRuns:
         ]
 
     def test_background_children_overlap(self) -> None:
-        """Delegation is only worth it if the work actually runs at once."""
+        """Delegation is only worth it if the work actually runs at once.
+
+        Asserted on the order of completions rather than the elapsed time.
+        Each child reads then greps, so serial execution can only ever
+        produce read, grep, read, grep — whereas two children running at
+        once both finish their read first. The two reads land within
+        milliseconds of each other while a read and its own grep are a
+        full delay apart, so the signal survives a slow, loaded runner in
+        a way a wall-clock budget does not.
+        """
         log: list = []
         Agent(
             llm=ParentLLM(PARALLEL_SCRIPT),
@@ -119,9 +128,10 @@ class TestItReallyRuns:
             ],
             auto_use_skills=False, max_iterations=6,
         ).run("review both")
-        times = sorted(t for t, _ in log)
-        # Four 0.12s calls run serially would span ~0.48s.
-        assert times[-1] - times[0] < 0.35, "children ran serially"
+        order = [name for _, name in sorted(log)]
+        assert order == ["read_file", "read_file", "grep_files", "grep_files"], (
+            f"children ran serially: {order}"
+        )
 
 
 class TestEventsReachTheParent:

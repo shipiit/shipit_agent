@@ -20,13 +20,23 @@ def event(kind: str, **payload) -> AgentEvent:
 RUN = [
     event("run_started", prompt="Process the latest RSVP"),
     event("tool_called", call_id="1", tool="read_file", arguments={"path": "in.eml"}),
-    event("tool_completed", call_id="1", tool="read_file",
-          output='{"from": "jordan@acme.com"}', duration_ms=420),
+    event(
+        "tool_completed",
+        call_id="1",
+        tool="read_file",
+        output='{"from": "jordan@acme.com"}',
+        duration_ms=420,
+    ),
     event("text_delta", chunk="No existing record. "),
     event("text_delta", chunk="Creating one."),
     event("tool_called", call_id="2", tool="write_file", arguments={"path": "r.csv"}),
-    event("tool_completed", call_id="2", tool="write_file", output="written",
-          duration_ms=270),
+    event(
+        "tool_completed",
+        call_id="2",
+        tool="write_file",
+        output="written",
+        duration_ms=270,
+    ),
     event("run_completed", output="RSVP recorded.", usage={"total_tokens": 1180}),
 ]
 
@@ -73,6 +83,110 @@ class TestShape:
         assert final["tool_calls"] == 2
         assert final["usage"]["total_tokens"] == 1180
 
+    def test_declared_groups_keep_their_runtime_ids_and_tools(self) -> None:
+        steps = timeline(
+            [
+                event(
+                    "tool_group_started",
+                    group_id="tool_group_7",
+                    tools=[
+                        {"name": "read_file", "call_id": "1"},
+                        {"name": "grep_files", "call_id": "2"},
+                    ],
+                ),
+                event(
+                    "tool_called",
+                    call_id="1",
+                    tool="read_file",
+                    arguments={"path": "a.py"},
+                    group_id="tool_group_7",
+                ),
+                event(
+                    "tool_completed",
+                    call_id="1",
+                    tool="read_file",
+                    output="x",
+                    group_id="tool_group_7",
+                ),
+                event(
+                    "tool_called",
+                    call_id="2",
+                    tool="grep_files",
+                    arguments={"pattern": "TODO"},
+                    group_id="tool_group_7",
+                ),
+                event(
+                    "tool_completed",
+                    call_id="2",
+                    tool="grep_files",
+                    output="1 match",
+                    group_id="tool_group_7",
+                ),
+                event("tool_group_completed", group_id="tool_group_7"),
+                event("run_completed", output="done", usage={}),
+            ]
+        )
+        started = next(s for s in steps if s["type"] == "tool_group_started")
+        assert started["group_id"] == "tool_group_7"
+        assert [tool["tool"] for tool in started["tools"]] == [
+            "read_file",
+            "grep_files",
+        ]
+        completed = next(s for s in steps if s["type"] == "tool_group_completed")
+        assert completed["group_id"] == "tool_group_7"
+        assert completed["tool_calls"] == 2
+        assert [tool["tool"] for tool in completed["tools"]] == [
+            "read_file",
+            "grep_files",
+        ]
+
+    def test_declared_groups_do_not_split_on_mid_group_narration(self) -> None:
+        steps = timeline(
+            [
+                event(
+                    "tool_group_started",
+                    group_id="g1",
+                    tools=[
+                        {"name": "read_file", "call_id": "1"},
+                        {"name": "read_file", "call_id": "2"},
+                    ],
+                ),
+                event(
+                    "tool_called",
+                    call_id="1",
+                    tool="read_file",
+                    arguments={"path": "a.py"},
+                    group_id="g1",
+                ),
+                event(
+                    "tool_completed",
+                    call_id="1",
+                    tool="read_file",
+                    output="x",
+                    group_id="g1",
+                ),
+                event("text_delta", chunk="Still working."),
+                event(
+                    "tool_called",
+                    call_id="2",
+                    tool="read_file",
+                    arguments={"path": "b.py"},
+                    group_id="g1",
+                ),
+                event(
+                    "tool_completed",
+                    call_id="2",
+                    tool="read_file",
+                    output="y",
+                    group_id="g1",
+                ),
+                event("tool_group_completed", group_id="g1"),
+                event("run_completed", output="done", usage={}),
+            ]
+        )
+        assert kinds(steps).count("tool_group_started") == 1
+        assert kinds(steps).count("tool_group_completed") == 1
+
 
 class TestFidelity:
     def test_every_step_is_json(self) -> None:
@@ -80,9 +194,7 @@ class TestFidelity:
         json.dumps(timeline(RUN))
 
     def test_json_output_is_parsed_so_a_ui_can_table_it(self) -> None:
-        completed = next(
-            s for s in timeline(RUN) if s["type"] == "tool_call_completed"
-        )
+        completed = next(s for s in timeline(RUN) if s["type"] == "tool_call_completed")
         assert completed["output"] == {"from": "jordan@acme.com"}
 
     def test_plain_text_output_stays_text(self) -> None:
@@ -93,8 +205,9 @@ class TestFidelity:
         steps = timeline(
             [
                 event("tool_called", call_id="1", tool="read_file", arguments={}),
-                event("tool_completed", call_id="1", tool="read_file",
-                      output="{not json"),
+                event(
+                    "tool_completed", call_id="1", tool="read_file", output="{not json"
+                ),
                 event("run_completed", output="", usage={}),
             ]
         )
@@ -129,8 +242,13 @@ class TestOutcomes:
         steps = timeline(
             [
                 event("text_delta", chunk="I'll send the notice."),
-                event("action_queued", action_id=3, tool="slack",
-                      title="Used Slack #events", tag="comms.send"),
+                event(
+                    "action_queued",
+                    action_id=3,
+                    tool="slack",
+                    title="Used Slack #events",
+                    tag="comms.send",
+                ),
                 event("run_completed", output="", usage={}),
             ]
         )
@@ -143,9 +261,13 @@ class TestOutcomes:
     def test_sub_agent_work_is_attributed(self) -> None:
         steps = timeline(
             [
-                event("sub_agent_event", agent="researcher", task="find the owner",
-                      inner_type="tool_called",
-                      inner={"tool": "read_file", "arguments": {"path": "o.md"}}),
+                event(
+                    "sub_agent_event",
+                    agent="researcher",
+                    task="find the owner",
+                    inner_type="tool_called",
+                    inner={"tool": "read_file", "arguments": {"path": "o.md"}},
+                ),
                 event("run_completed", output="", usage={}),
             ]
         )
@@ -154,15 +276,19 @@ class TestOutcomes:
 
     def test_a_notice_is_surfaced(self) -> None:
         steps = timeline(
-            [event("lockdown_engaged", reason="read a private file"),
-             event("run_completed", output="", usage={})]
+            [
+                event("lockdown_engaged", reason="read a private file"),
+                event("run_completed", output="", usage={}),
+            ]
         )
         assert any(s["type"] == "notice" for s in steps)
 
     def test_a_reasoning_summary_is_used_when_the_runtime_emits_one(self) -> None:
         steps = timeline(
-            [event("planning_completed", summary="Read, extract, save."),
-             event("run_completed", output="ok", usage={})]
+            [
+                event("planning_completed", summary="Read, extract, save."),
+                event("run_completed", output="ok", usage={}),
+            ]
         )
         assert steps[0]["type"] == "reasoning_summary"
         assert steps[0]["content"] == "Read, extract, save."
@@ -228,8 +354,9 @@ class TestMarkdown:
         report = render_markdown(
             [
                 event("tool_called", call_id="1", tool="read_file", arguments={}),
-                event("tool_completed", call_id="1", tool="read_file",
-                      output="z" * 5000),
+                event(
+                    "tool_completed", call_id="1", tool="read_file", output="z" * 5000
+                ),
                 event("run_completed", output="ok", usage={}),
             ],
             output_limit=200,

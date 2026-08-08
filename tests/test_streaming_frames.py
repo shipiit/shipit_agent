@@ -24,18 +24,38 @@ def event(kind: str, **payload) -> AgentEvent:
 
 
 class TestClassification:
-    @pytest.mark.parametrize("kind", [
-        "run_started", "tool_called", "tool_completed", "tool_failed",
-        "tool_denied", "action_queued", "sub_agent_event", "run_completed",
-        "lockdown_engaged", "context_compacted",
-    ])
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            "run_started",
+            "tool_called",
+            "tool_completed",
+            "tool_failed",
+            "tool_denied",
+            "action_queued",
+            "sub_agent_event",
+            "run_completed",
+            "lockdown_engaged",
+            "context_compacted",
+        ],
+    )
     def test_things_that_happened_are_canonical(self, kind) -> None:
         assert classify(kind) is Durability.CANONICAL
 
-    @pytest.mark.parametrize("kind", [
-        "text_delta", "tool_input_delta", "tool_input_started", "usage_tick",
-        "step_started", "llm_retry", "tool_call_healed",
-    ])
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            "text_delta",
+            "tool_input_delta",
+            "tool_input_started",
+            "usage_tick",
+            "tool_output_started",
+            "tool_output_delta",
+            "step_started",
+            "llm_retry",
+            "tool_call_healed",
+        ],
+    )
     def test_in_flight_moments_are_provisional(self, kind) -> None:
         assert classify(kind) is Durability.PROVISIONAL
 
@@ -127,7 +147,8 @@ class TestReplay:
     def test_only_what_was_missed_comes_back(self) -> None:
         events = [event("run_started"), event("tool_called"), event("run_completed")]
         assert [e.type for e in replay_from(events, 1)] == [
-            "tool_called", "run_completed"
+            "tool_called",
+            "run_completed",
         ]
 
     def test_provisional_events_are_never_replayed(self) -> None:
@@ -139,7 +160,8 @@ class TestReplay:
             event("tool_completed"),
         ]
         assert [e.type for e in replay_from(events, 0)] == [
-            "tool_called", "tool_completed"
+            "tool_called",
+            "tool_completed",
         ]
 
     def test_replaying_from_the_end_yields_nothing(self) -> None:
@@ -183,9 +205,9 @@ class TestServerIntegration:
         thread.start()
         for _ in range(100):
             try:
-                with contextlib.closing(socket.create_connection(
-                    ("127.0.0.1", port), timeout=0.1
-                )):
+                with contextlib.closing(
+                    socket.create_connection(("127.0.0.1", port), timeout=0.1)
+                ):
                     break
             except OSError:
                 time.sleep(0.02)
@@ -211,7 +233,9 @@ class TestServerIntegration:
         try:
             conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
             conn.request(
-                "POST", "/v1/stream", body=json.dumps({"prompt": "hi"}),
+                "POST",
+                "/v1/stream",
+                body=json.dumps({"prompt": "hi"}),
                 headers={"Content-Type": "application/json"},
             )
             response = conn.getresponse()
@@ -236,8 +260,12 @@ class TestServerIntegration:
         port, stop = self._serve()
         try:
             conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-            conn.request("POST", "/v1/stream", body=json.dumps({"prompt": "hi"}),
-                         headers={"Content-Type": "application/json"})
+            conn.request(
+                "POST",
+                "/v1/stream",
+                body=json.dumps({"prompt": "hi"}),
+                headers={"Content-Type": "application/json"},
+            )
             text = conn.getresponse().read().decode()
         finally:
             stop()
@@ -249,8 +277,12 @@ class TestServerIntegration:
         port, stop = self._serve()
         try:
             conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-            conn.request("POST", "/v1/stream", body="{}",
-                         headers={"Content-Type": "application/json"})
+            conn.request(
+                "POST",
+                "/v1/stream",
+                body="{}",
+                headers={"Content-Type": "application/json"},
+            )
             status = conn.getresponse().status
         finally:
             stop()
@@ -272,8 +304,12 @@ class TestAgentSurfaces:
             prompt_instructions = ""
 
             def schema(self):
-                return {"function": {"name": "read_file", "parameters": {
-                    "properties": {"path": {"type": "string"}}}}}
+                return {
+                    "function": {
+                        "name": "read_file",
+                        "parameters": {"properties": {"path": {"type": "string"}}},
+                    }
+                }
 
             def run(self, context, **kwargs):
                 return ToolOutput(text="contents")
@@ -284,10 +320,19 @@ class TestAgentSurfaces:
             def __init__(self):
                 self.n = 0
 
-            def complete(self, *, messages, tools=None, system_prompt=None,
-                         metadata=None, text_delta_callback=None):
-                script = [("", [("read_file", {"path": "auth.py"})]),
-                          ("Login has no MFA.", [])]
+            def complete(
+                self,
+                *,
+                messages,
+                tools=None,
+                system_prompt=None,
+                metadata=None,
+                text_delta_callback=None,
+            ):
+                script = [
+                    ("", [("read_file", {"path": "auth.py"})]),
+                    ("Login has no MFA.", []),
+                ]
                 step = script[self.n] if self.n < len(script) else ("", [])
                 self.n += 1
                 if step[0] and text_delta_callback:
@@ -305,7 +350,6 @@ class TestAgentSurfaces:
         assert "tool_called" in kinds and "run_completed" in kinds
 
     def test_narrate_yields_settled_transcript_rows(self) -> None:
-
         rows = list(self._agent().narrate("go"))
         assert [type(r).__name__ for r in rows] == ["WorkRow", "ProseRow"]
         assert rows[0].group.label == "Read auth.py"
@@ -332,7 +376,8 @@ class TestAgentSurfaces:
         raw = [e.type for e in self._agent().stream("go")]
         sse_types = [
             json.loads(c.split("data: ", 1)[1])["type"]
-            for c in self._agent().stream_sse("go") if "[DONE]" not in c
+            for c in self._agent().stream_sse("go")
+            if "[DONE]" not in c
         ]
         # SSE adds the hello frame; otherwise identical, in order.
         assert sse_types[0] == "stream_hello"

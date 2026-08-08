@@ -53,9 +53,9 @@ __all__ = [
 class Durability(str, Enum):
     """Whether a client should keep this after a reconnect."""
 
-    CANONICAL = "canonical"      # replayed; part of the record
+    CANONICAL = "canonical"  # replayed; part of the record
     PROVISIONAL = "provisional"  # discard on reconnect; it will re-stream
-    CONTROL = "control"          # about the stream itself
+    CONTROL = "control"  # about the stream itself
 
 
 # One value per process, stamped once at import. A restarted server gets a new
@@ -67,21 +67,47 @@ STREAM_GENERATION = f"{os.getpid()}-{int(time.time() * 1000)}"
 
 
 # Events that survive a reconnect because they describe what *happened*.
-_CANONICAL = frozenset({
-    "run_started", "tool_called", "tool_completed", "tool_failed",
-    "tool_denied", "action_queued", "sub_agent_event", "run_completed",
-    "run_cancelled", "context_compacted", "guardrail_triggered",
-    "lockdown_engaged", "rag_sources", "mcp_attached", "interactive_request",
-    "planning_started", "planning_completed", "reasoning_completed",
-})
+_CANONICAL = frozenset(
+    {
+        "run_started",
+        "tool_called",
+        "tool_completed",
+        "tool_failed",
+        "tool_denied",
+        "action_queued",
+        "sub_agent_event",
+        "run_completed",
+        "run_cancelled",
+        "context_compacted",
+        "guardrail_triggered",
+        "lockdown_engaged",
+        "rag_sources",
+        "mcp_attached",
+        "interactive_request",
+        "planning_started",
+        "planning_completed",
+        "reasoning_completed",
+    }
+)
 
 # Events that describe an in-flight moment. A client that reconnects mid-turn
 # has a half-written file on screen and no way to finish it; the only correct
 # thing is to drop it and let the re-stream rebuild it.
-_PROVISIONAL = frozenset({
-    "text_delta", "reasoning_started", "tool_input_started", "tool_input_delta",
-    "usage_tick", "step_started", "llm_retry", "tool_retry", "tool_call_healed",
-})
+_PROVISIONAL = frozenset(
+    {
+        "text_delta",
+        "reasoning_started",
+        "tool_input_started",
+        "tool_input_delta",
+        "tool_output_started",
+        "tool_output_delta",
+        "usage_tick",
+        "step_started",
+        "llm_retry",
+        "tool_retry",
+        "tool_call_healed",
+    }
+)
 
 
 def classify(event_type: str) -> Durability:
@@ -193,7 +219,9 @@ def sse_stream(events: Iterable[AgentEvent]) -> Iterable[str]:
     yield "event: done\ndata: [DONE]\n\n"
 
 
-def replay_from(events: Iterable[AgentEvent], last_sequence: int) -> Iterable[AgentEvent]:
+def replay_from(
+    events: Iterable[AgentEvent], last_sequence: int
+) -> Iterable[AgentEvent]:
     """Events a reconnecting client missed.
 
     Only canonical ones: provisional events describe a moment that has passed,

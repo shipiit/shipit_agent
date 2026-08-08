@@ -34,7 +34,7 @@ from shipit_agent.stores import (
     SessionStore,
 )
 from shipit_agent.tool_runner import ToolRunner
-from shipit_agent.tools import Tool, ToolContext
+from shipit_agent.tools import Tool, ToolContext, ToolOutputChunk
 from shipit_agent.tools.helpers import build_tools_prompt
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
 
@@ -49,9 +49,7 @@ class RuntimeState:
 # Keys in the runtime's shared_state that hold shared *service* objects (not
 # per-tool data). They must be passed by reference, never deep-copied, when
 # isolating state for concurrent tool execution.
-_SHARED_SERVICE_STATE_KEYS = frozenset(
-    {"memory_store", "credential_store"}
-)
+_SHARED_SERVICE_STATE_KEYS = frozenset({"memory_store", "credential_store"})
 
 
 def _isolated_tool_state(shared_state: dict[str, Any]) -> dict[str, Any]:
@@ -98,8 +96,17 @@ def _merge_tool_state(target: dict[str, Any], child: dict[str, Any]) -> None:
 
 
 _INTENT_MARKERS = (
-    "let me", "i will", "i'll", "i am going to", "i'm going to", "first, i",
-    "next, i", "now i", "going to use", "going to call", "let's use",
+    "let me",
+    "i will",
+    "i'll",
+    "i am going to",
+    "i'm going to",
+    "first, i",
+    "next, i",
+    "now i",
+    "going to use",
+    "going to call",
+    "let's use",
 )
 
 
@@ -133,8 +140,10 @@ class AgentRuntime(RuntimeCore):
         trace_store: TraceStore | None = None,
         trace_id: str | None = None,
         parallel_tool_execution: bool = False,
+        max_tool_concurrency: int | None = None,
         hooks: Any | None = None,
         context_window_tokens: int = 0,
+        max_tool_output_chars: int = 0,
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
         guardrails: Any | None = None,
@@ -161,6 +170,9 @@ class AgentRuntime(RuntimeCore):
         self.trace_store = trace_store or InMemoryTraceStore()
         self.trace_id = trace_id or self.session_id
         self.parallel_tool_execution = parallel_tool_execution
+        if max_tool_concurrency is not None and max_tool_concurrency < 1:
+            raise ValueError("max_tool_concurrency must be positive or None")
+        self.max_tool_concurrency = max_tool_concurrency
         self.hooks = hooks
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
@@ -175,6 +187,7 @@ class AgentRuntime(RuntimeCore):
             code_mode=code_mode,
             lockdown=lockdown,
             context_window_tokens=context_window_tokens,
+            max_tool_output_chars=max_tool_output_chars,
         )
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
@@ -294,7 +307,8 @@ class AgentRuntime(RuntimeCore):
         )
 
         bound_tools = [
-            tool for tool in registry.values()
+            tool
+            for tool in registry.values()
             if getattr(tool, "name", "") not in CORE_TOOLS
         ]
         if not bound_tools:
@@ -316,9 +330,7 @@ class AgentRuntime(RuntimeCore):
             if binding is None:
                 raise KeyError(f"no binding named {binding_name!r}")
             if method not in binding.methods:
-                raise AttributeError(
-                    f"env.{binding_name} has no method {method!r}"
-                )
+                raise AttributeError(f"env.{binding_name} has no method {method!r}")
 
             arguments = dict(kwargs)
             # A single-method binding wraps a tool with no action enum, so the
@@ -391,6 +403,8 @@ class AgentRuntime(RuntimeCore):
             return None
 
         action = outcome.action
+        if outcome.result is not None:
+            outcome.message.content = self.model_visible_tool_output(outcome.result)
         self.emit(
             state,
             "tool_completed" if outcome.applied else "action_queued",
@@ -526,9 +540,43 @@ class AgentRuntime(RuntimeCore):
         )
         started_at = time.perf_counter()
         attempt = 0
+        output_sequence = 0
+
+        def _publish_output(chunk: ToolOutputChunk) -> None:
+            nonlocal output_sequence
+            output_sequence += 1
+            self.emit(
+                state,
+                "tool_output_delta",
+                f"Tool output: {tool_call.name}",
+                tool=tool_call.name,
+                call_id=tool_call_record["id"],
+                group_id=group_id,
+                chunk=chunk.text,
+                chunk_metadata=dict(chunk.metadata),
+                sequence=output_sequence,
+                attempt=attempt + 1,
+                iteration=iteration,
+            )
+
         while True:
+            self.emit(
+                state,
+                "tool_output_started",
+                f"Tool output started: {tool_call.name}",
+                tool=tool_call.name,
+                call_id=tool_call_record["id"],
+                group_id=group_id,
+                attempt=attempt + 1,
+                buffered=self.guardrails is not None,
+                iteration=iteration,
+            )
             try:
-                tool_result = tool_runner.run_tool_call(tool_call, context)
+                tool_result = tool_runner.run_tool_call(
+                    tool_call,
+                    context,
+                    None if self.guardrails is not None else _publish_output,
+                )
                 break
             except self.retry_policy.retry_on_exceptions as exc:
                 if attempt >= self.retry_policy.max_tool_retries:
@@ -540,9 +588,7 @@ class AgentRuntime(RuntimeCore):
                         call_id=tool_call_record["id"],
                         error=str(exc),
                         iteration=iteration,
-                        duration_ms=round(
-                            (time.perf_counter() - started_at) * 1000, 1
-                        ),
+                        duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
                     )
                     error_output = f"Error running tool '{tool_call.name}': {exc}"
                     tool_result = ToolResult(
@@ -550,6 +596,10 @@ class AgentRuntime(RuntimeCore):
                         output=error_output,
                         metadata={"error": str(exc)},
                     )
+                    if self.guardrails is None:
+                        _publish_output(
+                            ToolOutputChunk(error_output, {"error": str(exc)})
+                        )
                     break
                 attempt += 1
                 self.emit(
@@ -564,7 +614,7 @@ class AgentRuntime(RuntimeCore):
                 )
 
         if self.hooks:
-            self.hooks.run_after_tool(tool_call.name, tool_result)
+            tool_result = self.hooks.run_after_tool(tool_call.name, tool_result)
 
         # Guardrails: sanitize the tool output (indirect prompt-injection
         # neutralized, secrets redacted) BEFORE the model reads it.
@@ -585,10 +635,16 @@ class AgentRuntime(RuntimeCore):
                 redacted_secret = "secret" in str(sanitized.reason or "").lower()
                 tool_result.output = sanitized.text
 
+        # A guardrail must inspect the complete output before any part reaches
+        # a client. Publish the sanitized value as one safe chunk afterwards.
+        if self.guardrails is not None and tool_result.output:
+            _publish_output(ToolOutputChunk(tool_result.output, {"buffered": True}))
+
+        model_output = self.model_visible_tool_output(tool_result)
         msg = Message(
             role="tool",
             name=tool_call.name,
-            content=tool_result.output,
+            content=model_output,
             metadata={
                 **dict(tool_result.metadata),
                 "tool_call_id": tool_call_record["id"],
@@ -671,7 +727,10 @@ class AgentRuntime(RuntimeCore):
                 _isolated_tool_state(shared_state) for _ in tool_calls
             ]
             futures_map: dict[Any, int] = {}
-            with ThreadPoolExecutor(max_workers=len(tool_calls)) as pool:
+            worker_count = min(
+                len(tool_calls), self.max_tool_concurrency or len(tool_calls)
+            )
+            with ThreadPoolExecutor(max_workers=worker_count) as pool:
                 for idx, tc in enumerate(tool_calls):
                     future = pool.submit(
                         self._execute_single_tool,
@@ -769,9 +828,7 @@ class AgentRuntime(RuntimeCore):
         for message in state.messages[-max_messages:]:
             if message.role == "system":
                 continue
-            content = self._bounded_text(
-                message.content, limit=max_chars_per_message
-            )
+            content = self._bounded_text(message.content, limit=max_chars_per_message)
             if not content:
                 continue
             if message.role == "tool":
@@ -955,7 +1012,7 @@ use a markdown heading.
                 parsers[call_id] = False
                 return
             value = parser.streaming_value
-            new = value[emitted[call_id]:]
+            new = value[emitted[call_id] :]
             if new:
                 emitted[call_id] = len(value)
                 self.emit(
@@ -1019,9 +1076,7 @@ use a markdown heading.
                     stage="input",
                     reason=decision.reason,
                 )
-                refusal = (
-                    "Request blocked by guardrails: " + decision.reason
-                )
+                refusal = "Request blocked by guardrails: " + decision.reason
                 self.emit(
                     state,
                     "run_completed",
@@ -1037,7 +1092,12 @@ use a markdown heading.
             if decision.action == "redact" and decision.text:
                 user_prompt = decision.text
         registry = self.registry()
-        tool_prompt = build_tools_prompt(registry.values())
+        # Build the capability control plane before the system prompt so the
+        # model sees the same connection/MCP metadata that tools can search.
+        shared_state.update(self.build_shared_state(registry, state))
+        tool_prompt = build_tools_prompt(
+            registry.values(), connections=self.connections.all()
+        )
         base_prompt = (
             self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
         )
@@ -1074,7 +1134,6 @@ use a markdown heading.
         tool_schemas = registry.schemas()
         # Built by RuntimeCore, so both loops publish identical tool state —
         # including the sub-agent control plane and the event sink.
-        shared_state.update(self.build_shared_state(registry, state))
         tool_runner = ToolRunner(registry)
 
         # Code mode: publish `env` and swap the tool schemas the model sees.
@@ -1100,10 +1159,13 @@ use a markdown heading.
                 # and leaving all 50 in there would undo most of the saving
                 # the schema filter just made.
                 core_tools = [
-                    tool for tool in registry.values()
+                    tool
+                    for tool in registry.values()
                     if _is_core(getattr(tool, "name", ""))
                 ]
-                core_prompt = build_tools_prompt(core_tools)
+                core_prompt = build_tools_prompt(
+                    core_tools, connections=self.connections.all()
+                )
                 base_prompt = "\n\n".join(
                     part for part in (self.prompt, core_prompt, index) if part
                 )
@@ -1111,7 +1173,8 @@ use a markdown heading.
                     role="system", content=base_prompt, metadata=dict(self.metadata)
                 )
                 tool_schemas = [
-                    schema for schema in tool_schemas
+                    schema
+                    for schema in tool_schemas
                     if _is_core((schema.get("function") or {}).get("name"))
                 ]
 
@@ -1159,24 +1222,11 @@ use a markdown heading.
                 base_prompt=base_prompt,
             )
             self.track_usage(state, response, iteration)
-            # Running total, so a live renderer can show tokens/cost mid-run
-            # instead of only at the end.
-            self.emit(
-                state,
-                "usage_tick",
-                "Usage updated",
-                usage=dict(self._total_usage),
-                iteration=iteration,
-            )
 
             # Self-healing: small models often emit the tool call as TEXT.
             # Promote declared-tool calls out of the content (response-side
             # only; the promoted span is removed, everything else kept).
-            if (
-                self.heal_tool_calls
-                and not response.tool_calls
-                and response.content
-            ):
+            if self.heal_tool_calls and not response.tool_calls and response.content:
                 from shipit_agent.tool_healing import heal_tool_calls
 
                 cleaned, healed = heal_tool_calls(

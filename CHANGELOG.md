@@ -11,6 +11,45 @@ Nothing yet.
 
 ---
 
+## [1.4.0] — 2026-08-08
+
+Scheduled jobs stop sharing one agent, skills come from the project, and
+tool output streams while it is produced.
+
+### Added
+
+- **Per-job agent configuration.** Every scheduled job carried the same
+  process-wide agent, so "summarise the inbox hourly on a cheap model" and
+  "audit the repo nightly on a good one" could not coexist. A job now
+  persists its own provider, model, role, project root, runtime mode,
+  permission mode, guardrails, MCPs, connections, skills and iteration cap
+  — `ScheduledAgentConfig`, resolved per job by `ScheduledAgentFactory`.
+  The SQLite store migrates itself: existing databases gain the new
+  columns on open, and a job written by an older version still runs.
+- **Project skills.** `discover_project_skills` and `load_markdown_skill`
+  read skills from the repository the agent is working in, so a team's
+  conventions live beside the code they describe rather than in a
+  configuration screen.
+- **Streaming tool output.** `ToolOutputChunk` and `ToolRunOutput` let a
+  long-running tool report as it goes instead of arriving whole at the
+  end.
+- **Concurrent web search.** `web_search` accepts `queries` as well as
+  `query` and runs them in parallel. Either, never both — an empty call
+  answers with which of the two to pass.
+
+### Fixed
+
+- **A permanently broken scheduled job now pauses.** Failures were counted
+  and nothing acted on the count, so a job whose provider was gone ran
+  every interval for as long as the daemon lived, burning quota and
+  filling the log with one repeated line. Paused after five consecutive
+  failures — paused rather than deleted, because the configuration is
+  intact and `jobs resume` is one command. Resuming clears the count, so a
+  job somebody fixed is not paused again by the history that paused it.
+  `max_consecutive_failures=0` switches the behaviour off.
+
+---
+
 ## [1.3.3] — 2026-08-07
 
 ### Added

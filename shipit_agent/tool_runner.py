@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from shipit_agent.models import ToolCall, ToolResult
 from shipit_agent.registry import ToolRegistry
-from shipit_agent.tools import ToolContext
+from shipit_agent.tools import ToolContext, ToolOutput, ToolOutputChunk
+
+
+ToolOutputCallback = Callable[[ToolOutputChunk], None]
 
 
 def _declared_parameters(tool: Any) -> tuple[set[str], list[str]]:
@@ -82,7 +86,57 @@ class ToolRunner:
     # We strip them before forwarding so the tool receives only real args.
     _RESERVED_ARG_NAMES: frozenset[str] = frozenset({"context", "self"})
 
-    def run_tool_call(self, tool_call: ToolCall, context: ToolContext) -> ToolResult:
+    @staticmethod
+    def _collect_output(
+        name: str,
+        output: Any,
+        output_callback: ToolOutputCallback | None,
+    ) -> ToolResult:
+        # Keep compatibility with third-party tools that historically returned
+        # a lightweight object exposing the ToolOutput shape without importing
+        # or subclassing shipit's dataclass.
+        if isinstance(output, ToolOutput) or hasattr(output, "text"):
+            chunk = ToolOutputChunk(
+                str(output.text), dict(getattr(output, "metadata", {}) or {})
+            )
+            if output_callback is not None and chunk.text:
+                output_callback(chunk)
+            return ToolResult(name=name, output=chunk.text, metadata=chunk.metadata)
+
+        if isinstance(output, (str, bytes)) or not isinstance(output, Iterable):
+            raise TypeError(
+                f"Tool '{name}' returned {type(output).__name__}; expected "
+                "ToolOutput or an iterable of ToolOutputChunk values"
+            )
+
+        parts: list[str] = []
+        metadata: dict[str, Any] = {}
+        chunk_count = 0
+        for item in output:
+            if isinstance(item, ToolOutputChunk | ToolOutput):
+                chunk = ToolOutputChunk(str(item.text), dict(item.metadata))
+            elif isinstance(item, str):
+                chunk = ToolOutputChunk(item)
+            else:
+                raise TypeError(
+                    f"Streaming tool '{name}' yielded {type(item).__name__}; "
+                    "expected ToolOutputChunk, ToolOutput, or str"
+                )
+            chunk_count += 1
+            parts.append(chunk.text)
+            metadata.update(chunk.metadata)
+            if output_callback is not None:
+                output_callback(chunk)
+        metadata.setdefault("streamed", True)
+        metadata.setdefault("stream_chunk_count", chunk_count)
+        return ToolResult(name=name, output="".join(parts), metadata=metadata)
+
+    def run_tool_call(
+        self,
+        tool_call: ToolCall,
+        context: ToolContext,
+        output_callback: ToolOutputCallback | None = None,
+    ) -> ToolResult:
         tool = self.registry.get(tool_call.name)
         if tool is None:
             raise KeyError(f"Unknown tool: {tool_call.name}")
@@ -109,14 +163,15 @@ class ToolRunner:
             missing = _missing_argument(exc, safe_arguments, declared)
             if missing is None:
                 raise
-            return ToolResult(
+            result = ToolResult(
                 name=tool_call.name,
                 output=_missing_argument_message(tool_call.name, missing, required),
                 metadata={"error": "missing_argument", "argument": missing},
             )
-        return ToolResult(
-            name=tool_call.name, output=output.text, metadata=dict(output.metadata)
-        )
+            if output_callback is not None:
+                output_callback(ToolOutputChunk(result.output, dict(result.metadata)))
+            return result
+        return self._collect_output(tool_call.name, output, output_callback)
 
     def run_many(
         self, tool_calls: list[ToolCall], context: ToolContext

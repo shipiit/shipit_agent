@@ -153,8 +153,12 @@ class Agent:
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
     parallel_tool_execution: bool = False
+    # None means no cap; otherwise bound concurrent local tool calls per turn.
+    max_tool_concurrency: int | None = None
     hooks: Any = None
     context_window_tokens: int = 0  # 0 = no compaction
+    # Bound only the model-visible copy; AgentResult keeps complete tool output.
+    max_tool_output_chars: int = 0  # 0 = no cap
     replan_interval: int = 0  # 0 = no periodic replanning
 
     # ── RAG ───────────────────────────────────────────────────────────
@@ -232,6 +236,7 @@ class Agent:
     skill_registry: SkillRegistry | None = None  # pre-built registry
     skill_source: str | Path | None = DEFAULT_SKILLS_PATH  # catalog file
     auto_use_skills: bool = True  # prompt-based matching
+    auto_project_skills: bool = True  # discover project-local SKILL.md files
     skills: list[SkillLike] = field(default_factory=list)  # always-on skills
     default_skill_ids: list[str] = field(default_factory=list)
     skill_match_limit: int = 3  # max auto-matched
@@ -257,6 +262,25 @@ class Agent:
         runtime = self._active_runtime
         if runtime is not None:
             runtime.cancel()
+
+    def clone(self, **changes: Any) -> "Agent":
+        """Copy this agent with selected configuration overrides.
+
+        Mutable configuration containers are copied, while LLMs and durable
+        stores are intentionally shared unless explicitly replaced.
+        """
+        from dataclasses import replace
+
+        defaults = {
+            "tools": list(self.tools),
+            "mcps": list(self.mcps),
+            "metadata": dict(self.metadata),
+            "history": list(self.history),
+            "skills": list(self.skills),
+            "default_skill_ids": list(self.default_skill_ids),
+        }
+        defaults.update(changes)
+        return replace(self, **defaults)
 
     def __post_init__(self) -> None:
         """Wire up RAG tools/prompts and resolve skill references.
@@ -291,6 +315,18 @@ class Agent:
             if skill_path.exists():
                 self.skill_registry = FileSkillRegistry(skill_path)
 
+        # Local SKILL.md files use the same convention as Codex/Claude Code.
+        # They override packaged entries with the same id so repository rules
+        # remain authoritative without copying the full catalog.
+        if self.auto_project_skills:
+            from shipit_agent.skills import discover_project_skills
+
+            local_skills = discover_project_skills(self.project_root)
+            if local_skills and self.skill_registry is None:
+                self.skill_registry = SkillRegistry()
+            for skill in local_skills:
+                self.skill_registry.register(skill)
+
         # Resolve string skill ids → Skill objects (deduplicates by id).
         self.skills = self._resolve_skill_refs(self.skills)
 
@@ -314,13 +350,19 @@ class Agent:
         mcps: list[Any] | None = None,
         rag: Any = None,
         tools: list[Any] | None = None,
+        optimized: bool = False,
         **kwargs: Any,
     ) -> "Agent":
         """Build an Agent that ships with the full built-in tool catalogue.
 
-        Creates all 30+ built-in tools (file ops, web search, bash, code
+        Creates all 50+ built-in tools (file ops, web search, bash, code
         execution, connectors, reasoning helpers, etc.) and merges them
         with any custom ``tools`` the caller provides.
+
+        Set ``optimized=True`` for a token-efficient long-running setup:
+        code mode exposes the large tool catalog progressively, context
+        compaction uses the selected model's known window, and the default
+        iteration budget increases to eight. Explicit caller values win.
 
         Tool name collisions are resolved last-write-wins — so a custom
         tool named ``"bash"`` would replace the built-in ``BashTool``.
@@ -347,6 +389,16 @@ class Agent:
             tool_name = getattr(tool, "name", None)
             if tool_name:
                 merged[tool_name] = tool
+        if optimized:
+            from shipit_agent.compaction import get_model_limits
+
+            kwargs.setdefault("code_mode", True)
+            kwargs.setdefault(
+                "context_window_tokens",
+                get_model_limits(getattr(llm, "model", None)).context_window,
+            )
+            kwargs.setdefault("max_iterations", 8)
+            kwargs.setdefault("max_tool_output_chars", 16_000)
         return cls(
             llm=llm,
             prompt=prompt,
@@ -366,6 +418,7 @@ class Agent:
         llm: Any,
         project_root: str | Path = ".",
         apply_env: bool = False,
+        optimized: bool = False,
         **kwargs: Any,
     ) -> "Agent":
         """Build a workspace-aware agent rooted at a repo (the SHIPIT Workspace).
@@ -375,8 +428,16 @@ class Agent:
         project instructions, and enables ``/slash`` commands from
         ``.shipit/commands/``. Point it at a directory and it just works::
 
-            agent = Agent.for_project(llm=llm, project_root="/my/repo")
-            agent.run("/review src/app.py")
+            agent = Agent.for_project(
+                llm=llm, project_root="/my/repo", optimized=True
+            )
+            chat = agent.chat_session(session_id="main")
+            chat.send("/review src/app.py")
+            chat.send("Now fix the issues you found")
+
+        Optimized project agents persist sessions and long-term memory under
+        ``.shipit/`` by default, so recreating the agent and reusing the same
+        session id resumes the conversation. Explicit stores always win.
         """
         from shipit_agent.workspace import load_settings
 
@@ -388,8 +449,19 @@ class Agent:
             engine = settings.to_permission_engine()
             if engine is not None:
                 kwargs["permissions"] = engine
+        if optimized:
+            from shipit_agent.stores import FileMemoryStore, FileSessionStore
+
+            state_root = Path(project_root) / ".shipit"
+            if "session_store" not in kwargs:
+                kwargs["session_store"] = FileSessionStore(state_root / "sessions")
+            if "memory_store" not in kwargs:
+                kwargs["memory_store"] = FileMemoryStore(state_root / "memory.json")
         return cls.with_builtins(
-            llm=llm, project_root=str(project_root), **kwargs
+            llm=llm,
+            project_root=str(project_root),
+            optimized=optimized,
+            **kwargs,
         )
 
     @classmethod
@@ -435,9 +507,10 @@ class Agent:
         ]
         prompt = "\n\n".join(s for s in sections if s)
 
+        project_root = str(kwargs.pop("project_root", "."))
         builtin_tools = get_builtin_tools(
             llm=llm,
-            project_root=str(kwargs.pop("project_root", ".")),
+            project_root=project_root,
         )
         wanted = set(definition.tools)
         selected = (
@@ -445,16 +518,20 @@ class Agent:
             if wanted
             else list(builtin_tools)
         )
+        supplied_metadata = dict(kwargs.pop("metadata", {}) or {})
         return cls(
             llm=llm,
             prompt=kwargs.pop("prompt", prompt),
             tools=[*selected, *(tools or [])],
             name=definition.id,
             description=definition.role,
-            max_iterations=kwargs.pop(
-                "max_iterations", definition.max_iterations
-            ),
-            metadata={"role": definition.id, "category": definition.category},
+            project_root=project_root,
+            max_iterations=kwargs.pop("max_iterations", definition.max_iterations),
+            metadata={
+                "role": definition.id,
+                "category": definition.category,
+                **supplied_metadata,
+            },
             **kwargs,
         )
 
@@ -590,7 +667,7 @@ class Agent:
             return False
         try:
             return bool(policy.assess(user_prompt, llm=self.llm))
-        except Exception:                                  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             # An assessor that fails must not silently remove a capability.
             return True
 
@@ -727,8 +804,10 @@ class Agent:
             self.permission_mode != "default" or self.permission_callback is not None
         ):
             engine = PermissionEngine(mode=self.permission_mode)  # type: ignore[arg-type]
-        if engine is not None and self.permission_callback is not None and (
-            engine.callback is None
+        if (
+            engine is not None
+            and self.permission_callback is not None
+            and (engine.callback is None)
         ):
             engine.callback = self.permission_callback
         return engine
@@ -784,9 +863,7 @@ class Agent:
         5. Optionally parse the output against ``output_schema``.
         6. Return ``AgentResult`` with output, messages, events, and metadata.
         """
-        user_prompt = self._delegated_prompt(
-            self._expand_slash_command(user_prompt)
-        )
+        user_prompt = self._delegated_prompt(self._expand_slash_command(user_prompt))
         # Append schema instructions to the USER prompt (not system prompt)
         # so the model can still use tools normally and only formats the
         # final answer as JSON. Bedrock returns empty content when schema
@@ -830,8 +907,10 @@ class Agent:
             router_policy=self.router_policy,
             credential_store=self.credential_store,
             parallel_tool_execution=self.parallel_tool_execution,
+            max_tool_concurrency=self.max_tool_concurrency,
             hooks=self.hooks,
             context_window_tokens=self.context_window_tokens,
+            max_tool_output_chars=self.max_tool_output_chars,
             replan_interval=self.replan_interval,
             permissions=self._effective_permissions(),
             guardrails=self.guardrails,
@@ -995,9 +1074,7 @@ class Agent:
         ``timestamp``; see :data:`shipit_agent.models.EventType` for the
         vocabulary.
         """
-        user_prompt = self._delegated_prompt(
-            self._expand_slash_command(user_prompt)
-        )
+        user_prompt = self._delegated_prompt(self._expand_slash_command(user_prompt))
         if self.rag is not None:
             self.rag.begin_run()
 
@@ -1032,8 +1109,10 @@ class Agent:
             router_policy=self.router_policy,
             credential_store=self.credential_store,
             parallel_tool_execution=self.parallel_tool_execution,
+            max_tool_concurrency=self.max_tool_concurrency,
             hooks=self.hooks,
             context_window_tokens=self.context_window_tokens,
+            max_tool_output_chars=self.max_tool_output_chars,
             replan_interval=self.replan_interval,
             permissions=self._effective_permissions(),
             guardrails=self.guardrails,

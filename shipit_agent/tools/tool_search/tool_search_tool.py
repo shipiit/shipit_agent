@@ -24,9 +24,9 @@ class ToolSearchTool:
 
     Scoring (from drk_cache's implementation):
         score = SequenceMatcher(query, haystack).ratio() + 0.12 * token_hits
-    where ``haystack`` concatenates the tool name, description, and
-    prompt_instructions, and ``token_hits`` counts how many query words
-    appear literally in the haystack. Tie-break by insertion order.
+    where ``haystack`` includes the name, description, instructions, family,
+    connector state, and MCP server, and ``token_hits`` counts how many query
+    words appear literally in it. Tie-break by insertion order.
 
     Pure stdlib — no embeddings, no external services, no API keys.
     """
@@ -121,13 +121,41 @@ class ToolSearchTool:
             name = str(tool.get("name", "") or "")
             description = str(tool.get("description", "") or "")
             instructions = str(tool.get("prompt_instructions", "") or "")
-            haystack = f"{name} {description} {instructions}".lower()
+            category = str(tool.get("category", "") or "")
+            connection_id = str(tool.get("connection_id", "") or "")
+            connection_state = str(tool.get("connection_state", "") or "")
+            server = str(tool.get("server", "") or "")
+            read_only = tool.get("read_only")
+            access_terms = (
+                "read only"
+                if read_only is True
+                else "action write mutate"
+                if read_only is False
+                else ""
+            )
+            haystack = " ".join(
+                (
+                    name,
+                    description,
+                    instructions,
+                    category,
+                    connection_id,
+                    connection_state,
+                    server,
+                    access_terms,
+                )
+            ).lower()
             score = self._score(query_lower, query_tokens, haystack)
             scored.append(
                 {
                     "name": name,
                     "description": description,
                     "prompt_instructions": instructions,
+                    "category": category,
+                    "read_only": read_only if isinstance(read_only, bool) else None,
+                    "connection_id": connection_id,
+                    "connection_state": connection_state,
+                    "server": server,
                     "score": score,
                 }
             )
@@ -146,7 +174,20 @@ class ToolSearchTool:
         lines = [f"Best tools for '{query_text}' (ranked by relevance):"]
         for idx, match in enumerate(meaningful, start=1):
             desc = match["description"] or "No description provided."
-            lines.append(f"{idx}. {match['name']} (score={match['score']}) — {desc}")
+            details = [match["category"]] if match["category"] else []
+            if match["read_only"] is True:
+                details.append("read-only")
+            elif match["read_only"] is False:
+                details.append("action")
+            if match["server"]:
+                details.append(f"MCP: {match['server']}")
+            if match["connection_id"]:
+                state = match["connection_state"] or "unknown"
+                details.append(f"{match['connection_id']}: {state}")
+            detail_text = f"; {', '.join(details)}" if details else ""
+            lines.append(
+                f"{idx}. {match['name']} (score={match['score']}{detail_text}) — {desc}"
+            )
             if match["prompt_instructions"]:
                 lines.append(f"   ↳ when to use: {match['prompt_instructions']}")
 

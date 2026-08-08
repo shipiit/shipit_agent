@@ -110,6 +110,7 @@ class StreamRenderer:
         *,
         file: Any = None,
         show_summary: bool = True,
+        show_tool_output: bool = True,
         style: str = "auto",
     ) -> None:
         import sys
@@ -118,9 +119,13 @@ class StreamRenderer:
         self._mid_text = False  # currently inside a streamed text line
         self._saw_delta = False
         self._show_summary = show_summary
+        self._show_tool_output = show_tool_output
+        self._streamed_tool_calls: set[str] = set()
         self._events: list[AgentEvent] = []
         if style == "auto":
-            style = "rich" if getattr(self._file, "isatty", lambda: False)() else "plain"
+            style = (
+                "rich" if getattr(self._file, "isatty", lambda: False)() else "plain"
+            )
         self._rich = style == "rich"
 
     def _c(self, color: str, text: str) -> str:
@@ -146,9 +151,7 @@ class StreamRenderer:
             err = _clip(str(p.get("error", "")), _MAX_OUTPUT_CHARS)
             return f"  ⎿ {self._c('red', '✗ ' + err)}"
         if event.type == "tool_retry":
-            return self._c(
-                "yellow", f"  ⎿ ↻ retry (attempt {p.get('attempt', '?')})"
-            )
+            return self._c("yellow", f"  ⎿ ↻ retry (attempt {p.get('attempt', '?')})")
         if event.type == "context_compacted":
             return self._c(
                 "dim",
@@ -178,6 +181,28 @@ class StreamRenderer:
                 self._write(chunk)
                 self._mid_text = True
                 self._saw_delta = True
+            return
+        if event.type == "tool_output_delta" and self._show_tool_output:
+            chunk = str(event.payload.get("chunk", ""))
+            if chunk:
+                self._break_text()
+                tool = str(event.payload.get("tool", "?"))
+                call_id = str(event.payload.get("call_id", "?"))
+                self._streamed_tool_calls.add(call_id)
+                prefix = self._c("dim", f"  {tool}[{call_id}] | ")
+                rendered = chunk.replace("\n", "\n" + prefix).removesuffix(prefix)
+                self._write(prefix + rendered)
+                if not chunk.endswith("\n"):
+                    self._write("\n")
+            return
+        if (
+            event.type == "tool_completed"
+            and str(event.payload.get("call_id", "?")) in self._streamed_tool_calls
+        ):
+            self._break_text()
+            dur = _format_duration(event.payload.get("duration_ms"))
+            status = "✓ tool completed" + (f" in {dur}" if dur else "")
+            self._write(self._c("green", f"  {status}") + "\n")
             return
         line = self._rich_line(event) if self._rich else format_event_line(event)
         if line is not None:

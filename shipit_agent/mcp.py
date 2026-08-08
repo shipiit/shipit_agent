@@ -12,6 +12,9 @@ from urllib import request
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
 
+MCP_PROTOCOL_VERSION = "2025-11-25"
+
+
 class MCPTransport(Protocol):
     def request(
         self, method: str, params: dict[str, Any] | None = None
@@ -65,6 +68,9 @@ class MCPRemoteTool:
     input_schema: dict[str, Any] = field(
         default_factory=lambda: {"type": "object", "properties": {}, "required": []}
     )
+    output_schema: dict[str, Any] = field(default_factory=dict)
+    title: str = ""
+    annotations: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     prompt: str = "Use this MCP tool when the remote server provides the best capability for the task."
     prompt_instructions: str = (
@@ -105,24 +111,54 @@ class MCPRemoteTool:
                     **self.metadata,
                 },
             )
-        content = result.get("content", [])
-        text_parts = []
-        for item in content:
-            if isinstance(item, dict):
-                if "text" in item:
-                    text_parts.append(str(item["text"]))
-                else:
-                    text_parts.append(json.dumps(item, sort_keys=True))
-            else:
-                text_parts.append(str(item))
+        content = list(result.get("content", []))
+        text_parts = _render_mcp_content(content)
+        is_error = bool(result.get("isError", False))
         return ToolOutput(
             text="\n".join(part for part in text_parts if part).strip(),
             metadata={
                 "server": self.server_name,
+                "ok": not is_error,
+                "is_error": is_error,
+                "structured_content": result.get("structuredContent"),
+                "content_blocks": content,
+                "output_schema": dict(self.output_schema),
+                "annotations": dict(self.annotations),
                 "raw_result": result,
                 **self.metadata,
             },
         )
+
+
+def _render_mcp_content(content: list[Any]) -> list[str]:
+    """Render MCP content for the model without discarding rich blocks."""
+    rendered: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            rendered.append(str(item))
+            continue
+        kind = str(item.get("type", ""))
+        if kind == "text" or "text" in item:
+            rendered.append(str(item.get("text", "")))
+        elif kind == "image":
+            rendered.append(f"[image: {item.get('mimeType', 'image/unknown')}]")
+        elif kind == "audio":
+            rendered.append(f"[audio: {item.get('mimeType', 'audio/unknown')}]")
+        elif kind == "resource_link":
+            label = item.get("title") or item.get("name") or "resource"
+            rendered.append(f"[{label}: {item.get('uri', '')}]")
+        elif kind == "resource":
+            resource = item.get("resource", {})
+            if isinstance(resource, dict) and "text" in resource:
+                rendered.append(str(resource["text"]))
+            elif isinstance(resource, dict):
+                rendered.append(
+                    f"[embedded resource: {resource.get('uri', '')} "
+                    f"{resource.get('mimeType', '')}]".strip()
+                )
+        else:
+            rendered.append(json.dumps(item, sort_keys=True))
+    return rendered
 
 
 @dataclass(slots=True)
@@ -389,6 +425,12 @@ class MCPPrompt:
 @dataclass(slots=True)
 class RemoteMCPServer(MCPServer):
     transport: MCPTransport | None = None
+    protocol_version: str = MCP_PROTOCOL_VERSION
+    allowed_tools: set[str] | None = None
+    blocked_tools: set[str] = field(default_factory=set)
+    tool_filter: Callable[[dict[str, Any]], bool] | None = None
+    server_capabilities: dict[str, Any] = field(default_factory=dict)
+    server_info: dict[str, Any] = field(default_factory=dict)
     _discovered: bool = False
     _initialized: bool = False
 
@@ -397,15 +439,28 @@ class RemoteMCPServer(MCPServer):
             raise MCPError("RemoteMCPServer requires a transport.")
         if self._initialized:
             return
-        self.transport.request(
+        result = self.transport.request(
             "initialize",
             {
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": self.protocol_version,
                 "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                 "clientInfo": {"name": "shipit_agent", "version": "1.0.0"},
             },
         )
+        self.protocol_version = str(
+            result.get("protocolVersion") or self.protocol_version
+        )
+        self.server_capabilities = dict(result.get("capabilities", {}))
+        self.server_info = dict(result.get("serverInfo", {}))
         self._initialized = True
+
+    def _tool_allowed(self, item: dict[str, Any]) -> bool:
+        name = str(item.get("name", ""))
+        if self.allowed_tools is not None and name not in self.allowed_tools:
+            return False
+        if name in self.blocked_tools:
+            return False
+        return self.tool_filter(item) if self.tool_filter is not None else True
 
     # ── resources ─────────────────────────────────────────────────────
     def list_resources(self) -> list[MCPResource]:
@@ -487,8 +542,7 @@ class RemoteMCPServer(MCPServer):
             if not resources:
                 return f"MCP server '{self.name}' exposes no resources."
             return "\n".join(
-                f"{r.uri} — {r.name or r.description or r.mime_type}"
-                for r in resources
+                f"{r.uri} — {r.name or r.description or r.mime_type}" for r in resources
             )
 
         return MCPTool(
@@ -514,6 +568,10 @@ class RemoteMCPServer(MCPServer):
 
     def discover_tools(self) -> list[MCPTool | MCPRemoteTool]:
         if self._discovered:
+            # A prior agent turn may have closed the transport. Persistent
+            # transports can reopen themselves, but the new MCP session must
+            # complete the protocol handshake before cached tools are reused.
+            self.initialize()
             return list(self.tools)
         if self.transport is None:
             raise MCPError("RemoteMCPServer requires a transport.")
@@ -522,6 +580,8 @@ class RemoteMCPServer(MCPServer):
             result = self.transport.request("tools/list", {})
             resolved_tools: list[MCPTool | MCPRemoteTool] = []
             for item in result.get("tools", []):
+                if not self._tool_allowed(item):
+                    continue
                 resolved_tools.append(
                     MCPRemoteTool(
                         server_name=self.name,
@@ -532,7 +592,15 @@ class RemoteMCPServer(MCPServer):
                             item.get("inputSchema")
                             or {"type": "object", "properties": {}, "required": []}
                         ),
-                        metadata={"server": self.name},
+                        output_schema=dict(item.get("outputSchema") or {}),
+                        title=str(item.get("title", "")),
+                        annotations=dict(item.get("annotations") or {}),
+                        metadata={
+                            "server": self.name,
+                            "title": str(item.get("title", "")),
+                            "annotations": dict(item.get("annotations") or {}),
+                            "execution": dict(item.get("execution") or {}),
+                        },
                     )
                 )
         except Exception:
@@ -547,6 +615,9 @@ class RemoteMCPServer(MCPServer):
     def close(self) -> None:
         if self.transport is not None and hasattr(self.transport, "close"):
             self.transport.close()
+        # Closing ends the MCP protocol session even when the transport object
+        # is reusable. Keep discovered schemas, but handshake again next turn.
+        self._initialized = False
 
 
 def discover_mcp_tools(server: MCPServer) -> list[MCPTool | MCPRemoteTool]:

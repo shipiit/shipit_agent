@@ -27,7 +27,7 @@ from shipit_agent.stores import (
     SessionStore,
 )
 from shipit_agent.tool_runner import ToolRunner
-from shipit_agent.tools import Tool, ToolContext
+from shipit_agent.tools import Tool, ToolContext, ToolOutputChunk
 from shipit_agent.tools.helpers import build_tools_prompt
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
 
@@ -66,8 +66,10 @@ class AsyncAgentRuntime(RuntimeCore):
         trace_store: TraceStore | None = None,
         trace_id: str | None = None,
         parallel_tool_execution: bool = False,
+        max_tool_concurrency: int | None = None,
         hooks: Any | None = None,
         context_window_tokens: int = 0,
+        max_tool_output_chars: int = 0,
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
         approvals: Any | None = None,
@@ -92,6 +94,9 @@ class AsyncAgentRuntime(RuntimeCore):
         self.trace_store = trace_store or InMemoryTraceStore()
         self.trace_id = trace_id or self.session_id
         self.parallel_tool_execution = parallel_tool_execution
+        if max_tool_concurrency is not None and max_tool_concurrency < 1:
+            raise ValueError("max_tool_concurrency must be positive or None")
+        self.max_tool_concurrency = max_tool_concurrency
         self.hooks = hooks
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
@@ -106,6 +111,7 @@ class AsyncAgentRuntime(RuntimeCore):
             lockdown=lockdown,
             code_mode=code_mode,
             context_window_tokens=context_window_tokens,
+            max_tool_output_chars=max_tool_output_chars,
         )
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
 
@@ -174,16 +180,22 @@ class AsyncAgentRuntime(RuntimeCore):
                 )
 
     async def _run_tool_async(
-        self, tool_runner: ToolRunner, tool_call: Any, context: ToolContext
+        self,
+        tool_runner: ToolRunner,
+        tool_call: Any,
+        context: ToolContext,
+        output_callback: Callable[[ToolOutputChunk], None] | None = None,
     ) -> ToolResult:
         """Run a tool call in a thread executor."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
+        result = await loop.run_in_executor(
             None,
-            tool_runner.run_tool_call,
-            tool_call,
-            context,
+            lambda: tool_runner.run_tool_call(tool_call, context, output_callback),
         )
+        # Thread-safe output callbacks are queued onto this event loop. Let
+        # them drain before the canonical tool_completed event is emitted.
+        await asyncio.sleep(0)
+        return result
 
     def _defer_tool_call(
         self,
@@ -215,6 +227,8 @@ class AsyncAgentRuntime(RuntimeCore):
             return None
 
         action = outcome.action
+        if outcome.result is not None:
+            outcome.message.content = self.model_visible_tool_output(outcome.result)
         self.emit(
             state,
             "tool_completed" if outcome.applied else "action_queued",
@@ -329,14 +343,54 @@ class AsyncAgentRuntime(RuntimeCore):
             state,
             "tool_called",
             f"Tool called: {tool_call.name}",
+            tool=tool_call.name,
+            call_id=tool_call_record["id"],
             arguments=tool_call.arguments,
             iteration=iteration,
         )
         attempt = 0
+        output_sequence = 0
+        loop = asyncio.get_running_loop()
+
+        def _publish_output(chunk: ToolOutputChunk) -> None:
+            nonlocal output_sequence
+            output_sequence += 1
+            sequence = output_sequence
+            attempt_number = attempt + 1
+
+            def _emit_chunk() -> None:
+                self.emit(
+                    state,
+                    "tool_output_delta",
+                    f"Tool output: {tool_call.name}",
+                    tool=tool_call.name,
+                    call_id=tool_call_record["id"],
+                    chunk=chunk.text,
+                    chunk_metadata=dict(chunk.metadata),
+                    sequence=sequence,
+                    attempt=attempt_number,
+                    iteration=iteration,
+                )
+
+            loop.call_soon_threadsafe(_emit_chunk)
+
         while True:
+            self.emit(
+                state,
+                "tool_output_started",
+                f"Tool output started: {tool_call.name}",
+                tool=tool_call.name,
+                call_id=tool_call_record["id"],
+                attempt=attempt + 1,
+                buffered=self.guardrails is not None,
+                iteration=iteration,
+            )
             try:
                 tool_result = await self._run_tool_async(
-                    tool_runner, tool_call, context
+                    tool_runner,
+                    tool_call,
+                    context,
+                    None if self.guardrails is not None else _publish_output,
                 )
                 break
             except self.retry_policy.retry_on_exceptions as exc:
@@ -353,6 +407,11 @@ class AsyncAgentRuntime(RuntimeCore):
                         output=f"Error running tool '{tool_call.name}': {exc}",
                         metadata={"error": str(exc)},
                     )
+                    if self.guardrails is None:
+                        _publish_output(
+                            ToolOutputChunk(tool_result.output, {"error": str(exc)})
+                        )
+                        await asyncio.sleep(0)
                     break
                 attempt += 1
                 self.emit(
@@ -365,13 +424,16 @@ class AsyncAgentRuntime(RuntimeCore):
                 )
 
         if self.hooks:
-            self.hooks.run_after_tool(tool_call.name, tool_result)
+            tool_result = self.hooks.run_after_tool(tool_call.name, tool_result)
 
         # Guardrails: neutralize indirect injection and redact secrets BEFORE
         # the model reads the result.
         tool_result.output, redacted_secret = self.sanitize_tool_output(
             state, tool_call.name, tool_result.output
         )
+        if self.guardrails is not None and tool_result.output:
+            _publish_output(ToolOutputChunk(tool_result.output, {"buffered": True}))
+            await asyncio.sleep(0)
 
         # Did this read latch the run into lockdown?
         self.note_lockdown(
@@ -383,10 +445,11 @@ class AsyncAgentRuntime(RuntimeCore):
             iteration=iteration,
         )
 
+        model_output = self.model_visible_tool_output(tool_result)
         msg = Message(
             role="tool",
             name=tool_call.name,
-            content=tool_result.output,
+            content=model_output,
             metadata={
                 **dict(tool_result.metadata),
                 "tool_call_id": tool_call_record["id"],
@@ -422,23 +485,32 @@ class AsyncAgentRuntime(RuntimeCore):
         finally:
             self.close_mcps()
 
-    async def _run_inner(
-        self, user_prompt: str
-    ) -> tuple[RuntimeState, LLMResponse]:
+    async def _run_inner(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
 
         # Guardrails: blocked prompts never reach the LLM.
         user_prompt, refusal = self.check_input(state, user_prompt)
         if refusal is not None:
             self.emit(
-                state, "run_completed", "Run blocked by guardrails",
-                output=refusal, content=refusal, format="markdown",
-                usage={}, cancelled=False, guardrail_blocked=True,
+                state,
+                "run_completed",
+                "Run blocked by guardrails",
+                output=refusal,
+                content=refusal,
+                format="markdown",
+                usage={},
+                cancelled=False,
+                guardrail_blocked=True,
             )
             return state, LLMResponse(content=refusal)
 
         registry = self.registry()
-        tool_prompt = build_tools_prompt(registry.values())
+        # Build the capability control plane before the system prompt so the
+        # model sees the same connection/MCP metadata that tools can search.
+        shared_state: dict[str, Any] = self.build_shared_state(registry, state)
+        tool_prompt = build_tools_prompt(
+            registry.values(), connections=self.connections.all()
+        )
         base_prompt = (
             self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
         )
@@ -470,7 +542,6 @@ class AsyncAgentRuntime(RuntimeCore):
 
         tool_schemas = registry.schemas()
         # Built by RuntimeCore, so both loops publish identical tool state.
-        shared_state: dict[str, Any] = self.build_shared_state(registry, state)
         tool_runner = ToolRunner(registry)
 
         response = LLMResponse(content="")
@@ -480,7 +551,9 @@ class AsyncAgentRuntime(RuntimeCore):
         for iteration in range(1, self.max_iterations + 1):
             if self._cancel_event.is_set():
                 self.emit(
-                    state, "run_cancelled", "Run cancelled by caller",
+                    state,
+                    "run_cancelled",
+                    "Run cancelled by caller",
                     iteration=iteration,
                 )
                 if not response.content:
@@ -537,13 +610,13 @@ class AsyncAgentRuntime(RuntimeCore):
                     state.messages.append(
                         Message(role="assistant", content=response.content)
                     )
-                    state.messages.append(
-                        Message(role="user", content=self.NUDGE_TEXT)
-                    )
+                    state.messages.append(Message(role="user", content=self.NUDGE_TEXT))
                     self.emit(
-                        state, "tool_call_healed",
+                        state,
+                        "tool_call_healed",
                         "Nudged: intent without action",
-                        nudge=True, iteration=iteration,
+                        nudge=True,
+                        iteration=iteration,
                     )
                     continue
                 break
@@ -573,10 +646,17 @@ class AsyncAgentRuntime(RuntimeCore):
                 # shared_state so concurrent writes can't corrupt each other;
                 # merged back in original order after all complete.
                 isolated_states = [
-                    _isolated_tool_state(shared_state)
-                    for _ in response.tool_calls
+                    _isolated_tool_state(shared_state) for _ in response.tool_calls
                 ]
                 tasks = []
+                semaphore = asyncio.Semaphore(
+                    self.max_tool_concurrency or len(response.tool_calls)
+                )
+
+                async def _bounded_tool_call(**kwargs: Any):
+                    async with semaphore:
+                        return await self._execute_single_tool(**kwargs)
+
                 for idx, tc in enumerate(response.tool_calls):
                     context = ToolContext(
                         prompt=user_prompt,
@@ -586,7 +666,7 @@ class AsyncAgentRuntime(RuntimeCore):
                         session_id=self.session_id,
                     )
                     tasks.append(
-                        self._execute_single_tool(
+                        _bounded_tool_call(
                             state=state,
                             registry=registry,
                             tool_runner=tool_runner,

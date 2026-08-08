@@ -87,6 +87,43 @@ def test_tool_search_can_find_available_tools() -> None:
     assert "web_search" in result.text
 
 
+def test_tool_search_uses_family_connection_and_mcp_metadata() -> None:
+    tool = ToolSearchTool()
+    available_tools = [
+        {
+            "name": "slack",
+            "description": "Send and search workspace messages",
+            "prompt_instructions": "",
+            "category": "connectors",
+            "read_only": False,
+            "connection_id": "slack",
+            "connection_state": "connected",
+            "server": "",
+        },
+        {
+            "name": "query_logs",
+            "description": "Query application logs",
+            "prompt_instructions": "",
+            "category": "mcp",
+            "read_only": True,
+            "connection_id": "",
+            "connection_state": "",
+            "server": "observability",
+        },
+    ]
+    context = type("Ctx", (), {"state": {"available_tools": available_tools}})()
+
+    connector_result = tool.run(
+        context=context, query="connected slack action", limit=1
+    )
+    mcp_result = tool.run(context=context, query="observability MCP read only", limit=1)
+
+    assert connector_result.metadata["matches"][0]["name"] == "slack"
+    assert "slack: connected" in connector_result.text
+    assert mcp_result.metadata["matches"][0]["name"] == "query_logs"
+    assert "MCP: observability" in mcp_result.text
+
+
 def test_thought_decomposition_tool_returns_structure() -> None:
     tool = ThoughtDecompositionTool()
     result = tool.run(

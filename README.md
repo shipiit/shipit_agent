@@ -344,8 +344,10 @@ print(result.parsed)            # validated; auto-retries inside the same conver
 for event in agent.stream("Write a haiku about shipping code"):
     if event.type == "text_delta":
         print(event.payload["chunk"], end="", flush=True)
+    elif event.type == "tool_output_delta":
+        print(event.payload["chunk"], end="", flush=True)
     elif event.type == "tool_called":
-        print("→", event.payload["name"])
+        print("→", event.payload["tool"])
 ```
 
 Events also serialize to ready-made **SSE / WebSocket** packets for web UIs.
@@ -399,6 +401,35 @@ llm = AnthropicChatLLM("claude-opus-4-1", prompt_caching=True)   # default on fo
 `cache_read_input_tokens` / `cache_creation_input_tokens`, which flow into `CostTracker`. Caching
 spans **Anthropic, Bedrock, Vertex** (`cache_control`) **and OpenAI** (automatic) — cache reads bill
 at ~10% of input.
+
+For a large, long-running coding agent, enable the optimized preset. It keeps
+the full tool catalogue available behind progressive discovery and turns on
+model-aware checkpoint compaction:
+
+```python
+agent = Agent.for_project(
+    llm=llm,
+    project_root="/path/to/repo",
+    optimized=True,
+)
+
+# Reuse this id after a process restart to continue the same durable chat.
+chat = agent.chat_session(session_id="main")
+chat.send("Review the authentication flow")
+chat.send("Now implement the fixes and run the tests")
+```
+
+Run `agent.doctor()` to verify tool schemas, skill dependencies, MCP and
+connector readiness, prompt caching, code mode, and compaction settings.
+Optimized project agents keep canonical chat history in `.shipit/sessions/`
+and long-term facts in `.shipit/memory.json`; only the compact replay sent to
+the model is shortened, so historical messages remain available to the user.
+Large MCP/tool outputs are similarly bounded only in model context; complete
+results remain available through `AgentResult.tool_results` and event traces.
+Every tool also emits `tool_output_started` and `tool_output_delta` events.
+Existing tools and MCP calls produce a delta when their final response arrives;
+custom generator tools can yield `ToolOutputChunk` values for true incremental
+output. Guardrail-enabled runs buffer first and publish only sanitized output.
 
 ---
 

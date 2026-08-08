@@ -20,11 +20,46 @@ for event in agent.stream("Research quantum computing"):
         print(f"Total tokens:      {usage.get('total_tokens', 0)}")
 ```
 
-Usage is accumulated across all iterations of the agent loop and reported in the `run_completed` event.
+Usage is accumulated across all iterations of the agent loop and reported in
+the `run_completed` event. The totals also include
+`cache_read_input_tokens` and `cache_creation_input_tokens`, so cached-prefix
+savings remain visible after a multi-step run.
+
+## Optimized long-running setup
+
+For a large tool catalogue, enable the safe optimized preset:
+
+```python
+agent = Agent.for_project(
+    llm=OpenAIChatLLM(model="gpt-4.1"),
+    project_root="/path/to/repo",
+    optimized=True,
+)
+
+chat = agent.chat_session(session_id="main")
+chat.send("Review this repository")
+chat.send("Continue by fixing the highest-priority issue")
+```
+
+This enables progressive code-mode tool discovery, chooses the model's known
+context window for checkpoint compaction, and raises the default loop budget
+to eight iterations. It also limits each model-visible tool result to 16,000
+characters while retaining the complete result in `AgentResult.tool_results`
+and events. Pass `code_mode`, `context_window_tokens`, `max_iterations`, or
+`max_tool_output_chars` explicitly to override any of those values.
+
+Optimized project agents also default to durable project-local stores:
+
+- `.shipit/sessions/<session-id>.json` keeps canonical multi-turn history.
+- `.shipit/memory.json` keeps facts explicitly persisted by tools.
+
+Recreate the agent and reuse the same session ID to resume after a process
+restart. Session IDs are intentionally caller-supplied so different users or
+workstreams never share history accidentally.
 
 ## Automatic message compaction
 
-When `context_window_tokens` is set, the runtime automatically compacts older messages when approaching 75% of the limit:
+When `context_window_tokens` is set, the runtime automatically compacts older messages when the model's input budget reaches 85%:
 
 ```python
 agent = Agent.with_builtins(
@@ -36,10 +71,11 @@ agent = Agent.with_builtins(
 ### How compaction works
 
 1. Before each LLM call, the runtime estimates the token count of all messages
-2. If the estimate exceeds 75% of `context_window_tokens`, older messages are compacted
-3. System messages and the most recent 4 messages are always preserved
-4. Older tool results are condensed into a single summary message
-5. The compacted message is marked with `metadata={"compacted": True}`
+2. The model's output allowance is reserved before calculating the input budget
+3. At 85% of that budget, a turn-boundary checkpoint condenses older messages
+4. A six-section handoff preserves goals, constraints, progress, decisions, next steps, and critical context
+5. Canonical history remains intact; only the replay window uses the checkpoint
+6. The `context_compacted` event reports the message and token reduction
 
 ```
 Before compaction:                  After compaction:

@@ -15,7 +15,10 @@ from shipit_agent import (
     WebSearchTool,
     WorkspaceFilesTool,
 )
+from shipit_agent.connections import Connection, ConnectionState
+from shipit_agent.builtins import get_builtin_tools
 from shipit_agent.llms import SimpleEchoLLM
+from shipit_agent.mcp import MCPTool
 from shipit_agent.tools.artifact_builder import ARTIFACT_BUILDER_PROMPT
 from shipit_agent.tools.ask_user import ASK_USER_PROMPT
 from shipit_agent.tools.code_execution import CODE_EXECUTION_PROMPT
@@ -30,6 +33,11 @@ from shipit_agent.tools.tool_search import TOOL_SEARCH_PROMPT
 from shipit_agent.tools.verifier import VERIFIER_PROMPT
 from shipit_agent.tools.web_search import WEB_SEARCH_PROMPT
 from shipit_agent.tools.workspace_files import WORKSPACE_FILES_PROMPT
+from shipit_agent.tools.helpers import (
+    build_tools_prompt,
+    describe_tool_capability,
+    tool_family,
+)
 
 
 def test_all_builtin_tools_have_default_prompt_text() -> None:
@@ -99,3 +107,69 @@ def test_sub_agent_uses_local_prompt_constant() -> None:
     from shipit_agent import SubAgentTool
 
     assert SubAgentTool(llm=SimpleEchoLLM()).prompt == SUB_AGENT_PROMPT
+
+
+def test_capability_prompt_groups_tools_without_dropping_any() -> None:
+    from shipit_agent import SlackTool
+
+    web = WebSearchTool(provider="duckduckgo")
+    slack = SlackTool()
+    mcp = MCPTool(
+        name="search_incidents",
+        description="Search production incidents",
+        handler=lambda **_: "ok",
+        metadata={"server": "operations"},
+    )
+    prompt = build_tools_prompt(
+        [web, slack, mcp],
+        connections=[
+            Connection(
+                id="slack",
+                title="Slack",
+                state=ConnectionState.CONNECTED,
+            )
+        ],
+    )
+
+    assert "3 tools across 3 families" in prompt
+    assert "- web_search:" in prompt
+    assert "[capability: read-only]" in prompt
+    assert "- slack:" in prompt
+    assert "[capability: action, connection=slack:connected]" in prompt
+    assert "- search_incidents:" in prompt
+    assert "[capability: read-only, mcp=operations]" in prompt
+    assert (
+        prompt.index("web_search")
+        < prompt.index("slack")
+        < prompt.index("search_incidents")
+    )
+
+
+def test_capability_description_exposes_connector_and_mcp_metadata() -> None:
+    from shipit_agent import SlackTool
+
+    connector = describe_tool_capability(
+        SlackTool(), connections=[Connection(id="slack", title="Slack")]
+    )
+    mcp = describe_tool_capability(
+        MCPTool(
+            name="query_warehouse",
+            description="Query warehouse",
+            handler=lambda **_: "ok",
+            metadata={"server": "analytics"},
+        )
+    )
+
+    assert connector["category"] == "connectors"
+    assert connector["connection_id"] == "slack"
+    assert connector["connection_state"] == "disconnected"
+    assert mcp["category"] == "mcp"
+    assert mcp["server"] == "analytics"
+
+
+def test_every_builtin_tool_has_an_explicit_capability_family() -> None:
+    tools = get_builtin_tools(llm=SimpleEchoLLM(), project_root=".")
+
+    uncategorized = [tool.name for tool in tools if tool_family(tool) == "custom"]
+
+    assert uncategorized == []

@@ -35,8 +35,17 @@ __all__ = ["RuntimeCore", "INTENT_MARKERS", "is_intent_without_action"]
 # heuristic only because not every model will call `give_up`; a model that
 # does is always preferred.
 INTENT_MARKERS = (
-    "let me", "i will", "i'll", "i am going to", "i'm going to", "first, i",
-    "next, i", "now i", "going to use", "going to call", "let's use",
+    "let me",
+    "i will",
+    "i'll",
+    "i am going to",
+    "i'm going to",
+    "first, i",
+    "next, i",
+    "now i",
+    "going to use",
+    "going to call",
+    "let's use",
 )
 
 
@@ -51,15 +60,37 @@ def is_intent_without_action(text: str | None) -> bool:
 # What a file extension means to a person. Anything unlisted is "File" —
 # a wrong label is worse than a plain one.
 _ARTIFACT_KINDS = {
-    ".html": "Page", ".htm": "Page",
-    ".md": "Doc", ".txt": "Doc", ".rtf": "Doc", ".pdf": "PDF", ".docx": "Doc",
-    ".csv": "Sheet", ".tsv": "Sheet", ".xlsx": "Sheet", ".xls": "Sheet",
-    ".json": "Data", ".yaml": "Data", ".yml": "Data", ".xml": "Data",
-    ".png": "Image", ".jpg": "Image", ".jpeg": "Image", ".svg": "Image",
-    ".gif": "Image", ".webp": "Image",
-    ".pptx": "Deck", ".key": "Deck",
-    ".py": "Code", ".js": "Code", ".ts": "Code", ".sql": "Code", ".sh": "Code",
-    ".zip": "Archive", ".tar": "Archive", ".gz": "Archive",
+    ".html": "Page",
+    ".htm": "Page",
+    ".md": "Doc",
+    ".txt": "Doc",
+    ".rtf": "Doc",
+    ".pdf": "PDF",
+    ".docx": "Doc",
+    ".csv": "Sheet",
+    ".tsv": "Sheet",
+    ".xlsx": "Sheet",
+    ".xls": "Sheet",
+    ".json": "Data",
+    ".yaml": "Data",
+    ".yml": "Data",
+    ".xml": "Data",
+    ".png": "Image",
+    ".jpg": "Image",
+    ".jpeg": "Image",
+    ".svg": "Image",
+    ".gif": "Image",
+    ".webp": "Image",
+    ".pptx": "Deck",
+    ".key": "Deck",
+    ".py": "Code",
+    ".js": "Code",
+    ".ts": "Code",
+    ".sql": "Code",
+    ".sh": "Code",
+    ".zip": "Archive",
+    ".tar": "Archive",
+    ".gz": "Archive",
 }
 
 # Metadata keys a tool uses to say "I wrote this".
@@ -125,11 +156,14 @@ class RuntimeCore:
         self.heal_tool_calls = bool(options.get("heal_tool_calls", True))
         self.code_mode = bool(options.get("code_mode", False))
         self.context_window_tokens = int(options.get("context_window_tokens", 0) or 0)
+        self.max_tool_output_chars = int(options.get("max_tool_output_chars", 0) or 0)
 
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
         }
         self._cancel_event = threading.Event()
         self._guarded_tool_calls = 0
@@ -157,9 +191,11 @@ class RuntimeCore:
         decision = self.guardrails.check_input(user_prompt)
         if decision.blocked:
             self.emit(
-                state, "guardrail_triggered",
+                state,
+                "guardrail_triggered",
                 f"Input blocked: {decision.reason}",
-                stage="input", reason=decision.reason,
+                stage="input",
+                reason=decision.reason,
             )
             return user_prompt, f"Request blocked by guardrails: {decision.reason}"
         if decision.action == "redact" and decision.text:
@@ -174,9 +210,11 @@ class RuntimeCore:
         if decision.action == "allow":
             return content
         self.emit(
-            state, "guardrail_triggered",
+            state,
+            "guardrail_triggered",
             f"Output {decision.action}: {decision.reason}",
-            stage="output", reason=decision.reason,
+            stage="output",
+            reason=decision.reason,
         )
         return (
             decision.text
@@ -194,11 +232,49 @@ class RuntimeCore:
         if sanitized.action == "allow":
             return output, False
         self.emit(
-            state, "guardrail_triggered",
+            state,
+            "guardrail_triggered",
             f"Tool output sanitized: {sanitized.reason}",
-            stage="tool_output", tool=tool_name, reason=sanitized.reason,
+            stage="tool_output",
+            tool=tool_name,
+            reason=sanitized.reason,
         )
         return sanitized.text, "secret" in str(sanitized.reason or "").lower()
+
+    def model_visible_tool_output(self, tool_result: Any) -> str:
+        """Bound only the tool output copy sent back to the model.
+
+        The canonical result remains complete for callers and traces. Head and
+        tail retention keeps introductory context plus errors printed last.
+        """
+        output = str(getattr(tool_result, "output", "") or "")
+        limit = self.max_tool_output_chars
+        if limit <= 0 or len(output) <= limit:
+            return output
+
+        marker = (
+            "\n\n[Tool output shortened for model context. Use a narrower "
+            "query or range to inspect omitted content.]\n\n"
+        )
+        if limit <= len(marker) + 32:
+            visible = output[:limit]
+        else:
+            content_budget = limit - len(marker)
+            head_size = int(content_budget * 0.7)
+            tail_size = content_budget - head_size
+            visible = output[:head_size] + marker + output[-tail_size:]
+
+        metadata = getattr(tool_result, "metadata", None)
+        if isinstance(metadata, dict):
+            metadata.update(
+                {
+                    "model_output_truncated": True,
+                    "original_output_chars": len(output),
+                    "model_output_chars": len(visible),
+                    "omitted_output_chars": len(output) - len(visible),
+                }
+            )
+        return visible
 
     # ── the permission gate ──────────────────────────────────────────────
 
@@ -254,14 +330,20 @@ class RuntimeCore:
         )
         if trigger is not None:
             self.emit(
-                state, "lockdown_engaged", f"Lockdown: {trigger.reason}",
-                reason=trigger.reason, tool=trigger.tool,
-                source=trigger.source, iteration=iteration,
+                state,
+                "lockdown_engaged",
+                f"Lockdown: {trigger.reason}",
+                reason=trigger.reason,
+                tool=trigger.tool,
+                source=trigger.source,
+                iteration=iteration,
             )
 
     # ── the response ─────────────────────────────────────────────────────
 
-    def heal(self, state: Any, response: LLMResponse, registry: Any, iteration: int) -> None:
+    def heal(
+        self, state: Any, response: LLMResponse, registry: Any, iteration: int
+    ) -> None:
         """Promote tool calls a small model emitted as text, in place."""
         if not (self.heal_tool_calls and not response.tool_calls and response.content):
             return
@@ -274,12 +356,16 @@ class RuntimeCore:
             response.tool_calls = healed
             response.content = cleaned
             self.emit(
-                state, "tool_call_healed",
+                state,
+                "tool_call_healed",
                 f"Promoted {len(healed)} text tool call(s)",
-                tools=[c.name for c in healed], iteration=iteration,
+                tools=[c.name for c in healed],
+                iteration=iteration,
             )
 
-    def should_nudge(self, response: LLMResponse, *, has_tools: bool, last: bool) -> bool:
+    def should_nudge(
+        self, response: LLMResponse, *, has_tools: bool, last: bool
+    ) -> bool:
         """Is this the stall shape, and may we re-prompt once?"""
         if not (self.heal_tool_calls and has_tools and not last):
             return False
@@ -301,11 +387,20 @@ class RuntimeCore:
 
     def track_usage(self, state: Any, response: LLMResponse, iteration: int) -> None:
         """Accumulate tokens and emit a running total for the live footer."""
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        for key in (
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+        ):
             self._total_usage[key] += response.usage.get(key, 0)
         self.emit(
-            state, "usage_tick", "Usage updated",
-            usage=dict(self._total_usage), iteration=iteration,
+            state,
+            "usage_tick",
+            "Usage updated",
+            usage=dict(self._total_usage),
+            iteration=iteration,
         )
 
     # ── compaction ───────────────────────────────────────────────────────
@@ -321,7 +416,9 @@ class RuntimeCore:
             )
         return self._compactor_instance
 
-    def compact(self, state: Any, messages: list[Message], iteration: int) -> list[Message]:
+    def compact(
+        self, state: Any, messages: list[Message], iteration: int
+    ) -> list[Message]:
         """Compact if needed, emitting a notice. Returns what to send."""
         if not self.context_window_tokens:
             return messages
@@ -330,9 +427,11 @@ class RuntimeCore:
             return messages
         replayed = checkpoint.replay(messages)
         self.emit(
-            state, "context_compacted",
+            state,
+            "context_compacted",
             "Older turns condensed to stay within the context window",
-            before=len(messages), after=len(replayed),
+            before=len(messages),
+            after=len(replayed),
             saved_tokens=checkpoint.saved_tokens,
             checkpoints=len(self.compactor().checkpoints),
             iteration=iteration,
@@ -395,7 +494,9 @@ class RuntimeCore:
                 kind=_artifact_kind(path),
             )
 
-    def note_connection_request(self, state: Any, tool_name: str, metadata: Any) -> None:
+    def note_connection_request(
+        self, state: Any, tool_name: str, metadata: Any
+    ) -> None:
         """Surface a connection the agent asked for as its own event.
 
         A missing connection is a decision for the *user*, exactly like an
@@ -420,6 +521,7 @@ class RuntimeCore:
     def build_shared_state(self, registry: Any, state: Any = None) -> dict[str, Any]:
         """What every tool can see. Identical in both loops, by construction."""
         from shipit_agent.connections import ConnectionRegistry
+        from shipit_agent.tools.helpers import describe_tool_capability
         from shipit_agent.tools.connections.connections_tool import (
             REGISTRY_STATE_KEY as CONNECTIONS_KEY,
         )
@@ -434,13 +536,13 @@ class RuntimeCore:
             tools=registry.values(),
             mcps=self.mcps,
         )
+        resolved_connections = self.connections.all()
         return {
             "available_tools": [
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "prompt_instructions": getattr(tool, "prompt_instructions", ""),
-                }
+                describe_tool_capability(
+                    tool,
+                    connections=resolved_connections,
+                )
                 for tool in registry.values()
             ],
             "memory_store": self.memory_store,
@@ -468,9 +570,7 @@ class RuntimeCore:
 
     def surface_give_up(self, tool_results: list[Any]) -> None:
         """Promote a declared stop from a tool result to run metadata."""
-        gave_up = next(
-            (r for r in tool_results if r.metadata.get("gave_up")), None
-        )
+        gave_up = next((r for r in tool_results if r.metadata.get("gave_up")), None)
         if gave_up is not None:
             self.metadata["gave_up"] = True
             self.metadata["give_up_reason"] = gave_up.metadata.get("give_up_reason", "")

@@ -298,6 +298,38 @@ for skill in agent.skills:
 | `skill_match_limit` | Limit how many auto-matched skills are applied |
 | `project_root` | Root directory used by skill-linked file and shell tools. Defaults to `/tmp` |
 
+## Project-local `SKILL.md` files
+
+Project agents automatically discover the same directory convention used by
+Codex and Claude Code. Put each skill in its own directory:
+
+```text
+.shipit/skills/release-audit/SKILL.md
+.agents/skills/release-audit/SKILL.md
+.claude/skills/release-audit/SKILL.md
+.codex/skills/release-audit/SKILL.md
+```
+
+```markdown
+---
+id: release-audit
+name: Release Audit
+description: Verify a release before publishing.
+tools: [read_file, grep_files, bash]
+mcps: [github]
+tags: [release, testing]
+triggers: [verify release, prepare release]
+---
+Read the changelog, inspect changed files, run the focused and full test suites,
+and report blockers before publishing.
+```
+
+The Markdown body becomes the runtime skill prompt. Frontmatter selects tools,
+MCP requirements, tags, and matching phrases. When multiple roots define the
+same `id`, `.shipit/skills` wins, followed by `.agents`, `.claude`, and `.codex`.
+Set `auto_project_skills=False` to disable discovery. Project skills participate
+in normal auto-matching and can also be selected through `default_skill_ids`.
+
 ### Skills can also attach tools automatically
 
 Selected skills do not only affect the prompt. They can also attach stronger built-in tools for that run.

@@ -12,6 +12,8 @@ from shipit_agent import (
     Skill,
     SkillCatalog,
     create_skill,
+    discover_project_skills,
+    load_markdown_skill,
     skill_id_from_name,
 )
 from shipit_agent.agent import DEFAULT_SKILLS_PATH
@@ -62,6 +64,94 @@ def test_packaged_skills_catalog_loads() -> None:
     registry = FileSkillRegistry(DEFAULT_SKILLS_PATH)
     assert len(registry) > 0
     assert registry.get("code-workflow-assistant") is not None
+
+
+def test_load_markdown_skill_parses_codex_style_frontmatter(tmp_path) -> None:
+    path = tmp_path / "release-audit" / "SKILL.md"
+    path.parent.mkdir()
+    path.write_text(
+        """---
+id: release-audit
+name: Release Audit
+description: Verify a release before publishing.
+tools: [read_file, bash]
+mcps: [github]
+tags: [release, testing]
+triggers: [verify release, prepare release]
+---
+Read the changelog, run tests, and report release blockers.
+""",
+        encoding="utf-8",
+    )
+
+    skill = load_markdown_skill(path)
+
+    assert skill.id == "release-audit"
+    assert skill.tools == ["read_file", "bash"]
+    assert skill.mcps == [{"name": "github"}]
+    assert skill.trigger_phrases == ["verify release", "prepare release"]
+    assert "report release blockers" in skill.prompt_template
+
+
+def test_project_skill_discovery_supports_codex_claude_and_shipit_overrides(
+    tmp_path,
+) -> None:
+    for root, body in (
+        (".codex", "Codex instructions"),
+        (".claude", "Claude instructions"),
+        (".shipit", "Shipit authoritative instructions"),
+    ):
+        path = tmp_path / root / "skills" / "review" / "SKILL.md"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            f"---\nid: review\ndescription: Review code\n---\n{body}",
+            encoding="utf-8",
+        )
+
+    skills = discover_project_skills(tmp_path)
+
+    assert [skill.id for skill in skills] == ["review"]
+    assert skills[0].prompt_template == "Shipit authoritative instructions"
+
+
+def test_agent_auto_discovers_and_applies_project_skill(tmp_path) -> None:
+    path = tmp_path / ".claude" / "skills" / "incident" / "SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """---
+id: incident
+description: Investigate production incidents.
+triggers: [production incident]
+tools: [read_file]
+---
+Correlate logs before proposing a fix.
+""",
+        encoding="utf-8",
+    )
+    llm = PromptCaptureLLM()
+    agent = Agent(llm=llm, project_root=tmp_path)
+
+    agent.run("Investigate this production incident")
+
+    assert "<!-- skill:incident -->" in llm.system_prompts[-1]
+    assert "Correlate logs before proposing a fix." in llm.system_prompts[-1]
+    assert "read_file" in {
+        tool.name for tool in agent._effective_tools("production incident")
+    }
+
+
+def test_agent_can_disable_project_skill_discovery(tmp_path) -> None:
+    path = tmp_path / ".shipit" / "skills" / "local" / "SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("Local-only workflow", encoding="utf-8")
+
+    agent = Agent(
+        llm=PromptCaptureLLM(),
+        project_root=tmp_path,
+        auto_project_skills=False,
+    )
+
+    assert agent.search_skills("local-only") == []
 
 
 def test_skill_prompt_text_falls_back_to_metadata_when_template_missing() -> None:

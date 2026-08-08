@@ -16,6 +16,7 @@ from shipit_agent import (
 from shipit_agent.llms import ShipitLLM
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import ToolCall
+from shipit_agent.stores import FileMemoryStore, FileSessionStore
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +110,9 @@ class TestSettings:
         assert engine.check("bash", {}).denied
 
     def test_default_settings_no_engine(self, tmp_path) -> None:
-        assert load_settings(tmp_path, include_user=False).to_permission_engine() is None
+        assert (
+            load_settings(tmp_path, include_user=False).to_permission_engine() is None
+        )
 
     def test_model_and_env(self, tmp_path) -> None:
         _write_settings(tmp_path, '{"model": "gpt-4o", "env": {"FOO": "bar"}}')
@@ -130,14 +133,47 @@ class _CallThenDone:
     def complete(self, *, messages, tools=None, system_prompt=None, metadata=None):
         self._n += 1
         if self._n == 1:
-            return LLMResponse(content="", tool_calls=[ToolCall(name=self._tool, arguments={})])
+            return LLMResponse(
+                content="", tool_calls=[ToolCall(name=self._tool, arguments={})]
+            )
         return LLMResponse(content="done")
+
+
+class _EditFlowLLM:
+    model = "gpt-4o"
+
+    def __init__(self) -> None:
+        self._turn = 0
+
+    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None):
+        steps = [
+            ToolCall(
+                name="write_file",
+                arguments={"path": "live.txt", "content": "alpha\n"},
+            ),
+            ToolCall(name="read_file", arguments={"path": "live.txt"}),
+            ToolCall(
+                name="edit_file",
+                arguments={
+                    "path": "live.txt",
+                    "old_text": "alpha",
+                    "new_text": "beta",
+                },
+            ),
+        ]
+        if self._turn < len(steps):
+            call = steps[self._turn]
+            self._turn += 1
+            return LLMResponse(content="", tool_calls=[call])
+        return LLMResponse(content="Created, read, and patched live.txt.")
 
 
 class TestAgentIntegration:
     def test_project_memory_in_prompt(self, tmp_path) -> None:
         (tmp_path / "SHIPIT.md").write_text("Always answer in haiku.", encoding="utf-8")
-        agent = Agent(llm=ShipitLLM(), project_root=str(tmp_path), auto_use_skills=False)
+        agent = Agent(
+            llm=ShipitLLM(), project_root=str(tmp_path), auto_use_skills=False
+        )
         assert "Always answer in haiku." in agent.prompt
 
     def test_auto_project_memory_off(self, tmp_path) -> None:
@@ -152,7 +188,9 @@ class TestAgentIntegration:
 
     def test_slash_command_expands_on_run(self, tmp_path) -> None:
         _write_command(tmp_path, "greet", "Say hello to $ARGUMENTS now.")
-        agent = Agent(llm=ShipitLLM(), project_root=str(tmp_path), auto_use_skills=False)
+        agent = Agent(
+            llm=ShipitLLM(), project_root=str(tmp_path), auto_use_skills=False
+        )
         # ShipitLLM echoes the last user message — which is the expanded command.
         out = agent.run("/greet Ada").output
         assert "Say hello to Ada now." in out
@@ -174,3 +212,78 @@ class TestAgentIntegration:
         result = agent.run("use bash")
         assert ran == []  # settings.json denied it
         assert any(e.type == "tool_denied" for e in result.events)
+
+    def test_optimized_project_agent_resumes_durable_chat_after_restart(
+        self, tmp_path
+    ) -> None:
+        first = Agent.for_project(
+            llm=ShipitLLM(),
+            project_root=tmp_path,
+            optimized=True,
+            auto_use_skills=False,
+        )
+        first.chat_session(session_id="main").send("remember alpha")
+
+        restarted = Agent.for_project(
+            llm=ShipitLLM(),
+            project_root=tmp_path,
+            optimized=True,
+            auto_use_skills=False,
+        )
+        chat = restarted.chat_session(session_id="main")
+        assert any(message.content == "remember alpha" for message in chat.history())
+
+        chat.send("now beta")
+        user_messages = [
+            message.content for message in chat.history() if message.role == "user"
+        ]
+
+        assert user_messages == ["remember alpha", "now beta"]
+        assert isinstance(restarted.session_store, FileSessionStore)
+        assert isinstance(restarted.memory_store, FileMemoryStore)
+        assert (tmp_path / ".shipit" / "sessions" / "main.json").is_file()
+        assert (tmp_path / ".shipit" / "memory.json").is_file()
+
+    def test_optimized_project_agent_preserves_explicit_stores(self, tmp_path) -> None:
+        from shipit_agent.stores import InMemoryMemoryStore, InMemorySessionStore
+
+        sessions = InMemorySessionStore()
+        memory = InMemoryMemoryStore()
+        agent = Agent.for_project(
+            llm=ShipitLLM(),
+            project_root=tmp_path,
+            optimized=True,
+            session_store=sessions,
+            memory_store=memory,
+            auto_use_skills=False,
+        )
+
+        assert agent.session_store is sessions
+        assert agent.memory_store is memory
+        assert not (tmp_path / ".shipit" / "sessions").exists()
+        assert not (tmp_path / ".shipit" / "memory.json").exists()
+
+    def test_optimized_project_agent_runs_a_real_multi_step_edit_flow(
+        self, tmp_path
+    ) -> None:
+        agent = Agent.for_project(
+            llm=_EditFlowLLM(),
+            project_root=tmp_path,
+            optimized=True,
+            auto_use_skills=False,
+        )
+
+        result = agent.chat_session(session_id="edit-flow").send(
+            "Create live.txt, inspect it, and change alpha to beta."
+        )
+
+        assert (tmp_path / "live.txt").read_text(encoding="utf-8") == "beta\n"
+        assert [item.name for item in result.tool_results][-3:] == [
+            "write_file",
+            "read_file",
+            "edit_file",
+        ]
+        assert any(event.type == "planning_completed" for event in result.events)
+        assert result.output == "Created, read, and patched live.txt."
+        assert agent.code_mode is True
+        assert agent.context_window_tokens == 128_000

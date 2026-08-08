@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import fnmatch
 from typing import Any, Callable
 
 from shipit_agent.permissions import PermissionDecision, PermissionResult
@@ -81,6 +82,42 @@ class AgentHooks:
         self.after_tool.append(fn)
         return fn
 
+    def on_before_tool_matching(
+        self, matcher: str
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """Register a before-tool hook for a glob or ``|``-separated globs."""
+
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            patterns = [part.strip() for part in matcher.split("|") if part.strip()]
+
+            def matched(name: str, arguments: dict[str, Any]) -> Any:
+                if any(fnmatch.fnmatch(name, pattern) for pattern in patterns):
+                    return fn(name, arguments)
+                return None
+
+            self.before_tool.append(matched)
+            return fn
+
+        return decorator
+
+    def on_after_tool_matching(
+        self, matcher: str
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """Register an output-transforming hook for matching tool names."""
+
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            patterns = [part.strip() for part in matcher.split("|") if part.strip()]
+
+            def matched(name: str, result: Any) -> Any:
+                if any(fnmatch.fnmatch(name, pattern) for pattern in patterns):
+                    return fn(name, result)
+                return None
+
+            self.after_tool.append(matched)
+            return fn
+
+        return decorator
+
     def on_user_prompt(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a hook that can rewrite or block the incoming user prompt."""
         self.user_prompt.append(fn)
@@ -120,9 +157,29 @@ class AgentHooks:
                 outcome = decision
         return outcome
 
-    def run_after_tool(self, name: str, result: Any) -> None:
+    def run_after_tool(self, name: str, result: Any) -> Any:
+        """Run post-tool hooks, allowing each to replace or sanitize output."""
+        current = result
         for fn in self.after_tool:
-            fn(name, result)
+            value = fn(name, current)
+            if value is None:
+                continue
+            if isinstance(value, str) and hasattr(current, "output"):
+                current.output = value
+                continue
+            if isinstance(value, dict) and hasattr(current, "output"):
+                if "output" in value or "text" in value:
+                    current.output = str(value.get("output", value.get("text", "")))
+                if isinstance(value.get("metadata"), dict):
+                    current.metadata.update(value["metadata"])
+                continue
+            if hasattr(value, "text") and hasattr(current, "output"):
+                current.output = str(value.text)
+                current.metadata.update(dict(getattr(value, "metadata", {}) or {}))
+                continue
+            if hasattr(value, "output"):
+                current = value
+        return current
 
     def run_user_prompt(self, prompt: str) -> tuple[str, PermissionResult | None]:
         """Let hooks rewrite or block the user prompt.

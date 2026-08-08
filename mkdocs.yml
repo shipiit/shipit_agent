@@ -153,6 +153,7 @@ nav:
       - Tool Search: guides/tool-search.md
       - MCP Integration: guides/mcp.md
       - Sessions & Memory: guides/sessions.md
+      - Scheduled Agents: guides/scheduled-agents.md
       # Power features
       - Parallel Execution: guides/parallel-execution.md
       - Hooks & Middleware: guides/hooks.md

@@ -76,8 +76,36 @@ The model decided to call a tool. Fires **before** execution.
 **Message:** `"Tool called: <name>"`
 
 **Payload:**
+- `tool: str` — registered tool name
+- `call_id: str` — stable ID for pairing calls, chunks, and outcomes
 - `iteration: int`
 - `arguments: dict` — tool arguments as parsed from the LLM
+
+---
+
+### `tool_output_started`
+The runtime opened a tool output stream. This event can repeat if a tool call
+is retried.
+
+**Payload:**
+- `tool: str`
+- `call_id: str`
+- `attempt: int`
+- `buffered: bool` — `True` when guardrails must sanitize before publication
+
+---
+
+### `tool_output_delta`
+One provisional output chunk. Custom generator tools can emit many chunks;
+ordinary and MCP tools emit one when their final response arrives.
+
+**Payload:**
+- `tool: str`
+- `call_id: str`
+- `chunk: str`
+- `chunk_metadata: dict`
+- `sequence: int` — monotonically increasing within the call
+- `attempt: int`
 
 ---
 
@@ -87,6 +115,8 @@ Tool finished successfully.
 **Message:** `"Tool completed: <name>"`
 
 **Payload:**
+- `tool: str`
+- `call_id: str`
 - `iteration: int`
 - `output: str` — tool output text
 

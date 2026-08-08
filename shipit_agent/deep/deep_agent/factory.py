@@ -86,6 +86,8 @@ class DeepAgent:
 
     # ---- core --------------------------------------------------------------
     llm: Any
+    decision_llm: Any = None
+    progress_summaries: bool = False
     name: str = "shipit-deep-agent"
     description: str = "A deep agent that plans, verifies, and uses a workspace."
     prompt: str = DEEP_AGENT_PROMPT
@@ -119,13 +121,24 @@ class DeepAgent:
     # ---- runtime tuning ---------------------------------------------------
     max_iterations: int = 8
     parallel_tool_execution: bool = True
+    max_tool_concurrency: int | None = None
     context_window_tokens: int = 0
+    max_tool_output_chars: int = 0
+    replan_interval: int = 0
     retry_policy: RetryPolicy | None = None
     router_policy: RouterPolicy | None = None
     hooks: Any = None
     trace_store: Any = None
     trace_id: str | None = None
     credential_store: Any = None
+    permission_mode: str = "default"
+    permissions: Any = None
+    permission_callback: Any = None
+    guardrails: Any = None
+    approvals: Any = None
+    code_mode: bool = False
+    lockdown: Any = None
+    heal_tool_calls: bool = True
     # ---- skills (forwarded to inner Agent — see docs/guides/skills.md) ----
     # All skill fields are passed through to the inner Agent unchanged.
     # DeepAgent.add_skill() and .search_skills() delegate to the inner Agent.
@@ -135,6 +148,7 @@ class DeepAgent:
     skill_registry: SkillRegistry | None = None
     skill_source: str | Path | None = DEFAULT_SKILLS_PATH
     auto_use_skills: bool = True
+    auto_project_skills: bool = True
     skills: list[str | Skill] = field(default_factory=list)
     default_skill_ids: list[str] = field(default_factory=list)
     skill_match_limit: int = 3
@@ -143,6 +157,7 @@ class DeepAgent:
     use_builtins: bool = False
     web_search_provider: str = "duckduckgo"
     web_search_api_key: str | None = None
+    web_search_config: dict[str, Any] | None = None
 
     agent_kwargs: dict[str, Any] = field(default_factory=dict)
     _agent: Any = None
@@ -156,6 +171,8 @@ class DeepAgent:
         cls,
         *,
         llm: Any,
+        decision_llm: Any = None,
+        progress_summaries: bool = False,
         prompt: str = DEEP_AGENT_PROMPT,
         name: str = "shipit-deep-agent",
         description: str = "A deep agent that plans, verifies, and uses a workspace.",
@@ -167,6 +184,7 @@ class DeepAgent:
         project_root: str | Path = "/tmp",
         web_search_provider: str = "duckduckgo",
         web_search_api_key: str | None = None,
+        web_search_config: dict[str, Any] | None = None,
         rag: Any = None,
         memory: Any = None,
         memory_store: Any = None,
@@ -180,16 +198,28 @@ class DeepAgent:
         agents: Any = None,
         max_iterations: int = 8,
         parallel_tool_execution: bool = True,
+        max_tool_concurrency: int | None = None,
         context_window_tokens: int = 0,
+        max_tool_output_chars: int = 0,
+        replan_interval: int = 0,
         retry_policy: RetryPolicy | None = None,
         router_policy: RouterPolicy | None = None,
         hooks: Any = None,
         trace_store: Any = None,
         trace_id: str | None = None,
         credential_store: Any = None,
+        permission_mode: str = "default",
+        permissions: Any = None,
+        permission_callback: Any = None,
+        guardrails: Any = None,
+        approvals: Any = None,
+        code_mode: bool = False,
+        lockdown: Any = None,
+        heal_tool_calls: bool = True,
         skill_registry: SkillRegistry | None = None,
         skill_source: str | Path | None = DEFAULT_SKILLS_PATH,
         auto_use_skills: bool = True,
+        auto_project_skills: bool = True,
         skills: list[str | Skill] | None = None,
         default_skill_ids: list[str] | None = None,
         skill_match_limit: int = 3,
@@ -198,6 +228,8 @@ class DeepAgent:
         """Build a DeepAgent that also bundles the full built-in tool catalogue."""
         return cls(
             llm=llm,
+            decision_llm=decision_llm,
+            progress_summaries=progress_summaries,
             name=name,
             description=description,
             prompt=prompt,
@@ -209,6 +241,7 @@ class DeepAgent:
             project_root=project_root,
             web_search_provider=web_search_provider,
             web_search_api_key=web_search_api_key,
+            web_search_config=web_search_config,
             rag=rag,
             memory=memory,
             memory_store=memory_store,
@@ -222,21 +255,69 @@ class DeepAgent:
             agents=agents,
             max_iterations=max_iterations,
             parallel_tool_execution=parallel_tool_execution,
+            max_tool_concurrency=max_tool_concurrency,
             context_window_tokens=context_window_tokens,
+            max_tool_output_chars=max_tool_output_chars,
+            replan_interval=replan_interval,
             retry_policy=retry_policy,
             router_policy=router_policy,
             hooks=hooks,
             trace_store=trace_store,
             trace_id=trace_id,
             credential_store=credential_store,
+            permission_mode=permission_mode,
+            permissions=permissions,
+            permission_callback=permission_callback,
+            guardrails=guardrails,
+            approvals=approvals,
+            code_mode=code_mode,
+            lockdown=lockdown,
+            heal_tool_calls=heal_tool_calls,
             skill_registry=skill_registry,
             skill_source=skill_source,
             auto_use_skills=auto_use_skills,
+            auto_project_skills=auto_project_skills,
             skills=list(skills or []),
             default_skill_ids=list(default_skill_ids or []),
             skill_match_limit=skill_match_limit,
             use_builtins=True,
             agent_kwargs=agent_kwargs,
+        )
+
+    @classmethod
+    def for_project(
+        cls,
+        *,
+        llm: Any,
+        project_root: str | Path = ".",
+        optimized: bool = True,
+        **kwargs: Any,
+    ) -> "DeepAgent":
+        """Build a durable, token-efficient deep agent for one repository."""
+        if optimized:
+            from shipit_agent.compaction import get_model_limits
+            from shipit_agent.stores import FileMemoryStore, FileSessionStore
+
+            state_root = Path(project_root) / ".shipit"
+            kwargs.setdefault(
+                "session_store", FileSessionStore(state_root / "sessions")
+            )
+            kwargs.setdefault(
+                "memory_store", FileMemoryStore(state_root / "memory.json")
+            )
+            kwargs.setdefault("code_mode", True)
+            kwargs.setdefault(
+                "context_window_tokens",
+                get_model_limits(getattr(llm, "model", None)).context_window,
+            )
+            kwargs.setdefault("max_tool_output_chars", 16_000)
+            kwargs.setdefault("max_iterations", 12)
+            kwargs.setdefault("parallel_tool_execution", True)
+            kwargs.setdefault("max_tool_concurrency", 4)
+        return cls.with_builtins(
+            llm=llm,
+            project_root=project_root,
+            **kwargs,
         )
 
     # ====================================================================
@@ -256,6 +337,7 @@ class DeepAgent:
             workspace_root=self.workspace_root,
             web_search_provider=self.web_search_provider,
             web_search_api_key=self.web_search_api_key,
+            web_search_config=self.web_search_config,
         )
 
     def _resolve_memory(self) -> tuple[Any, list[Any]]:
@@ -280,6 +362,8 @@ class DeepAgent:
         memory_store, history = self._resolve_memory()
         kwargs: dict[str, Any] = {
             "llm": self.llm,
+            "decision_llm": self.decision_llm,
+            "progress_summaries": self.progress_summaries,
             "prompt": self.prompt,
             "tools": tools,
             "mcps": list(self.mcps),
@@ -292,15 +376,27 @@ class DeepAgent:
             "session_id": self.session_id,
             "max_iterations": self.max_iterations,
             "parallel_tool_execution": self.parallel_tool_execution,
+            "max_tool_concurrency": self.max_tool_concurrency,
             "context_window_tokens": self.context_window_tokens,
+            "max_tool_output_chars": self.max_tool_output_chars,
+            "replan_interval": self.replan_interval,
             "skill_registry": self.skill_registry,
             "skill_source": self.skill_source,
             "auto_use_skills": self.auto_use_skills,
+            "auto_project_skills": self.auto_project_skills,
             "skills": list(self.skills),
             "default_skill_ids": list(self.default_skill_ids),
             "skill_match_limit": self.skill_match_limit,
             "project_root": self.project_root,
             "verifier": self.verifier,
+            "permission_mode": self.permission_mode,
+            "permissions": self.permissions,
+            "permission_callback": self.permission_callback,
+            "guardrails": self.guardrails,
+            "approvals": self.approvals,
+            "code_mode": self.code_mode,
+            "lockdown": self.lockdown,
+            "heal_tool_calls": self.heal_tool_calls,
         }
         combined_history = [*list(self.history), *history]
         if combined_history:

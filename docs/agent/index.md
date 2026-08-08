@@ -39,13 +39,13 @@ from shipit_agent import Agent
 from examples.run_multi_tool_agent import build_llm_from_env
 
 llm = build_llm_from_env()             # reads SHIPIT_LLM_PROVIDER from .env
-agent = Agent.with_builtins(llm=llm)   # 30+ built-in tools, ready to go
+agent = Agent.with_builtins(llm=llm)   # 50+ built-in tools, ready to go
 
 result = agent.run("Find today's Bitcoin price in USD from a reputable source.")
 print(result.output)
 ```
 
-`with_builtins()` ships ~30 tools out of the box: web search, browser
+`with_builtins()` ships 50+ tools out of the box: web search, browser
 automation, code execution, file workspace, Slack, Gmail, Jira, Linear,
 Notion, Confluence, and more.
 
@@ -62,9 +62,9 @@ for event in agent.stream("Find today's BTC price."):
 ```
 
 You'll see `run_started`, `step_started`, `reasoning_started`,
-`reasoning_completed`, `tool_called`, `tool_completed`, `run_completed`
-events as they happen — not buffered until the end. Every event is a
-plain dataclass; render them however your UI wants.
+`reasoning_completed`, `tool_called`, `tool_output_started`,
+`tool_output_delta`, `tool_completed`, and `run_completed` events as they
+happen. Every event is a plain dataclass; render it however your UI wants.
 
 See the [Streaming guide](../guides/streaming.md) for the full event
 reference and the [Examples](examples.md) page for a colored terminal
@@ -88,6 +88,7 @@ renderer you can copy.
 | Auto context compaction | `context_window_tokens=200_000` | [Context management](../guides/context-management.md) |
 | Retry policy | `retry_policy=RetryPolicy(…)` | [Error recovery](../guides/error-recovery.md) |
 | Higher iteration cap | `max_iterations=20` | [Re-planning](../guides/replanning.md) |
+| Token-efficient advanced preset | `Agent.for_project(..., optimized=True)` | [Context management](../guides/context-management.md) |
 
 Every parameter is documented with type, default, and "use it when" in
 the [Parameters Reference](../reference/parameters.md#agent).

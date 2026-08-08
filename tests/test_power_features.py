@@ -8,6 +8,8 @@ memory, structured output, and async runtime.
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from typing import Any
 
 
@@ -240,6 +242,84 @@ class TestParallelToolExecution:
         result = agent.run("one tool")
         assert result.tool_results[0].output == "solo_result"
 
+    def test_parallel_execution_respects_concurrency_limit(self) -> None:
+        active = 0
+        max_active = 0
+        lock = threading.Lock()
+
+        def limited_tool(**_kwargs: Any) -> str:
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.02)
+            with lock:
+                active -= 1
+            return "ok"
+
+        tools = [
+            FunctionTool.from_callable(limited_tool, name=f"tool_{index}")
+            for index in range(4)
+        ]
+        agent = Agent(
+            llm=MultiToolCallLLM([(tool.name, {}) for tool in tools]),
+            tools=tools,
+            parallel_tool_execution=True,
+            max_tool_concurrency=2,
+            auto_use_skills=False,
+        )
+
+        result = agent.run("run all")
+
+        assert len(result.tool_results) == 4
+        assert max_active == 2
+
+    def test_invalid_parallel_concurrency_limit_is_rejected(self) -> None:
+        agent = Agent(
+            llm=SimpleEchoLLM(),
+            parallel_tool_execution=True,
+            max_tool_concurrency=0,
+        )
+        try:
+            agent.run("hello")
+        except ValueError as exc:
+            assert "max_tool_concurrency" in str(exc)
+        else:
+            raise AssertionError("expected ValueError")
+
+
+def test_async_parallel_execution_respects_concurrency_limit() -> None:
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+
+    def limited_tool(**_kwargs: Any) -> str:
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return "ok"
+
+    tools = [
+        FunctionTool.from_callable(limited_tool, name=f"async_tool_{index}")
+        for index in range(4)
+    ]
+    runtime = AsyncAgentRuntime(
+        llm=MultiToolCallLLM([(tool.name, {}) for tool in tools]),
+        prompt="run tools",
+        tools=tools,
+        parallel_tool_execution=True,
+        max_tool_concurrency=2,
+    )
+
+    state, _response = asyncio.run(runtime.run("run all"))
+
+    assert len(state.tool_results) == 4
+    assert max_active == 2
+
 
 # ---------------------------------------------------------------------------
 # 4. Context window management
@@ -418,6 +498,59 @@ class TestHooks:
         agent = Agent(llm=SimpleEchoLLM(), hooks=None)
         result = agent.run("hello")
         assert result.output
+
+    def test_matcher_scoped_hooks_transform_only_selected_tool_outputs(self) -> None:
+        hooks = AgentHooks()
+        before: list[str] = []
+
+        @hooks.on_before_tool_matching("secret_*|private")
+        def before_secret(name, arguments):
+            before.append(name)
+
+        @hooks.on_after_tool_matching("secret_*")
+        def redact_secret(name, result):
+            return {
+                "output": "[redacted by hook]",
+                "metadata": {"redacted": True},
+            }
+
+        agent = Agent(
+            llm=MultiToolCallLLM([("secret_read", {}), ("public_read", {})]),
+            tools=[
+                _make_simple_tool("secret_read", "token=abc"),
+                _make_simple_tool("public_read", "public"),
+            ],
+            hooks=hooks,
+            parallel_tool_execution=True,
+            auto_use_skills=False,
+        )
+
+        result = agent.run("read both")
+
+        outputs = {item.name: item for item in result.tool_results}
+        assert before == ["secret_read"]
+        assert outputs["secret_read"].output == "[redacted by hook]"
+        assert outputs["secret_read"].metadata["redacted"] is True
+        assert outputs["public_read"].output == "public"
+
+    def test_agent_clone_copies_mutable_configuration_and_applies_overrides(
+        self,
+    ) -> None:
+        original = Agent(
+            llm=SimpleEchoLLM(),
+            tools=[_make_simple_tool("one")],
+            metadata={"team": "platform"},
+            auto_use_skills=False,
+        )
+
+        cloned = original.clone(name="specialist", max_iterations=9)
+        cloned.tools.append(_make_simple_tool("two"))
+        cloned.metadata["purpose"] = "review"
+
+        assert cloned.name == "specialist"
+        assert cloned.max_iterations == 9
+        assert len(original.tools) == 1
+        assert "purpose" not in original.metadata
 
 
 # ---------------------------------------------------------------------------
@@ -609,3 +742,21 @@ class TestAsyncRuntime:
         asyncio.run(runtime.run("hi"))
         assert "before" in log
         assert "after" in log
+
+    def test_async_after_tool_hook_transforms_model_visible_result(self) -> None:
+        hooks = AgentHooks()
+        hooks.on_after_tool(lambda _name, _result: "sanitized")
+        runtime = AsyncAgentRuntime(
+            llm=SingleToolCallLLM("private"),
+            prompt="System",
+            tools=[_make_simple_tool("private", "secret")],
+            hooks=hooks,
+        )
+
+        state, _response = asyncio.run(runtime.run("use tool"))
+
+        assert state.tool_results[0].output == "sanitized"
+        tool_message = next(
+            message for message in state.messages if message.role == "tool"
+        )
+        assert tool_message.content == "sanitized"

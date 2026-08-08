@@ -128,6 +128,7 @@ from .narrate import (
     write_transcript,
 )
 from .narrate.json_stream import StreamingToolInputParser
+
 # `ActionKind` is already public from .computer_use — alias rather than shadow it.
 from .tools.contracts import ActionKind as ToolActionKind
 from .tools.contracts import ToolContract, contract_for
@@ -201,6 +202,8 @@ from .reasoning import ReasoningResult, ReasoningRuntime
 from .registry import ToolRegistry
 from .schedule import (
     AgentScheduler,
+    ScheduledAgentConfig,
+    ScheduledAgentFactory,
     ScheduledJob,
     ScheduleResult,
     ScheduleRunner,
@@ -225,6 +228,8 @@ from .skills import (
     SkillCatalog,
     Skill,
     SkillRegistry,
+    discover_project_skills,
+    load_markdown_skill,
     apply_skill,
     create_skill,
     find_relevant_skills,
@@ -323,6 +328,8 @@ from .tools import (
     ToolSearchTool,
     ToolContext,
     ToolOutput,
+    ToolOutputChunk,
+    ToolRunOutput,
     VerifierTool,
     VisionTool,
     WebSearchTool,
@@ -372,6 +379,8 @@ __all__ = [
     "SearchResult",
     "AgentScheduler",
     "ScheduledJob",
+    "ScheduledAgentConfig",
+    "ScheduledAgentFactory",
     "ScheduleResult",
     "ScheduleRunner",
     "SQLiteJobStore",
@@ -489,6 +498,7 @@ __all__ = [
     "DoctorCheck",
     "DoctorReport",
     "discover_mcp_tools",
+    "discover_project_skills",
     "get_builtin_tool_map",
     "get_builtin_tools",
     "AgentDoctor",
@@ -569,6 +579,7 @@ __all__ = [
     "PermissionResult",
     "WorkspaceSettings",
     "load_project_memory",
+    "load_markdown_skill",
     "load_settings",
     "discover_commands",
     "expand_command",
@@ -600,6 +611,8 @@ __all__ = [
     "ToolCall",
     "ToolContext",
     "ToolOutput",
+    "ToolOutputChunk",
+    "ToolRunOutput",
     "ToolResult",
     "VerifierTool",
     "VisionTool",

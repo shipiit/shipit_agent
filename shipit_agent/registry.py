@@ -23,6 +23,12 @@ class ToolRegistry:
             registry.register(tool)
         for mcp in mcps or []:
             for tool in discover_mcp_tools(mcp):
+                # Keep server provenance on local MCPTool instances too.
+                # Remote tools already provide this, but hand-built servers
+                # otherwise became indistinguishable from custom tools.
+                metadata = getattr(tool, "metadata", None)
+                if isinstance(metadata, dict):
+                    metadata.setdefault("server", mcp.name)
                 registry.register(tool)
         return registry
 

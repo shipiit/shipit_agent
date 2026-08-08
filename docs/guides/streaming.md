@@ -25,8 +25,10 @@ for event in agent.stream("Find today's Bitcoin price in USD."):
 | `step_started` | Each iteration of the tool loop, right before calling the LLM. | `iteration`, `tool_count` |
 | `reasoning_started` | 🧠 LLM response contained a thinking/reasoning block. | `iteration` |
 | `reasoning_completed` | Immediately after `reasoning_started`, carrying the full reasoning text. | `iteration`, `content` |
-| `tool_called` | Model decided to call a tool. Fires **before** execution. | `iteration`, `arguments` |
-| `tool_completed` | Tool finished successfully. | `iteration`, `output` |
+| `tool_called` | Model decided to call a tool. Fires **before** execution. | `tool`, `call_id`, `iteration`, `arguments` |
+| `tool_output_started` | A tool output stream opened. It can repeat for retries. | `tool`, `call_id`, `attempt`, `buffered` |
+| `tool_output_delta` | One incremental, provisional output chunk. | `tool`, `call_id`, `chunk`, `chunk_metadata`, `sequence`, `attempt` |
+| `tool_completed` | Tool finished; this is the canonical complete result. | `tool`, `call_id`, `iteration`, `output` |
 | `tool_retry` | Transient tool failure, retry scheduled by `RetryPolicy`. | `iteration`, `attempt`, `error` |
 | `tool_failed` | Non-retryable tool error, **or** model hallucinated an unregistered tool name (synthetic error result still appended for pairing balance). | `iteration`, `error` |
 | `llm_retry` | Transient LLM provider error, retry scheduled. | `attempt`, `error` |
@@ -55,17 +57,40 @@ A Bedrock `gpt-oss-120b` run with two tool calls:
 3.  reasoning_started    🧠 iteration=1
 4.  reasoning_completed  🧠 "The user wants two BTC price sources. I'll start with web_search..."
 5.  tool_called          Tool called: web_search
-6.  tool_completed       Tool completed: web_search
-7.  step_started         iteration=2
-8.  reasoning_completed  🧠 "Now I'll open both URLs to confirm..."
-9.  tool_called          Tool called: open_url
-10. tool_completed       Tool completed: open_url
+6.  tool_output_started  Tool output started: web_search
+7.  tool_output_delta    chunk="..."
+8.  tool_completed       Tool completed: web_search
+9.  step_started         iteration=2
+10. reasoning_completed  🧠 "Now I'll open both URLs to confirm..."
 11. tool_called          Tool called: open_url
-12. tool_completed       Tool completed: open_url
-13. step_started         iteration=3
-14. reasoning_completed  🧠 "Both sources agree within $40..."
+12. tool_output_delta    chunk="..."
+13. tool_completed       Tool completed: open_url
+14. step_started         iteration=3
 15. run_completed        "**Bitcoin Price — 2026-04-09** ..."
 ```
+
+## Streaming custom tool output
+
+Existing tools need no changes: they emit one output delta when their result
+arrives. A custom generator tool can publish output incrementally while still
+producing one complete canonical `ToolResult`:
+
+```python
+from shipit_agent import FunctionTool, ToolOutputChunk
+
+def follow_build():
+    yield ToolOutputChunk("compiling...\n", {"phase": "compile"})
+    yield ToolOutputChunk("testing...\n", {"phase": "test"})
+    yield "passed\n"
+
+agent.add_tool(FunctionTool.from_callable(follow_build))
+```
+
+Chunks are concatenated without separators, and chunk metadata is merged in
+arrival order. Use `call_id` to keep concurrent tool streams separate. If
+guardrails are enabled, the runtime deliberately buffers the complete result
+and emits one sanitized delta so raw secrets or indirect prompt injection
+cannot reach a live client.
 
 ## Live UI updates in Jupyter
 
@@ -94,6 +119,14 @@ for packet in session.stream_packets("Research Bitcoin", transport='sse'):
 ```
 
 Both transports yield packets incrementally — no buffering.
+
+`tool_output_delta` is provisional and should be discarded on reconnect.
+`tool_completed` is canonical and contains the complete output, so the UI can
+replace its provisional buffer with the durable result.
+
+`agent.run_live()` and `StreamRenderer` display tool-output chunks by default.
+Pass `StreamRenderer(show_tool_output=False)` when a terminal should show only
+the bounded completion preview while other consumers still receive all events.
 
 ## Error handling
 

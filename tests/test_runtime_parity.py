@@ -26,7 +26,8 @@ from shipit_agent.runtime_core import RuntimeCore
 from shipit_agent.tools.base import ToolOutput
 
 SHARED = [
-    name for name in vars(RuntimeCore)
+    name
+    for name in vars(RuntimeCore)
     if not name.startswith("__") and name != "_init_core"
 ]
 
@@ -39,8 +40,17 @@ def tool(name, *, output="ok", sensitive=False, calls=None):
             self.prompt_instructions = ""
 
         def schema(self):
-            return {"function": {"name": name, "parameters": {"properties": {
-                "path": {"type": "string"}, "channel": {"type": "string"}}}}}
+            return {
+                "function": {
+                    "name": name,
+                    "parameters": {
+                        "properties": {
+                            "path": {"type": "string"},
+                            "channel": {"type": "string"},
+                        }
+                    },
+                }
+            }
 
         def run(self, context, **kwargs):
             if calls is not None:
@@ -59,8 +69,15 @@ class ScriptedLLM:
         self.script = list(script)
         self.n = 0
 
-    def complete(self, *, messages, tools=None, system_prompt=None,
-                 metadata=None, text_delta_callback=None):
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        text_delta_callback=None,
+    ):
         step = self.script[self.n] if self.n < len(self.script) else ("done", [])
         self.n += 1
         return LLMResponse(
@@ -71,14 +88,16 @@ class ScriptedLLM:
 
 
 def run_sync(script, tools, **kwargs):
-    runtime = AgentRuntime(llm=ScriptedLLM(script), prompt="p", tools=tools,
-                           max_iterations=5, **kwargs)
+    runtime = AgentRuntime(
+        llm=ScriptedLLM(script), prompt="p", tools=tools, max_iterations=5, **kwargs
+    )
     return runtime.run("go")
 
 
 def run_async(script, tools, **kwargs):
-    runtime = AsyncAgentRuntime(llm=ScriptedLLM(script), prompt="p", tools=tools,
-                                max_iterations=5, **kwargs)
+    runtime = AsyncAgentRuntime(
+        llm=ScriptedLLM(script), prompt="p", tools=tools, max_iterations=5, **kwargs
+    )
     return asyncio.run(runtime.run("go"))
 
 
@@ -96,9 +115,19 @@ class TestStructuralParity:
     def test_both_accept_the_same_control_plane_options(self) -> None:
         sync = set(inspect.signature(AgentRuntime.__init__).parameters)
         asyn = set(inspect.signature(AsyncAgentRuntime.__init__).parameters)
-        for option in ("permissions", "guardrails", "approvals", "lockdown",
-                       "heal_tool_calls", "code_mode", "context_window_tokens",
-                       "hooks", "retry_policy", "max_iterations"):
+        for option in (
+            "permissions",
+            "guardrails",
+            "approvals",
+            "lockdown",
+            "heal_tool_calls",
+            "code_mode",
+            "context_window_tokens",
+            "max_tool_output_chars",
+            "hooks",
+            "retry_policy",
+            "max_iterations",
+        ):
             assert option in sync, f"sync is missing {option}"
             assert option in asyn, f"async is missing {option}"
 
@@ -121,6 +150,32 @@ class TestBehaviouralParity:
         )
         assert s == a == []
 
+    def test_tool_output_cap_preserves_canonical_result_in_both_loops(self) -> None:
+        output = "HEAD-" + ("x" * 500) + "-TAIL"
+        script = [("", [("large", {})]), ("done", [])]
+
+        sync_state, _ = run_sync(
+            script,
+            [tool("large", output=output)],
+            max_tool_output_chars=160,
+        )
+        async_state, _ = run_async(
+            script,
+            [tool("large", output=output)],
+            max_tool_output_chars=160,
+        )
+
+        for state in (sync_state, async_state):
+            assert state.tool_results[0].output == output
+            assert state.tool_results[0].metadata["model_output_truncated"] is True
+            tool_message = next(
+                message for message in state.messages if message.role == "tool"
+            )
+            assert len(tool_message.content) == 160
+            assert tool_message.content.startswith("HEAD-")
+            assert tool_message.content.endswith("-TAIL")
+            assert "shortened for model context" in tool_message.content
+
     def test_lockdown_latches_identically(self) -> None:
         (_, s), (_, a) = self._both(
             [
@@ -128,8 +183,10 @@ class TestBehaviouralParity:
                 ("", [("slack", {"channel": "#c"})]),
                 ("done", []),
             ],
-            lambda calls: [tool("secrets", sensitive=True, calls=calls),
-                           tool("slack", calls=calls)],
+            lambda calls: [
+                tool("secrets", sensitive=True, calls=calls),
+                tool("slack", calls=calls),
+            ],
         )
         assert s == a == ["secrets"]
 
@@ -137,36 +194,45 @@ class TestBehaviouralParity:
         from shipit_agent import Guardrails
 
         rails = Guardrails(input_blocklist=["forbidden"])
-        sync = AgentRuntime(llm=ScriptedLLM([("x", [])]), prompt="p",
-                            guardrails=rails).run("this is forbidden")
+        sync = AgentRuntime(
+            llm=ScriptedLLM([("x", [])]), prompt="p", guardrails=rails
+        ).run("this is forbidden")
         asyn = asyncio.run(
-            AsyncAgentRuntime(llm=ScriptedLLM([("x", [])]), prompt="p",
-                              guardrails=rails).run("this is forbidden")
+            AsyncAgentRuntime(
+                llm=ScriptedLLM([("x", [])]), prompt="p", guardrails=rails
+            ).run("this is forbidden")
         )
         assert "blocked by guardrails" in sync[1].content
         assert "blocked by guardrails" in asyn[1].content
 
     def test_usage_is_tracked_and_ticked_in_both(self) -> None:
-        for state, _ in (run_sync([("done", [])], []),
-                         run_async([("done", [])], [])):
+        for state, _ in (run_sync([("done", [])], []), run_async([("done", [])], [])):
             ticks = [e for e in state.events if e.type == "usage_tick"]
             assert ticks, "no usage_tick emitted"
             assert ticks[-1].payload["usage"]["total_tokens"] == 100
 
     def test_healing_promotes_text_tool_calls_in_both(self) -> None:
-        script = [('<tool_call>{"name": "read_it", "arguments": {}}</tool_call>', []),
-                  ("done", [])]
-        for _, calls in (self._both(script, lambda c: [tool("read_it", calls=c)])):
+        script = [
+            ('<tool_call>{"name": "read_it", "arguments": {}}</tool_call>', []),
+            ("done", []),
+        ]
+        for _, calls in self._both(script, lambda c: [tool("read_it", calls=c)]):
             assert calls == ["read_it"], "healing did not fire"
 
     def test_give_up_is_surfaced_in_both(self) -> None:
         from shipit_agent.tools.give_up import GiveUpTool
 
         script = [("", [("give_up", {"reason": "no credentials"})]), ("x", [])]
-        for runtime_cls, runner in ((AgentRuntime, run_sync),
-                                    (AsyncAgentRuntime, run_async)):
-            runtime = runtime_cls(llm=ScriptedLLM(script), prompt="p",
-                                  tools=[GiveUpTool()], max_iterations=4)
+        for runtime_cls, runner in (
+            (AgentRuntime, run_sync),
+            (AsyncAgentRuntime, run_async),
+        ):
+            runtime = runtime_cls(
+                llm=ScriptedLLM(script),
+                prompt="p",
+                tools=[GiveUpTool()],
+                max_iterations=4,
+            )
             if runtime_cls is AgentRuntime:
                 runtime.run("go")
             else:
@@ -206,10 +272,16 @@ class TestBehaviouralParity:
     def test_tool_denied_carries_the_same_payload_in_both(self) -> None:
         """The exact drift that started this: fixed in one loop, not the other."""
         for state, _ in (
-            run_sync([("", [("bash", {"path": "x"})]), ("done", [])],
-                     [tool("bash")], permissions=PermissionEngine(deny=["bash"])),
-            run_async([("", [("bash", {"path": "x"})]), ("done", [])],
-                      [tool("bash")], permissions=PermissionEngine(deny=["bash"])),
+            run_sync(
+                [("", [("bash", {"path": "x"})]), ("done", [])],
+                [tool("bash")],
+                permissions=PermissionEngine(deny=["bash"]),
+            ),
+            run_async(
+                [("", [("bash", {"path": "x"})]), ("done", [])],
+                [tool("bash")],
+                permissions=PermissionEngine(deny=["bash"]),
+            ),
         ):
             denied = [e for e in state.events if e.type == "tool_denied"]
             assert denied
@@ -225,8 +297,9 @@ class TestCore:
         assert runtime.cancelled
 
     def test_lockdown_outranks_an_allow_rule(self) -> None:
-        core = AgentRuntime(llm=ScriptedLLM([]), prompt="p",
-                            permissions=PermissionEngine(allow=["*"]))
+        core = AgentRuntime(
+            llm=ScriptedLLM([]), prompt="p", permissions=PermissionEngine(allow=["*"])
+        )
         core.lockdown = LockdownState()
         core.lockdown.engage(reason="read secrets", tool="db", source="declared")
         decision = core.authorize("slack", {}, tool("slack"))
@@ -249,9 +322,9 @@ class TestSharedStateIsActuallyShared:
             src = pathlib.Path("shipit_agent") / name
             text = src.read_text()
             assert "build_shared_state(registry" in text, f"{name} must use the core"
-            assert 'shared_state["available_tools"]' not in text, (
-                f"{name} builds tool state inline — it will drift"
-            )
+            assert (
+                'shared_state["available_tools"]' not in text
+            ), f"{name} builds tool state inline — it will drift"
 
     def test_the_subagent_event_sink_is_published_by_both(self) -> None:
         from shipit_agent.tools.sub_agent.sub_agent_tool import EVENT_SINK_KEY

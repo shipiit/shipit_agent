@@ -13,7 +13,7 @@ from shipit_agent.deep.deep_agent.toolset import deep_tool_set, merge_tools
 from shipit_agent.deep.deep_agent.verification import verify_text
 from shipit_agent.llms import SimpleEchoLLM
 from shipit_agent.models import Message
-from shipit_agent.stores import InMemorySessionStore
+from shipit_agent.stores import FileMemoryStore, FileSessionStore, InMemorySessionStore
 from shipit_agent.tools.base import Tool, ToolContext, ToolOutput
 
 
@@ -142,11 +142,63 @@ def test_deep_agent_tunable_parameters_propagate():
         llm=SimpleEchoLLM(),
         max_iterations=20,
         parallel_tool_execution=False,
+        max_tool_concurrency=3,
         context_window_tokens=200_000,
     )
     assert agent.agent.max_iterations == 20
     assert agent.agent.parallel_tool_execution is False
+    assert agent.agent.max_tool_concurrency == 3
     assert agent.agent.context_window_tokens == 200_000
+
+
+def test_deep_agent_first_class_runtime_controls_propagate() -> None:
+    decision_llm = object()
+    guardrails = object()
+    permissions = object()
+    agent = DeepAgent(
+        llm=SimpleEchoLLM(),
+        decision_llm=decision_llm,
+        progress_summaries=True,
+        max_tool_output_chars=12_000,
+        replan_interval=3,
+        permission_mode="plan",
+        permissions=permissions,
+        guardrails=guardrails,
+        code_mode=True,
+        heal_tool_calls=False,
+        auto_project_skills=False,
+    )
+
+    assert agent.agent.decision_llm is decision_llm
+    assert agent.agent.progress_summaries is True
+    assert agent.agent.max_tool_output_chars == 12_000
+    assert agent.agent.replan_interval == 3
+    assert agent.agent.permission_mode == "plan"
+    assert agent.agent.permissions is permissions
+    assert agent.agent.guardrails is guardrails
+    assert agent.agent.code_mode is True
+    assert agent.agent.heal_tool_calls is False
+    assert agent.agent.auto_project_skills is False
+
+
+def test_deep_agent_for_project_is_durable_optimized_and_loads_skills(tmp_path) -> None:
+    skill_path = tmp_path / ".shipit" / "skills" / "repo-audit" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text(
+        "---\nid: repo-audit\ndescription: Audit this repository.\n---\n"
+        "Inspect source and tests before changing code.",
+        encoding="utf-8",
+    )
+
+    agent = DeepAgent.for_project(llm=SimpleEchoLLM(), project_root=tmp_path)
+
+    assert isinstance(agent.agent.session_store, FileSessionStore)
+    assert isinstance(agent.agent.memory_store, FileMemoryStore)
+    assert agent.agent.code_mode is True
+    assert agent.agent.max_tool_output_chars == 16_000
+    assert agent.agent.max_iterations == 12
+    assert agent.agent.max_tool_concurrency == 4
+    assert agent.search_skills("audit repository")[0].id == "repo-audit"
 
 
 def test_deep_agent_accepts_agent_style_session_and_trace_fields() -> None:

@@ -20,6 +20,7 @@ mock needed). The LiteLLM adapter follows the existing pattern in
 ``test_litellm_streaming.py`` — a fake ``litellm`` module whose ``completion``
 mock captures the kwargs the adapter sends.
 """
+
 from __future__ import annotations
 
 import sys
@@ -31,7 +32,9 @@ import pytest
 from shipit_agent.llms.anthropic_adapter import AnthropicChatLLM
 from shipit_agent.llms.litellm_adapter import BedrockChatLLM, LiteLLMChatLLM
 from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import Message
+from shipit_agent.runtime import AgentRuntime
 
 
 # ----------------------------------------------------------------------
@@ -346,3 +349,28 @@ class TestOpenAICacheUsage:
         assert out.usage["completion_tokens"] == 40
         # The automatic-cache portion is surfaced under the shared key.
         assert out.usage["cache_read_input_tokens"] == 160
+
+
+def test_runtime_accumulates_cache_usage_in_run_totals() -> None:
+    class CachedLLM:
+        model = "cached"
+
+        def complete(self, **_kwargs):
+            return LLMResponse(
+                content="done",
+                usage={
+                    "prompt_tokens": 100,
+                    "completion_tokens": 20,
+                    "total_tokens": 120,
+                    "cache_read_input_tokens": 80,
+                    "cache_creation_input_tokens": 10,
+                },
+            )
+
+    state, _ = AgentRuntime(llm=CachedLLM(), prompt="p").run("go")
+    completed = next(event for event in state.events if event.type == "run_completed")
+    usage = completed.payload["usage"]
+
+    assert usage["cache_read_input_tokens"] == 80
+    assert usage["cache_creation_input_tokens"] == 10
+    assert len([event for event in state.events if event.type == "usage_tick"]) == 1

@@ -63,7 +63,7 @@ _NOTICES = {
     "context_compacted": "Older turns were condensed to stay in the context window",
     "guardrail_triggered": "A guardrail stopped the run",
     "lockdown_engaged": "Lockdown — sensitive data was read, so only read-only "
-                        "tools may run for the rest of this run",
+    "tools may run for the rest of this run",
     "run_cancelled": "Cancelled",
 }
 
@@ -79,6 +79,8 @@ class TimelineBuilder:
     def __init__(self) -> None:
         self._group: str | None = None
         self._group_calls: list[dict[str, Any]] = []
+        self._group_title: str = ""
+        self._group_declared: bool = False
         self._prose: list[str] = []
         self._groups = 0
         self._calls = 0
@@ -98,7 +100,9 @@ class TimelineBuilder:
 
         if kind in ("planning_completed", "reasoning_completed"):
             content = str(
-                payload.get("summary") or payload.get("plan") or payload.get("output")
+                payload.get("summary")
+                or payload.get("plan")
+                or payload.get("output")
                 or ""
             ).strip()
             if content:
@@ -115,8 +119,14 @@ class TimelineBuilder:
             chunk = str(payload.get("chunk", ""))
             if chunk:
                 # Prose closes a group — the same rule the transcript uses.
-                out += self._close_group()
+                if not self._group_declared:
+                    out += self._close_group()
                 self._prose.append(chunk)
+            return out
+
+        if kind == "tool_group_started":
+            out += self._close_prose(next_action="tool")
+            out += self._open_declared_group(payload)
             return out
 
         if kind == "tool_called":
@@ -125,16 +135,22 @@ class TimelineBuilder:
             out += self._close_prose(next_action="tool")
             out += self._open_group(payload)
             self._calls += 1
+            call_id = str(payload.get("call_id") or self._calls)
             call = {
                 "type": "tool_call_started",
-                "tool_call_id": str(payload.get("call_id") or self._calls),
+                "tool_call_id": call_id,
                 "group_id": self._group,
                 "tool_name": str(payload.get("tool") or "?"),
                 "input": _jsonable(payload.get("arguments") or {}),
             }
-            self._group_calls.append(
-                {"tool": call["tool_name"], "id": call["tool_call_id"]}
-            )
+            if not any(existing.get("id") == call_id for existing in self._group_calls):
+                self._group_calls.append(
+                    {
+                        "tool": call["tool_name"],
+                        "id": call["tool_call_id"],
+                        "arguments": call["input"],
+                    }
+                )
             out.append(call)
             return out
 
@@ -155,9 +171,7 @@ class TimelineBuilder:
             if status == "completed":
                 step["output"] = _jsonable(payload.get("output"))
             else:
-                step["error"] = str(
-                    payload.get("error") or payload.get("reason") or ""
-                )
+                step["error"] = str(payload.get("error") or payload.get("reason") or "")
             return [step]
 
         if kind == "action_queued":
@@ -275,13 +289,18 @@ class TimelineBuilder:
     def _open_group(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         if self._group is not None:
             return []
-        self._groups += 1
-        self._group = f"g{self._groups}"
-        title = summarize(
+        self._group = str(payload.get("group_id") or self._next_group_id())
+        self._group_declared = payload.get("group_id") is not None
+        self._group_title = summarize(
             str(payload.get("tool") or "?"), dict(payload.get("arguments") or {})
         ).present_label()
         return [
-            {"type": "tool_group_started", "group_id": self._group, "title": title}
+            {
+                "type": "tool_group_started",
+                "group_id": self._group,
+                "title": self._group_title,
+                "tools": list(self._group_calls),
+            }
         ]
 
     def _close_group(self) -> list[dict[str, Any]]:
@@ -290,11 +309,46 @@ class TimelineBuilder:
         step = {
             "type": "tool_group_completed",
             "group_id": self._group,
+            "title": self._group_title,
             "tool_calls": len(self._group_calls),
+            "tools": list(self._group_calls),
         }
         self._group = None
         self._group_calls = []
+        self._group_title = ""
+        self._group_declared = False
         return [step]
+
+    def _open_declared_group(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        out = self._close_group()
+        self._group = str(payload.get("group_id") or self._next_group_id())
+        self._group_declared = True
+        self._group_calls = [
+            {
+                "tool": str(tool.get("name") or tool.get("tool") or "?"),
+                "id": str(tool.get("call_id") or tool.get("id") or ""),
+            }
+            for tool in list(payload.get("tools") or [])
+        ]
+        self._group_title = str(payload.get("title") or "").strip()
+        if not self._group_title:
+            if len(self._group_calls) == 1:
+                self._group_title = str(self._group_calls[0].get("tool") or "?")
+            else:
+                self._group_title = f"{len(self._group_calls)} tool calls"
+        out.append(
+            {
+                "type": "tool_group_started",
+                "group_id": self._group,
+                "title": self._group_title,
+                "tools": list(self._group_calls),
+            }
+        )
+        return out
+
+    def _next_group_id(self) -> str:
+        self._groups += 1
+        return f"g{self._groups}"
 
     def _close_prose(self, *, next_action: str) -> list[dict[str, Any]]:
         text = "".join(self._prose).strip()
@@ -322,8 +376,8 @@ def timeline(source: Iterable[AgentEvent] | Any) -> list[dict[str, Any]]:
 def stream_timeline(agent: Any, prompt: str) -> Iterator[dict[str, Any]]:
     """Run *agent* and yield UI steps as they happen::
 
-        for step in stream_timeline(agent, prompt):
-            await websocket.send_json(step)
+    for step in stream_timeline(agent, prompt):
+        await websocket.send_json(step)
     """
     builder = TimelineBuilder()
     try:

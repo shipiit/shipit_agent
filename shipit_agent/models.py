@@ -34,6 +34,8 @@ EventType = Literal[
     "text_delta",
     "tool_input_started",
     "tool_input_delta",
+    "tool_output_started",
+    "tool_output_delta",
     "usage_tick",
     "interactive_request",
     "mcp_attached",

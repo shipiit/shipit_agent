@@ -82,11 +82,13 @@ class AgentDoctor:
         checks = [
             self._check_llm(agent.llm),
             self._check_tools(agent.tools),
+            self._check_skills(agent),
             self._check_mcps(agent.mcps),
             self._check_stores(agent),
             self._check_connectors(
                 agent.tools, getattr(agent, "credential_store", None)
             ),
+            self._check_efficiency(agent),
             self._check_iterations(agent),
         ]
         return DoctorReport(checks=checks)
@@ -132,13 +134,155 @@ class AgentDoctor:
                 message="Agent has no attached tools.",
                 details={"tool_count": 0},
             )
+
+        invalid: list[str] = []
+        for tool in tools:
+            name = str(getattr(tool, "name", tool.__class__.__name__))
+            try:
+                schema = tool.schema()
+                function = schema.get("function", {})
+                parameters = function.get("parameters")
+                if function.get("name") != name:
+                    invalid.append(f"{name}: schema name mismatch")
+                elif not isinstance(parameters, dict):
+                    invalid.append(f"{name}: missing parameter schema")
+                elif parameters.get("type") not in (None, "object"):
+                    invalid.append(f"{name}: parameters must be an object")
+            except Exception as exc:  # noqa: BLE001
+                invalid.append(f"{name}: {exc}")
+        if invalid:
+            return DoctorCheck(
+                name="tools",
+                status="fail",
+                message="One or more tools expose invalid callable schemas.",
+                details={
+                    "tool_count": len(names),
+                    "invalid": "; ".join(invalid),
+                },
+            )
+
+        from shipit_agent.tools.helpers import tool_family
+
+        families: dict[str, int] = {}
+        for tool in tools:
+            family = tool_family(tool)
+            families[family] = families.get(family, 0) + 1
         return DoctorCheck(
             name="tools",
             status="pass",
-            message="Tool registry looks consistent.",
+            message="Tool registry and callable schemas look consistent.",
             details={
                 "tool_count": len(names),
+                "family_count": len(families),
+                "families": ", ".join(
+                    f"{name}={count}" for name, count in sorted(families.items())
+                ),
                 "tools": ", ".join(names[:12]) + (" ..." if len(names) > 12 else ""),
+            },
+        )
+
+    def _check_skills(self, agent: Any) -> DoctorCheck:
+        """Validate the skill catalog and its runtime dependencies."""
+        registry = getattr(agent, "skill_registry", None)
+        auto_use = bool(getattr(agent, "auto_use_skills", False))
+        match_limit = int(getattr(agent, "skill_match_limit", 0) or 0)
+        if registry is None:
+            return DoctorCheck(
+                name="skills",
+                status="warn" if auto_use else "pass",
+                message=(
+                    "Automatic skill selection is enabled but no catalog is loaded."
+                    if auto_use
+                    else "No skill catalog is configured."
+                ),
+                details={"catalog_size": 0, "auto_use": auto_use},
+            )
+
+        unknown_defaults = [
+            skill_id
+            for skill_id in getattr(agent, "default_skill_ids", [])
+            if registry.get(skill_id) is None
+        ]
+        if auto_use and match_limit < 1:
+            return DoctorCheck(
+                name="skills",
+                status="fail",
+                message="Automatic skill selection needs skill_match_limit >= 1.",
+                details={
+                    "catalog_size": len(registry),
+                    "skill_match_limit": match_limit,
+                },
+            )
+        if unknown_defaults:
+            return DoctorCheck(
+                name="skills",
+                status="fail",
+                message="Default skills reference IDs missing from the catalog.",
+                details={
+                    "catalog_size": len(registry),
+                    "unknown_defaults": ", ".join(unknown_defaults),
+                },
+            )
+
+        from shipit_agent.builtins import get_builtin_tool_map
+        from shipit_agent.skills.tool_bundles import validate_tool_bundles
+
+        available_tools = set(
+            get_builtin_tool_map(
+                llm=agent.llm,
+                project_root=str(getattr(agent, "project_root", ".")),
+            )
+        )
+        available_tools.update(
+            str(getattr(tool, "name", "")) for tool in getattr(agent, "tools", [])
+        )
+        bundle_errors = validate_tool_bundles(available_tools)
+
+        active_skills = list(getattr(agent, "skills", []))
+        for skill_id in getattr(agent, "default_skill_ids", []):
+            skill = registry.get(skill_id)
+            if skill is not None and skill not in active_skills:
+                active_skills.append(skill)
+        missing_tools = sorted(
+            {
+                f"{skill.id}:{tool_name}"
+                for skill in active_skills
+                for tool_name in skill.tools
+                if tool_name not in available_tools
+            }
+        )
+        attached_mcps = {
+            str(getattr(mcp, "name", "")) for mcp in getattr(agent, "mcps", [])
+        }
+        missing_mcps: list[str] = []
+        for skill in active_skills:
+            for requirement in skill.mcps:
+                name = (
+                    str(requirement.get("name") or requirement.get("id") or "")
+                    if isinstance(requirement, dict)
+                    else str(requirement)
+                )
+                if name and name not in attached_mcps:
+                    missing_mcps.append(f"{skill.id}:{name}")
+
+        problems = [*bundle_errors, *missing_tools, *missing_mcps]
+        return DoctorCheck(
+            name="skills",
+            status="warn" if problems else "pass",
+            message=(
+                "Skill catalog is loaded, but some runtime dependencies are missing."
+                if problems
+                else "Skill catalog and runtime dependencies look consistent."
+            ),
+            details={
+                "catalog_size": len(registry),
+                "always_on": len(getattr(agent, "skills", [])),
+                "default_count": len(getattr(agent, "default_skill_ids", [])),
+                "auto_use": auto_use,
+                "skill_match_limit": match_limit,
+                "bundle_errors": ", ".join(bundle_errors) or "none",
+                "missing_tools": ", ".join(missing_tools) or "none",
+                "missing_mcps": ", ".join(missing_mcps) or "none",
             },
         )
 
@@ -151,6 +295,17 @@ class AgentDoctor:
                 details={"mcp_count": 0},
             )
         names = [getattr(mcp, "name", mcp.__class__.__name__) for mcp in mcps]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            return DoctorCheck(
+                name="mcps",
+                status="fail",
+                message="MCP server names must be unique.",
+                details={
+                    "mcp_count": len(names),
+                    "duplicates": ", ".join(duplicates),
+                },
+            )
         return DoctorCheck(
             name="mcps",
             status="pass",
@@ -204,27 +359,35 @@ class AgentDoctor:
                 message="Connector tools are attached but no credential store is configured.",
                 details={"connector_count": len(connector_tools)},
             )
-        missing: list[str] = []
+        from shipit_agent.connections import ConnectionRegistry
+
+        registry = ConnectionRegistry(
+            credential_store=credential_store,
+            tools=connector_tools,
+        )
+        connections = {connection.id: connection for connection in registry.all()}
+        unavailable: list[str] = []
         connected: list[str] = []
         for tool in connector_tools:
             credential_key = getattr(tool, "credential_key", "")
             provider = getattr(
                 tool, "provider", credential_key or getattr(tool, "name", "connector")
             )
-            record = credential_store.get(credential_key)
-            if record is None:
-                missing.append(f"{provider}:{credential_key}")
-            else:
+            connection = connections.get(credential_key)
+            if connection is not None and connection.usable:
                 connected.append(f"{provider}:{credential_key}")
-        if missing:
+            else:
+                state = connection.state.value if connection is not None else "missing"
+                unavailable.append(f"{provider}:{credential_key}({state})")
+        if unavailable:
             return DoctorCheck(
                 name="connectors",
                 status="warn",
-                message="Some connector tools do not have matching credentials yet.",
+                message="Some connector tools are not ready to use.",
                 details={
                     "connector_count": len(connector_tools),
                     "connected": ", ".join(connected) or "none",
-                    "missing": ", ".join(missing),
+                    "unavailable": ", ".join(unavailable),
                 },
             )
         return DoctorCheck(
@@ -258,6 +421,55 @@ class AgentDoctor:
             status="pass",
             message="Runtime iteration budget looks reasonable.",
             details={"max_iterations": max_iterations},
+        )
+
+    def _check_efficiency(self, agent: Any) -> DoctorCheck:
+        """Report whether large/long-running agents use token controls."""
+        llm = agent.llm
+        class_name = llm.__class__.__name__
+        if hasattr(llm, "prompt_caching"):
+            cache_mode = "enabled" if llm.prompt_caching else "disabled"
+        elif class_name in {"OpenAIChatLLM", "BedrockGemmaChatLLM"}:
+            cache_mode = "automatic"
+        else:
+            cache_mode = "provider-managed or unavailable"
+
+        tool_count = len(getattr(agent, "tools", []))
+        code_mode = bool(getattr(agent, "code_mode", False))
+        context_window = int(getattr(agent, "context_window_tokens", 0) or 0)
+        tool_output_cap = int(getattr(agent, "max_tool_output_chars", 0) or 0)
+        recommendations: list[str] = []
+        if tool_count > 20 and not code_mode:
+            recommendations.append("enable code_mode for progressive tool discovery")
+        if context_window <= 0:
+            recommendations.append("set context_window_tokens for long runs")
+        if tool_count > 20 and tool_output_cap <= 0:
+            recommendations.append("set max_tool_output_chars to bound tool context")
+        if cache_mode == "disabled":
+            recommendations.append("enable prompt_caching on the LLM adapter")
+
+        return DoctorCheck(
+            name="efficiency",
+            status="warn" if recommendations else "pass",
+            message=(
+                "Token-efficiency controls can be improved."
+                if recommendations
+                else "Prompt caching and long-run token controls look ready."
+            ),
+            details={
+                "prompt_caching": cache_mode,
+                "code_mode": code_mode,
+                "context_window_tokens": context_window,
+                "max_tool_output_chars": tool_output_cap,
+                "tool_count": tool_count,
+                "session_store": agent.session_store.__class__.__name__
+                if getattr(agent, "session_store", None)
+                else "runtime default",
+                "memory_store": agent.memory_store.__class__.__name__
+                if getattr(agent, "memory_store", None)
+                else "runtime default",
+                "recommendations": "; ".join(recommendations) or "none",
+            },
         )
 
     def _provider_details(self, llm: Any) -> tuple[str, dict[str, Any]]:

@@ -414,7 +414,13 @@ class TestSchemaIsUnambiguous:
         """Unless it handles an empty call sensibly, which the exceptions do."""
         from shipit_agent.builtins import get_builtin_tools
 
-        handles_empty = {"connections"}  # defaults to action="list"
+        handles_empty = {
+            "connections",   # defaults to action="list"
+            # `query` or `queries`, never both — an either/or that the
+            # `required` list cannot express. An empty call is answered
+            # with which of the two to pass.
+            "web_search",
+        }
         for tool in get_builtin_tools(llm=None, project_root="."):
             parameters = tool.schema()["function"]["parameters"]
             properties = list((parameters.get("properties") or {}))

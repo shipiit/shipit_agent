@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from shipit_agent.prompts import FUNCTION_TOOL_PROMPT
-from .base import ToolContext, ToolOutput
+from .base import ToolContext, ToolOutput, ToolRunOutput
 
 
 def _annotation_name(annotation: Any) -> str:
@@ -76,7 +77,7 @@ class FunctionTool:
             },
         }
 
-    def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
+    def run(self, context: ToolContext, **kwargs: Any) -> ToolRunOutput:
         signature = inspect.signature(self.func)
         if "context" in signature.parameters:
             result = self.func(context=context, **kwargs)
@@ -84,6 +85,10 @@ class FunctionTool:
             result = self.func(**kwargs)
 
         if isinstance(result, ToolOutput):
+            return result
+        # Preserve generators so the runtime can publish each tool-output
+        # chunk as it arrives instead of stringifying the generator object.
+        if isinstance(result, Iterator):
             return result
         if result is None:
             return ToolOutput(text="")

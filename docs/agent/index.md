@@ -85,6 +85,7 @@ renderer you can copy.
 | Audit trail | `trace_store=…` | [FAQ — production](../faq.md#how-do-i-monitor-production-runs) |
 | Hooks (before/after LLM, tool wrappers) | `hooks=AgentHooks(…)` | [Hooks guide](../guides/hooks.md) |
 | Parallel tool calls | `parallel_tool_execution=True` | [Parallel execution](../guides/parallel-execution.md) |
+| Bounded parallelism | `max_tool_concurrency=4` | [Parallel execution](../guides/parallel-execution.md) |
 | Auto context compaction | `context_window_tokens=200_000` | [Context management](../guides/context-management.md) |
 | Retry policy | `retry_policy=RetryPolicy(…)` | [Error recovery](../guides/error-recovery.md) |
 | Higher iteration cap | `max_iterations=20` | [Re-planning](../guides/replanning.md) |

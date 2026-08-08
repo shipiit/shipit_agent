@@ -168,6 +168,27 @@ agent.
 See the [MCP guide](../guides/mcp.md) for OAuth-protected MCP servers,
 persistent subprocess transports, and reconnection policies.
 
+## Agents as tools
+
+A normal `Agent` can be a typed specialist tool for another normal `Agent`.
+Nested events are re-emitted as `sub_agent_event`; `session_id` gives the
+specialist a durable conversation across repeated calls.
+
+```python
+researcher = Agent.for_project(
+    llm=research_llm,
+    project_root="/repo",
+    optimized=True,
+).clone(name="researcher", description="Investigates repository questions.")
+
+lead = Agent.for_project(
+    llm=lead_llm,
+    project_root="/repo",
+    tools=[researcher.as_tool(session_id="research-thread")],
+    optimized=True,
+)
+```
+
 ---
 
 ## 5. Mixing custom tools, builtins, and MCP

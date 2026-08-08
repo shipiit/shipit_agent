@@ -148,6 +148,27 @@ agent = Agent(
 
 All tools — local and MCP — appear in the single tool registry the LLM sees. `ToolSearchTool` indexes MCP tools too.
 
+### Filter remote tools
+
+Filter large or sensitive MCP surfaces before schemas reach the model:
+
+```python
+mcp = RemoteMCPServer(
+    name="operations",
+    transport=transport,
+    allowed_tools={"list_incidents", "get_incident", "update_incident"},
+    blocked_tools={"update_incident"},
+    tool_filter=lambda definition: definition.get("annotations", {}).get(
+        "readOnlyHint", False
+    ),
+)
+```
+
+Remote tool results preserve MCP `structuredContent`, `outputSchema`,
+annotations, execution metadata, error status, and text/image/audio/resource
+content blocks in `ToolResult.metadata`. Text-only models receive a concise
+rendering without losing the canonical blocks.
+
 ## Debugging
 
 - Use `agent.doctor()` to get a health report including MCP server reachability

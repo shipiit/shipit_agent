@@ -53,6 +53,7 @@ agent = Agent(
 | `retry_policy` | `RetryPolicy` | `RetryPolicy()` | LLM/tool retry behaviour. | Production with flaky upstreams. |
 | `router_policy` | `RouterPolicy` | `RouterPolicy()` | Auto-planning + tool routing. | Disable auto-plan with `RouterPolicy(auto_plan=False)`. |
 | `parallel_tool_execution` | `bool` | `False` | Run independent tool calls in parallel. | Latency-sensitive runs with multiple parallel calls. |
+| `max_tool_concurrency` | `int \| None` | `None` | Bound concurrently executing local tools per model turn. | Protect APIs, databases, CPU, and file descriptors while retaining parallelism. |
 | `hooks` | `AgentHooks \| None` | `None` | Pre/post-LLM and tool middleware. | Custom logging, redaction, instrumentation. |
 | `context_window_tokens` | `int` | `0` | Auto-compact messages above this token count (0 = off). | Long runs against models with finite context. |
 | `max_tool_output_chars` | `int` | `0` | Cap only the model-visible copy of each tool result; canonical results stay complete. | MCP, search, logs, and large-file tools that can return large payloads. |
@@ -105,6 +106,7 @@ agent = DeepAgent.with_builtins(
 | **Runtime tuning** | | | | |
 | `max_iterations` | `int` | `8` | Max LLM iterations. | Deeper reasoning vs faster fails. |
 | `parallel_tool_execution` | `bool` | `True` | Parallelise independent tool calls. | Default on — disable for debugging. |
+| `max_tool_concurrency` | `int \| None` | `None` | Cap concurrently executing tools. | `DeepAgent.for_project()` defaults this to `4`. |
 | `context_window_tokens` | `int` | `0` | Auto-compact above N tokens. | Very long runs against finite-context models. |
 | `retry_policy` | `RetryPolicy \| None` | `None` | Override retry behaviour. | Flaky upstreams. |
 | `router_policy` | `RouterPolicy \| None` | `None` | Override routing. | Disable auto-plan. |

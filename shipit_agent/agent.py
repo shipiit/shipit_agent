@@ -282,6 +282,25 @@ class Agent:
         defaults.update(changes)
         return replace(self, **defaults)
 
+    def as_tool(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        session_id: str | None = None,
+        stream_events: bool = True,
+    ) -> Any:
+        """Expose this agent as a specialist tool for another agent."""
+        from shipit_agent.tools.agent_tool import AgentTool
+
+        return AgentTool(
+            agent=self,
+            name=name or self.name,
+            description=description or self.description or f"Delegate to {self.name}.",
+            session_id=session_id,
+            stream_events=stream_events,
+        )
+
     def __post_init__(self) -> None:
         """Wire up RAG tools/prompts and resolve skill references.
 

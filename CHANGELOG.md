@@ -11,6 +11,35 @@ Nothing yet.
 
 ---
 
+## [1.5.0] — 2026-08-08
+
+### Added
+
+- **`AgentTool` — an agent as a tool.** Wrap any agent and hand it to
+  another as one focused callable, so a researcher, a reviewer and a
+  writer become tools a coordinating agent picks between by description.
+  Unlike `sub_agent`, which builds a child from the parent, this delegates
+  to an agent you configured yourself — its own model, its own tools, its
+  own session if you give it one. Nested events surface through the
+  parent's stream, so a delegated run is visible rather than a silence.
+
+### Fixed
+
+- **A failing child no longer ends the parent's turn.** `AgentTool` let a
+  child's exception propagate, so one provider being down took the whole
+  run with it. Every other tool reports failure as a result the model can
+  act on; this one does now too, and the parent can say so, try something
+  else, or answer without it.
+- **Delegation cannot recurse forever.** An agent holding a tool that
+  wraps an agent holding the same tool would recurse until something ran
+  out. `sub_agent` already capped this; `AgentTool` is the same hazard by
+  another name, so it shares the counter rather than keeping its own — and
+  the refusal says to do the task directly, because a cap that does not
+  name the alternative just gets retried.
+- **A child that returns nothing is no longer reported as success.**
+
+---
+
 ## [1.4.0] — 2026-08-08
 
 Scheduled jobs stop sharing one agent, skills come from the project, and

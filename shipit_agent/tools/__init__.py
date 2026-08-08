@@ -1,3 +1,4 @@
+from .agent_tool import AgentTool
 from .ask_user import AskUserTool
 from .ask_user_async import AskUserAsyncTool
 from .artifact_builder import ArtifactBuilderTool
@@ -63,6 +64,7 @@ from .web_search import (
 
 __all__ = [
     "AskUserTool",
+    "AgentTool",
     "AskUserAsyncTool",
     "ArtifactBuilderTool",
     "BashTool",

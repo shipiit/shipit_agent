@@ -4,6 +4,12 @@ SHIPIT Agent's deep agent system provides autonomous, self-directing agent capab
 
 Use `.with_builtins()` on any deep agent for instant access to all capabilities.
 
+For repository work, `DeepAgent.for_project(llm=..., project_root=...)`
+enables durable file-backed sessions and memory, code-mode progressive tool
+discovery, model-aware context compaction, bounded model-visible tool output,
+and a four-tool concurrency limit. Explicit values override every optimized
+default.
+
 !!! tip "Runnable examples"
     - `python examples/11_deep_agents.py` — all deep agents in one script
     - `python examples/08_structured_output.py` — Pydantic & JSON schema output

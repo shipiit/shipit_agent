@@ -11,6 +11,7 @@ from shipit_agent.llms import OpenAIChatLLM
 agent = Agent.with_builtins(
     llm=OpenAIChatLLM(model="gpt-4o"),
     parallel_tool_execution=True,   # run tools concurrently
+    max_tool_concurrency=4,         # but never more than four at once
 )
 
 result = agent.run("Search for Python 3.13 release notes and today's weather in NYC")
@@ -66,3 +67,8 @@ When parallel execution is enabled, `tool_called` and `tool_completed` events fr
 
 !!! tip
     Single tool calls are always run sequentially, even when `parallel_tool_execution=True`. The parallel path only activates when the LLM returns 2 or more tool calls in one turn.
+
+`max_tool_concurrency=None` preserves unbounded per-turn concurrency. Set a
+positive integer for production workloads so one model turn cannot flood an
+API, database pool, subprocess runner, or local machine. The same limit is
+enforced by `AsyncAgentRuntime`.

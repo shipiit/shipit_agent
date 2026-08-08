@@ -136,3 +136,22 @@ profile = (
 ## Works with async too
 
 `AgentHooks` works identically with `AsyncAgentRuntime`. The hook callbacks themselves are synchronous — the async runtime calls them inline between awaits.
+
+## Match and transform tool output
+
+Matcher hooks accept glob patterns separated by `|`. Post-tool hooks may
+return a string, `ToolOutput`, `ToolResult`, or an output/metadata dictionary;
+the transformed result is what guardrails and the model see.
+
+```python
+@hooks.on_before_tool_matching("bash|edit_*")
+def audit_mutation(name, arguments):
+    print(name, arguments)
+
+@hooks.on_after_tool_matching("github|secret_*")
+def sanitize(name, result):
+    return {
+        "output": redact(result.output),
+        "metadata": {"redacted_by_hook": True},
+    }
+```

@@ -273,6 +273,7 @@ from .batch import (
     MessageBatchRunner,
 )
 from .tools import (
+    AgentTool,
     AskUserTool,
     ArtifactBuilderTool,
     DeepResearchTool,
@@ -475,6 +476,7 @@ __all__ = [
     "AgentProfile",
     "AgentProfileBuilder",
     "AgentResult",
+    "AgentTool",
     "AskUserTool",
     "Artifact",
     "ArtifactBuilderTool",

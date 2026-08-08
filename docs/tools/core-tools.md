@@ -43,9 +43,10 @@ Searches the web through a pluggable provider. The default provider is **DuckDuc
     "type": "object",
     "properties": {
       "query":       { "type": "string", "description": "Search query" },
+      "queries":     { "type": "array", "items": { "type": "string" }, "maxItems": 4 },
       "max_results": { "type": "integer", "description": "Max results to return" }
     },
-    "required": ["query"]
+    "required": []
   }
 }
 ```
@@ -70,6 +71,11 @@ tool = WebSearchTool(provider="tavily", api_key="tvly-...")
 # In-process Playwright (no API key, scrapes results — slower)
 tool = WebSearchTool(provider="playwright")
 ```
+
+Provide `queries=[...]` to run up to four independent searches concurrently.
+Results are returned in query order, duplicate URLs are merged, and each result
+records `matched_queries`. A failure in one query does not discard successful
+results from the others.
 
 ### Example
 

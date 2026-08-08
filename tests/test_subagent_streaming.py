@@ -128,9 +128,14 @@ class TestItReallyRuns:
             ],
             auto_use_skills=False, max_iterations=6,
         ).run("review both")
-        order = [name for _, name in sorted(log)]
+        entries = sorted(log)
+        order = [name for _, name in entries]
+        # Reported so a failure says which it was: genuinely serial work,
+        # or two children that overlapped but started too far apart.
+        first = entries[0][0]
+        gaps = ", ".join(f"{n}+{(t - first) * 1000:.0f}ms" for t, n in entries)
         assert order == ["read_file", "read_file", "grep_files", "grep_files"], (
-            f"children ran serially: {order}"
+            f"children ran serially: {gaps}"
         )
 
 

@@ -154,6 +154,7 @@ nav:
       - MCP Integration: guides/mcp.md
       - Sessions & Memory: guides/sessions.md
       - Scheduled Agents: guides/scheduled-agents.md
+      - Agents as Tools: guides/agents-as-tools.md
       # Power features
       - Parallel Execution: guides/parallel-execution.md
       - Hooks & Middleware: guides/hooks.md

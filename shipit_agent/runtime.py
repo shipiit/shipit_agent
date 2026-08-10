@@ -1069,13 +1069,13 @@ class AgentRuntime(RuntimeCore):
         an intention, and the results are not known yet anyway.
         """
         actions = "\n".join(
-            f"- {call.name}({_bounded(dict(call.arguments or {}), 200)})"
+            f"- {call.name}({_bounded(dict(call.arguments or {}), 250)})"
             for call in (response.tool_calls or [])
         )
-        last = _bounded(getattr(state, "last_observation", "") or "", 200)
+        last = _bounded(getattr(state, "last_observation", "") or "", 250)
         return f"""Write one short line for a person watching an agent work.
 
-They asked: {_bounded(user_prompt, 200)}
+They asked: {_bounded(user_prompt, 250)}
 
 Last step: {last or "nothing yet — this is the first step"}
 

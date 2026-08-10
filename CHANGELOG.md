@@ -11,6 +11,100 @@ Nothing yet.
 
 ---
 
+## [1.6.3] — 2026-08-10
+
+The theme is spending: what a turn is charged for, and what it gets back.
+
+### Added
+
+- **`Agent(reminder=...)` and built-in end-of-context reminders** — a short
+  instruction placed after the whole conversation, where a model attends most
+  reliably. Three built in, one per phase of a turn, so exactly one applies at
+  a time and none of them is boilerplate: before anything has been retrieved
+  the risk is invention, once something has it is answering from too little of
+  it, and on the last step it is spending that step on a call that cannot run.
+  Appended to a per-call copy of the message list, so it is rebuilt each step,
+  never stacks, and never enters the saved session.
+- **`Agent(evict_prior_tool_outputs=True)`** — earlier turns' tool payloads are
+  replaced with a short notice. A message list is cumulative across turns as
+  well as within one, so a search that returned fifteen thousand characters in
+  turn one was billed again on every request of turn two and three, long after
+  the model had written whatever mattered into its answer. The call, its name
+  and its arguments stay — those are what stop the model searching for the same
+  thing twice, and they are a few tokens against the thousands they replace. No
+  message is dropped: a tool result removed while its assistant tool-call
+  message remains is a malformed conversation some providers reject outright.
+- **`decision_llm` writes the progress narration** — opt-in, and only when the
+  primary model produced no prose of its own. A small model spends its whole
+  completion on the tool call (14 to 16 tokens, measured on Gemma), so there is
+  nothing to prefer and a label built from the tool name is all that was
+  honestly available: `agent_decision` read "Asking question
+  openai/openai-python." and `agent_observation` read "Asked question
+  openai/openai-python." Decision prompts carry the request, the previous
+  observation and the pending call — never the conversation, never a tool
+  payload. Observations get a 500-character head of each result, because an
+  observation that cannot see what came back can only restate the tool's name.
+  Roughly 500 tokens for a two-tool turn. Omit `decision_llm` and nothing extra
+  is called at all.
+
+### Changed
+
+- **Tool rules moved into the tool section.** The same instruction is followed
+  far more reliably next to the tools it governs than a few paragraphs earlier
+  under a general heading. The depth rule was the proof: given fifteen search
+  hits and a request for detail, the model opened one and answered from it.
+  Rules now sit under `# Tools` directly above the listing, with families as
+  `##` subheadings, and are emitted only when tools are attached.
+- **Tool descriptions are no longer repeated in the prompt.** Every description
+  is already in the JSON schema the provider requires, and that copy is the one
+  the model selects on. Measured on a 43-tool agent, the second copy was 15,286
+  characters — about 3,800 tokens — re-sent on every step of every turn. What
+  stays is what the schema has no room for: family, read-only status, origin.
+- **The final step is sent without tool schemas.** A tool call emitted there
+  has no iteration left to run in, so the run ends with the model having
+  announced work instead of doing it. Withholding them forces the answer and
+  drops the largest fixed cost in the request from the longest prompt of the
+  run. A single-step agent keeps its tools.
+- **Both loops share one step-request decision.** The async runtime builds its
+  own request and had received none of the above; `RuntimeCore.step_request`
+  now returns the messages and schemas for a step and both loops call it. A
+  test asserts neither defines its own.
+
+### Fixed
+
+- **A call that asks for everything is not run.** Healing only inspected calls
+  written as text; a call arriving through the provider's tool-call field
+  skipped it entirely, and a weak model produces wreckage there too — observed
+  live as `search_echo({",'query'": ""})`. Keys that clean up to a declared
+  parameter are repaired; a call supplying no usable argument to a tool that
+  declares it needs one is refused, with a sentence naming what to pass.
+  Deliberately not a per-parameter `required` check: a schema's required list
+  does not hold for every valid invocation.
+- **Tool calls are validated against their own schema.** A name check asks
+  "could this be a parameter?"; a schema check asks "is this *the* parameter?"
+  — which is what matters when a filter is optional and a missing one means
+  "return everything". Nameless argument objects are matched to the tool whose
+  schema they satisfy, and list-valued parameters arriving as JSON strings are
+  coerced.
+- **Invented data is no longer presented as retrieved.** Asked for the latest
+  cases, an agent called nothing and returned a table of case IDs, names and
+  dates, describing them as retrieved. Every row was invented and both search
+  tools were attached. An answer that is merely wrong can be argued with; one
+  that claims a retrieval it never performed cannot.
+- **A greeting is no longer read as a stall.** "…just let me know" matched the
+  "let me" intent marker, so the runtime nudged and the model's apology was
+  concatenated into the answer. Fixed structurally rather than by excluding the
+  phrase: a stall is a *bare* announcement, so a reply ending in a question or
+  saying more than one thing is not one.
+- **`FunctionTool` no longer advertises `**kwargs` as a required parameter.**
+  It has no default, so it landed in `required` — telling the model to invent a
+  value for `**_ignored` and making the declaration useless for validation.
+- **The reasoning channel is searched for tool calls** when the model produced
+  thinking but no answer and no calls — the shape that means the call was
+  written into the thinking, where nothing previously looked.
+
+---
+
 ## [1.6.2] — 2026-08-10
 
 ### Added

@@ -154,7 +154,7 @@ class TestToolCatalogue:
         # but its full instruction block is gone.
         # build_tools_prompt emits "- <name>: <description>" plus a long
         # guidance block per tool; that whole entry is what must disappear.
-        assert "- stripe:" in plain.llm.seen_system[0]
+        assert "- stripe [" in plain.llm.seen_system[0]
         assert "- stripe:" not in coded.llm.seen_system[0]
         assert "- env.STRIPE" in coded.llm.seen_system[0]
         assert len(coded.llm.seen_system[0]) < len(plain.llm.seen_system[0]) * 0.6

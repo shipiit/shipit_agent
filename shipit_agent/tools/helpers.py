@@ -194,9 +194,16 @@ def build_tools_prompt(
                 connection = capability["connection_id"]
                 state = capability["connection_state"] or "unknown"
                 tags.append(f"connection={connection}:{state}")
-            lines.append(
-                f"- {tool.name}: {tool.description} " f"[capability: {', '.join(tags)}]"
-            )
+            # The description is deliberately NOT repeated here. Every tool's
+            # description is already in the JSON schema the provider requires,
+            # and that copy is the one the model selects on. Printing it again
+            # bought nothing and cost real money: measured on a 43-tool agent,
+            # 15,286 characters — about 3,800 tokens — re-sent on every step
+            # of every turn, for a second copy of text already in the request.
+            #
+            # What stays is what the schema has no room for: which family the
+            # tool belongs to, whether it only reads, and where it comes from.
+            lines.append(f"- {tool.name} [{', '.join(tags)}]")
             prompt = getattr(tool, "prompt", "").strip()
             prompt_instructions = getattr(tool, "prompt_instructions", "").strip()
             if prompt:

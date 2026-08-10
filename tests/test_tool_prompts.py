@@ -132,12 +132,12 @@ def test_capability_prompt_groups_tools_without_dropping_any() -> None:
     )
 
     assert "3 tools across 3 families" in prompt
-    assert "- web_search:" in prompt
-    assert "[capability: read-only]" in prompt
-    assert "- slack:" in prompt
-    assert "[capability: action, connection=slack:connected]" in prompt
-    assert "- search_incidents:" in prompt
-    assert "[capability: read-only, mcp=operations]" in prompt
+    assert "- web_search [" in prompt
+    assert "[read-only]" in prompt
+    assert "- slack [" in prompt
+    assert "[action, connection=slack:connected]" in prompt
+    assert "- search_incidents [" in prompt
+    assert "[read-only, mcp=operations]" in prompt
     assert (
         prompt.index("web_search")
         < prompt.index("slack")

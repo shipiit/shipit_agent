@@ -1,12 +1,14 @@
-"""Watching a run costs nothing extra.
+"""Watching a run costs nothing extra — unless you ask it to.
 
-Progress narration used to call a second model once per iteration, and
-with no `decision_llm` configured that second model was the run's own —
-so turning narration on doubled the calls a run made, on the expensive
-model, to produce a paraphrase of data the runtime was already holding.
+Progress narration used to call a second model once per iteration, and with
+no `decision_llm` configured that second model was the run's own — so turning
+narration on doubled the calls a run made, on the expensive model, to produce
+a paraphrase of data the runtime was already holding.
 
-It is composed now. These tests pin the property that matters: the number
-of model calls does not depend on whether narration is on.
+It is composed now, and a `decision_llm` is honoured only when one is
+explicitly passed. These tests pin the property that matters: with none
+configured, the number of model calls does not depend on whether narration
+is on.
 """
 
 from __future__ import annotations
@@ -75,6 +77,13 @@ def build(*, narrate: bool, decision_llm=None, tools=None):
     return agent, llm
 
 
+def _main_calls_without_narration() -> int:
+    """How many completions the run itself needs, narration aside."""
+    agent, llm = build(narrate=False)
+    agent.run("look")
+    return llm.calls
+
+
 class TestNarrationIsFree:
     def test_it_costs_no_extra_model_call(self) -> None:
         quiet_agent, quiet = build(narrate=False)
@@ -87,12 +96,25 @@ class TestNarrationIsFree:
             f"narration cost {loud.calls - quiet.calls} extra model calls"
         )
 
-    def test_a_decision_llm_is_never_called(self) -> None:
-        """Passing one is tolerated for compatibility, not honoured."""
-        spare = CountingLLM([("", [])])
-        agent, _ = build(narrate=True, decision_llm=spare)
+    def test_the_main_model_is_never_used_to_narrate(self) -> None:
+        """The old cost came from defaulting to the run's own model. With no
+        decision_llm configured, narration must add nothing to it."""
+        quiet_agent, quiet = build(narrate=False)
+        quiet_agent.run("look")
+        loud_agent, loud = build(narrate=True)
+        loud_agent.run("look")
+        assert loud.calls == quiet.calls
+
+    def test_a_decision_llm_is_used_when_one_is_given(self) -> None:
+        """Opting in is the only way to spend anything here — and then it is
+        a model you chose, not the run's own."""
+        spare = CountingLLM([("Looking into it now.", [])])
+        agent, main = build(narrate=True, decision_llm=spare)
+        before = main.calls
         agent.run("look")
-        assert spare.calls == 0
+        assert spare.calls > 0
+        # The narration went to the spare model, not the expensive one.
+        assert main.calls == before + _main_calls_without_narration()
 
     def test_the_models_own_words_are_used_when_it_spoke(self) -> None:
         """A model that says why it is calling a tool has already written

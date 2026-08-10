@@ -60,6 +60,16 @@ class TestGatedOnHavingTools:
 
 
 class TestTheToolListingSurvives:
-    def test_each_tool_is_still_named_and_described(self) -> None:
-        prompt = build_tools_prompt([_tool("search_echo")])
-        assert "- search_echo: Search the echo feed." in prompt
+    def test_each_tool_is_still_named(self) -> None:
+        assert "- search_echo [" in build_tools_prompt([_tool("search_echo")])
+
+    def test_the_description_is_not_repeated_here(self) -> None:
+        """It is already in the JSON schema the provider requires, and that
+        copy is the one the model selects on. Measured on a 43-tool agent, the
+        second copy was ~3,800 tokens re-sent on every step of every turn."""
+        assert "Search the echo feed." not in build_tools_prompt([_tool()])
+
+    def test_what_the_schema_cannot_carry_is_kept(self) -> None:
+        """Family, read-only status and origin have nowhere else to live."""
+        prompt = build_tools_prompt([_tool()])
+        assert "read-only" in prompt and "\n## " in prompt

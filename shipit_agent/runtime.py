@@ -49,6 +49,11 @@ class RuntimeState:
     #: run only. Held on the run rather than the runtime because a pointer
     #: to "the result above" is a lie in the next run, where it is not.
     seen_tool_outputs: dict = field(default_factory=dict)
+    #: The last observation line the runtime composed. Narrating the next
+    #: step needs to know what the last one found, and this already says it —
+    #: which is what lets the decision prompt stay a few hundred characters
+    #: instead of carrying the conversation.
+    last_observation: str = ""
 
 
 # Keys in the runtime's shared_state that hold shared *service* objects (not
@@ -148,8 +153,17 @@ def _arguments_by_name(tool_calls: list[Any] | None) -> dict[str, dict]:
     return found
 
 
-#: A decision line is a glance, not a paragraph.
-_SPOKEN_LIMIT = 240
+def _bounded(value: Any, limit: int) -> str:
+    """A compact, display-safe string for a narration prompt."""
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+#: A narration line is a short paragraph — two or three sentences, the
+#: length a person actually reads as an explanation. Shorter than this and
+#: it degenerates into a caption ("Asking question openai/openai-python."),
+#: which is the thing the decision model exists to replace.
+_SPOKEN_LIMIT = 400
 
 
 def _first_sentences(text: str | None) -> str:
@@ -994,26 +1008,177 @@ class AgentRuntime(RuntimeCore):
         read_file" is throwing away the best sentence available and
         replacing it with a worse one.
 
-        If the model said nothing but emitted tool calls, report only those
-        explicit actions. This is not inferred intent or hidden reasoning: the
-        model already selected the calls and arguments. Provenance on the event
-        distinguishes this deterministic fallback from model-authored prose.
+        When it said nothing, a configured ``decision_llm`` is asked to write
+        the line instead. That is the case this exists for: a small model
+        spends its whole completion on the tool call — 14 to 16 tokens,
+        measured — so there is no sentence to prefer, and "Searching echo."
+        is all a composed label can honestly say. A second model that can see
+        the request and the call writes what a person actually wants to read.
+
+        With no ``decision_llm`` configured nothing extra is called and the
+        composed label stands. Three sources, in descending order of how much
+        they know, and the run costs an extra completion only if you asked
+        for one.
         """
-        del state, user_prompt, iteration  # narration reads the response alone
         if not self.progress_summaries:
             return ""
 
         spoken = _first_sentences(response.content)
         if _looks_like_prose(spoken):
             return spoken
+
         calls = list(response.tool_calls or [])
         if not calls:
             return ""
+
+        narrated = self._narrate_with_decision_model(
+            state=state,
+            prompt=self._decision_prompt(response, user_prompt, state),
+            purpose="agent_decision_summary",
+            iteration=iteration,
+        )
+        if _looks_like_prose(narrated):
+            return narrated
+
         actions = [
             summarize(call.name, dict(call.arguments or {})).present_label()
             for call in calls
         ]
         return _join_clauses(actions) + "."
+
+    def _decision_prompt(
+        self, response: LLMResponse, user_prompt: str, state: RuntimeState
+    ) -> str:
+        """The three short things needed to write one line — and nothing else.
+
+        The earlier version of this fed the model the last ten messages at
+        1,400 characters each: up to 14,000 characters of conversation, per
+        narrated step, on top of a second call for the observation. That was
+        roughly 8,000 tokens an iteration — enough to double the cost of a
+        turn to caption it — and it is why the whole mechanism was removed.
+
+        Almost none of it was needed. To write "Content module has all 23
+        sections. Now let me build the PDF generator" you need what was asked,
+        what the last step found, and what is about to run. The last step's
+        finding is already summarised in ``last_observation`` — a sentence the
+        runtime composed for free — so the conversation itself never has to be
+        sent.
+
+        That is about 550 characters, against 14,000. The tool payloads, which
+        are the expensive part, are never included at all: this line describes
+        an intention, and the results are not known yet anyway.
+        """
+        actions = "\n".join(
+            f"- {call.name}({_bounded(dict(call.arguments or {}), 200)})"
+            for call in (response.tool_calls or [])
+        )
+        last = _bounded(getattr(state, "last_observation", "") or "", 200)
+        return f"""Write one short line for a person watching an agent work.
+
+They asked: {_bounded(user_prompt, 200)}
+
+Last step: {last or "nothing yet — this is the first step"}
+
+About to run:
+{actions}
+
+Two or three sentences, 35-60 words, first person, present tense. Say what
+you are about to do and what you are looking for, and connect it to what the
+last step turned up. Name the specific thing you are acting on. Do not invent
+results and do not say what the tool will return.""".strip()
+
+    def _narrate_with_decision_model(
+        self,
+        *,
+        state: RuntimeState,
+        prompt: str,
+        purpose: str,
+        iteration: int,
+    ) -> str:
+        """Ask the decision model for one line of public narration.
+
+        **Only runs when a ``decision_llm`` was explicitly passed.** With none
+        configured this is never reached, and a run makes exactly as many
+        model calls as it did before — narration falls back to a composed
+        label, which costs nothing.
+
+        That gate is the whole design. An earlier version defaulted to the
+        main model and narrated every step whether or not anyone had asked
+        for it, which is an extra completion per iteration for a line of UI
+        text. Opt in and it is a real second model; opt out and it does not
+        exist.
+
+        Runs without tools and without streaming, and never interrupts the
+        agent: a failure emits a diagnostic and returns empty, so the caller
+        falls through to the composed label.
+        """
+        if self.decision_llm is None or not self.progress_summaries:
+            return ""
+        try:
+            result = self.decision_llm.complete(
+                messages=[Message(role="user", content=prompt)],
+                tools=[],
+                system_prompt=(
+                    "You narrate an agent's work for the person watching it, "
+                    "in the agent's own voice — first person, present tense, "
+                    "plain language. Two or three sentences. Say what you are "
+                    "doing, what it follows from, and what you expect it to "
+                    "settle. Be specific: name the thing being acted on. "
+                    "Never a bare label, never a heading, never markdown, "
+                    "never backticks. Use only what you are shown — do not "
+                    "invent results, do not claim to have found anything you "
+                    "have not been told, and do not reveal private reasoning."
+                ),
+                metadata={
+                    **dict(self.metadata),
+                    "purpose": purpose,
+                    "iteration": iteration,
+                },
+            )
+            return _first_sentences(getattr(result, "content", ""))
+        except Exception as exc:                              # noqa: BLE001
+            self.emit(
+                state,
+                "progress_summary_failed",
+                "Progress summary generation failed",
+                purpose=purpose,
+                iteration=iteration,
+                error=str(exc),
+            )
+            return ""
+
+    def _observation_prompt(
+        self, tool_results: list[ToolResult], user_prompt: str
+    ) -> str:
+        """What the decision model is shown to describe a finished step.
+
+        Unlike the decision prompt, this one has to see something of the
+        result — an observation that cannot look at what came back can only
+        restate the tool's name, which is the failure being fixed.
+
+        So each result contributes a bounded head, not its body. 500
+        characters is enough to say "fifteen entries, mostly victim alerts"
+        and nowhere near enough to re-send a corpus. The full result is
+        already in the conversation for the agent itself; this copy exists
+        only to write one paragraph about it.
+        """
+        rendered = "\n\n".join(
+            f"{result.name} -> "
+            + ("FAILED: " if _result_failed(result) else "")
+            + (_bounded(result.output, 500) or "[no output]")
+            for result in tool_results
+        )
+        return f"""Write a short progress note for a person watching an agent work.
+
+They asked: {_bounded(user_prompt, 200)}
+
+What just came back:
+{rendered}
+
+Two or three sentences, 35-60 words, first person, past tense. Say what you
+found, how much of it there is, and whether it answers what was asked. If a
+call failed, lead with that. Describe only what is shown above — do not add
+detail you were not given and do not say what you will do next."""
 
     def _generate_observation_summary(
         self,
@@ -1034,10 +1199,26 @@ class AgentRuntime(RuntimeCore):
         A failure is named rather than folded into the sentence: "it
         failed" is the part a watcher is waiting for, and a summary that
         buries it reads as progress.
+
+        With a ``decision_llm`` configured, that model writes the line
+        instead. It is given a bounded head of each result — enough to say
+        what came back, never the payload — because "Asked question
+        openai/openai-python." is as thin an observation as the composed
+        decision was a decision, and for the same reason: a label built from
+        a tool name cannot know what the tool actually returned.
         """
-        del state, user_prompt, iteration  # narration reads the results alone
         if not tool_results or not self.progress_summaries:
             return ""
+
+        narrated = self._narrate_with_decision_model(
+            state=state,
+            prompt=self._observation_prompt(tool_results, user_prompt),
+            purpose="agent_observation_summary",
+            iteration=iteration,
+        )
+        if _looks_like_prose(narrated):
+            return narrated
+
         arguments = _arguments_by_name(tool_calls)
         clauses: list[str] = []
         for result in tool_results:
@@ -1546,6 +1727,9 @@ class AgentRuntime(RuntimeCore):
                 summary=observation_summary,
             )
             if observation_summary:
+                # Kept so the next decision line can say what this step found
+                # without the conversation being sent to narrate it.
+                state.last_observation = observation_summary
                 self.emit(
                     state,
                     "agent_observation",

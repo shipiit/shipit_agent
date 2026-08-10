@@ -94,13 +94,26 @@ class TestNarrationIsFree:
         agent.run("look")
         assert spare.calls == 0
 
-    def test_it_still_says_what_is_happening(self) -> None:
+    def test_the_models_own_words_are_used_when_it_spoke(self) -> None:
+        """A model that says why it is calling a tool has already written
+        the best line available; composing one over the top is a downgrade
+        the user pays for."""
         agent, _ = build(narrate=True)
         result = agent.run("look")
         decisions = [e for e in result.events if e.type == "agent_decision"]
         assert decisions, "narration produced no decision event"
-        assert "Reading app.py" in " ".join(
+        assert "Looking now." in " ".join(
             str(e.payload.get("summary", "")) for e in decisions
+        )
+
+    def test_a_label_is_composed_when_it_said_nothing(self) -> None:
+        llm = CountingLLM([("", [("read_file", {"path": "app.py"})]), ("done", [])])
+        agent = Agent(llm=llm, tools=[tool("read_file")], progress_summaries=True,
+                      auto_use_skills=False, max_iterations=4)
+        result = agent.run("look")
+        assert "Reading app.py" in " ".join(
+            str(e.payload.get("summary", "")) for e in result.events
+            if e.type == "agent_decision"
         )
 
     def test_nothing_is_said_when_it_is_off(self) -> None:
@@ -132,8 +145,37 @@ class TestWhatItSays:
         result = agent.run("look")
         assert "Read app.py" in self._summaries(result.events, "agent_observation")
 
-    def test_the_final_turn_says_it_is_answering(self) -> None:
+    def test_a_tool_may_describe_its_own_result(self) -> None:
+        """The detail comes from the tool, which knows what its numbers
+        mean — never from the runtime pattern-matching its payload."""
+        class Counting:
+            name = "read_file"
+            description = "read"
+            prompt_instructions = ""
+
+            def schema(self):
+                return {"function": {"name": "read_file",
+                                     "parameters": {"properties": {}}}}
+
+            def run(self, context, **kwargs):
+                return ToolOutput(text="...", metadata={"summary": "6,746 matches"})
+
+        agent, _ = build(narrate=True, tools=[Counting()])
+        result = agent.run("look")
+        assert "6,746 matches" in self._summaries(result.events, "agent_observation")
+
+    def test_a_silent_tool_gets_no_invented_detail(self) -> None:
         agent, _ = build(narrate=True)
+        result = agent.run("look")
+        line = self._summaries(result.events, "agent_observation")
+        assert "—" not in line, f"invented a detail: {line}"
+
+    def test_the_final_turn_says_it_is_answering(self) -> None:
+        """Only when the model itself is silent — its own closing line
+        wins here too."""
+        llm = CountingLLM([("", [("read_file", {"path": "app.py"})]), ("", [])])
+        agent = Agent(llm=llm, tools=[tool("read_file")], progress_summaries=True,
+                      auto_use_skills=False, max_iterations=4)
         result = agent.run("look")
         assert "final answer" in self._summaries(result.events, "agent_decision")
 

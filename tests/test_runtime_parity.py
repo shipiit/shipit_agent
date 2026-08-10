@@ -174,7 +174,10 @@ class TestBehaviouralParity:
             assert len(tool_message.content) == 160
             assert tool_message.content.startswith("HEAD-")
             assert tool_message.content.endswith("-TAIL")
-            assert "shortened for model context" in tool_message.content
+            # The extract says how much it dropped and what to do about
+            # it — "shortened" alone left a model unable to tell whether
+            # it had seen the part that mattered.
+            assert "omitted" in tool_message.content
 
     def test_lockdown_latches_identically(self) -> None:
         (_, s), (_, a) = self._both(

@@ -18,6 +18,9 @@ A method belongs here if it does not need to await anything.
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 import threading
 from typing import Any
 
@@ -134,6 +137,23 @@ def _declared_paths(metadata: dict) -> list:
     return found
 
 
+#: Below this, a repeated result is cheaper to resend than to explain.
+_REPEAT_MIN_CHARS = 2_000
+
+
+def _arguments_key(arguments: Any) -> str:
+    """A stable key for a call's arguments, whatever they are.
+
+    Sorted so that ``{"a": 1, "b": 2}`` and ``{"b": 2, "a": 1}`` are the
+    same call, and falling back to ``repr`` for anything JSON cannot hold
+    rather than raising inside the tool path.
+    """
+    try:
+        return json.dumps(arguments or {}, sort_keys=True, default=str)
+    except Exception:
+        return repr(arguments)
+
+
 class RuntimeCore:
     """Shared, synchronous decisions for both agent loops.
 
@@ -241,21 +261,77 @@ class RuntimeCore:
         )
         return sanitized.text, "secret" in str(sanitized.reason or "").lower()
 
-    def model_visible_tool_output(self, tool_result: Any) -> str:
+    def model_visible_tool_output(
+        self,
+        tool_result: Any,
+        *,
+        arguments: Any = None,
+        seen: dict | None = None,
+    ) -> str:
         """Bound only the tool output copy sent back to the model.
 
         The canonical result remains complete for callers and traces. Head and
         tail retention keeps introductory context plus errors printed last.
+
+        A tool called twice with the same arguments, returning byte-identical
+        output, is sent back only once. The model already has that text in
+        its context from the first call, and a message list is cumulative —
+        every copy is re-sent on every subsequent turn, so the cost of a
+        repeat is not the repeat, it is the repeat multiplied by the
+        iterations that follow it. Observed on a real run: one MCP tool
+        called four times with empty arguments returned the same 138,000
+        characters each time, and a five-iteration turn spent 507,000 input
+        tokens.
+
+        Identity is required, not assumed: the tool still runs, and its
+        output is compared. A tool whose answer changed says so in full.
         """
         output = str(getattr(tool_result, "output", "") or "")
+        name = str(getattr(tool_result, "name", "") or "")
+
+        if seen is not None and len(output) >= _REPEAT_MIN_CHARS:
+            key = (name, _arguments_key(arguments))
+            digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()
+            if seen.get(key) == digest:
+                metadata = getattr(tool_result, "metadata", None)
+                if isinstance(metadata, dict):
+                    metadata.update({
+                        "repeat_of_earlier_call": True,
+                        "omitted_output_chars": len(output),
+                    })
+                return (
+                    f"[No new data. {name} was already called with exactly "
+                    f"these arguments in this run and returned the same "
+                    f"{len(output):,} characters, which are already in this "
+                    f"conversation above.\n\n"
+                    f"Calling it again unchanged will return this same "
+                    f"message. Either answer from the result you already "
+                    f"have, or call {name} with DIFFERENT arguments — a "
+                    f"narrower query, a filter, or a specific id.]"
+                )
+            seen[key] = digest
+
         limit = self.max_tool_output_chars
         if limit <= 0 or len(output) <= limit:
             return output
 
+        # Say what was removed and how to get it, not merely that something
+        # was. "Shortened" leaves a model guessing whether it saw the
+        # important part; a number and an instruction let it decide.
+        omitted = len(output) - limit
         marker = (
-            "\n\n[Tool output shortened for model context. Use a narrower "
-            "query or range to inspect omitted content.]\n\n"
+            f"\n\n[... {omitted:,} of {len(output):,} characters omitted from "
+            f"the middle. You are seeing the start and the end.\n"
+            f"This tool returned more than fits in context. Do NOT call it "
+            f"again unchanged — you will get this same extract. To see the "
+            f"omitted part, call it again with a narrower query, a filter, a "
+            f"page or a specific id.]\n\n"
         )
+        # A tight budget still gets head and tail. The guidance is what is
+        # dropped, not the data — an extract missing its end is the shape
+        # that makes a model believe it saw the whole answer.
+        if limit <= len(marker) + 32:
+            marker = f"\n[... {omitted:,} of {len(output):,} chars omitted ...]\n"
         if limit <= len(marker) + 32:
             visible = output[:limit]
         else:

@@ -159,8 +159,14 @@ class Agent:
     max_tool_concurrency: int | None = None
     hooks: Any = None
     context_window_tokens: int = 0  # 0 = no compaction
-    # Bound only the model-visible copy; AgentResult keeps complete tool output.
-    max_tool_output_chars: int = 0  # 0 = no cap
+    # Bound only the model-visible copy; AgentResult keeps complete tool
+    # output. Capped by default: a message list is cumulative, so one
+    # 138,000-character tool result is not paid once — it is re-sent on
+    # every turn that follows it. Measured on a real run, five iterations
+    # cost 507,000 input tokens because nothing bounded a single MCP reply.
+    # Set 0 for no cap if a tool's whole body genuinely has to reach the
+    # model.
+    max_tool_output_chars: int = 16_000
     replan_interval: int = 0  # 0 = no periodic replanning
 
     # ── RAG ───────────────────────────────────────────────────────────

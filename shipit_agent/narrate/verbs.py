@@ -461,17 +461,61 @@ def _present_tense(word: str) -> str:
     return (word + "ing").capitalize()
 
 
+#: Leading words that really are verbs, and so may be conjugated.
+#:
+#: The fallback used to conjugate whatever came first in the name, which is
+#: right for ``get_echo`` and wrong for every tool named
+#: ``<namespace>_<thing>`` — the shape almost all MCP servers use. It
+#: produced "Rling search" from ``rl_search`` and "Slacking post message"
+#: from ``slack_post_message``: confident, grammatical-looking nonsense in
+#: the one line a user reads to know what the agent is doing.
+#:
+#: An allowlist rather than a heuristic, because there is no reliable way to
+#: tell a verb from a namespace by shape — "post", "search" and "list" are
+#: all three parts of speech — and guessing wrong is what this replaced.
+_LEADING_VERBS = frozenset({
+    "add", "analyze", "analyse", "append", "apply", "archive", "ask",
+    "assign", "attach", "build", "call", "cancel", "check", "clear",
+    "clone", "close", "collect", "compare", "compile", "compute",
+    "connect", "convert", "copy", "count", "crawl", "create", "delete",
+    "deploy", "describe", "detect", "disable", "do", "download", "edit",
+    "enable", "execute", "explain", "export", "extract", "fetch", "filter",
+    "find", "finish", "format", "generate", "get", "grep", "import",
+    "index", "insert", "inspect", "install", "invite", "invoke", "join",
+    "list", "load", "lock", "lookup", "make", "merge", "move", "open",
+    "parse", "patch", "pause", "ping", "poll", "post", "predict",
+    "prepare", "preview", "publish", "pull", "push", "query", "read",
+    "refresh", "register", "reject", "release", "remove", "rename",
+    "render", "reply", "report", "request", "reset", "resolve", "restart",
+    "restore", "resume", "retrieve", "review", "revoke", "rollback", "run",
+    "save", "scan", "schedule", "search", "select", "send", "set", "share",
+    "show", "sign", "sort", "split", "start", "stop", "store", "submit",
+    "subscribe", "summarize", "summarise", "sync", "tag", "test",
+    "transcribe", "translate", "trigger", "unlock", "update", "upload",
+    "upsert", "validate", "verify", "view", "wait", "watch", "write",
+})
+
+
 def _humanize(name: str) -> VerbSpec:
     """Derive a plausible verb from a tool name we have no spec for.
 
     ``search_issues`` → *Searched issues* / *Searching issues*. MCP tools
     routinely arrive as ``server__do_thing``; the server prefix is dropped.
+
+    When the leading word is not a verb — ``rl_search``, ``slack_post_message``
+    — nothing is conjugated. The call is narrated as "Running rl search",
+    which is honest about not knowing the tool instead of inventing a word
+    for it.
     """
     cleaned = re.split(r"__|\.", name)[-1] or name
     words = [w for w in re.split(r"[_\-\s]+", cleaned) if w]
     if not words:
         return VerbSpec("Used a tool", "Using a tool", TOOL, intransitive=True)
     head, rest = words[0].lower(), " ".join(words[1:])
+    if head not in _LEADING_VERBS:
+        label = " ".join(words)
+        return VerbSpec(f"Ran {label}", f"Running {label}", TOOL,
+                        noun="call", intransitive=True)
     past = _past_tense(head)
     present = _present_tense(head)
     if rest:

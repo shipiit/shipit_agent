@@ -45,6 +45,10 @@ class RuntimeState:
     messages: list[Message] = field(default_factory=list)
     events: list[AgentEvent] = field(default_factory=list)
     tool_results: list[ToolResult] = field(default_factory=list)
+    #: ``(tool, arguments) -> digest of the output it produced``, for this
+    #: run only. Held on the run rather than the runtime because a pointer
+    #: to "the result above" is a lie in the next run, where it is not.
+    seen_tool_outputs: dict = field(default_factory=dict)
 
 
 # Keys in the runtime's shared_state that hold shared *service* objects (not
@@ -142,6 +146,52 @@ def _arguments_by_name(tool_calls: list[Any] | None) -> dict[str, dict]:
         if name and name not in found:
             found[name] = dict(getattr(call, "arguments", None) or {})
     return found
+
+
+#: A decision line is a glance, not a paragraph.
+_SPOKEN_LIMIT = 240
+
+
+def _first_sentences(text: str | None) -> str:
+    """The model's own opening, trimmed to something glanceable.
+
+    Reasoning scratch and pre-tool prose run long; the decision line is
+    read in passing. Cut at a sentence boundary rather than mid-word, and
+    give up rather than emit a fragment — a bad sentence here is worse
+    than the composed label it would replace.
+    """
+    stripped = (text or "").strip()
+    if not stripped:
+        return ""
+    # Collapse whitespace so a multi-line answer reads as one line.
+    stripped = " ".join(stripped.split())
+    if len(stripped) <= _SPOKEN_LIMIT:
+        return stripped
+    cut = stripped[:_SPOKEN_LIMIT]
+    for end in (". ", "! ", "? "):
+        index = cut.rfind(end)
+        if index > 40:
+            return cut[: index + 1]
+    return cut.rsplit(" ", 1)[0] + "…"
+
+
+def _describe_result(result: ToolResult) -> str:
+    """What the tool said about its own result — never a guess at it.
+
+    A tool may put a short phrase in ``metadata["summary"]`` ("6,746
+    matches", "11 pages", "no rows"). That is the only source used here.
+
+    An earlier version read the payload instead, pattern-matching keys
+    like ``total`` out of JSON. It was wrong in principle and wrong in
+    practice: only the tool knows whether its ``total`` counts results,
+    pages or bytes, so the narrator was inventing a fact and stating it
+    with confidence. A tool that says nothing about its result gets no
+    detail rather than a fabricated one — and teaching a tool to describe
+    itself is a one-line change in that tool, where the knowledge is.
+    """
+    metadata = getattr(result, "metadata", None) or {}
+    summary = metadata.get("summary")
+    return str(summary).strip() if summary else ""
 
 
 def _result_failed(result: ToolResult) -> bool:
@@ -676,7 +726,11 @@ class AgentRuntime(RuntimeCore):
         if self.guardrails is not None and tool_result.output:
             _publish_output(ToolOutputChunk(tool_result.output, {"buffered": True}))
 
-        model_output = self.model_visible_tool_output(tool_result)
+        model_output = self.model_visible_tool_output(
+            tool_result,
+            arguments=tool_call.arguments,
+            seen=state.seen_tool_outputs,
+        )
         msg = Message(
             role="tool",
             name=tool_call.name,
@@ -847,16 +901,30 @@ class AgentRuntime(RuntimeCore):
         user_prompt: str,
         iteration: int,
     ) -> str:
-        """Say what the agent is about to do, from the calls it chose.
+        """Say what the agent is about to do.
 
-        Composed rather than generated. The calls and their arguments are
-        already known here, so asking a model to describe them is paying
-        for a paraphrase of data we are holding — and waiting on a network
-        round trip before the user can be told what is happening.
+        **The model's own words come first.** A model that calls a tool
+        usually says why in the same response — "I have what I need, I'll
+        build the PDF now" — and that sentence is better than any label
+        this function could compose, was already paid for, and improves on
+        its own as the model does. Discarding it to write "Running
+        read_file" is throwing away the best sentence available and
+        replacing it with a worse one.
+
+        Composed from the calls only when the model said nothing. Never
+        generated: the calls and their arguments are already here, so
+        asking a second model to describe them buys a paraphrase of data
+        we are holding, at the price of a network round trip before the
+        user can be told anything.
         """
         del state, user_prompt, iteration  # narration reads the response alone
         if not self.progress_summaries:
             return ""
+
+        spoken = _first_sentences(response.content)
+        if spoken:
+            return spoken
+
         calls = list(response.tool_calls or [])
         if not calls:
             return "Preparing the final answer."
@@ -898,7 +966,10 @@ class AgentRuntime(RuntimeCore):
             if _result_failed(result):
                 clauses.append(f"{label} — failed")
             else:
-                clauses.append(label)
+                # What came back, when the tool chose to say. Silence here
+                # means the tool declared nothing, not that nothing happened.
+                detail = _describe_result(result)
+                clauses.append(f"{label} — {detail}" if detail else label)
         return _join_clauses(clauses) + "."
 
     def _complete_with_retry(

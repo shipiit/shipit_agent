@@ -1294,9 +1294,24 @@ class AgentRuntime(RuntimeCore):
             # a model attends most reliably. Appended to this per-call copy —
             # never to state.messages — so it is rebuilt each step and cannot
             # stack up across the run.
+            # The last step cannot act on a tool call — there is no iteration
+            # left to run it in. Withholding the schemas there does two things:
+            # the model is forced to answer instead of spending the turn
+            # announcing a call that will never happen, and the largest fixed
+            # cost in the request (every tool's full JSON schema, re-sent on
+            # every step) is dropped from the most expensive prompt of the run.
+            # Only when there was more than one step to begin with — a
+            # single-step agent must still be able to call its tools.
+            last_step = iteration == self.max_iterations and self.max_iterations > 1
+            step_schemas = [] if last_step else tool_schemas
+
+            # Placed last, after the whole conversation, because that is where
+            # a model attends most reliably. Appended to this per-call copy —
+            # never to state.messages — so it is rebuilt each step and cannot
+            # stack up across the run.
             reminder = build_reminder(
                 ran_tools=bool(state.tool_results),
-                out_of_steps=iteration == self.max_iterations,
+                out_of_steps=last_step,
                 custom=self.reminder,
             )
             if reminder and tool_schemas:
@@ -1309,13 +1324,13 @@ class AgentRuntime(RuntimeCore):
                 state,
                 "step_started",
                 "LLM completion started",
-                tool_count=len(tool_schemas),
+                tool_count=len(step_schemas),
                 iteration=iteration,
             )
             response = self._complete_with_retry(
                 state=state,
                 messages=compacted_messages,
-                tools=tool_schemas,
+                tools=step_schemas,
                 base_prompt=base_prompt,
             )
             self.track_usage(state, response, iteration)

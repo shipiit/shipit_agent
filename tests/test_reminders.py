@@ -16,15 +16,18 @@ from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import ToolCall
 from shipit_agent.prompts.reminders import (
     DEPTH_REMINDER,
+    GROUNDING_REMINDER,
     LAST_STEP_REMINDER,
     build_reminder,
 )
 
 
 class TestWhatItSays:
-    def test_nothing_to_say_stays_silent(self) -> None:
-        """No tools ran and steps remain — do not spend tokens."""
-        assert build_reminder(ran_tools=False, out_of_steps=False) is None
+    def test_before_any_tool_it_warns_against_inventing(self) -> None:
+        """The observed failure: asked for the latest cases, the agent called
+        nothing and returned a full table of invented case IDs, describing
+        them as retrieved."""
+        assert build_reminder(ran_tools=False, out_of_steps=False) == GROUNDING_REMINDER
 
     def test_after_tools_it_asks_for_depth(self) -> None:
         text = build_reminder(ran_tools=True, out_of_steps=False)
@@ -42,14 +45,33 @@ class TestWhatItSays:
 
     def test_custom_guidance_is_always_included(self) -> None:
         text = build_reminder(ran_tools=False, out_of_steps=False, custom="Cite ids.")
-        assert text == "Cite ids."
+        assert text.endswith("Cite ids.")
 
     def test_custom_guidance_joins_a_built_in(self) -> None:
         text = build_reminder(ran_tools=True, out_of_steps=False, custom="Cite ids.")
         assert DEPTH_REMINDER in text and text.endswith("Cite ids.")
 
-    def test_blank_custom_guidance_is_not_a_reminder(self) -> None:
-        assert build_reminder(ran_tools=False, out_of_steps=False, custom="   ") is None
+    def test_blank_custom_guidance_adds_nothing(self) -> None:
+        assert build_reminder(
+            ran_tools=False, out_of_steps=False, custom="   "
+        ) == GROUNDING_REMINDER
+
+    def test_exactly_one_built_in_applies_at_a_time(self) -> None:
+        """Three risks, three phases of a turn — never two at once, or the
+        reminder becomes the boilerplate it exists to avoid being."""
+        for ran, out in ((False, False), (True, False), (True, True)):
+            text = build_reminder(ran_tools=ran, out_of_steps=out)
+            present = [
+                r for r in (GROUNDING_REMINDER, DEPTH_REMINDER, LAST_STEP_REMINDER)
+                if r in text
+            ]
+            assert len(present) == 1, (ran, out, present)
+
+    def test_grounding_gives_way_once_a_tool_has_run(self) -> None:
+        """After retrieval the risk is no longer invention."""
+        assert GROUNDING_REMINDER not in build_reminder(
+            ran_tools=True, out_of_steps=False
+        )
 
 
 class _Recorder:

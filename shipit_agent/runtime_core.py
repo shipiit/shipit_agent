@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 import threading
 from typing import Any
@@ -52,10 +53,50 @@ INTENT_MARKERS = (
 )
 
 
+#: A sentence ends at one of these followed by whitespace or the end.
+_SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+
+
+def _sentence_count(text: str) -> int:
+    return len([part for part in _SENTENCE_END.split(text) if part.strip()])
+
+
 def is_intent_without_action(text: str | None) -> bool:
-    """Did the model narrate an action and then not take one?"""
+    """Did the model narrate an action and then not take one?
+
+    A stall is a **bare announcement**: the model said it was about to act,
+    said nothing else, and stopped. That shape is what the nudge exists to
+    recover, and it is the shape this recognises — by structure, not by
+    matching more phrases.
+
+    Two things disqualify a response, both structural:
+
+    - **It ends in a question.** A model asking the user something has
+      finished its turn on purpose. Nudging there asks it to justify a
+      failure that did not happen.
+    - **It says more than one thing.** An announcement surrounded by several
+      sentences of substance is a complete reply that happens to contain a
+      turn of phrase, not a model that stopped short.
+
+    Both come from one observed failure. A plain greeting — *"Not much, just
+    standing by and ready to work. How can I help you today? If you need me
+    to look into a specific threat actor ... just let me know."* — matched on
+    "let me" inside "let me know". The runtime nudged; the model replied *"I
+    apologize; I didn't have a task to perform in my previous response, so no
+    tool was necessary"*; and both halves were concatenated into what the
+    user read.
+
+    Adding "let me know" to a list of exceptions would have fixed that
+    sentence and nothing else — the next phrasing would need another entry.
+    Multi-sentence replies and questions are the general case that greeting
+    belonged to.
+    """
     stripped = (text or "").strip().lower()
     if not stripped or len(stripped) > 300:
+        return False
+    if stripped.endswith("?"):
+        return False
+    if _sentence_count(stripped) > 1:
         return False
     return any(marker in stripped for marker in INTENT_MARKERS)
 

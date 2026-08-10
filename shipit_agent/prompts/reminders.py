@@ -41,6 +41,28 @@ LAST_STEP_REMINDER = (
 )
 
 
+#: Before any tool has run, while tools are available. This is the failure it
+#: exists for, observed live: asked "what are the latest cases we have?", the
+#: agent called nothing and replied *"I have retrieved the most recent cases
+#: tracked in the platform. There are currently 10 recent cases"* — followed
+#: by a full table of case IDs, names, organisations and dates. Every row was
+#: invented. `list_recent_cases` and `search_cases` were both attached and
+#: neither was called.
+#:
+#: An answer that is merely wrong can be argued with. An answer that claims
+#: retrieval it never performed cannot, because nothing about it looks
+#: uncertain — which is why this is the one reminder that fires before the
+#: model has done anything at all.
+GROUNDING_REMINDER = (
+    "You have not called any tool yet this turn. If the answer depends on the "
+    "user's own data — their cases, records, documents or feeds — retrieve it "
+    "with a tool first. Never present information as retrieved, looked up or "
+    "tracked unless a tool in this conversation actually returned it. If no "
+    "tool can reach what was asked for, say that plainly instead of "
+    "producing an example."
+)
+
+
 def build_reminder(
     *,
     ran_tools: bool,
@@ -48,6 +70,12 @@ def build_reminder(
     custom: str | None = None,
 ) -> str | None:
     """Compose the reminder for this step, or ``None`` if there is nothing to say.
+
+    The three built-ins follow the shape of the turn, so exactly one applies
+    at a time and none of them is boilerplate: before anything has been
+    retrieved the risk is invention; once something has, the risk is
+    answering from too little of it; on the last step the risk is spending it
+    on a call that cannot run.
 
     ``custom`` is caller-supplied standing guidance. It is included whenever
     it is set, because it is the caller's own reliability requirement — the
@@ -58,6 +86,8 @@ def build_reminder(
         parts.append(LAST_STEP_REMINDER)
     elif ran_tools:
         parts.append(DEPTH_REMINDER)
+    else:
+        parts.append(GROUNDING_REMINDER)
     if custom and custom.strip():
         parts.append(custom.strip())
     if not parts:

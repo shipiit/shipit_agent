@@ -1082,10 +1082,10 @@ Last step: {last or "nothing yet — this is the first step"}
 About to run:
 {actions}
 
-Two or three sentences, 35-60 words, first person, present tense. Say what
-you are about to do and what you are looking for, and connect it to what the
-last step turned up. Name the specific thing you are acting on. Do not invent
-results and do not say what the tool will return.""".strip()
+Two or three sentences, 35-60 words, present tense. Say what you are about
+to do and what you are looking for, and connect it to what the last step
+turned up. Name the specific thing you are acting on. Do not say what the
+tool will return.""".strip()
 
     def _narrate_with_decision_model(
         self,
@@ -1118,16 +1118,15 @@ results and do not say what the tool will return.""".strip()
             result = self.decision_llm.complete(
                 messages=[Message(role="user", content=prompt)],
                 tools=[],
+                # Short on purpose. This is re-sent on every narration call,
+                # and at its first length it was 38% of all narration input —
+                # mostly restating length and tense rules the user prompt
+                # below already gives per call. What belongs here is only what
+                # does not vary: the voice, and the rule against inventing.
                 system_prompt=(
-                    "You narrate an agent's work for the person watching it, "
-                    "in the agent's own voice — first person, present tense, "
-                    "plain language. Two or three sentences. Say what you are "
-                    "doing, what it follows from, and what you expect it to "
-                    "settle. Be specific: name the thing being acted on. "
-                    "Never a bare label, never a heading, never markdown, "
-                    "never backticks. Use only what you are shown — do not "
-                    "invent results, do not claim to have found anything you "
-                    "have not been told, and do not reveal private reasoning."
+                    "Narrate an agent's work in its own voice: first person, "
+                    "plain sentences, no markdown. Use only what you are "
+                    "shown — never invent results."
                 ),
                 metadata={
                     **dict(self.metadata),
@@ -1175,10 +1174,10 @@ They asked: {_bounded(user_prompt, 200)}
 What just came back:
 {rendered}
 
-Two or three sentences, 35-60 words, first person, past tense. Say what you
-found, how much of it there is, and whether it answers what was asked. If a
-call failed, lead with that. Describe only what is shown above — do not add
-detail you were not given and do not say what you will do next."""
+Two or three sentences, 35-60 words, past tense. Say what you found, how
+much of it there is, and whether it answers what was asked. If a call failed,
+lead with that. Describe only what is shown above and do not say what you
+will do next."""
 
     def _generate_observation_summary(
         self,

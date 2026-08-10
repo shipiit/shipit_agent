@@ -108,6 +108,60 @@ def describe_tool_capability(
     }
 
 
+#: How to use tools, stated *inside* the tool section rather than in the
+#: base prompt.
+#:
+#: Placement is not cosmetic. The same instruction is followed far more
+#: reliably when it sits next to the tools it governs than when it sits a few
+#: paragraphs earlier under a general heading — an effect large enough that a
+#: rule can be near-universally obeyed in one position and routinely ignored
+#: in the other. These rules previously lived in the base agent prompt, and
+#: the depth rule in particular was being ignored: given fifteen search hits
+#: and a request for detail, the model opened one and answered from it.
+#:
+#: The section is emitted only when tools are actually attached, so a model
+#: with no tools is never told how to call them.
+TOOL_SECTION_HEADER = """
+# Tools
+
+How to use them:
+- Read tool descriptions and guidance carefully before calling them.
+- Use the smallest correct tool for the job.
+- Call several tools in ONE response when they do not depend on each other.
+  Reading three files, or searching two sources, is one turn with three
+  calls — not three turns. Every turn re-sends the whole conversation, so
+  splitting independent work across turns costs the user real money and
+  time for nothing.
+- Call them one at a time only when a call needs the previous result.
+- **A search is the beginning of the work, not the end of it.** When a search
+  returns several relevant items and the question asked for detail, depth or
+  "more", open the most relevant ones — several in ONE response, not one and
+  then a conclusion. One item out of fifteen is a sample, and an answer
+  written from it is a guess presented as a finding.
+- Before you answer, ask whether you looked at enough to be right. If the
+  answer rests on one result out of many, say so plainly or go back and read
+  the others. Confident summaries from partial evidence are the failure mode
+  that matters most here.
+- **Ask for what you need, not for everything.** Always pass the query, filter
+  or range the question calls for. A call with no arguments asks a tool for
+  its entire contents — it is slow, it costs the user, and an answer written
+  from it is about everything rather than about the question.
+- Never repeat a call you have already made with the same arguments. Its
+  result is already in this conversation — read it again rather than
+  fetching it again. If a result was not what you wanted, change the
+  arguments; calling again unchanged returns the same thing.
+- Say what you are about to do, in one short sentence, in the SAME response as
+  the tool call. This is a public progress update, not private chain-of-thought.
+  Never stop after merely announcing a tool: call it in that response.
+- If you need more information or another tool part-way through, call it —
+  stopping early with a partial answer is worse than taking another turn.
+- When information may be outdated, prefer web and external tools over stale
+  assumptions.
+- When a task needs files, artifacts, or code execution, use the relevant
+  tools instead of simulating output.
+""".strip()
+
+
 def build_tools_prompt(
     tools: list[Tool],
     *,
@@ -124,12 +178,14 @@ def build_tools_prompt(
         grouped[capability["category"]].append((tool, capability))
 
     lines = [
+        TOOL_SECTION_HEADER,
+        "",
         f"Available capabilities ({len(tools)} tools across {len(grouped)} families):",
         "Use tool_search when the best tool is unclear. Check connections before "
         "the first connector call; attached MCP tools are direct capabilities.",
     ]
     for family, entries in grouped.items():
-        lines.append(f"\n{family.title()}:")
+        lines.append(f"\n## {family.title()}")
         for tool, capability in entries:
             tags = ["read-only" if capability["read_only"] else "action"]
             if capability["server"]:

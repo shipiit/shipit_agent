@@ -37,6 +37,7 @@ from shipit_agent.stores import (
 from shipit_agent.tool_runner import ToolRunner, safe_tool_event_metadata
 from shipit_agent.tools import Tool, ToolContext, ToolOutputChunk
 from shipit_agent.tools.helpers import build_tools_prompt
+from shipit_agent.prompts.reminders import build_reminder
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
 
 
@@ -236,6 +237,8 @@ class AgentRuntime(RuntimeCore):
         llm: LLM,
         decision_llm: LLM | None = None,
         progress_summaries: bool = True,
+        #: Standing guidance repeated at the end of the context each step.
+        reminder: str | None = None,
         prompt: str,
         tools: list[Tool] | None = None,
         mcps: list[MCPServer] | None = None,
@@ -272,6 +275,7 @@ class AgentRuntime(RuntimeCore):
         # calls a run makes.
         self.decision_llm = decision_llm
         self.progress_summaries = progress_summaries
+        self.reminder = reminder
         self.prompt = prompt
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
@@ -1285,6 +1289,21 @@ class AgentRuntime(RuntimeCore):
                 self.hooks.run_before_llm(list(state.messages), tool_schemas)
 
             compacted_messages = self.compact(state, list(state.messages), iteration)
+
+            # Placed last, after the whole conversation, because that is where
+            # a model attends most reliably. Appended to this per-call copy —
+            # never to state.messages — so it is rebuilt each step and cannot
+            # stack up across the run.
+            reminder = build_reminder(
+                ran_tools=bool(state.tool_results),
+                out_of_steps=iteration == self.max_iterations,
+                custom=self.reminder,
+            )
+            if reminder and tool_schemas:
+                compacted_messages = [
+                    *compacted_messages,
+                    Message(role="user", content=reminder),
+                ]
 
             self.emit(
                 state,

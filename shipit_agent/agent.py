@@ -132,6 +132,11 @@ class Agent:
     # Decisions use only prose the primary model already produced; observations
     # use factual tool metadata. No summarizer call and no invented reasoning.
     progress_summaries: bool = False
+    #: Short standing instruction placed at the very END of the context on
+    #: every step. Use it for the one or two requirements that must hold
+    #: every time; a model attends far more reliably to the tokens closest
+    #: to generation than to the top of a long system prompt.
+    reminder: str | None = None
     prompt: str = DEFAULT_AGENT_PROMPT
     tools: list[Any] = field(default_factory=list)
     mcps: list[Any] = field(default_factory=list)
@@ -985,6 +990,7 @@ class Agent:
             llm=self.llm,
             decision_llm=self.decision_llm,
             progress_summaries=self.progress_summaries,
+            reminder=self.reminder,
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
             mcps=self.mcps,
@@ -1197,6 +1203,7 @@ class Agent:
             llm=self.llm,
             decision_llm=self.decision_llm,
             progress_summaries=self.progress_summaries,
+            reminder=self.reminder,
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
             mcps=self.mcps,

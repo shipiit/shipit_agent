@@ -474,23 +474,46 @@ class RuntimeCore:
     def heal(
         self, state: Any, response: LLMResponse, registry: Any, iteration: int
     ) -> None:
-        """Promote tool calls a small model emitted as text, in place."""
-        if not (self.heal_tool_calls and not response.tool_calls and response.content):
-            return
-        from shipit_agent.tool_healing import heal_tool_calls
+        """Promote tool calls a small model emitted as text, in place.
 
-        cleaned, healed = heal_tool_calls(
-            response.content, {tool.name for tool in registry.values()}
-        )
+        The answer is searched first. If it yields nothing and the model
+        produced *reasoning* but no answer and no calls, the reasoning is
+        searched too: that shape means the model almost certainly wrote its
+        call into its thinking, where nothing would otherwise find it.
+        Reasoning heals the call only — the thinking text is left intact,
+        since it was never going to be shown as the answer.
+        """
+        if not self.heal_tool_calls or response.tool_calls:
+            return
+        from shipit_agent.tool_healing import heal_tool_calls, schemas_from_tools
+
+        tools = list(registry.values())
+        names = {tool.name for tool in tools}
+        schemas = schemas_from_tools(tools)
+
+        healed: list[Any] = []
+        source = "content"
+        if response.content:
+            cleaned, healed = heal_tool_calls(
+                response.content, names, schemas=schemas
+            )
+            if healed:
+                response.content = cleaned
+        if not healed and response.reasoning_content and not (response.content or "").strip():
+            _, healed = heal_tool_calls(
+                response.reasoning_content, names, schemas=schemas
+            )
+            source = "reasoning"
+
         if healed:
             response.tool_calls = healed
-            response.content = cleaned
             self.emit(
                 state,
                 "tool_call_healed",
                 f"Promoted {len(healed)} text tool call(s)",
                 tools=[c.name for c in healed],
                 iteration=iteration,
+                healed_from=source,
             )
 
     def should_nudge(

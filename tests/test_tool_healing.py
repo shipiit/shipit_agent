@@ -240,3 +240,140 @@ class TestWreckageIsNotHealed:
         text = '<tool_call>{"name":"search_echo","arguments":{":[{":","}}</tool_call>'
         remaining, calls = heal_tool_calls(text, {"search_echo"})
         assert not calls and remaining == text
+
+
+#: ``search_echo`` as it should be declared — the shape an identifier regex
+#: cannot reason about but a schema can.
+SEARCH_SCHEMA = {
+    "search_echo": {
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+    }
+}
+
+
+class TestSchemaAwareHealing:
+    """A name check asks "could this be a parameter?". A schema check asks
+    "is this *the* parameter?" — which is the question that matters when a
+    tool's filter is optional and a missing one means "return everything"."""
+
+    def _heal(self, arguments: str, schemas=SEARCH_SCHEMA):
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        text = f'<tool_call>{{"name":"search_echo","arguments":{arguments}}}</tool_call>'
+        return heal_tool_calls(text, {"search_echo"}, schemas=schemas)[1]
+
+    def test_the_declared_argument_is_promoted(self) -> None:
+        calls = self._heal('{"query":"qilin"}')
+        assert calls and calls[0].arguments == {"query": "qilin"}
+
+    def test_a_misspelled_argument_is_refused(self) -> None:
+        """``quary`` passes the identifier regex and fails the schema.
+
+        This is the case the old guard could not see: a plausible-looking
+        key that leaves the required parameter absent.
+        """
+        assert not self._heal('{"quary":"qilin"}')
+
+    def test_a_missing_required_argument_is_refused(self) -> None:
+        """The empty call is exactly the observed ``search_echo({})`` bug."""
+        assert not self._heal("{}")
+
+    def test_an_undeclared_extra_argument_does_not_block_a_valid_call(self) -> None:
+        """Models add stray keys; that is not a reason to lose the call."""
+        calls = self._heal('{"query":"qilin","limit":5}')
+        assert calls and calls[0].arguments["query"] == "qilin"
+
+    def test_without_a_schema_the_name_check_still_applies(self) -> None:
+        """Unknown schema must not become "anything goes"."""
+        assert self._heal('{"query":"qilin"}', schemas=None)
+        assert not self._heal('{"))Query:Qilin":"qilin"}', schemas=None)
+
+
+class TestNamelessArgumentObjects:
+    """Onyx matches a bare arguments object to a tool by validating its keys
+    against that tool's schema. Without this the call is simply lost."""
+
+    def _heal(self, text: str):
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        return heal_tool_calls(text, {"search_echo"}, schemas=SEARCH_SCHEMA)
+
+    def test_a_bare_arguments_object_is_matched_to_its_tool(self) -> None:
+        _, calls = self._heal('```json\n{"query":"qilin"}\n```')
+        assert calls and calls[0].name == "search_echo"
+        assert calls[0].arguments == {"query": "qilin"}
+
+    def test_an_object_that_fits_no_tool_is_left_as_text(self) -> None:
+        text = '```json\n{"unrelated":"value"}\n```'
+        remaining, calls = self._heal(text)
+        assert not calls and remaining == text
+
+    def test_a_named_call_wins_over_schema_matching(self) -> None:
+        _, calls = self._heal(
+            '<tool_call>{"name":"search_echo","arguments":{"query":"a"}}</tool_call>'
+        )
+        assert len(calls) == 1 and calls[0].arguments == {"query": "a"}
+
+
+class TestArgumentCoercion:
+    """Observed model behaviour, not speculation: list-valued parameters
+    arrive as JSON strings, and whole argument objects arrive double-encoded."""
+
+    def _heal(self, arguments: str):
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        schemas = {
+            "web_search": {
+                "type": "object",
+                "properties": {"queries": {"type": "array"}},
+                "required": ["queries"],
+            }
+        }
+        text = f'<tool_call>{{"name":"web_search","arguments":{arguments}}}</tool_call>'
+        return heal_tool_calls(text, {"web_search"}, schemas=schemas)[1]
+
+    def test_a_json_string_list_becomes_a_list(self) -> None:
+        calls = self._heal('{"queries":"[\\"a\\", \\"b\\"]"}')
+        assert calls and calls[0].arguments["queries"] == ["a", "b"]
+
+    def test_a_double_encoded_argument_object_is_unwrapped(self) -> None:
+        calls = self._heal('"{\\"queries\\": [\\"a\\"]}"')
+        assert calls and calls[0].arguments["queries"] == ["a"]
+
+    def test_a_plain_string_value_is_left_alone(self) -> None:
+        """Coercion must not mangle values that merely contain brackets."""
+        calls = self._heal('{"queries":["a [not json]"]}')
+        assert calls and calls[0].arguments["queries"] == ["a [not json]"]
+
+
+class TestVarKwargsAreNotParameters:
+    """``**kwargs`` has no default, so it was being advertised to the model
+    as a *required* parameter — telling it to invent a value for
+    ``**_ignored``, and making the declared ``required`` list useless for
+    validating anything."""
+
+    @staticmethod
+    def _add(a: int, b: int, **_ignored: Any) -> str:
+        return str(a + b)
+
+    def _parameters(self) -> dict:
+        from shipit_agent.tools import FunctionTool
+
+        tool = FunctionTool.from_callable(self._add, name="add")
+        return tool.schema()["function"]["parameters"]
+
+    def test_var_kwargs_is_not_a_property(self) -> None:
+        assert set(self._parameters()["properties"]) == {"a", "b"}
+
+    def test_var_kwargs_is_not_required(self) -> None:
+        assert self._parameters()["required"] == ["a", "b"]
+
+    def test_the_real_arguments_now_validate(self) -> None:
+        """The end the fix serves: healing can trust the declaration."""
+        from shipit_agent.tool_healing import _arguments_fit_schema
+
+        assert _arguments_fit_schema(
+            {"a": 2, "b": 3}, self._parameters(), strict_required=True
+        )

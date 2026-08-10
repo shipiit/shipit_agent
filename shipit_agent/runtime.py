@@ -1304,22 +1304,44 @@ class AgentRuntime(RuntimeCore):
             # Self-healing: small models often emit the tool call as TEXT.
             # Promote declared-tool calls out of the content (response-side
             # only; the promoted span is removed, everything else kept).
-            if self.heal_tool_calls and not response.tool_calls and response.content:
-                from shipit_agent.tool_healing import heal_tool_calls
-
-                cleaned, healed = heal_tool_calls(
-                    response.content,
-                    {tool.name for tool in registry.values()},
+            # Arguments are checked against each tool's own schema, and the
+            # reasoning channel is searched when the model wrote its call
+            # into its thinking instead of its answer.
+            if self.heal_tool_calls and not response.tool_calls:
+                from shipit_agent.tool_healing import (
+                    heal_tool_calls,
+                    schemas_from_tools,
                 )
+
+                _tools = list(registry.values())
+                _names = {tool.name for tool in _tools}
+                _schemas = schemas_from_tools(_tools)
+                healed: list[Any] = []
+                _source = "content"
+                if response.content:
+                    cleaned, healed = heal_tool_calls(
+                        response.content, _names, schemas=_schemas
+                    )
+                    if healed:
+                        response.content = cleaned
+                if (
+                    not healed
+                    and response.reasoning_content
+                    and not (response.content or "").strip()
+                ):
+                    _, healed = heal_tool_calls(
+                        response.reasoning_content, _names, schemas=_schemas
+                    )
+                    _source = "reasoning"
                 if healed:
                     response.tool_calls = healed
-                    response.content = cleaned
                     self.emit(
                         state,
                         "tool_call_healed",
                         f"Promoted {len(healed)} text tool call(s)",
                         tools=[c.name for c in healed],
                         iteration=iteration,
+                        healed_from=_source,
                     )
 
             if self.hooks:

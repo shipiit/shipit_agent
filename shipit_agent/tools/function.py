@@ -57,6 +57,15 @@ class FunctionTool:
         for param_name, param in signature.parameters.items():
             if param_name == "context":
                 continue
+            # *args / **kwargs are not parameters the model can supply. They
+            # have no default, so they were being advertised as *required* —
+            # telling the model to invent a value for `**_ignored`, and
+            # making the declared `required` list unusable for validation.
+            if param.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                continue
             properties[param_name] = {
                 "type": _annotation_name(param.annotation),
                 "description": f"Argument {param_name}",

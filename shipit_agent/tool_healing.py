@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
+from typing import Any
 
 from .llms.base import ToolCall
 
@@ -65,7 +67,97 @@ def _plausible_argument_names(arguments: dict) -> bool:
     )
 
 
-def _try_parse_call(raw: str, allowed: set[str]) -> ToolCall | None:
+def _coerce_value(value: Any) -> Any:
+    """Parse a JSON-string value into its Python equivalent.
+
+    Models routinely emit a list-valued parameter as a string —
+    ``{"queries": '["a", "b"]'}`` instead of ``{"queries": ["a", "b"]}``.
+    Only text that is *wholly* a JSON array or object is parsed, so a
+    string that merely contains a bracket is returned untouched.
+    """
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if not (
+        (stripped.startswith("[") and stripped.endswith("]"))
+        or (stripped.startswith("{") and stripped.endswith("}"))
+    ):
+        return value
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        return value
+
+
+def _coerce_arguments(arguments: Any) -> dict | None:
+    """Normalise an arguments payload into a dict, unwrapping encodings.
+
+    Handles the double-encoded case — ``'"{\\"query\\": \\"x\\"}"'``, a JSON
+    string literal *of* an object — by parsing until a dict falls out or the
+    shape is clearly not one.
+    """
+    for _ in range(2):
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                return None
+        else:
+            break
+    if not isinstance(arguments, dict):
+        return None
+    return {key: _coerce_value(value) for key, value in arguments.items()}
+
+
+def _arguments_fit_schema(
+    arguments: dict, schema: dict, *, strict_required: bool = False
+) -> bool:
+    """Whether these arguments could be a real call to this tool.
+
+    Checks, all from the tool's own declaration:
+
+    - **empty arguments against a tool that requires some** are refused. This
+      is the ``search_echo({})`` failure: a tool whose filter is optional
+      reads "no filter" as "everything" and returns its entire corpus, and
+      the model then answers confidently from data unrelated to the question
+      while every layer reports success.
+    - **at least one supplied key must be a declared property.** Catches the
+      plausible-looking misspelling (``quary`` for ``query``) that an
+      identifier regex waves through.
+
+    Full ``required`` coverage is only enforced under *strict_required*, used
+    when matching a nameless object where a confident identification is the
+    whole point. It is deliberately NOT enforced for a call that named its
+    tool, because real schemas over-declare ``required`` — shipit's own
+    ``FunctionTool`` listed ``**kwargs`` there until this was written — and
+    discarding a good call over a bad declaration is the worse failure.
+
+    Undeclared extras never disqualify a call; models add stray keys.
+    """
+    properties = schema.get("properties") or {}
+    required = schema.get("required") or []
+    if not arguments:
+        return not required
+    if properties and not any(key in properties for key in arguments):
+        return False
+    if strict_required and not all(key in arguments for key in required):
+        return False
+    return True
+
+
+def _qualifies(
+    name: str, arguments: dict, schemas: Mapping[str, dict] | None
+) -> bool:
+    """Schema check when the tool declares one, name check otherwise."""
+    schema = (schemas or {}).get(name)
+    if isinstance(schema, dict):
+        return _arguments_fit_schema(arguments, schema)
+    return _plausible_argument_names(arguments)
+
+
+def _try_parse_call(
+    raw: str, allowed: set[str], schemas: Mapping[str, dict] | None = None
+) -> ToolCall | None:
     """Parse one candidate JSON object into a ToolCall if it qualifies."""
     try:
         data = json.loads(raw)
@@ -81,16 +173,43 @@ def _try_parse_call(raw: str, allowed: set[str]) -> ToolCall | None:
         arguments = data.get("arguments", data.get("parameters", {}))
     if not isinstance(name, str) or name not in allowed:
         return None
-    if isinstance(arguments, str):
-        try:
-            arguments = json.loads(arguments)
-        except json.JSONDecodeError:
-            return None
-    if not isinstance(arguments, dict):
+    coerced = _coerce_arguments(arguments)
+    if coerced is None:
         return None
-    if not _plausible_argument_names(arguments):
+    if not _qualifies(name, coerced, schemas):
         return None
-    return ToolCall(name=name, arguments=arguments)
+    return ToolCall(name=name, arguments=coerced)
+
+
+def _match_by_schema(
+    raw: str, allowed: set[str], schemas: Mapping[str, dict]
+) -> ToolCall | None:
+    """Match a *nameless* arguments object to the tool it fits.
+
+    A model that writes ``{"query": "qilin"}`` with no wrapper has chosen the
+    arguments but omitted the name. Without this the call is simply lost. The
+    tool is identified the only honest way available — by validating the keys
+    against each declared schema — and an object that fits more than one tool
+    is left alone rather than guessed at.
+    """
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or not data:
+        return None
+    coerced = _coerce_arguments(data)
+    if coerced is None:
+        return None
+    fits = [
+        name
+        for name in sorted(allowed)
+        if isinstance(schemas.get(name), dict)
+        and _arguments_fit_schema(coerced, schemas[name], strict_required=True)
+    ]
+    if len(fits) != 1:
+        return None
+    return ToolCall(name=fits[0], arguments=coerced)
 
 
 def _balanced_json_spans(text: str) -> list[tuple[int, int]]:
@@ -124,10 +243,45 @@ def _balanced_json_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+def schemas_from_tools(tools: Any) -> dict[str, dict]:
+    """Map tool name → its JSON-Schema ``parameters`` object.
+
+    Tools declare themselves in OpenAI function format, but not uniformly —
+    some nest under ``function``, some expose ``parameters`` at the top
+    level. A tool whose schema cannot be read is simply absent from the
+    result, which downgrades healing to the name check for that tool rather
+    than failing the run.
+    """
+    schemas: dict[str, dict] = {}
+    for tool in tools:
+        try:
+            raw = tool.schema()
+        except Exception:  # a broken schema must not break the turn
+            continue
+        if not isinstance(raw, dict):
+            continue
+        function = raw.get("function")
+        body = function if isinstance(function, dict) else raw
+        name = body.get("name") or getattr(tool, "name", None)
+        parameters = body.get("parameters")
+        if isinstance(name, str) and isinstance(parameters, dict):
+            schemas[name] = parameters
+    return schemas
+
+
 def heal_tool_calls(
-    text: str, allowed_names: set[str]
+    text: str,
+    allowed_names: set[str],
+    *,
+    schemas: Mapping[str, dict] | None = None,
 ) -> tuple[str, list[ToolCall]]:
     """Extract promotable tool calls from ``text``.
+
+    ``schemas`` maps a tool name to its JSON-Schema ``parameters`` object.
+    When supplied, arguments are validated against the tool's own
+    declaration rather than merely inspected for identifier-shaped keys,
+    and a nameless arguments object can be matched to the tool it fits.
+    Omitting it preserves the previous, weaker behaviour exactly.
 
     Returns ``(remaining_text, calls)``. When no call qualifies, the text
     comes back byte-identical and ``calls`` is empty.
@@ -140,7 +294,7 @@ def heal_tool_calls(
 
     for pattern in (_TAGGED_RE, _FENCED_RE):
         for match in pattern.finditer(text):
-            call = _try_parse_call(match.group(1), allowed_names)
+            call = _try_parse_call(match.group(1), allowed_names, schemas)
             if call is not None:
                 calls.append(call)
                 consumed.append(match.span())
@@ -148,10 +302,27 @@ def heal_tool_calls(
     if not calls:
         # Fallback: bare top-level JSON objects shaped like a call.
         for start, end in _balanced_json_spans(text):
-            call = _try_parse_call(text[start:end], allowed_names)
+            call = _try_parse_call(text[start:end], allowed_names, schemas)
             if call is not None:
                 calls.append(call)
                 consumed.append((start, end))
+
+    if not calls and schemas:
+        # Last resort: an arguments object with no name, identified by the
+        # schema it satisfies. Only ever reached once every named form has
+        # failed, so a well-formed call is never displaced by a guess.
+        for pattern in (_TAGGED_RE, _FENCED_RE):
+            for match in pattern.finditer(text):
+                call = _match_by_schema(match.group(1), allowed_names, schemas)
+                if call is not None:
+                    calls.append(call)
+                    consumed.append(match.span())
+        if not calls:
+            for start, end in _balanced_json_spans(text):
+                call = _match_by_schema(text[start:end], allowed_names, schemas)
+                if call is not None:
+                    calls.append(call)
+                    consumed.append((start, end))
 
     if not calls:
         return text, []

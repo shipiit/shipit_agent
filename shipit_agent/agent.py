@@ -137,6 +137,11 @@ class Agent:
     #: every time; a model attends far more reliably to the tokens closest
     #: to generation than to the top of a long system prompt.
     reminder: str | None = None
+    #: Replace earlier turns' tool payloads with a short notice, keeping
+    #: the calls and arguments. A tool result is re-sent on every request
+    #: of every later turn; once its content is in the answer below it,
+    #: the payload is pure cost. Set False to keep whole transcripts.
+    evict_prior_tool_outputs: bool = True
     prompt: str = DEFAULT_AGENT_PROMPT
     tools: list[Any] = field(default_factory=list)
     mcps: list[Any] = field(default_factory=list)
@@ -991,6 +996,7 @@ class Agent:
             decision_llm=self.decision_llm,
             progress_summaries=self.progress_summaries,
             reminder=self.reminder,
+            evict_prior_tool_outputs=self.evict_prior_tool_outputs,
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
             mcps=self.mcps,
@@ -1204,6 +1210,7 @@ class Agent:
             decision_llm=self.decision_llm,
             progress_summaries=self.progress_summaries,
             reminder=self.reminder,
+            evict_prior_tool_outputs=self.evict_prior_tool_outputs,
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
             mcps=self.mcps,

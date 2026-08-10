@@ -140,6 +140,57 @@ def _declared_paths(metadata: dict) -> list:
 #: Below this, a repeated result is cheaper to resend than to explain.
 _REPEAT_MIN_CHARS = 2_000
 
+#: Below this, the stub costs more than the payload it replaces.
+_EVICT_MIN_CHARS = 1_000
+
+_EVICTED_NOTICE = (
+    "[This tool call completed in an earlier turn; its results are no longer "
+    "available. The call and its arguments are above — call it again if you "
+    "need the data.]"
+)
+
+
+def evict_prior_tool_outputs(
+    messages: list[Message], *, min_chars: int = _EVICT_MIN_CHARS
+) -> list[Message]:
+    """Replace tool *payloads* from earlier turns with a short notice.
+
+    A message list is cumulative across turns as well as within one. A search
+    that returned fifteen thousand characters in turn one is re-sent, in full,
+    on every request of turn two, turn three, and so on — long after the model
+    has written whatever mattered into its answer.
+
+    What is kept is the part that stays useful and costs almost nothing: the
+    assistant's tool call, with its name and arguments. That is what tells the
+    model what it already looked for, so it doesn't look again. What goes is
+    the payload, which it has already read.
+
+    The messages themselves are never dropped. A tool result removed while its
+    assistant tool-call message remains is a malformed conversation that some
+    providers reject outright, so each is replaced in place — same role, same
+    name, same ``tool_call_id`` — and only the content changes.
+
+    Small outputs are left alone: below ``min_chars`` the notice is the larger
+    of the two.
+    """
+    evicted: list[Message] = []
+    for message in messages:
+        if (
+            getattr(message, "role", "") == "tool"
+            and len(message.content or "") >= min_chars
+        ):
+            evicted.append(
+                Message(
+                    role="tool",
+                    name=message.name,
+                    content=_EVICTED_NOTICE,
+                    metadata=dict(message.metadata or {}),
+                )
+            )
+        else:
+            evicted.append(message)
+    return evicted
+
 
 def _arguments_key(arguments: Any) -> str:
     """A stable key for a call's arguments, whatever they are.

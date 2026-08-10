@@ -25,7 +25,7 @@ from shipit_agent.permissions import (
 )
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
-from shipit_agent.runtime_core import RuntimeCore
+from shipit_agent.runtime_core import RuntimeCore, evict_prior_tool_outputs
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -239,6 +239,8 @@ class AgentRuntime(RuntimeCore):
         progress_summaries: bool = True,
         #: Standing guidance repeated at the end of the context each step.
         reminder: str | None = None,
+        #: Replace earlier turns' tool payloads with a short notice.
+        evict_prior_tool_outputs: bool = True,
         prompt: str,
         tools: list[Tool] | None = None,
         mcps: list[MCPServer] | None = None,
@@ -276,6 +278,7 @@ class AgentRuntime(RuntimeCore):
         self.decision_llm = decision_llm
         self.progress_summaries = progress_summaries
         self.reminder = reminder
+        self.evict_prior_tool_outputs = evict_prior_tool_outputs
         self.prompt = prompt
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
@@ -1173,6 +1176,13 @@ class AgentRuntime(RuntimeCore):
             prior_messages = self.history_messages
         else:
             prior_messages = []
+        # Prior turns are re-sent in full on every request of this turn. Their
+        # tool payloads have already been read and written into the answers
+        # below them, so what they buy now is nothing and what they cost is
+        # their whole length, every step. The calls and arguments stay — those
+        # are what stop the model searching for the same thing twice.
+        if self.evict_prior_tool_outputs:
+            prior_messages = evict_prior_tool_outputs(list(prior_messages))
         # Inject exactly one fresh system message at the front, then the prior
         # turns with any *previously persisted* system messages stripped out.
         # Multi-turn sessions (AgentChatSession reuses session_id + store)

@@ -61,6 +61,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+# The CLI's curated catalog — one source of truth for what "latest"
+# means, shared with `shipit models`, `run`, `code` and `serve`.
+from shipit_agent.cli.llm import DEFAULT_MODELS as _CATALOG_DEFAULTS
 from shipit_agent.models import Message
 from shipit_agent.stores import FileSessionStore, InMemorySessionStore
 
@@ -243,7 +246,16 @@ class Spinner:
             self._thread.join(timeout=0.5)
 
 
-PROVIDER_MODEL_ENV = {
+#: Environment override per provider, and the fallback for providers the
+#: curated catalog does not cover.
+#:
+#: The catalog in `cli.llm` is authoritative wherever it has an opinion —
+#: these defaults are overlaid from it below. They had drifted apart:
+#: `shipit run --provider anthropic` used claude-sonnet-5 while
+#: `shipit chat --provider anthropic` used claude-3-5-sonnet-latest, and
+#: openai here was still gpt-4o-mini. Same CLI, same flag, two
+#: generations apart, with nothing on screen to say so.
+_PROVIDER_ENV_FALLBACK = {
     "bedrock": ("SHIPIT_BEDROCK_MODEL", "bedrock/openai.gpt-oss-120b-1:0"),
     "openai": ("SHIPIT_OPENAI_MODEL", "gpt-4o-mini"),
     "anthropic": ("SHIPIT_ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"),
@@ -256,6 +268,11 @@ PROVIDER_MODEL_ENV = {
     ),
     "ollama": ("SHIPIT_OLLAMA_MODEL", "ollama/llama3.1"),
     "litellm": ("SHIPIT_LITELLM_MODEL", ""),
+}
+
+PROVIDER_MODEL_ENV = {
+    provider: (env_var, _CATALOG_DEFAULTS.get(provider, fallback))
+    for provider, (env_var, fallback) in _PROVIDER_ENV_FALLBACK.items()
 }
 
 PROVIDER_NAMES = tuple(PROVIDER_MODEL_ENV.keys())

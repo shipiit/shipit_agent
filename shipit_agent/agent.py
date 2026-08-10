@@ -124,13 +124,15 @@ class Agent:
 
     # ── core ──────────────────────────────────────────────────────────
     llm: Any
-    # Optional cheap/fast model used only for public progress summaries.
-    # Falls back to ``llm`` when omitted.
+    # Accepted for compatibility and no longer used for progress narration,
+    # which costs no model call at all now. Kept so existing callers keep
+    # working rather than raising on an unexpected keyword.
     decision_llm: Any = None
-    # Emit model-generated ``agent_decision`` / ``agent_observation`` events.
-    # Off by default: each one is a real extra LLM call per iteration, so
-    # turning it on doubles the calls a run makes. Opt in per agent, and give
-    # it a cheap `decision_llm` when you do.
+    # Emit ``agent_decision`` / ``agent_observation`` events describing what
+    # the agent is doing. Composed from the tool calls and their results —
+    # no second model, no extra latency, nothing added to the bill. This
+    # used to spend an LLM call per iteration, which made watching a run
+    # cost more than running it.
     progress_summaries: bool = False
     prompt: str = DEFAULT_AGENT_PROMPT
     tools: list[Any] = field(default_factory=list)

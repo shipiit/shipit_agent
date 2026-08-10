@@ -19,6 +19,7 @@ from shipit_agent.llms.base import (
 )
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
+from shipit_agent.narrate.verbs import summarize
 from shipit_agent.permissions import (
     PermissionEngine,
 )
@@ -118,6 +119,37 @@ def _is_intent_without_action(text: str | None) -> bool:
     return any(marker in stripped for marker in _INTENT_MARKERS)
 
 
+def _join_clauses(parts: list[str]) -> str:
+    """``a``, ``a and b``, ``a, b and c`` — an English list, not a dump."""
+    parts = [part for part in parts if part]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def _arguments_by_name(tool_calls: list[Any] | None) -> dict[str, dict]:
+    """Arguments per tool name, so a result can name what it acted on.
+
+    Keyed by name rather than zipped by position: a call that was denied
+    or failed to execute produces no result, and a positional pairing
+    would then attribute every later result to the wrong call.
+    """
+    found: dict[str, dict] = {}
+    for call in tool_calls or []:
+        name = getattr(call, "name", "")
+        if name and name not in found:
+            found[name] = dict(getattr(call, "arguments", None) or {})
+    return found
+
+
+def _result_failed(result: ToolResult) -> bool:
+    """Whether a tool reported failure, by either convention it uses."""
+    metadata = result.metadata or {}
+    return bool(metadata.get("error")) or metadata.get("ok") is False
+
+
 class AgentRuntime(RuntimeCore):
     def __init__(
         self,
@@ -153,7 +185,11 @@ class AgentRuntime(RuntimeCore):
         lockdown: Any = None,
     ) -> None:
         self.llm = llm
-        self.decision_llm = decision_llm or llm
+        # Retained for compatibility only. Progress narration is composed
+        # from the run's own tool calls and results, so nothing here is
+        # ever called — turning narration on no longer doubles the model
+        # calls a run makes.
+        self.decision_llm = decision_llm
         self.progress_summaries = progress_summaries
         self.prompt = prompt
         self.tools = list(tools or [])
@@ -803,88 +839,6 @@ class AgentRuntime(RuntimeCore):
         """Rough token estimate: ~4 chars per token for English text."""
         return len(text) // 4 if text else 0
 
-    @staticmethod
-    def _bounded_text(value: Any, *, limit: int = 1800) -> str:
-        """Return a compact, display-safe string for summary prompts."""
-        text = str(value or "").strip()
-        if len(text) <= limit:
-            return text
-        return text[:limit].rstrip() + "…"
-
-    def _recent_public_context(
-        self,
-        state: RuntimeState,
-        *,
-        max_messages: int = 10,
-        max_chars_per_message: int = 1400,
-    ) -> str:
-        """Build bounded context from observable messages only.
-
-        System prompts and hidden reasoning are intentionally excluded. The
-        progress model receives only user requests, assistant-visible text,
-        and actual tool outputs.
-        """
-        lines: list[str] = []
-        for message in state.messages[-max_messages:]:
-            if message.role == "system":
-                continue
-            content = self._bounded_text(message.content, limit=max_chars_per_message)
-            if not content:
-                continue
-            if message.role == "tool":
-                label = f"TOOL RESULT ({message.name or 'unknown'})"
-            elif message.role == "assistant":
-                label = "AGENT MESSAGE"
-            elif message.role == "user":
-                label = "USER"
-            else:
-                label = message.role.upper()
-            lines.append(f"{label}:\n{content}")
-        return "\n\n".join(lines)
-
-    def _call_progress_model(
-        self,
-        *,
-        state: RuntimeState,
-        prompt: str,
-        purpose: str,
-        iteration: int,
-    ) -> str:
-        """Call the summary model without tools or streaming callbacks.
-
-        Failures never interrupt the real agent run; they produce a diagnostic
-        event and an empty summary instead.
-        """
-        if not self.progress_summaries:
-            return ""
-        try:
-            result = self.decision_llm.complete(
-                messages=[Message(role="user", content=prompt)],
-                tools=[],
-                system_prompt=(
-                    "You write brief, factual progress updates for an AI agent "
-                    "UI. Use only observable actions and results. Never reveal "
-                    "private chain-of-thought, hidden reasoning, or unsupported "
-                    "assumptions."
-                ),
-                metadata={
-                    **dict(self.metadata),
-                    "purpose": purpose,
-                    "iteration": iteration,
-                },
-            )
-            return self._bounded_text(result.content, limit=700)
-        except Exception as exc:
-            self.emit(
-                state,
-                "progress_summary_failed",
-                "Progress summary generation failed",
-                purpose=purpose,
-                iteration=iteration,
-                error=str(exc),
-            )
-            return ""
-
     def _generate_decision_summary(
         self,
         *,
@@ -893,36 +847,24 @@ class AgentRuntime(RuntimeCore):
         user_prompt: str,
         iteration: int,
     ) -> str:
-        """Generate the next-action summary from the real agent response."""
+        """Say what the agent is about to do, from the calls it chose.
+
+        Composed rather than generated. The calls and their arguments are
+        already known here, so asking a model to describe them is paying
+        for a paraphrase of data we are holding — and waiting on a network
+        round trip before the user can be told what is happening.
+        """
+        del state, user_prompt, iteration  # narration reads the response alone
+        if not self.progress_summaries:
+            return ""
         calls = list(response.tool_calls or [])
-        selected_actions = (
-            "\n".join(
-                f"- {call.name}: {self._bounded_text(dict(call.arguments), limit=700)}"
-                for call in calls
-            )
-            if calls
-            else "- No tool selected; the agent is preparing its final answer."
-        )
-        prompt = f"""Create one concise progress update for a user watching an agent.
-
-Original request:
-{self._bounded_text(user_prompt, limit=1600)}
-
-Recent observable execution:
-{self._recent_public_context(state) or "No prior tool results yet."}
-
-The real agent selected these next actions:
-{selected_actions}
-
-Write 1-2 short sentences (maximum 45 words) explaining what the agent will do
-next and why. Do not invent results. Do not use a markdown heading.
-""".strip()
-        return self._call_progress_model(
-            state=state,
-            prompt=prompt,
-            purpose="agent_decision_summary",
-            iteration=iteration,
-        )
+        if not calls:
+            return "Preparing the final answer."
+        labels = [
+            summarize(call.name, dict(call.arguments or {})).present_label()
+            for call in calls
+        ]
+        return _join_clauses(labels) + "."
 
     def _generate_observation_summary(
         self,
@@ -931,33 +873,33 @@ next and why. Do not invent results. Do not use a markdown heading.
         tool_results: list[ToolResult],
         user_prompt: str,
         iteration: int,
+        tool_calls: list[Any] | None = None,
     ) -> str:
-        """Summarize actual tool outputs after an execution group completes."""
+        """Say what just happened, from the results themselves.
+
+        The originating calls are passed in so a result can be narrated
+        with its subject — "Read guests.csv" rather than "Read". A
+        ``ToolResult`` carries no arguments, and an observation that has
+        forgotten what it acted on is barely worth emitting.
+
+        A failure is named rather than folded into the sentence: "it
+        failed" is the part a watcher is waiting for, and a summary that
+        buries it reads as progress.
+        """
+        del state, user_prompt, iteration  # narration reads the results alone
         if not tool_results or not self.progress_summaries:
             return ""
-        rendered = "\n\n".join(
-            f"Tool: {result.name}\nResult:\n"
-            f"{self._bounded_text(result.output, limit=2200) or '[No output]'}"
-            for result in tool_results
-        )
-        prompt = f"""Summarize this completed agent step for the user.
-
-Original request:
-{self._bounded_text(user_prompt, limit=1600)}
-
-Actual tool results:
-{rendered}
-
-Write 1-2 short sentences (maximum 45 words) stating what was found, changed,
-or failed. Use only the shown results. Do not predict the next tool and do not
-use a markdown heading.
-""".strip()
-        return self._call_progress_model(
-            state=state,
-            prompt=prompt,
-            purpose="agent_observation_summary",
-            iteration=iteration,
-        )
+        arguments = _arguments_by_name(tool_calls)
+        clauses: list[str] = []
+        for result in tool_results:
+            label = summarize(
+                result.name, arguments.get(result.name, {})
+            ).past_label()
+            if _result_failed(result):
+                clauses.append(f"{label} — failed")
+            else:
+                clauses.append(label)
+        return _join_clauses(clauses) + "."
 
     def _complete_with_retry(
         self,
@@ -1396,6 +1338,7 @@ use a markdown heading.
                 tool_results=iteration_results,
                 user_prompt=user_prompt,
                 iteration=iteration,
+                tool_calls=response.tool_calls,
             )
             self.emit(
                 state,

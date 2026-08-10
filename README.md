@@ -286,6 +286,157 @@ llm = LiteLLMChatLLM(model="together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo"
 
 ---
 
+## Claude, end to end
+
+Everything below is optional — `AnthropicChatLLM(model=…)` on its own is a
+working agent. This is what is available when you want more from Claude
+specifically.
+
+### Install and authenticate
+
+```bash
+pip install "shipit-agent[anthropic]"
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+| Model | Use it for |
+| --- | --- |
+| `claude-opus-5` | the most capable, for complex multi-step agents |
+| `claude-sonnet-5` | the default — the balance of speed and intelligence |
+| `claude-haiku-4-5-20251001` | the fastest and cheapest, for high-volume jobs |
+
+`shipit models` prints this list, and `--model` or `$SHIPIT_ANTHROPIC_MODEL`
+overrides it anywhere.
+
+### From the CLI
+
+```bash
+export SHIPIT_LLM_PROVIDER=anthropic          # or pass --provider anthropic
+
+shipit run "Summarise this repo" --provider anthropic
+shipit chat --provider anthropic              # REPL, bottom-pinned input
+shipit code "fix the failing test" --provider anthropic --model claude-opus-5
+shipit serve --provider anthropic             # OpenAI-compatible API, Claude behind it
+
+shipit doctor --provider anthropic            # names the variable it wants
+```
+
+`doctor` is the one to reach for when something is wrong: it reports the
+adapter, the resolved model and the exact missing environment variable,
+and exits non-zero — so `shipit doctor --provider anthropic && shipit serve`
+stops rather than starting a server that cannot answer.
+
+### Extended thinking
+
+Give Claude a budget to reason before it replies. `interleaved_thinking`
+lets it think *between* tool calls rather than only before the first —
+useful when each result should change the plan, and ignored unless a
+thinking budget is set, because there is nothing to interleave without one.
+
+```python
+from shipit_agent import Agent
+from shipit_agent.llms import AnthropicChatLLM
+
+llm = AnthropicChatLLM(
+    model="claude-opus-5",
+    thinking_budget_tokens=4096,
+    interleaved_thinking=True,
+)
+agent = Agent.with_builtins(llm=llm)
+```
+
+### Prompt caching is already on
+
+`prompt_caching=True` is the default. The adapter marks the system prompt
+and the tool schemas as cacheable, which is the part of the request that
+repeats verbatim on every turn — on a long agent run it is most of the
+input. Pass `prompt_caching=False` to switch it off.
+
+### Server-side tools
+
+Tools Anthropic runs on its own infrastructure, so nothing executes on your
+machine and no result has to travel through your process:
+
+These are declarations passed to the adapter alongside your own tools, so
+they live at the LLM layer rather than in the agent's toolbox:
+
+```python
+from shipit_agent.llms import AnthropicChatLLM, code_execution, web_search
+
+llm = AnthropicChatLLM(model="claude-sonnet-5")
+response = llm.complete(
+    messages=messages,
+    tools=[web_search(max_uses=3), code_execution()],
+)
+print(response.metadata["server_tool_use"])       # what Claude ran
+print(response.metadata["server_tool_results"])   # what came back
+```
+
+`bash()`, `text_editor()` and `computer_use(width, height)` are available the
+same way. Beta headers are attached only when a tool needs one — `web_search`
+is generally available, so a request using it stays on the GA endpoint and is
+identical to one without this feature.
+
+### Citations from your own documents
+
+Attach sources and get back claims with the span each came from, rather
+than a summary you have to spot-check:
+
+```python
+import base64
+
+from shipit_agent.llms import AnthropicChatLLM, pdf_document, text_document
+
+pdf = base64.b64encode(open("10-K.pdf", "rb").read()).decode()
+
+llm = AnthropicChatLLM(
+    model="claude-sonnet-5",
+    documents=[pdf_document(pdf, title="FY25 10-K"),
+               text_document("Revenue grew 14% YoY.", title="Board note")],
+)
+response = llm.complete(messages=messages)
+for citation in response.metadata.get("citations", []):
+    print(citation)     # {"type": "page_location", "cited_text": …, "document_title": …}
+```
+
+`pdf_document()` takes base64 — `url_pdf_document()` has the API fetch it
+instead, and `content_document()` takes in-memory content blocks. Every one
+sets `citations=True` by default.
+
+### Context management
+
+Let the API drop stale tool results server-side on a long run, instead of
+resending a transcript that grows every turn:
+
+```python
+llm = AnthropicChatLLM(
+    model="claude-sonnet-5",
+    context_management={"edits": [{"type": "clear_tool_uses_20250919"}]},
+)
+```
+
+The required beta header is added for you when this is set.
+
+### Claude through Bedrock
+
+Same models, your AWS account, no Anthropic key:
+
+```bash
+shipit run "…" --provider bedrock --model bedrock/anthropic.claude-sonnet-5-v1:0
+```
+
+```python
+from shipit_agent.llms import BedrockChatLLM
+
+llm = BedrockChatLLM(model="bedrock/anthropic.claude-sonnet-5-v1:0")
+```
+
+Bedrock authenticates with your AWS region and profile — see
+`bedrock/anthropic.claude-haiku-4-5-v1:0` in `shipit models` for the cheaper
+route.
+
+---
+
 ## Core building blocks
 
 ### Custom tools

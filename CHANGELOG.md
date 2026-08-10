@@ -7,8 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [1.6.0] — 2026-08-10
+
+### Changed
+
+- **Progress narration no longer calls a model.** `progress_summaries=True`
+  spent one extra LLM call per iteration, and with no `decision_llm`
+  configured it spent them on the run's own model — so watching a run
+  roughly doubled its model calls and its bill, on the expensive model, to
+  produce a paraphrase of data the runtime was already holding. The
+  summaries are now composed from the tool calls and their results:
+  `Reading guests.csv.` before, `Read guests.csv.` after, and a failure
+  named as a failure rather than folded into the sentence. Same events,
+  same payloads, no second model, no added latency.
+- `decision_llm` is still accepted so existing callers keep working, and is
+  no longer used for anything. The dead prompt-building helpers it needed
+  (`_call_progress_model`, `_recent_public_context`, `_bounded_text`) are
+  gone.
+
 ### Fixed
 
+- **`shipit chat` was two model generations behind the rest of the CLI.**
+  It kept its own provider→model table, so `--provider anthropic` gave
+  `claude-3-5-sonnet-latest` in the REPL and `claude-sonnet-5` everywhere
+  else — same CLI, same flag, different model, with nothing on screen to
+  say which you had. OpenAI was still on `gpt-4o-mini`. The curated catalog
+  is now the single source of truth wherever it has an opinion, and a test
+  pins the two together. Providers the catalog does not cover keep their
+  own defaults rather than being blanked.
 - **`shipit doctor` prints a report instead of a dataclass.** It printed
   `DoctorReport(checks=[DoctorCheck(name=…` — one 2,000-character line you
   had to read like a stack trace, for a command whose entire purpose is to

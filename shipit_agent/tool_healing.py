@@ -38,6 +38,33 @@ _TAGGED_RE = re.compile(
 _FENCED_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 
+#: A parameter name in any real tool schema is an identifier.
+_ARGUMENT_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*$")
+
+
+def _plausible_argument_names(arguments: dict) -> bool:
+    """Whether these keys could be a tool's actual parameters.
+
+    Healing exists to rescue a call a model wrote as prose. It must not
+    rescue one so mangled that the arguments are wreckage: observed from
+    Gemma 4, ``{"))Query:Qilin": "qilin"}`` and ``{":[{": ","}``. Both
+    named a real tool, so both were promoted, and both reached the tool
+    with the actual parameter missing.
+
+    That is worse than not healing at all. A tool whose required argument
+    is absent either errors — recoverable — or, if the argument is
+    optional, treats "no filter" as "everything" and returns the whole
+    corpus. The model then answers confidently from data that has nothing
+    to do with the question, and every layer reports success.
+
+    Rejecting here sends the text back as prose, which is what it was.
+    """
+    return all(
+        isinstance(key, str) and _ARGUMENT_NAME.match(key)
+        for key in arguments
+    )
+
+
 def _try_parse_call(raw: str, allowed: set[str]) -> ToolCall | None:
     """Parse one candidate JSON object into a ToolCall if it qualifies."""
     try:
@@ -60,6 +87,8 @@ def _try_parse_call(raw: str, allowed: set[str]) -> ToolCall | None:
         except json.JSONDecodeError:
             return None
     if not isinstance(arguments, dict):
+        return None
+    if not _plausible_argument_names(arguments):
         return None
     return ToolCall(name=name, arguments=arguments)
 

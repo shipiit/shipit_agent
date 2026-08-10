@@ -209,3 +209,34 @@ class TestChunkOverlapBudget:
         # at least one later chunk carries text from its predecessor
         assert any(i > 0 and joined[i - 1][-30:].split()[-1] in joined[i]
                    for i in range(1, len(joined)))
+
+
+class TestWreckageIsNotHealed:
+    """Healing rescues a call written as prose. It must not rescue one
+    whose arguments are wreckage — that reaches the tool with the real
+    parameter missing, and a tool with an optional filter then treats
+    "no filter" as "everything"."""
+
+    def _heal(self, arguments: str):
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        text = f'<tool_call>{{"name":"search_echo","arguments":{arguments}}}</tool_call>'
+        return heal_tool_calls(text, {"search_echo"})[1]
+
+    def test_a_real_call_is_still_promoted(self) -> None:
+        calls = self._heal('{"query":"qilin"}')
+        assert calls and calls[0].arguments == {"query": "qilin"}
+
+    def test_a_mangled_key_is_refused(self) -> None:
+        """Observed from Gemma 4: the value survived, the key did not."""
+        assert not self._heal('{"))Query:Qilin":"qilin"}')
+
+    def test_pure_wreckage_is_refused(self) -> None:
+        assert not self._heal('{":[{":","}')
+
+    def test_the_text_is_left_alone_when_refused(self) -> None:
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        text = '<tool_call>{"name":"search_echo","arguments":{":[{":","}}</tool_call>'
+        remaining, calls = heal_tool_calls(text, {"search_echo"})
+        assert not calls and remaining == text

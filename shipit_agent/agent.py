@@ -128,11 +128,9 @@ class Agent:
     # which costs no model call at all now. Kept so existing callers keep
     # working rather than raising on an unexpected keyword.
     decision_llm: Any = None
-    # Emit ``agent_decision`` / ``agent_observation`` events describing what
-    # the agent is doing. Composed from the tool calls and their results —
-    # no second model, no extra latency, nothing added to the bill. This
-    # used to spend an LLM call per iteration, which made watching a run
-    # cost more than running it.
+    # Emit public ``agent_decision`` / ``agent_observation`` progress events.
+    # Decisions use only prose the primary model already produced; observations
+    # use factual tool metadata. No summarizer call and no invented reasoning.
     progress_summaries: bool = False
     prompt: str = DEFAULT_AGENT_PROMPT
     tools: list[Any] = field(default_factory=list)
@@ -147,6 +145,19 @@ class Agent:
     session_store: SessionStore | None = None
     credential_store: CredentialStore | None = None
     trace_store: TraceStore | None = None
+    #: Report this agent's runs through shipit-watcher — traces, the agent
+    #: graph, scores, datasets and the local ledger.
+    #:
+    #: ``True`` attaches it, ``False`` never does, and the default ``"auto"``
+    #: attaches it only when shipit-watcher is installed *and* configured
+    #: with credentials. Auto is safe as a default precisely because
+    #: watcher answers "am I configured?" itself: an unconfigured install
+    #: emits nothing rather than erroring, so this cannot turn a working
+    #: agent into a broken one.
+    #:
+    #: An explicit ``trace_store`` always wins — passing one means you have
+    #: already decided where runs go.
+    observability: bool | str = "auto"
     session_id: str | None = None
     trace_id: str | None = None
 
@@ -167,6 +178,12 @@ class Agent:
     # Set 0 for no cap if a tool's whole body genuinely has to reach the
     # model.
     max_tool_output_chars: int = 16_000
+    # Parallel calls share this model-context budget. Complete outputs remain
+    # available in AgentResult and live tool events.
+    max_tool_output_group_chars: int = 48_000
+    # Optimized agents spill complete large results under .shipit so the model
+    # can fetch omitted sections without paying for the whole body every turn.
+    persist_large_tool_outputs: bool = False
     replan_interval: int = 0  # 0 = no periodic replanning
 
     # ── RAG ───────────────────────────────────────────────────────────
@@ -426,6 +443,11 @@ class Agent:
             )
             kwargs.setdefault("max_iterations", 8)
             kwargs.setdefault("max_tool_output_chars", 16_000)
+            kwargs.setdefault("max_tool_output_group_chars", 48_000)
+            kwargs.setdefault("parallel_tool_execution", True)
+            kwargs.setdefault("max_tool_concurrency", 6)
+            kwargs.setdefault("progress_summaries", True)
+            kwargs.setdefault("persist_large_tool_outputs", True)
         return cls(
             llm=llm,
             prompt=prompt,
@@ -927,7 +949,7 @@ class Agent:
             memory_store=self.memory_store,
             session_store=self.session_store,
             session_id=self.session_id,
-            trace_store=self.trace_store,
+            trace_store=self._resolved_trace_store(),
             trace_id=self.trace_id,
             max_iterations=self._effective_max_iterations(selected_skills),
             retry_policy=self.retry_policy,
@@ -938,6 +960,12 @@ class Agent:
             hooks=self.hooks,
             context_window_tokens=self.context_window_tokens,
             max_tool_output_chars=self.max_tool_output_chars,
+            max_tool_output_group_chars=self.max_tool_output_group_chars,
+            tool_output_dir=(
+                str(Path(self.project_root) / ".shipit" / "tool-results")
+                if self.persist_large_tool_outputs
+                else None
+            ),
             replan_interval=self.replan_interval,
             permissions=self._effective_permissions(),
             guardrails=self.guardrails,
@@ -1129,7 +1157,7 @@ class Agent:
             memory_store=self.memory_store,
             session_store=self.session_store,
             session_id=self.session_id,
-            trace_store=self.trace_store,
+            trace_store=self._resolved_trace_store(),
             trace_id=self.trace_id,
             max_iterations=self._effective_max_iterations(selected_skills),
             retry_policy=self.retry_policy,
@@ -1140,6 +1168,12 @@ class Agent:
             hooks=self.hooks,
             context_window_tokens=self.context_window_tokens,
             max_tool_output_chars=self.max_tool_output_chars,
+            max_tool_output_group_chars=self.max_tool_output_group_chars,
+            tool_output_dir=(
+                str(Path(self.project_root) / ".shipit" / "tool-results")
+                if self.persist_large_tool_outputs
+                else None
+            ),
             replan_interval=self.replan_interval,
             permissions=self._effective_permissions(),
             guardrails=self.guardrails,
@@ -1214,6 +1248,30 @@ class Agent:
             sequence += 1
             yield sse(event, sequence=sequence)
         yield "event: done\ndata: [DONE]\n\n"
+
+
+    def _resolved_trace_store(self) -> Any:
+        """The trace store to run with, honouring ``observability``.
+
+        Import failures and misconfiguration are swallowed on purpose:
+        observability that can stop a run is worse than none, because the
+        run is the thing the user actually asked for.
+        """
+        if self.trace_store is not None:
+            return self.trace_store
+        if self.observability is False:
+            return None
+        try:
+            from shipit_agent.tracing_exporters import WatcherExporter
+
+            if self.observability != "auto":
+                return WatcherExporter()
+            from shipit_watcher import get_config
+
+            return WatcherExporter() if get_config().is_active else None
+        except Exception:
+            logger.debug("shipit-watcher not available", exc_info=True)
+            return None
 
     def doctor(self, *, env: dict[str, str] | None = None) -> DoctorReport:
         """Run diagnostics and return a health report for this agent."""

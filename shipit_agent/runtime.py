@@ -586,6 +586,33 @@ class AgentRuntime(RuntimeCore):
             )
             return None, msg
 
+        # ── Argument gate ────────────────────────────────────────────────
+        # A structured call arrives already parsed, so the healing path never
+        # inspects it — but a weak model produces broken arguments there too.
+        # Repair what is recoverable; refuse what is not, and say which
+        # argument is missing so the next step can supply it. Running a search
+        # with no query returns the whole corpus, and an answer written from
+        # that is about everything except the question.
+        argument_error = self.check_arguments(tool, tool_call)
+        if argument_error:
+            self.emit(
+                state,
+                "tool_arguments_rejected",
+                f"Tool call missing arguments: {tool_call.name}",
+                tool=tool_call.name,
+                arguments=dict(tool_call.arguments or {}),
+                iteration=iteration,
+            )
+            return None, Message(
+                role="tool",
+                name=tool_call.name,
+                content=argument_error,
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "error": "missing_required_arguments",
+                },
+            )
+
         # ── Permission gate: blocking hooks + rule-based permission engine ──
         decision = self.authorize(tool_call.name, tool_call.arguments, tool)
 

@@ -243,6 +243,76 @@ def _balanced_json_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+#: Junk a model wraps around an argument name when it mangles a tool call.
+#: Observed from Gemma 4 as the key ``",'query'"`` — the parameter name is
+#: in there, buried in the punctuation of the call it failed to serialise.
+_KEY_JUNK = " \t\r\n,:;'\"[]{}()<>|/\\`*-="
+
+
+def repair_argument_names(arguments: dict, schema: dict) -> dict:
+    """Rename mangled argument keys that clean up to a declared parameter.
+
+    A structured tool call arrives from the provider already parsed, so the
+    healing path never inspects it — yet a weak model can produce arguments
+    just as broken there. Observed live: ``search_echo`` called with
+    ``{",'query'": ""}``. The tool saw no ``query``, treated "no filter" as
+    "everything", and returned its entire corpus; the model then answered
+    about the corpus rather than the question.
+
+    Only renames when the cleaned key is an exact declared property and the
+    real name is not already present, so this cannot invent or overwrite an
+    argument the model actually supplied.
+    """
+    properties = schema.get("properties") or {}
+    if not properties:
+        return arguments
+    repaired: dict = {}
+    for key, value in arguments.items():
+        if isinstance(key, str) and key not in properties:
+            cleaned = key.strip(_KEY_JUNK)
+            if cleaned in properties and cleaned not in arguments:
+                repaired[cleaned] = value
+                continue
+        repaired[key] = value
+    return repaired
+
+
+def _has_value(value: Any) -> bool:
+    """Whether an argument actually carries something."""
+    if value is None:
+        return False
+    if isinstance(value, (str, list, dict, tuple, set)):
+        return bool(value)
+    return True
+
+
+def call_carries_nothing(arguments: dict, schema: dict) -> list[str]:
+    """Required names, when a call to this tool supplies *no* usable argument.
+
+    Returns ``[]`` — meaning "let it run" — unless the tool declares required
+    parameters and not one declared parameter arrives with a value. That is
+    the shape worth refusing: asking a tool for everything it has.
+
+    Deliberately not a per-parameter ``required`` check. A schema's required
+    list does not hold for every valid invocation — a tool with modes
+    (``sub_agent`` dispatching work versus collecting results) legitimately
+    omits what another mode demands — and rejecting those would break working
+    calls to fix a different problem. A call that supplies at least one real
+    argument has expressed an intent, so it runs.
+
+    A required parameter present but empty counts as absent: an empty query
+    is exactly what a tool reads as "no filter".
+    """
+    required = schema.get("required") or []
+    if not required:
+        return []
+    properties = schema.get("properties") or {}
+    for key, value in arguments.items():
+        if (key in properties or not properties) and _has_value(value):
+            return []
+    return list(required)
+
+
 def schemas_from_tools(tools: Any) -> dict[str, dict]:
     """Map tool name → its JSON-Schema ``parameters`` object.
 

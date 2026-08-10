@@ -251,6 +251,46 @@ class RuntimeCore:
         self._compactor_instance: Any = None
         self.connections: Any = None
 
+    def check_arguments(self, tool: Any, tool_call: Any) -> str | None:
+        """Repair a call's arguments in place; return an error if it cannot run.
+
+        Returns ``None`` when the call is fine — including when it was fixed,
+        since a repaired call is a working one. Returns a sentence addressed
+        to the model when a declared-required argument is absent, so the next
+        step supplies it instead of the tool being handed nothing.
+
+        Refusing is the point. A search tool with an optional filter reads a
+        missing filter as "no filter" and returns everything it has; the model
+        then answers confidently about the corpus rather than the question,
+        and every layer reports success. An error the model can act on is far
+        better than an answer nobody can tell is wrong.
+        """
+        from shipit_agent.tool_healing import (
+            call_carries_nothing,
+            repair_argument_names,
+            schemas_from_tools,
+        )
+
+        schema = schemas_from_tools([tool]).get(getattr(tool, "name", ""))
+        if not schema:
+            return None
+        arguments = dict(getattr(tool_call, "arguments", None) or {})
+        repaired = repair_argument_names(arguments, schema)
+        if repaired != arguments:
+            tool_call.arguments = repaired
+            arguments = repaired
+        absent = call_carries_nothing(arguments, schema)
+        if not absent:
+            return None
+        names = ", ".join(f"'{name}'" for name in absent)
+        return (
+            f"Error: {getattr(tool, 'name', 'tool')} was called with no "
+            f"arguments. It was not run. Call it again and pass {names} — a "
+            f"value taken from the user's question, not an empty string. "
+            f"With nothing to go on this tool returns everything it has, "
+            f"which is not what was asked for."
+        )
+
     # ── what one step sends ──────────────────────────────────────────────
 
     def step_request(

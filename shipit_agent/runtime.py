@@ -175,6 +175,35 @@ def _first_sentences(text: str | None) -> str:
     return cut.rsplit(" ", 1)[0] + "…"
 
 
+#: Fragments of a mangled tool call, when a model writes one as text.
+#: Observed from Gemma 4: `off,name":"} // ERROR in thought process, fixing
+#: to: rl_gr` reached a user's screen as the agent's stated reasoning,
+#: because the decision line trusts the model's own words and this was not
+#: words.
+_NOT_PROSE = ('":', '"}', '{"', "//", "```", "<tool", "()")
+
+
+def _looks_like_prose(text: str) -> bool:
+    """Whether the model's own text is safe to show as reasoning.
+
+    Preferring the model's sentence over a composed label is right when
+    the model wrote a sentence. It also writes broken tool calls as text,
+    and those must not be presented to a user as the agent's thinking —
+    the composed label is a worse sentence but never a wrong one, so it is
+    the correct fallback.
+    """
+    stripped = (text or "").strip()
+    if len(stripped) < 4:
+        return False
+    if any(marker in stripped for marker in _NOT_PROSE):
+        return False
+    # Real prose is mostly letters and spaces. A serialised argument list
+    # is mostly punctuation, whatever its exact shape.
+    letters = sum(character.isalpha() or character.isspace()
+                  for character in stripped)
+    return letters / len(stripped) >= 0.75
+
+
 def _describe_result(result: ToolResult) -> str:
     """What the tool said about its own result — never a guess at it.
 
@@ -942,7 +971,7 @@ class AgentRuntime(RuntimeCore):
             return ""
 
         spoken = _first_sentences(response.content)
-        if spoken:
+        if _looks_like_prose(spoken):
             return spoken
         calls = list(response.tool_calls or [])
         if not calls:

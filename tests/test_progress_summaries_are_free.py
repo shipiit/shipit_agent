@@ -211,3 +211,50 @@ class TestTheClauseJoiner:
 
         assert _join_clauses(["a", "", "c"]) == "a and c"
         assert _join_clauses([]) == ""
+
+
+class TestTheModelsTextIsChecked:
+    """Preferring the model's sentence is right only when it wrote one.
+
+    Gemma 4 writes broken tool calls as text. One reached a user's screen
+    as the agent's stated reasoning: `off,name":"} // ERROR in thought
+    process, fixing to: rl_gr`. The composed label is a duller sentence but
+    never a wrong one, so it is the correct fallback.
+    """
+
+    def test_real_prose_is_used(self) -> None:
+        from shipit_agent.runtime import _looks_like_prose
+
+        assert _looks_like_prose("Searching the dark-web index for Qilin.")
+        assert _looks_like_prose("I have what I need. I'll build the PDF.")
+
+    def test_a_leaked_call_fragment_is_refused(self) -> None:
+        from shipit_agent.runtime import _looks_like_prose
+
+        assert not _looks_like_prose(
+            'off,name":"} // ERROR in thought process, fixing to: rl_gr'
+        )
+        assert not _looks_like_prose('rl_groups({"q": "qilin"})')
+        assert not _looks_like_prose('{"name": "rl_search"}')
+
+    def test_nothing_is_not_prose(self) -> None:
+        from shipit_agent.runtime import _looks_like_prose
+
+        assert not _looks_like_prose("")
+        assert not _looks_like_prose("ok")
+
+    def test_the_label_is_used_when_the_text_is_junk(self) -> None:
+        """End to end: junk content must not reach the decision line."""
+        llm = CountingLLM([
+            ('off,name":"} // ERROR', [("read_file", {"path": "app.py"})]),
+            ("done", []),
+        ])
+        agent = Agent(llm=llm, tools=[tool("read_file")], progress_summaries=True,
+                      auto_use_skills=False, max_iterations=4)
+        result = agent.run("look")
+        summaries = " ".join(
+            str(e.payload.get("summary", "")) for e in result.events
+            if e.type == "agent_decision"
+        )
+        assert "ERROR in thought process" not in summaries
+        assert "Reading app.py" in summaries

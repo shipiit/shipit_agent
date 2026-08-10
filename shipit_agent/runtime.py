@@ -37,7 +37,6 @@ from shipit_agent.stores import (
 from shipit_agent.tool_runner import ToolRunner, safe_tool_event_metadata
 from shipit_agent.tools import Tool, ToolContext, ToolOutputChunk
 from shipit_agent.tools.helpers import build_tools_prompt
-from shipit_agent.prompts.reminders import build_reminder
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
 
 
@@ -277,8 +276,6 @@ class AgentRuntime(RuntimeCore):
         # calls a run makes.
         self.decision_llm = decision_llm
         self.progress_summaries = progress_summaries
-        self.reminder = reminder
-        self.evict_prior_tool_outputs = evict_prior_tool_outputs
         self.prompt = prompt
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
@@ -314,6 +311,8 @@ class AgentRuntime(RuntimeCore):
             max_tool_output_chars=max_tool_output_chars,
             max_tool_output_group_chars=max_tool_output_group_chars,
             tool_output_dir=tool_output_dir,
+            reminder=reminder,
+            evict_prior_tool_outputs=evict_prior_tool_outputs,
         )
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
@@ -1304,31 +1303,12 @@ class AgentRuntime(RuntimeCore):
             # a model attends most reliably. Appended to this per-call copy —
             # never to state.messages — so it is rebuilt each step and cannot
             # stack up across the run.
-            # The last step cannot act on a tool call — there is no iteration
-            # left to run it in. Withholding the schemas there does two things:
-            # the model is forced to answer instead of spending the turn
-            # announcing a call that will never happen, and the largest fixed
-            # cost in the request (every tool's full JSON schema, re-sent on
-            # every step) is dropped from the most expensive prompt of the run.
-            # Only when there was more than one step to begin with — a
-            # single-step agent must still be able to call its tools.
-            last_step = iteration == self.max_iterations and self.max_iterations > 1
-            step_schemas = [] if last_step else tool_schemas
-
-            # Placed last, after the whole conversation, because that is where
-            # a model attends most reliably. Appended to this per-call copy —
-            # never to state.messages — so it is rebuilt each step and cannot
-            # stack up across the run.
-            reminder = build_reminder(
+            compacted_messages, step_schemas = self.step_request(
+                messages=compacted_messages,
+                tool_schemas=tool_schemas,
+                iteration=iteration,
                 ran_tools=bool(state.tool_results),
-                out_of_steps=last_step,
-                custom=self.reminder,
             )
-            if reminder and tool_schemas:
-                compacted_messages = [
-                    *compacted_messages,
-                    Message(role="user", content=reminder),
-                ]
 
             self.emit(
                 state,

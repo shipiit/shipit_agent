@@ -232,6 +232,10 @@ class RuntimeCore:
             options.get("max_tool_output_group_chars", 0) or 0
         )
         self.tool_output_dir = str(options.get("tool_output_dir") or "")
+        self.reminder = options.get("reminder") or None
+        self.evict_prior_tool_outputs = bool(
+            options.get("evict_prior_tool_outputs", True)
+        )
 
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
@@ -246,6 +250,48 @@ class RuntimeCore:
         self._last_nudged_text = ""
         self._compactor_instance: Any = None
         self.connections: Any = None
+
+    # ── what one step sends ──────────────────────────────────────────────
+
+    def step_request(
+        self,
+        *,
+        messages: list[Message],
+        tool_schemas: list[Any],
+        iteration: int,
+        ran_tools: bool,
+    ) -> tuple[list[Message], list[Any]]:
+        """The messages and schemas for one step.
+
+        Two decisions live here rather than in either loop, because having
+        them in both is how the loops drift apart.
+
+        **The final step is sent without tools.** A tool call emitted there
+        has no iteration left to run in: the run ends with the model having
+        announced work instead of doing it, and the user gets no answer.
+        Withholding the schemas forces the answer, and drops the largest
+        fixed cost in the request from the longest prompt of the run. A run
+        configured with a single step keeps its tools — dropping them there
+        would mean the tool could never be called at all.
+
+        **The reminder goes last.** Models attend most strongly to the tokens
+        closest to generation. It is appended to the returned copy, never to
+        the caller's list, so it is rebuilt each step and cannot stack.
+        """
+        from shipit_agent.prompts.reminders import build_reminder
+
+        max_iterations = int(getattr(self, "max_iterations", 0) or 0)
+        last_step = iteration == max_iterations and max_iterations > 1
+        step_schemas = [] if last_step else list(tool_schemas)
+
+        reminder = build_reminder(
+            ran_tools=ran_tools,
+            out_of_steps=last_step,
+            custom=self.reminder,
+        )
+        if reminder and tool_schemas:
+            messages = [*messages, Message(role="user", content=reminder)]
+        return messages, step_schemas
 
     # ── cancellation ─────────────────────────────────────────────────────
 

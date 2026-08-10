@@ -127,6 +127,8 @@ class TestStructuralParity:
             "hooks",
             "retry_policy",
             "max_iterations",
+            "reminder",
+            "evict_prior_tool_outputs",
         ):
             assert option in sync, f"sync is missing {option}"
             assert option in asyn, f"async is missing {option}"
@@ -355,3 +357,55 @@ class TestSharedStateIsActuallyShared:
         assert EVENT_SINK_KEY in seen["sync"]
         assert EVENT_SINK_KEY in seen["async"]
         assert seen["sync"] == seen["async"]
+
+
+class TestBothLoopsSpendTokensTheSameWay:
+    """The sync and async loops each build their own request. Two decisions
+    with real cost — withholding tools on a step that cannot act, and placing
+    the reminder last — must not be implemented twice, because that is how
+    the loops drifted apart before.
+    """
+
+    def test_neither_loop_writes_its_own_step_request(self) -> None:
+        from shipit_agent.async_runtime import AsyncAgentRuntime
+        from shipit_agent.runtime import AgentRuntime
+
+        for cls in (AgentRuntime, AsyncAgentRuntime):
+            assert "step_request" not in vars(cls)
+
+    def test_the_shared_helper_withholds_tools_on_the_last_step(self) -> None:
+        from shipit_agent.runtime_core import RuntimeCore
+
+        core = RuntimeCore.__new__(RuntimeCore)
+        core._init_core()
+        core.max_iterations = 3
+        _messages, schemas = core.step_request(
+            messages=[], tool_schemas=[{"a": 1}], iteration=3, ran_tools=True
+        )
+        assert schemas == []
+
+    def test_the_shared_helper_keeps_tools_for_a_single_step_run(self) -> None:
+        from shipit_agent.runtime_core import RuntimeCore
+
+        core = RuntimeCore.__new__(RuntimeCore)
+        core._init_core()
+        core.max_iterations = 1
+        _messages, schemas = core.step_request(
+            messages=[], tool_schemas=[{"a": 1}], iteration=1, ran_tools=False
+        )
+        assert schemas == [{"a": 1}]
+
+    def test_the_shared_helper_does_not_mutate_the_caller_list(self) -> None:
+        """The reminder is rebuilt each step; stacking it would grow the
+        context every iteration."""
+        from shipit_agent.models import Message
+        from shipit_agent.runtime_core import RuntimeCore
+
+        core = RuntimeCore.__new__(RuntimeCore)
+        core._init_core()
+        core.max_iterations = 4
+        original = [Message(role="user", content="hi")]
+        returned, _schemas = core.step_request(
+            messages=original, tool_schemas=[{"a": 1}], iteration=2, ran_tools=True
+        )
+        assert len(original) == 1 and len(returned) == 2

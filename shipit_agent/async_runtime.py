@@ -12,7 +12,7 @@ from shipit_agent.models import AgentEvent, Message, ToolResult
 from shipit_agent.permissions import PermissionEngine
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
-from shipit_agent.runtime_core import RuntimeCore
+from shipit_agent.runtime_core import RuntimeCore, evict_prior_tool_outputs
 from shipit_agent.runtime import (
     RuntimeState,
     _isolated_tool_state,
@@ -77,6 +77,8 @@ class AsyncAgentRuntime(RuntimeCore):
         approvals: Any | None = None,
         guardrails: Any | None = None,
         heal_tool_calls: bool = True,
+        reminder: str | None = None,
+        evict_prior_tool_outputs: bool = True,
         lockdown: Any = None,
         code_mode: bool = False,
     ) -> None:
@@ -116,6 +118,8 @@ class AsyncAgentRuntime(RuntimeCore):
             max_tool_output_chars=max_tool_output_chars,
             max_tool_output_group_chars=max_tool_output_group_chars,
             tool_output_dir=tool_output_dir,
+            reminder=reminder,
+            evict_prior_tool_outputs=evict_prior_tool_outputs,
         )
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
 
@@ -535,6 +539,11 @@ class AsyncAgentRuntime(RuntimeCore):
             prior_messages = self.history_messages
         else:
             prior_messages = []
+        # Earlier turns' tool payloads have already been read into the
+        # answers below them; re-sending them costs their whole length on
+        # every step of this turn. The calls and arguments stay.
+        if self.evict_prior_tool_outputs:
+            prior_messages = evict_prior_tool_outputs(list(prior_messages))
         # Exactly one fresh system message at the front; strip any persisted
         # system messages from prior turns so multi-turn sessions don't stack
         # duplicates and grow unbounded. (See sync AgentRuntime for details.)
@@ -593,17 +602,24 @@ class AsyncAgentRuntime(RuntimeCore):
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), tool_schemas)
 
+            step_messages, step_schemas = self.step_request(
+                messages=list(state.messages),
+                tool_schemas=tool_schemas,
+                iteration=iteration,
+                ran_tools=bool(state.tool_results),
+            )
+
             self.emit(
                 state,
                 "step_started",
                 "LLM completion started",
-                tool_count=len(tool_schemas),
+                tool_count=len(step_schemas),
                 iteration=iteration,
             )
             response = await self._complete_with_retry(
                 state=state,
-                messages=list(state.messages),
-                tools=tool_schemas,
+                messages=step_messages,
+                tools=step_schemas,
                 base_prompt=base_prompt,
             )
             self.track_usage(state, response, iteration)

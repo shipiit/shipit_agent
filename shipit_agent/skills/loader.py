@@ -4,23 +4,21 @@ This module provides three functions that the Agent uses at runtime:
 
 - ``apply_skill(agent, skill)`` — injects a skill's prompt into the agent
 - ``match_skill_by_trigger(registry, message)`` — exact trigger phrase match
-- ``find_relevant_skills(registry, message)`` — combines trigger + fuzzy search
+- ``find_relevant_skills(registry, message)`` — activates authored triggers
 
 Execution flow (called from ``Agent._selected_skills()``)::
 
     User prompt
         │
-        ├─→ match_skill_by_trigger()   # exact phrase match (highest signal)
-        │       "write release notes" → release-notes-writer
-        │
-        └─→ registry.search()          # fuzzy token overlap (broader net)
-                "database slow query" → database-architect, code-workflow-assistant
+        └─→ match_skill_by_trigger()   # exact authored phrase
+                "write release notes" → release-notes-writer
 
     Results are deduplicated by skill id and capped at ``max_skills``.
 """
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from .registry import SkillRegistry
@@ -83,7 +81,8 @@ def match_skill_by_trigger(
     for skill in registry:
         score = 0
         for phrase in skill.trigger_phrases:
-            if phrase.lower() in message_lower:
+            pattern = rf"(?<!\w){re.escape(phrase.lower())}(?!\w)"
+            if re.search(pattern, message_lower):
                 score += 1
         if score > best_score:
             best_score = score
@@ -100,12 +99,12 @@ def find_relevant_skills(
 ) -> list[Skill]:
     """Return the most relevant skills for a user message.
 
-    Combines two strategies:
-    1. **Trigger match** — exact phrase matching (highest priority)
-    2. **Fuzzy search** — token overlap in name, description, tags
+    Uses authored trigger phrases for automatic activation. Fuzzy catalog
+    search remains available through ``SkillRegistry.search()`` for explicit
+    discovery, but is intentionally excluded here: weak token overlap can
+    silently add large, unrelated prompt and tool bundles to every LLM turn.
 
     Results are deduplicated by skill id and capped at *max_skills*.
-    Trigger matches come first, then fuzzy matches fill remaining slots.
 
     Called by ``Agent._selected_skills()`` when ``auto_use_skills=True``.
     """
@@ -117,14 +116,5 @@ def find_relevant_skills(
     if direct is not None:
         selected.append(direct)
         seen_ids.add(direct.id)
-
-    # 2. Fill remaining slots with fuzzy search results.
-    for skill in registry.search(user_message):
-        if skill.id in seen_ids:
-            continue
-        selected.append(skill)
-        seen_ids.add(skill.id)
-        if len(selected) >= max_skills:
-            break
 
     return selected[:max_skills]

@@ -130,18 +130,29 @@ class AnthropicChatLLM:
                 tool_call_id = (
                     message.metadata.get("tool_call_id") or message.name or ""
                 )
-                converted.append(
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": tool_call_id,
-                                "content": message.content or "",
-                            }
-                        ],
-                    }
-                )
+                block = {
+                    "type": "tool_result",
+                    "tool_use_id": tool_call_id,
+                    "content": message.content or "",
+                }
+                # Anthropic requires every result for one parallel assistant
+                # turn in a single following user message. Internal ShipIt
+                # messages stay one-per-result for provider portability; batch
+                # only contiguous result messages at this adapter boundary.
+                previous_content = converted[-1].get("content") if converted else None
+                if (
+                    converted
+                    and converted[-1].get("role") == "user"
+                    and isinstance(previous_content, list)
+                    and previous_content
+                    and all(
+                        isinstance(item, dict) and item.get("type") == "tool_result"
+                        for item in previous_content
+                    )
+                ):
+                    previous_content.append(block)
+                else:
+                    converted.append({"role": "user", "content": [block]})
                 continue
             if message.role == "assistant" and message.metadata.get("tool_calls"):
                 blocks: list[dict[str, Any]] = []

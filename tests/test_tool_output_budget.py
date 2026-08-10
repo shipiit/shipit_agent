@@ -12,6 +12,8 @@ repeat is not sent twice. The canonical result stays complete either way.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from shipit_agent import Agent
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import ToolCall
@@ -88,6 +90,53 @@ class TestTheCap:
     def test_zero_means_no_cap(self) -> None:
         _result, llm = run(turns=1, cap=0)
         assert max(llm.context_chars) > len(BIG)
+
+    def test_parallel_group_shares_one_context_budget(self) -> None:
+        class GroupLLM(ScriptedLLM):
+            def complete(self, *, messages, tools=None, system_prompt=None,
+                         metadata=None, text_delta_callback=None):
+                self.calls += 1
+                self.context_chars.append(sum(len(m.content or "") for m in messages))
+                if self.calls == 1:
+                    return LLMResponse(tool_calls=[
+                        ToolCall(name="dump", arguments={"part": index})
+                        for index in range(4)
+                    ])
+                return LLMResponse(content="done")
+
+        llm = GroupLLM(1)
+        result = Agent(
+            llm=llm,
+            tools=[dump_tool()],
+            auto_use_skills=False,
+            max_iterations=3,
+            max_tool_output_chars=16_000,
+            max_tool_output_group_chars=48_000,
+            parallel_tool_execution=True,
+        ).run("go")
+
+        assert len(result.tool_results) == 4
+        assert all(len(item.output) == len(BIG) for item in result.tool_results)
+        assert max(llm.context_chars) < 55_000
+
+    def test_optimized_spill_keeps_the_complete_result_recoverable(
+        self, tmp_path: Path
+    ) -> None:
+        llm = ScriptedLLM(1)
+        result = Agent(
+            llm=llm,
+            tools=[dump_tool()],
+            project_root=tmp_path,
+            persist_large_tool_outputs=True,
+            max_tool_output_chars=1_000,
+            auto_use_skills=False,
+        ).run("go")
+
+        persisted = Path(result.tool_results[0].metadata["persisted_output_path"])
+        assert persisted.is_file()
+        assert persisted.read_text(encoding="utf-8") == BIG
+        tool_messages = [message for message in result.messages if message.role == "tool"]
+        assert str(persisted) in tool_messages[0].content
 
 
 class TestARepeatedCall:

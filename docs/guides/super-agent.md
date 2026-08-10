@@ -112,6 +112,10 @@ for event in agent.stream("..."):
         print(line)
 ```
 
+Decision and observation lines are included. Decisions contain only public text
+the model actually produced; observations are factual summaries of tool results,
+not hidden model reasoning.
+
 ## 5. Scheduled jobs — `AgentScheduler`
 
 Cron for agents. Register prompts to run every N seconds, daily at a wall

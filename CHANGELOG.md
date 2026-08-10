@@ -11,6 +11,65 @@ Nothing yet.
 
 ---
 
+## [1.6.2] — 2026-08-10
+
+### Added
+
+- **`Agent(observability="auto")`** — runs report themselves through
+  shipit-watcher with no wiring: traces, the agent graph, scores, datasets
+  and the local ledger. Attaching it used to mean building a
+  `WatcherExporter`, passing it as `trace_store` and remembering to flush,
+  which is the kind of friction that ends with tracing on in one service
+  and forgotten in the rest. `"auto"` is safe as the default because
+  watcher answers "am I configured?" itself — no credentials means nothing
+  is emitted rather than an error, and a missing package falls through. Set
+  `True` to force it, `False` to refuse it; an explicit `trace_store` still
+  wins.
+- **`WatcherExporter`** — the `TraceStore` behind it. Watcher's API is
+  context managers and an agent reports events after they finish, so open
+  scopes are held per trace and closed on the matching end event. A run
+  that dies with a tool still open has its scopes closed anyway.
+- **`max_tool_output_group_chars`** (default 48,000) — bounds a whole turn,
+  not just one result. The per-result cap let four tools return 100,000
+  characters each and pass 64,000 through, every one of them individually
+  "under" the limit.
+
+### Changed
+
+- **Progress narration prefers the model's own words.** A model that calls a
+  tool usually says why in the same response, and that sentence is better
+  than any label composed for it, was already paid for, and improves as the
+  model does. Composition is now the fallback for when it says nothing.
+- **Observations report what the tool said about itself** — from
+  `metadata["summary"]`, and nothing when the tool said nothing. An earlier
+  draft read the payload instead, pattern-matching keys like `total` out of
+  JSON; only the tool knows whether its total counts results, pages or
+  bytes, so that was the runtime inventing a fact and stating it with
+  confidence.
+
+### Fixed
+
+- **The narrator no longer conjugates namespaces.** It made a verb of
+  whatever came first in a tool name — right for `get_echo`, wrong for
+  every `<namespace>_<thing>` an MCP server exposes. `rl_search` narrated
+  as "Rling search" and `slack_post_message` as "Slacking post message".
+  Leading words are conjugated only when they are verbs; anything else
+  reads as "Running rl search", which is honest about not knowing the tool.
+- **A repeated tool call is answered once.** Same tool, same arguments,
+  byte-identical output — the model is told it already has that result and
+  to change the arguments, instead of being handed the same 138,000
+  characters a fourth time. The tool still runs and its output is still
+  compared, so a changed answer is returned in full.
+- **A truncated result says what it dropped.** The extract now reports how
+  many characters went and how to ask for them, rather than only that it
+  was "shortened".
+- The default prompt now says independent tool calls belong in one
+  response. Every tool group in a reported run held exactly one call — not
+  a runtime limit, the runtime takes a list; the prompt had never mentioned
+  it. Turns are what cost, not calls.
+
+---
+
 ## [1.6.0] — 2026-08-10
 
 ### Changed

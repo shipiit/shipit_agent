@@ -10,7 +10,7 @@ A skill is a reusable instruction block plus metadata that can be:
 
 - loaded from a packaged JSON catalog
 - attached explicitly to an `Agent` or `DeepAgent`
-- auto-matched from the user prompt
+- auto-activated from authored `trigger_phrases` in the user prompt
 - created locally and saved into your own skill catalog
 
 Skills do not replace tools. They shape how the agent approaches the task.
@@ -89,7 +89,7 @@ for skill in registry.search("workflow")[:5]:
 
 - `skills=[...]` — always attach these skills
 - `default_skill_ids=[...]` — attach known skill ids from the active catalog
-- `auto_use_skills=True` — auto-match skills from the user prompt
+- `auto_use_skills=True` — activate skills whose authored trigger phrase matches the prompt
 - `skill_source=...` — point the agent at a custom skill catalog file
 
 ### `skills` vs `auto_use_skills`
@@ -100,7 +100,7 @@ These two settings are related, but they do different jobs:
 | --- | --- |
 | `skills=[...]` | Explicitly attach these skills for every run |
 | `auto_use_skills=False` | Disable prompt-based skill matching and keep behavior deterministic |
-| `auto_use_skills=True` | Let the agent auto-match additional skills from the prompt |
+| `auto_use_skills=True` | Activate additional skills from authored trigger phrases in the prompt |
 | `skill_match_limit` | Cap how many auto-matched skills can be added for a run |
 
 Example:
@@ -118,11 +118,16 @@ agent = Agent.with_builtins(
 What this means:
 
 - `code-workflow-assistant` is always active
-- the agent may auto-match more skills from the packaged catalog
+- the agent may activate more catalog skills when their authored trigger phrases match
 - the final run can use both the fixed skills and the auto-matched ones
 
 If you want predictable behavior, set `auto_use_skills=False`.
 If you want a more adaptive agent, leave `auto_use_skills=True`.
+Use `registry.search(...)` for explicit fuzzy discovery; fuzzy matches are not
+silently injected into a run because unrelated prompt/tool bundles increase
+latency and token usage.
+Trigger phrases match at token boundaries, so a trigger such as `implement`
+does not activate from an informational question containing `implemented`.
 
 ### Skills improve the approach, not the missing context
 

@@ -56,13 +56,15 @@ agent = Agent(
 | `max_tool_concurrency` | `int \| None` | `None` | Bound concurrently executing local tools per model turn. | Protect APIs, databases, CPU, and file descriptors while retaining parallelism. |
 | `hooks` | `AgentHooks \| None` | `None` | Pre/post-LLM and tool middleware. | Custom logging, redaction, instrumentation. |
 | `context_window_tokens` | `int` | `0` | Auto-compact messages above this token count (0 = off). | Long runs against models with finite context. |
-| `max_tool_output_chars` | `int` | `0` | Cap only the model-visible copy of each tool result; canonical results stay complete. | MCP, search, logs, and large-file tools that can return large payloads. |
+| `max_tool_output_chars` | `int` | `16000` | Cap only the model-visible copy of each tool result; `0` disables the cap. | MCP, search, logs, and large-file tools that can return large payloads. |
+| `max_tool_output_group_chars` | `int` | `48000` | Share one model-context budget across parallel tool results. | Prevent a large parallel batch from multiplying context cost. |
+| `persist_large_tool_outputs` | `bool` | `False` | Save complete capped results under `.shipit/tool-results/` and include the recovery path in the model extract. | Preserve full-data access without resending it every turn; enabled by optimized mode. |
 | `replan_interval` | `int` | `0` | Re-run the planner every N iterations (0 = off). | Long-horizon tasks where the plan should evolve. |
 | `rag` | `RAG \| None` | `None` | Auto-wires RAG tools + system prompt + source tracker. | Grounded answers with citations. |
 
 **Class methods:**
 
-- `Agent.with_builtins(llm=..., optimized=False, **kwargs)` — wires the full builtin tool catalogue. With `optimized=True`, it also enables progressive code-mode discovery, model-aware context compaction, and an eight-iteration default; explicit overrides still win.
+- `Agent.with_builtins(llm=..., optimized=False, **kwargs)` — wires the full builtin tool catalogue. With `optimized=True`, it also enables progressive code-mode discovery, model-aware context compaction, bounded parallel execution, factual progress events, recoverable large-result spill, and an eight-iteration default; explicit overrides still win.
 - `Agent.for_project(llm=..., project_root=..., optimized=True)` — the optimized setup plus project settings, instructions, permissions, and slash commands.
 
 ---

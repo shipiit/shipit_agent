@@ -112,6 +112,18 @@ class TestStreamableHTTPTransport:
         parsed = MCPStreamableHTTPTransport._parse_sse(body)
         assert parsed["result"] == {"tools": []}
 
+    def test_parses_crlf_sse_after_progress_event(self) -> None:
+        body = (
+            ": ping\r\n\r\n"
+            'event: progress\r\ndata: {"jsonrpc":"2.0","method":"progress"}\r\n\r\n'
+            "event: message\r\n"
+            'data: {"jsonrpc":"2.0","id":2,"result":{"content":[]}}\r\n\r\n'
+        )
+
+        parsed = MCPStreamableHTTPTransport._parse_sse(body)
+
+        assert parsed["result"] == {"content": []}
+
     def test_sse_without_response_raises(self) -> None:
         try:
             MCPStreamableHTTPTransport._parse_sse(": keepalive\n\n")

@@ -34,7 +34,7 @@ from shipit_agent.stores import (
     SessionRecord,
     SessionStore,
 )
-from shipit_agent.tool_runner import ToolRunner
+from shipit_agent.tool_runner import ToolRunner, safe_tool_event_metadata
 from shipit_agent.tools import Tool, ToolContext, ToolOutputChunk
 from shipit_agent.tools.helpers import build_tools_prompt
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
@@ -226,6 +226,8 @@ class AgentRuntime(RuntimeCore):
         hooks: Any | None = None,
         context_window_tokens: int = 0,
         max_tool_output_chars: int = 0,
+        max_tool_output_group_chars: int = 0,
+        tool_output_dir: str | None = None,
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
         guardrails: Any | None = None,
@@ -274,6 +276,8 @@ class AgentRuntime(RuntimeCore):
             lockdown=lockdown,
             context_window_tokens=context_window_tokens,
             max_tool_output_chars=max_tool_output_chars,
+            max_tool_output_group_chars=max_tool_output_group_chars,
+            tool_output_dir=tool_output_dir,
         )
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
@@ -516,6 +520,7 @@ class AgentRuntime(RuntimeCore):
         context: ToolContext,
         iteration: int,
         group_id: str | None = None,
+        model_output_limit: int | None = None,
     ) -> tuple[ToolResult | None, Message]:
         """Execute a single tool call and return (tool_result, message).
 
@@ -639,7 +644,7 @@ class AgentRuntime(RuntimeCore):
                 call_id=tool_call_record["id"],
                 group_id=group_id,
                 chunk=chunk.text,
-                chunk_metadata=dict(chunk.metadata),
+                chunk_metadata=safe_tool_event_metadata(chunk.metadata),
                 sequence=output_sequence,
                 attempt=attempt + 1,
                 iteration=iteration,
@@ -730,6 +735,7 @@ class AgentRuntime(RuntimeCore):
             tool_result,
             arguments=tool_call.arguments,
             seen=state.seen_tool_outputs,
+            limit_override=model_output_limit,
         )
         msg = Message(
             role="tool",
@@ -748,6 +754,10 @@ class AgentRuntime(RuntimeCore):
             call_id=tool_call_record["id"],
             group_id=group_id,
             output=tool_result.output,
+            output_chars=len(tool_result.output),
+            model_output_chars=len(model_output),
+            model_output_reduced=model_output != tool_result.output,
+            metadata=safe_tool_event_metadata(tool_result.metadata),
             iteration=iteration,
             duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
         )
@@ -797,6 +807,15 @@ class AgentRuntime(RuntimeCore):
     ) -> list[ToolResult]:
         """Execute tool calls — in parallel if enabled, otherwise sequentially."""
         results: list[ToolResult] = []
+        group_output_limit = None
+        if (
+            self.max_tool_output_chars > 0
+            and self.max_tool_output_group_chars > 0
+            and tool_calls
+        ):
+            group_output_limit = max(
+                1, self.max_tool_output_group_chars // len(tool_calls)
+            )
 
         def _make_context() -> ToolContext:
             return ToolContext(
@@ -838,6 +857,7 @@ class AgentRuntime(RuntimeCore):
                         ),
                         iteration=iteration,
                         group_id=group_id,
+                        model_output_limit=group_output_limit,
                     )
                     futures_map[future] = idx
 
@@ -880,6 +900,7 @@ class AgentRuntime(RuntimeCore):
                     context=_make_context(),
                     iteration=iteration,
                     group_id=group_id,
+                    model_output_limit=group_output_limit,
                 )
                 if tool_result is not None:
                     state.tool_results.append(tool_result)
@@ -911,11 +932,10 @@ class AgentRuntime(RuntimeCore):
         read_file" is throwing away the best sentence available and
         replacing it with a worse one.
 
-        Composed from the calls only when the model said nothing. Never
-        generated: the calls and their arguments are already here, so
-        asking a second model to describe them buys a paraphrase of data
-        we are holding, at the price of a network round trip before the
-        user can be told anything.
+        If the model said nothing but emitted tool calls, report only those
+        explicit actions. This is not inferred intent or hidden reasoning: the
+        model already selected the calls and arguments. Provenance on the event
+        distinguishes this deterministic fallback from model-authored prose.
         """
         del state, user_prompt, iteration  # narration reads the response alone
         if not self.progress_summaries:
@@ -924,15 +944,14 @@ class AgentRuntime(RuntimeCore):
         spoken = _first_sentences(response.content)
         if spoken:
             return spoken
-
         calls = list(response.tool_calls or [])
         if not calls:
-            return "Preparing the final answer."
-        labels = [
+            return ""
+        actions = [
             summarize(call.name, dict(call.arguments or {})).present_label()
             for call in calls
         ]
-        return _join_clauses(labels) + "."
+        return _join_clauses(actions) + "."
 
     def _generate_observation_summary(
         self,
@@ -1136,6 +1155,23 @@ class AgentRuntime(RuntimeCore):
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
 
+        selected_skills = self.metadata.get("selected_skills", [])
+        if isinstance(selected_skills, list) and selected_skills:
+            skill_ids = [
+                str(skill.get("id", ""))
+                for skill in selected_skills
+                if isinstance(skill, dict) and skill.get("id")
+            ]
+            self.emit(
+                state,
+                "skills_selected",
+                "Skills selected: " + ", ".join(skill_ids),
+                skills=[dict(skill) for skill in selected_skills if isinstance(skill, dict)],
+                skill_ids=skill_ids,
+                injected_tools=list(self.metadata.get("used_skill_tools", [])),
+                count=len(skill_ids),
+            )
+
         for mcp in self.mcps:
             self.emit(
                 state,
@@ -1286,7 +1322,7 @@ class AgentRuntime(RuntimeCore):
                     self.emit(
                         state,
                         "agent_decision",
-                        "Agent decision",
+                        decision_summary,
                         summary=decision_summary,
                         next_action="call_tools",
                         tools=[
@@ -1297,7 +1333,10 @@ class AgentRuntime(RuntimeCore):
                             for call in response.tool_calls
                         ],
                         iteration=iteration,
-                        generated_by_model=True,
+                        generated_by_model=bool(response.content),
+                        summary_source=(
+                            "model_text" if response.content else "tool_call"
+                        ),
                     )
 
             if not response.tool_calls:
@@ -1338,23 +1377,6 @@ class AgentRuntime(RuntimeCore):
                     )
                     continue
 
-                final_decision = self._generate_decision_summary(
-                    state=state,
-                    response=response,
-                    user_prompt=user_prompt,
-                    iteration=iteration,
-                )
-                if final_decision:
-                    self.emit(
-                        state,
-                        "agent_decision",
-                        "Agent decision",
-                        summary=final_decision,
-                        next_action="finish",
-                        tools=[],
-                        iteration=iteration,
-                        generated_by_model=True,
-                    )
                 break
 
             tool_call_records = [
@@ -1425,11 +1447,11 @@ class AgentRuntime(RuntimeCore):
                 self.emit(
                     state,
                     "agent_observation",
-                    "Agent reviewed tool results",
+                    observation_summary,
                     summary=observation_summary,
                     iteration=iteration,
                     next_action="evaluate_results",
-                    generated_by_model=True,
+                    generated_by_model=False,
                 )
 
             # Mid-run re-planning: if replan_interval is set and we've
@@ -1588,6 +1610,17 @@ class AgentRuntime(RuntimeCore):
                 self.run(user_prompt)
             except BaseException as exc:  # noqa: BLE001
                 error_box["error"] = exc
+                _subscriber(
+                    AgentEvent(
+                        type="run_failed",
+                        message="Agent run failed",
+                        payload={
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                            "retryable": isinstance(exc, ConnectionError),
+                        },
+                    )
+                )
             finally:
                 event_queue.put(sentinel)
 

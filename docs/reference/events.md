@@ -97,7 +97,8 @@ is retried.
 
 ### `tool_output_delta`
 One provisional output chunk. Custom generator tools can emit many chunks;
-ordinary and MCP tools emit one when their final response arrives.
+large ordinary and MCP responses are split into bounded chunks for responsive
+terminal and browser consumers.
 
 **Payload:**
 - `tool: str`
@@ -119,6 +120,10 @@ Tool finished successfully.
 - `call_id: str`
 - `iteration: int`
 - `output: str` — tool output text
+- `output_chars: int` — complete canonical output size
+- `model_output_chars: int` — size placed in the next model turn
+- `model_output_reduced: bool` — deduplication or context limits reduced the model copy
+- `metadata: dict` — lightweight metadata; heavy canonical MCP fields remain on `ToolResult`
 
 ---
 

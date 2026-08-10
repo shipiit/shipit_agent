@@ -57,6 +57,41 @@ class TestEventTiming:
         event = AgentEvent(type="run_started", message="go")
         assert "timestamp" in event.to_dict()
 
+    def test_event_print_preserves_the_complete_diagnostic_payload(self) -> None:
+        event = AgentEvent(
+            type="agent_observation",
+            message="generic",
+            payload={"summary": "Read app.py.", "large": "x" * 10_000},
+        )
+        rendered = str(event)
+        assert "AgentEvent(type='agent_observation'" in rendered
+        assert "message='generic'" in rendered
+        assert "payload={'summary': 'Read app.py.'" in rendered
+        assert "'large': '" + "x" * 100 in rendered
+        assert "timestamp=" in rendered
+
+    def test_delta_raw_repr_preserves_its_chunk(self) -> None:
+        event = AgentEvent(
+            type="text_delta",
+            message="",
+            payload={"chunk": "Retry eligibility depends on status."},
+        )
+        assert event.display_message == "Retry eligibility depends on status."
+        assert "message=''" in repr(event)
+        assert "'chunk': 'Retry eligibility depends on status.'" in repr(event)
+
+    def test_stream_events_print_complete_tool_output_and_telemetry(self) -> None:
+        completed = next(
+            event for event in _run_agent().events if event.type == "tool_completed"
+        )
+        rendered = str(completed)
+
+        assert "AgentEvent(type='tool_completed'" in rendered
+        assert "'output': '5'" in rendered
+        assert "'output_chars': 1" in rendered
+        assert "'model_output_chars': 1" in rendered
+        assert "timestamp=" in rendered
+
 
 class TestFormatActivity:
     def test_renders_tool_card_with_args_status_duration(self) -> None:
@@ -117,6 +152,39 @@ class TestFormatEventLine:
         assert line is not None and "bash" in line and "…" in line
         # non-user-facing events return None
         assert format_event_line(AgentEvent(type="run_started", message="")) is None
+
+    def test_renders_decisions_and_observations(self) -> None:
+        decision = AgentEvent(
+            type="agent_decision",
+            message="I will inspect the retry implementation.",
+            payload={"generated_by_model": True},
+        )
+        observation = AgentEvent(
+            type="agent_observation",
+            message="Read retry.py — 81 lines.",
+            payload={"generated_by_model": False},
+        )
+
+        assert format_event_line(decision) == (
+            "agent_decision     I will inspect the retry implementation."
+        )
+        assert format_event_line(observation) == (
+            "agent_observation  Read retry.py — 81 lines."
+        )
+
+    def test_renders_selected_skills_and_injected_tools(self) -> None:
+        event = AgentEvent(
+            type="skills_selected",
+            message="Skills selected: debugging",
+            payload={
+                "skill_ids": ["debugging"],
+                "injected_tools": ["read_file", "bash"],
+            },
+        )
+
+        assert format_event_line(event) == (
+            "skills  debugging (tools: read_file, bash)"
+        )
 
 
 class TestMCPErrorWrapping:

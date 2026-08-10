@@ -179,6 +179,30 @@ def test_agent_auto_applies_matching_skill_from_registry() -> None:
     assert "Code Workflow Assistant" in prompt
 
 
+def test_agent_does_not_inject_unrelated_skills_from_incidental_words() -> None:
+    agent = Agent(llm=PromptCaptureLLM())
+    prompt = (
+        "Use DeepWiki MCP to analyze a repository and explain retry behavior "
+        "before answering."
+    )
+
+    assert agent._selected_skills(prompt) == []
+    assert agent._skill_tool_names(agent._selected_skills(prompt)) == []
+    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 4
+
+
+def test_skill_trigger_does_not_match_inside_an_informational_word() -> None:
+    agent = Agent(llm=PromptCaptureLLM())
+    prompt = (
+        "Ask where retry eligibility and streaming cleanup are implemented, "
+        "then give one leak test."
+    )
+
+    assert agent._selected_skills(prompt) == []
+    assert agent._effective_tools(prompt) == []
+    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 4
+
+
 def test_agent_applies_default_skill_ids() -> None:
     llm = PromptCaptureLLM()
     agent = Agent(
@@ -449,6 +473,62 @@ def test_agent_boosts_max_iterations_when_skills_are_active() -> None:
     selected = agent._selected_skills("scrape it")
     effective_max = agent._effective_max_iterations(selected)
     assert effective_max >= 8
+
+
+def test_selected_skills_are_visible_in_the_complete_event_stream() -> None:
+    agent = Agent(
+        llm=PromptCaptureLLM(),
+        auto_use_skills=False,
+        skills=["web-scraper-pro"],
+    )
+
+    events = list(agent.stream("scrape it"))
+    selected = [event for event in events if event.type == "skills_selected"]
+
+    assert len(selected) == 1
+    event = selected[0]
+    assert events.index(event) == 1
+    assert event.payload["skill_ids"] == ["web-scraper-pro"]
+    assert event.payload["count"] == 1
+    assert event.payload["skills"][0]["id"] == "web-scraper-pro"
+    assert event.payload["injected_tools"]
+    assert "web-scraper-pro" in repr(event)
+
+
+def test_no_skills_selected_emits_no_skill_event() -> None:
+    agent = Agent(llm=PromptCaptureLLM(), auto_use_skills=False)
+
+    events = list(agent.stream("hello"))
+
+    assert not [event for event in events if event.type == "skills_selected"]
+
+
+def test_host_selected_skills_are_reported_without_native_skill_injection() -> None:
+    agent = Agent(
+        llm=PromptCaptureLLM(),
+        auto_use_skills=False,
+        metadata={
+            "selected_skills": [
+                {
+                    "id": "case-analysis",
+                    "name": "Case Analysis",
+                    "description": "Host-authorized case workflow.",
+                    "category": "Investigation",
+                }
+            ],
+            "used_skill_tools": ["search_echo", "read_document"],
+        },
+    )
+
+    events = list(agent.stream("investigate"))
+    selected = next(event for event in events if event.type == "skills_selected")
+
+    assert selected.payload["skill_ids"] == ["case-analysis"]
+    assert selected.payload["injected_tools"] == [
+        "search_echo",
+        "read_document",
+    ]
+    assert "<!-- skill:case-analysis -->" not in agent.llm.system_prompts[-1]
 
 
 def test_agent_respects_explicit_max_iterations_override() -> None:

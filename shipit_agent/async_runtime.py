@@ -26,7 +26,7 @@ from shipit_agent.stores import (
     SessionRecord,
     SessionStore,
 )
-from shipit_agent.tool_runner import ToolRunner
+from shipit_agent.tool_runner import ToolRunner, safe_tool_event_metadata
 from shipit_agent.tools import Tool, ToolContext, ToolOutputChunk
 from shipit_agent.tools.helpers import build_tools_prompt
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
@@ -70,6 +70,8 @@ class AsyncAgentRuntime(RuntimeCore):
         hooks: Any | None = None,
         context_window_tokens: int = 0,
         max_tool_output_chars: int = 0,
+        max_tool_output_group_chars: int = 0,
+        tool_output_dir: str | None = None,
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
         approvals: Any | None = None,
@@ -112,6 +114,8 @@ class AsyncAgentRuntime(RuntimeCore):
             code_mode=code_mode,
             context_window_tokens=context_window_tokens,
             max_tool_output_chars=max_tool_output_chars,
+            max_tool_output_group_chars=max_tool_output_group_chars,
+            tool_output_dir=tool_output_dir,
         )
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
 
@@ -253,6 +257,7 @@ class AsyncAgentRuntime(RuntimeCore):
         tool_call_record: dict[str, Any],
         context: ToolContext,
         iteration: int,
+        model_output_limit: int | None = None,
     ) -> tuple[ToolResult | None, Message]:
         tool = registry.get(tool_call.name)
         if tool is None:
@@ -366,7 +371,7 @@ class AsyncAgentRuntime(RuntimeCore):
                     tool=tool_call.name,
                     call_id=tool_call_record["id"],
                     chunk=chunk.text,
-                    chunk_metadata=dict(chunk.metadata),
+                    chunk_metadata=safe_tool_event_metadata(chunk.metadata),
                     sequence=sequence,
                     attempt=attempt_number,
                     iteration=iteration,
@@ -445,7 +450,12 @@ class AsyncAgentRuntime(RuntimeCore):
             iteration=iteration,
         )
 
-        model_output = self.model_visible_tool_output(tool_result)
+        model_output = self.model_visible_tool_output(
+            tool_result,
+            arguments=tool_call.arguments,
+            seen=state.seen_tool_outputs,
+            limit_override=model_output_limit,
+        )
         msg = Message(
             role="tool",
             name=tool_call.name,
@@ -464,6 +474,10 @@ class AsyncAgentRuntime(RuntimeCore):
             tool=tool_call.name,
             call_id=tool_call_record["id"],
             output=tool_result.output,
+            output_chars=len(tool_result.output),
+            model_output_chars=len(model_output),
+            model_output_reduced=model_output != tool_result.output,
+            metadata=safe_tool_event_metadata(tool_result.metadata),
             iteration=iteration,
         )
         self.note_connection_request(state, tool_call.name, tool_result.metadata)
@@ -531,6 +545,23 @@ class AsyncAgentRuntime(RuntimeCore):
         state.messages.append(Message(role="user", content=user_prompt))
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
+
+        selected_skills = self.metadata.get("selected_skills", [])
+        if isinstance(selected_skills, list) and selected_skills:
+            skill_ids = [
+                str(skill.get("id", ""))
+                for skill in selected_skills
+                if isinstance(skill, dict) and skill.get("id")
+            ]
+            self.emit(
+                state,
+                "skills_selected",
+                "Skills selected: " + ", ".join(skill_ids),
+                skills=[dict(skill) for skill in selected_skills if isinstance(skill, dict)],
+                skill_ids=skill_ids,
+                injected_tools=list(self.metadata.get("used_skill_tools", [])),
+                count=len(skill_ids),
+            )
 
         for mcp in self.mcps:
             self.emit(
@@ -629,6 +660,16 @@ class AsyncAgentRuntime(RuntimeCore):
                 }
                 for index, tc in enumerate(response.tool_calls, start=1)
             ]
+            group_output_limit = None
+            if (
+                self.max_tool_output_chars > 0
+                and self.max_tool_output_group_chars > 0
+                and response.tool_calls
+            ):
+                group_output_limit = max(
+                    1,
+                    self.max_tool_output_group_chars // len(response.tool_calls),
+                )
             state.messages.append(
                 Message(
                     role="assistant",
@@ -674,6 +715,7 @@ class AsyncAgentRuntime(RuntimeCore):
                             tool_call_record=tool_call_records[idx],
                             context=context,
                             iteration=iteration,
+                            model_output_limit=group_output_limit,
                         )
                     )
                 results = await asyncio.gather(*tasks)
@@ -699,6 +741,7 @@ class AsyncAgentRuntime(RuntimeCore):
                         tool_call_record=tool_call_records[idx],
                         context=context,
                         iteration=iteration,
+                        model_output_limit=group_output_limit,
                     )
                     if tool_result is not None:
                         state.tool_results.append(tool_result)

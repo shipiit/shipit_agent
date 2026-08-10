@@ -824,6 +824,52 @@ class Agent:
             seen.add(tool_name)
         return names
 
+    def _runtime_skill_metadata(
+        self, selected_skills: list[Skill]
+    ) -> tuple[list[str], list[str], list[dict[str, str]]]:
+        """Merge native skills with capabilities selected by a host application.
+
+        A host may own skill authorization and prompt injection itself. It can
+        report those already-applied skills through ``metadata`` without asking
+        Shipit to apply their prompts or tools a second time.
+        """
+        details: list[dict[str, str]] = []
+        seen_ids: set[str] = set()
+        for skill in selected_skills:
+            details.append(
+                {
+                    "id": skill.id,
+                    "name": skill.display_name or skill.name or skill.id,
+                    "description": skill.description,
+                    "category": skill.category,
+                }
+            )
+            seen_ids.add(skill.id)
+        external = self.metadata.get("selected_skills", [])
+        if isinstance(external, list):
+            for item in external:
+                if not isinstance(item, dict):
+                    continue
+                skill_id = str(item.get("id", "")).strip()
+                if not skill_id or skill_id in seen_ids:
+                    continue
+                details.append(
+                    {
+                        "id": skill_id,
+                        "name": str(item.get("name") or skill_id),
+                        "description": str(item.get("description") or ""),
+                        "category": str(item.get("category") or ""),
+                    }
+                )
+                seen_ids.add(skill_id)
+
+        tool_names = self._skill_tool_names(selected_skills)
+        for name in self.metadata.get("used_skill_tools", []) or []:
+            value = str(name).strip()
+            if value and value not in tool_names:
+                tool_names.append(value)
+        return [item["id"] for item in details], tool_names, details
+
     def _effective_max_iterations(self, selected_skills: list[Skill]) -> int:
         """Auto-boost iteration budget when skills inject extra tools.
 
@@ -931,7 +977,9 @@ class Agent:
         effective_tools = self._effective_tools(
             user_prompt, selected_skills=selected_skills
         )
-        skill_tool_names = self._skill_tool_names(selected_skills)
+        skill_ids, skill_tool_names, skill_details = self._runtime_skill_metadata(
+            selected_skills
+        )
 
         runtime = self._active_runtime = AgentRuntime(
             llm=self.llm,
@@ -944,6 +992,9 @@ class Agent:
                 "agent_name": self.name,
                 "agent_description": self.description,
                 **self.metadata,
+                "used_skills": skill_ids,
+                "used_skill_tools": skill_tool_names,
+                "selected_skills": skill_details,
             },
             history_messages=list(self.history),
             memory_store=self.memory_store,
@@ -1019,7 +1070,7 @@ class Agent:
         for key in ("gave_up", "give_up_reason", "give_up_needs"):
             if key in runtime.metadata:
                 result_metadata[key] = runtime.metadata[key]
-        result_metadata["used_skills"] = [skill.id for skill in selected_skills]
+        result_metadata["used_skills"] = skill_ids
         result_metadata["used_skill_tools"] = skill_tool_names
 
         return AgentResult(
@@ -1138,6 +1189,9 @@ class Agent:
         effective_tools = self._effective_tools(
             user_prompt, selected_skills=selected_skills
         )
+        skill_ids, skill_tool_names, skill_details = self._runtime_skill_metadata(
+            selected_skills
+        )
 
         runtime = self._active_runtime = AgentRuntime(
             llm=self.llm,
@@ -1149,9 +1203,10 @@ class Agent:
             metadata={
                 "agent_name": self.name,
                 "agent_description": self.description,
-                "used_skills": [skill.id for skill in selected_skills],
-                "used_skill_tools": self._skill_tool_names(selected_skills),
                 **self.metadata,
+                "used_skills": skill_ids,
+                "used_skill_tools": skill_tool_names,
+                "selected_skills": skill_details,
             },
             history_messages=list(self.history),
             memory_store=self.memory_store,

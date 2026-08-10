@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
+import re
 import subprocess
 import threading
 from dataclasses import dataclass, field
@@ -13,6 +15,19 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
+_MAX_TOOL_NAME_LENGTH = 64
+
+
+def _namespaced_mcp_tool_name(server_name: str, tool_name: str) -> str:
+    """Return a deterministic provider-safe exposed MCP tool name."""
+    raw = f"{server_name}__{tool_name}"
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", raw).strip("_-") or "mcp_tool"
+    if safe[0].isdigit():
+        safe = f"mcp_{safe}"
+    if len(safe) <= _MAX_TOOL_NAME_LENGTH:
+        return safe
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+    return f"{safe[: _MAX_TOOL_NAME_LENGTH - 9]}_{digest}"
 
 
 class MCPTransport(Protocol):
@@ -25,6 +40,24 @@ class MCPTransport(Protocol):
 
 class MCPError(RuntimeError):
     pass
+
+
+def _mcp_result_summary(result: dict[str, Any], rendered: str) -> str:
+    """Use only a summary the MCP server explicitly supplied.
+
+    A short, single-line result is already a factual server response and is
+    safe to display as-is. Large payloads are never pattern-matched for counts
+    or meaning; doing that would make the runtime invent semantics.
+    """
+    metadata = result.get("_meta")
+    structured = result.get("structuredContent")
+    for source in (metadata, structured):
+        if isinstance(source, dict):
+            summary = source.get("summary")
+            if isinstance(summary, str) and summary.strip():
+                return " ".join(summary.split())[:240]
+    compact = " ".join(rendered.split())
+    return compact if "\n" not in rendered and len(compact) <= 160 else ""
 
 
 @dataclass(slots=True)
@@ -72,6 +105,10 @@ class MCPRemoteTool:
     title: str = ""
     annotations: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+    remote_name: str = ""
+    tool_meta_resolver: Callable[
+        [ToolContext, str, dict[str, Any]], dict[str, Any] | None
+    ] | None = None
     prompt: str = "Use this MCP tool when the remote server provides the best capability for the task."
     prompt_instructions: str = (
         "Remote MCP capability discovered dynamically from the attached server."
@@ -88,13 +125,23 @@ class MCPRemoteTool:
         }
 
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
+        declared = set((self.input_schema.get("properties") or {}).keys())
+        ignored_arguments: list[str] = []
+        if declared and self.input_schema.get("additionalProperties") is not True:
+            ignored_arguments = sorted(set(kwargs) - declared)
+            kwargs = {key: value for key, value in kwargs.items() if key in declared}
+        call_params: dict[str, Any] = {
+            "name": self.remote_name or self.name,
+            "arguments": kwargs,
+        }
+        if self.tool_meta_resolver is not None:
+            call_metadata = self.tool_meta_resolver(context, self.name, dict(kwargs))
+            if call_metadata:
+                call_params["_meta"] = dict(call_metadata)
         try:
             result = self.transport.request(
                 "tools/call",
-                {
-                    "name": self.name,
-                    "arguments": kwargs,
-                },
+                call_params,
             )
         except (MCPError, OSError, TimeoutError) as exc:
             # Surface transport/server failures as a readable tool result the
@@ -114,8 +161,10 @@ class MCPRemoteTool:
         content = list(result.get("content", []))
         text_parts = _render_mcp_content(content)
         is_error = bool(result.get("isError", False))
+        rendered = "\n".join(part for part in text_parts if part).strip()
+        summary = _mcp_result_summary(result, rendered)
         return ToolOutput(
-            text="\n".join(part for part in text_parts if part).strip(),
+            text=rendered,
             metadata={
                 "server": self.server_name,
                 "ok": not is_error,
@@ -125,6 +174,12 @@ class MCPRemoteTool:
                 "output_schema": dict(self.output_schema),
                 "annotations": dict(self.annotations),
                 "raw_result": result,
+                **(
+                    {"ignored_arguments": ignored_arguments}
+                    if ignored_arguments
+                    else {}
+                ),
+                **({"summary": summary} if summary else {}),
                 **self.metadata,
             },
         )
@@ -385,7 +440,11 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
     @staticmethod
     def _parse_sse(body: str) -> dict[str, Any]:
         """Extract the JSON-RPC response from SSE `data:` lines."""
-        for chunk in body.split("\n\n"):
+        # HTTP servers commonly use CRLF framing. Splitting the raw body on
+        # ``\n\n`` merges every CRLF event into one invalid JSON blob, which
+        # made long-running MCP calls fail while short JSON responses worked.
+        normalized = body.replace("\r\n", "\n").replace("\r", "\n")
+        for chunk in normalized.split("\n\n"):
             data_lines = [
                 line[5:].strip()
                 for line in chunk.splitlines()
@@ -429,6 +488,10 @@ class RemoteMCPServer(MCPServer):
     allowed_tools: set[str] | None = None
     blocked_tools: set[str] = field(default_factory=set)
     tool_filter: Callable[[dict[str, Any]], bool] | None = None
+    include_server_in_tool_names: bool = False
+    tool_meta_resolver: Callable[
+        [ToolContext, str, dict[str, Any]], dict[str, Any] | None
+    ] | None = None
     server_capabilities: dict[str, Any] = field(default_factory=dict)
     server_info: dict[str, Any] = field(default_factory=dict)
     _discovered: bool = False
@@ -579,14 +642,28 @@ class RemoteMCPServer(MCPServer):
             self.initialize()
             result = self.transport.request("tools/list", {})
             resolved_tools: list[MCPTool | MCPRemoteTool] = []
+            exposed_names: set[str] = set()
             for item in result.get("tools", []):
                 if not self._tool_allowed(item):
                     continue
+                remote_name = str(item["name"])
+                exposed_name = (
+                    _namespaced_mcp_tool_name(self.name, remote_name)
+                    if self.include_server_in_tool_names
+                    else remote_name
+                )
+                if exposed_name in exposed_names:
+                    digest = hashlib.sha256(remote_name.encode("utf-8")).hexdigest()[:8]
+                    exposed_name = (
+                        f"{exposed_name[: _MAX_TOOL_NAME_LENGTH - 9]}_{digest}"
+                    )
+                exposed_names.add(exposed_name)
                 resolved_tools.append(
                     MCPRemoteTool(
                         server_name=self.name,
                         transport=self.transport,
-                        name=str(item["name"]),
+                        name=exposed_name,
+                        remote_name=remote_name,
                         description=str(item.get("description", "")),
                         input_schema=dict(
                             item.get("inputSchema")
@@ -597,10 +674,12 @@ class RemoteMCPServer(MCPServer):
                         annotations=dict(item.get("annotations") or {}),
                         metadata={
                             "server": self.name,
+                            "remote_name": remote_name,
                             "title": str(item.get("title", "")),
                             "annotations": dict(item.get("annotations") or {}),
                             "execution": dict(item.get("execution") or {}),
                         },
+                        tool_meta_resolver=self.tool_meta_resolver,
                     )
                 )
         except Exception:

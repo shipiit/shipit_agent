@@ -145,6 +145,25 @@ class TestTextDeltaBackwardCompat:
         deltas = [e for e in events if e.type == "text_delta"]
         assert "".join(e.payload.get("chunk", "") for e in deltas) == "hello"
 
+    def test_stream_emits_terminal_failure_event_before_raising(self) -> None:
+        class BrokenLLM:
+            def complete(self, **kwargs):
+                raise ConnectionError("provider unavailable")
+
+        stream = Agent(llm=BrokenLLM(), auto_use_skills=False).stream("hi")
+        events = []
+        with pytest.raises(ConnectionError, match="provider unavailable"):
+            while True:
+                events.append(next(stream))
+
+        failed = [event for event in events if event.type == "run_failed"]
+        assert len(failed) == 1
+        assert failed[0].payload == {
+            "error_type": "ConnectionError",
+            "error": "provider unavailable",
+            "retryable": True,
+        }
+
 
 # ---------------------------------------------------------------------------
 # BUG-2 — multi-turn sessions don't stack system prompts

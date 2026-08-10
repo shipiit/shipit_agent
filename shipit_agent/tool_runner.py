@@ -11,6 +11,19 @@ from shipit_agent.tools import ToolContext, ToolOutput, ToolOutputChunk
 
 
 ToolOutputCallback = Callable[[ToolOutputChunk], None]
+_LIVE_OUTPUT_CHUNK_CHARS = 16_384
+_HEAVY_EVENT_METADATA_KEYS = frozenset(
+    {"raw_result", "content_blocks", "structured_content"}
+)
+
+
+def safe_tool_event_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep live events informative without duplicating canonical payloads."""
+    return {
+        key: value
+        for key, value in dict(metadata or {}).items()
+        if key not in _HEAVY_EVENT_METADATA_KEYS
+    }
 
 
 def _declared_parameters(tool: Any) -> tuple[set[str], list[str]]:
@@ -100,7 +113,16 @@ class ToolRunner:
                 str(output.text), dict(getattr(output, "metadata", {}) or {})
             )
             if output_callback is not None and chunk.text:
-                output_callback(chunk)
+                # Remote tools often return one very large ToolOutput object.
+                # Keep the canonical result intact, but publish bounded live
+                # deltas so terminal/browser consumers stay responsive.
+                for offset in range(0, len(chunk.text), _LIVE_OUTPUT_CHUNK_CHARS):
+                    output_callback(
+                        ToolOutputChunk(
+                            chunk.text[offset : offset + _LIVE_OUTPUT_CHUNK_CHARS],
+                            dict(chunk.metadata),
+                        )
+                    )
             return ToolResult(name=name, output=chunk.text, metadata=chunk.metadata)
 
         if isinstance(output, (str, bytes)) or not isinstance(output, Iterable):

@@ -462,7 +462,7 @@ Reusable behaviour templates that shape *how* the agent thinks and *which* tools
 agent = Agent.with_builtins(
     llm=llm,
     skills=["code-workflow-assistant", "database-architect"],
-    auto_use_skills=True,      # also match skills from the prompt
+    auto_use_skills=True,      # activate authored trigger phrases
 )
 ```
 

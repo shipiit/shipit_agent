@@ -59,6 +59,35 @@ mcp = RemoteMCPServer(
 )
 ```
 
+When multiple servers may expose the same tool name, enable deterministic
+server namespacing. The model sees `github__search` while the MCP server still
+receives its original `search` method:
+
+```python
+mcp = RemoteMCPServer(
+    name="github",
+    transport=transport,
+    include_server_in_tool_names=True,
+)
+```
+
+Names are normalized to provider-safe ASCII and capped at 64 characters.
+
+Supply per-call MCP `_meta` without putting tenant or trace values in tool
+arguments. The resolver runs immediately before `tools/call` and receives the
+runtime `ToolContext`, tool name, and schema-cleaned arguments:
+
+```python
+mcp = RemoteMCPServer(
+    name="hosted",
+    transport=MCPStreamableHTTPTransport("https://mcp.example.com/mcp"),
+    tool_meta_resolver=lambda context, tool, arguments: {
+        "tenant_id": context.metadata["tenant_id"],
+        "trace_id": context.metadata["trace_id"],
+    },
+)
+```
+
 `MCPStdioTransport` spawns one subprocess per request — simple and stateless.
 
 ## Persistent sessions
@@ -168,6 +197,10 @@ Remote tool results preserve MCP `structuredContent`, `outputSchema`,
 annotations, execution metadata, error status, and text/image/audio/resource
 content blocks in `ToolResult.metadata`. Text-only models receive a concise
 rendering without losing the canonical blocks.
+
+Live delta metadata excludes the heavy canonical fields (`raw_result`, content
+blocks, and structured content) so a large response is not duplicated into
+every event. They remain available on the canonical `ToolResult`.
 
 ## Debugging
 

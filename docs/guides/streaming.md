@@ -20,15 +20,18 @@ for event in agent.stream("Find today's Bitcoin price in USD."):
 |---|---|---|
 | `run_started` | Very first event of a run, once per `stream()`/`run()` call. | `prompt` |
 | `mcp_attached` | Once per attached MCP server, right after `run_started`. | `server` |
+| `skills_selected` | Skills activated for this run and tools injected by them. Emitted once without an LLM call. | `skills`, `skill_ids`, `injected_tools`, `count` |
 | `planning_started` | Router policy decided the prompt is complex enough to invoke `plan_task`. Fires **before** the first LLM call. | `prompt` |
 | `planning_completed` | Planner returned. Output is injected into history as a `user`-role context message (Bedrock tool-pairing safe). | `output` |
 | `step_started` | Each iteration of the tool loop, right before calling the LLM. | `iteration`, `tool_count` |
 | `reasoning_started` | 🧠 LLM response contained a thinking/reasoning block. | `iteration` |
 | `reasoning_completed` | Immediately after `reasoning_started`, carrying the full reasoning text. | `iteration`, `content` |
+| `agent_decision` | Concise public intent in the model's own response text. Silent models do not get fabricated decisions. | `summary`, `next_action`, `tools`, `generated_by_model` |
 | `tool_called` | Model decided to call a tool. Fires **before** execution. | `tool`, `call_id`, `iteration`, `arguments` |
 | `tool_output_started` | A tool output stream opened. It can repeat for retries. | `tool`, `call_id`, `attempt`, `buffered` |
 | `tool_output_delta` | One incremental, provisional output chunk. | `tool`, `call_id`, `chunk`, `chunk_metadata`, `sequence`, `attempt` |
-| `tool_completed` | Tool finished; this is the canonical complete result. | `tool`, `call_id`, `iteration`, `output` |
+| `tool_completed` | Tool finished; this is the canonical complete result plus model-context telemetry. | `tool`, `call_id`, `iteration`, `output`, `output_chars`, `model_output_chars`, `model_output_reduced`, `metadata` |
+| `agent_observation` | Concise factual summary composed from the tool contract, arguments, and tool-provided metadata. It is never represented as model reasoning. | `summary`, `next_action`, `generated_by_model` |
 | `tool_retry` | Transient tool failure, retry scheduled by `RetryPolicy`. | `iteration`, `attempt`, `error` |
 | `tool_failed` | Non-retryable tool error, **or** model hallucinated an unregistered tool name (synthetic error result still appended for pairing balance). | `iteration`, `error` |
 | `llm_retry` | Transient LLM provider error, retry scheduled. | `attempt`, `error` |
@@ -41,11 +44,14 @@ for event in agent.stream("Find today's Bitcoin price in USD."):
 @dataclass
 class AgentEvent:
     type: str                # e.g. "tool_called"
-    message: str             # human-readable, e.g. "Tool called: web_search"
+    message: str             # concise human-readable event text
     payload: dict[str, Any]  # event-specific fields
 ```
 
 Serialize with `event.to_dict()` for WebSocket/SSE transport.
+`print(event)` and notebook list displays preserve the complete diagnostic
+representation, including payload and timestamp. Use `format_event_line(event)`
+for a compact human-facing stream, or `event.to_dict()` for serialization.
 
 ## Typical event trace
 

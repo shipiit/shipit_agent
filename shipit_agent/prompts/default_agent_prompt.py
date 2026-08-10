@@ -24,8 +24,9 @@ Tool behavior:
   result is already in this conversation — read it again rather than
   fetching it again. If a result was not what you wanted, change the
   arguments; calling again unchanged returns the same thing.
-- Say what you are about to do, in one short sentence, before you call.
-  That sentence is shown to the user as the agent's reasoning.
+- Say what you are about to do, in one short sentence, in the SAME response as
+  the tool call. This is a public progress update, not private chain-of-thought.
+  Never stop after merely announcing a tool: call it in that response.
 - When a task is complex, plan before acting.
 - When information may be outdated, prefer web and external tools over stale assumptions.
 - When a task needs files, artifacts, or code execution, use the relevant tools instead of simulating output.

@@ -263,6 +263,21 @@ class TestAgentIntegration:
         assert not (tmp_path / ".shipit" / "sessions").exists()
         assert not (tmp_path / ".shipit" / "memory.json").exists()
 
+    def test_optimized_project_agent_enables_bounded_live_tooling(self, tmp_path) -> None:
+        agent = Agent.for_project(
+            llm=ShipitLLM(),
+            project_root=tmp_path,
+            optimized=True,
+            auto_use_skills=False,
+        )
+
+        assert agent.parallel_tool_execution is True
+        assert agent.max_tool_concurrency == 6
+        assert agent.progress_summaries is True
+        assert agent.max_tool_output_chars == 16_000
+        assert agent.max_tool_output_group_chars == 48_000
+        assert agent.persist_large_tool_outputs is True
+
     def test_optimized_project_agent_runs_a_real_multi_step_edit_flow(
         self, tmp_path
     ) -> None:

@@ -177,6 +177,10 @@ class RuntimeCore:
         self.code_mode = bool(options.get("code_mode", False))
         self.context_window_tokens = int(options.get("context_window_tokens", 0) or 0)
         self.max_tool_output_chars = int(options.get("max_tool_output_chars", 0) or 0)
+        self.max_tool_output_group_chars = int(
+            options.get("max_tool_output_group_chars", 0) or 0
+        )
+        self.tool_output_dir = str(options.get("tool_output_dir") or "")
 
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
@@ -267,6 +271,7 @@ class RuntimeCore:
         *,
         arguments: Any = None,
         seen: dict | None = None,
+        limit_override: int | None = None,
     ) -> str:
         """Bound only the tool output copy sent back to the model.
 
@@ -288,10 +293,24 @@ class RuntimeCore:
         """
         output = str(getattr(tool_result, "output", "") or "")
         name = str(getattr(tool_result, "name", "") or "")
+        limit = (
+            min(self.max_tool_output_chars, limit_override)
+            if self.max_tool_output_chars > 0
+            and limit_override is not None
+            and limit_override > 0
+            else limit_override
+            if limit_override is not None
+            else self.max_tool_output_chars
+        )
+        digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()
+        persisted_path = ""
+        if limit > 0 and len(output) > limit:
+            persisted_path = self._persist_tool_output(
+                tool_result, output=output, name=name, digest=digest
+            )
 
         if seen is not None and len(output) >= _REPEAT_MIN_CHARS:
             key = (name, _arguments_key(arguments))
-            digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()
             if seen.get(key) == digest:
                 metadata = getattr(tool_result, "metadata", None)
                 if isinstance(metadata, dict):
@@ -307,11 +326,15 @@ class RuntimeCore:
                     f"Calling it again unchanged will return this same "
                     f"message. Either answer from the result you already "
                     f"have, or call {name} with DIFFERENT arguments — a "
-                    f"narrower query, a filter, or a specific id.]"
+                    f"narrower query, a filter, or a specific id."
+                    + (
+                        f" The complete result is stored at {persisted_path}.]"
+                        if persisted_path
+                        else "]"
+                    )
                 )
             seen[key] = digest
 
-        limit = self.max_tool_output_chars
         if limit <= 0 or len(output) <= limit:
             return output
 
@@ -324,8 +347,13 @@ class RuntimeCore:
             f"the middle. You are seeing the start and the end.\n"
             f"This tool returned more than fits in context. Do NOT call it "
             f"again unchanged — you will get this same extract. To see the "
-            f"omitted part, call it again with a narrower query, a filter, a "
-            f"page or a specific id.]\n\n"
+            f"omitted part, use a narrower query, a filter, a page or a "
+            f"specific id."
+            + (
+                f" The complete result is stored at {persisted_path}.]\n\n"
+                if persisted_path
+                else "]\n\n"
+            )
         )
         # A tight budget still gets head and tail. The guidance is what is
         # dropped, not the data — an extract missing its end is the shape
@@ -351,6 +379,32 @@ class RuntimeCore:
                 }
             )
         return visible
+
+    def _persist_tool_output(
+        self, tool_result: Any, *, output: str, name: str, digest: str
+    ) -> str:
+        """Persist a large sanitized result so truncation never loses access."""
+        if not self.tool_output_dir:
+            return ""
+        from pathlib import Path
+
+        safe_name = "".join(
+            char if char.isalnum() or char in "-_" else "_" for char in name
+        ).strip("_") or "tool"
+        path = Path(self.tool_output_dir) / f"{safe_name}-{digest[:16]}.txt"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with path.open("x", encoding="utf-8", errors="replace") as file:
+                    file.write(output)
+            except FileExistsError:
+                pass
+        except OSError:
+            return ""
+        metadata = getattr(tool_result, "metadata", None)
+        if isinstance(metadata, dict):
+            metadata["persisted_output_path"] = str(path)
+        return str(path)
 
     # ── the permission gate ──────────────────────────────────────────────
 

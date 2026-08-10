@@ -53,6 +53,17 @@ def _format_duration(duration_ms: Any) -> str:
 def format_event_line(event: AgentEvent) -> str | None:
     """Render one event as a display line (``None`` = not user-facing)."""
     p = event.payload
+    if event.type == "skills_selected":
+        ids = ", ".join(str(item) for item in p.get("skill_ids", []))
+        tools = ", ".join(str(item) for item in p.get("injected_tools", []))
+        suffix = f" (tools: {tools})" if tools else ""
+        return f"skills  {ids}{suffix}" if ids else None
+    if event.type == "agent_decision":
+        summary = _clip(event.display_message, _MAX_OUTPUT_CHARS)
+        return f"agent_decision     {summary}" if summary else None
+    if event.type == "agent_observation":
+        summary = _clip(event.display_message, _MAX_OUTPUT_CHARS)
+        return f"agent_observation  {summary}" if summary else None
     if event.type == "tool_called":
         return f"⚙ {p.get('tool', '?')}({_format_args(p.get('arguments'))}) …"
     if event.type == "tool_completed":
@@ -137,6 +148,15 @@ class StreamRenderer:
     def _rich_line(self, event: AgentEvent) -> str | None:
         """Claude-Code-style ⏺/⎿ card line for one event."""
         p = event.payload
+        if event.type == "skills_selected":
+            line = format_event_line(event)
+            return self._c("cyan", f"◈ {line}") if line else None
+        if event.type == "agent_decision":
+            summary = _clip(event.display_message, _MAX_OUTPUT_CHARS)
+            return self._c("cyan", f"◆ {summary}") if summary else None
+        if event.type == "agent_observation":
+            summary = _clip(event.display_message, _MAX_OUTPUT_CHARS)
+            return self._c("dim", f"  └ {summary}") if summary else None
         if event.type == "tool_called":
             name = self._c("bold", self._c("cyan", str(p.get("tool", "?"))))
             args = self._c("dim", _format_args(p.get("arguments")))
@@ -253,6 +273,14 @@ def format_activity(source: AgentResult | Iterable[AgentEvent]) -> str:
         if event.type == "tool_called":
             calls += 1
             pending_args[p.get("call_id", calls)] = _format_args(p.get("arguments"))
+        elif event.type in (
+            "skills_selected",
+            "agent_decision",
+            "agent_observation",
+        ):
+            line = format_event_line(event)
+            if line:
+                lines.append(line)
         elif event.type in ("tool_completed", "tool_failed"):
             key = p.get("call_id")
             if key not in pending_args:

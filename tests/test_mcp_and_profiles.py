@@ -78,6 +78,118 @@ def test_remote_mcp_server_discovers_tools() -> None:
     assert "remote-ok" in result.text
 
 
+def test_remote_mcp_resolves_per_call_metadata_from_context() -> None:
+    class MetadataTransport:
+        call_params = None
+
+        def request(self, method: str, params=None):
+            if method == "initialize":
+                return {}
+            if method == "tools/list":
+                return {
+                    "tools": [
+                        {
+                            "name": "lookup",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {"query": {"type": "string"}},
+                            },
+                        }
+                    ]
+                }
+            if method == "tools/call":
+                self.call_params = params
+                return {"content": [{"type": "text", "text": "ok"}]}
+            raise AssertionError(method)
+
+        def close(self) -> None:
+            pass
+
+    transport = MetadataTransport()
+    server = RemoteMCPServer(
+        name="metadata",
+        transport=transport,
+        tool_meta_resolver=lambda context, tool, arguments: {
+            "tenant_id": context.metadata["tenant_id"],
+            "trace_id": context.metadata["trace_id"],
+            "tool": tool,
+        },
+    )
+    tool = server.discover_tools()[0]
+    context = type(
+        "Ctx",
+        (),
+        {"metadata": {"tenant_id": "acme", "trace_id": "trace-1"}},
+    )()
+
+    output = tool.run(context=context, query="shipit")
+
+    assert output.text == "ok"
+    assert transport.call_params == {
+        "name": "lookup",
+        "arguments": {"query": "shipit"},
+        "_meta": {
+            "tenant_id": "acme",
+            "trace_id": "trace-1",
+            "tool": "lookup",
+        },
+    }
+
+
+def test_mcp_server_namespaces_colliding_tools_but_calls_remote_names() -> None:
+    class CollisionTransport:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.called_name = None
+
+        def request(self, method: str, params=None):
+            if method == "initialize":
+                return {}
+            if method == "tools/list":
+                return {
+                    "tools": [
+                        {
+                            "name": "search",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {"query": {"type": "string"}},
+                            },
+                        }
+                    ]
+                }
+            if method == "tools/call":
+                self.called_name = params["name"]
+                return {
+                    "content": [{"type": "text", "text": self.label}]
+                }
+            raise AssertionError(method)
+
+        def close(self) -> None:
+            pass
+
+    docs_transport = CollisionTransport("docs")
+    code_transport = CollisionTransport("code")
+    docs = RemoteMCPServer(
+        name="docs api",
+        transport=docs_transport,
+        include_server_in_tool_names=True,
+    )
+    code = RemoteMCPServer(
+        name="code/api",
+        transport=code_transport,
+        include_server_in_tool_names=True,
+    )
+
+    registry = ToolRegistry.build(mcps=[docs, code])
+
+    assert set(registry.tools) == {"docs_api__search", "code_api__search"}
+    context = type("Ctx", (), {"metadata": {}})()
+    assert registry.get("docs_api__search").run(context, query="x").text == "docs"
+    assert registry.get("code_api__search").run(context, query="x").text == "code"
+    assert docs_transport.called_name == "search"
+    assert code_transport.called_name == "search"
+
+
 def test_remote_mcp_server_reinitializes_cached_tools_after_close() -> None:
     class RestartableTransport:
         def __init__(self) -> None:
@@ -206,3 +318,83 @@ def test_remote_mcp_preserves_structured_and_multimodal_tool_results() -> None:
     assert output.metadata["output_schema"]["properties"]["score"] == {"type": "number"}
     assert output.metadata["annotations"] == {"readOnlyHint": True}
     assert output.metadata["execution"] == {"taskSupport": "optional"}
+
+
+def test_remote_mcp_uses_server_supplied_summary() -> None:
+    class SummaryTransport:
+        def request(self, method: str, params=None):
+            if method == "initialize":
+                return {}
+            if method == "tools/list":
+                return {"tools": [{"name": "search", "inputSchema": {"type": "object"}}]}
+            if method == "tools/call":
+                return {
+                    "content": [{"type": "text", "text": "large result body\nrow 1"}],
+                    "_meta": {"summary": "6,746 matches"},
+                }
+            raise AssertionError(method)
+
+        def close(self) -> None:
+            pass
+
+    tool = RemoteMCPServer(name="rl", transport=SummaryTransport()).discover_tools()[0]
+    output = tool.run(context=type("Ctx", (), {"state": {}})())
+    assert output.metadata["summary"] == "6,746 matches"
+
+
+def test_remote_mcp_short_single_line_result_is_its_summary() -> None:
+    class ShortTransport:
+        def request(self, method: str, params=None):
+            if method == "initialize":
+                return {}
+            if method == "tools/list":
+                return {"tools": [{"name": "groups", "inputSchema": {"type": "object"}}]}
+            if method == "tools/call":
+                return {"content": [{"type": "text", "text": "12 groups"}]}
+            raise AssertionError(method)
+
+        def close(self) -> None:
+            pass
+
+    tool = RemoteMCPServer(name="rl", transport=ShortTransport()).discover_tools()[0]
+    output = tool.run(context=type("Ctx", (), {"state": {}})())
+    assert output.metadata["summary"] == "12 groups"
+
+
+def test_remote_mcp_strips_undeclared_arguments_for_strict_servers() -> None:
+    class StrictTransport:
+        called_with = None
+
+        def request(self, method: str, params=None):
+            if method == "initialize":
+                return {}
+            if method == "tools/list":
+                return {
+                    "tools": [
+                        {
+                            "name": "read",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {"repo": {"type": "string"}},
+                                "required": ["repo"],
+                            },
+                        }
+                    ]
+                }
+            if method == "tools/call":
+                self.called_with = params["arguments"]
+                return {"content": [{"type": "text", "text": "ok"}]}
+            raise AssertionError(method)
+
+        def close(self) -> None:
+            pass
+
+    transport = StrictTransport()
+    tool = RemoteMCPServer(name="strict", transport=transport).discover_tools()[0]
+
+    output = tool.run(
+        context=type("Ctx", (), {"state": {}})(), repo="owner/repo", path="extra"
+    )
+
+    assert transport.called_with == {"repo": "owner/repo"}
+    assert output.metadata["ignored_arguments"] == ["path"]

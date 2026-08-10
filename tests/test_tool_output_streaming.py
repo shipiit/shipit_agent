@@ -12,6 +12,7 @@ from shipit_agent import (
     AsyncAgentRuntime,
     FunctionTool,
     Guardrails,
+    ToolOutput,
     ToolOutputChunk,
 )
 from shipit_agent.activity import StreamRenderer
@@ -102,6 +103,67 @@ def test_non_streaming_tool_still_publishes_one_output_delta() -> None:
 
     deltas = [event for event in events if event.type == "tool_output_delta"]
     assert [event.payload["chunk"] for event in deltas] == ["ordinary"]
+
+
+def test_large_non_streaming_tool_output_is_published_in_bounded_deltas() -> None:
+    content = "x" * 40_000
+    tool = FunctionTool.from_callable(lambda: content, name="large")
+    agent = Agent(
+        llm=_OneToolLLM("large"),
+        tools=[tool],
+        auto_use_skills=False,
+    )
+
+    events = list(agent.stream("run it"))
+
+    deltas = [event for event in events if event.type == "tool_output_delta"]
+    assert "".join(event.payload["chunk"] for event in deltas) == content
+    assert len(deltas) == 3
+    assert max(len(event.payload["chunk"]) for event in deltas) <= 16_384
+    completed = next(event for event in events if event.type == "tool_completed")
+    assert completed.payload["output"] == content
+
+
+def test_live_events_do_not_duplicate_heavy_canonical_metadata() -> None:
+    class RichOutputTool:
+        name = "rich"
+        description = "Return a rich payload."
+        prompt_instructions = "Use for testing."
+
+        def schema(self):
+            return {
+                "type": "function",
+                "function": {
+                    "name": self.name,
+                    "description": self.description,
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+
+        def run(self, context):
+            return ToolOutput(
+                text="result",
+                metadata={
+                    "server": "demo",
+                    "raw_result": {"content": "x" * 10_000},
+                    "content_blocks": [{"text": "x" * 10_000}],
+                    "structured_content": {"rows": ["x" * 10_000]},
+                },
+            )
+
+    agent = Agent(
+        llm=_OneToolLLM("rich"), tools=[RichOutputTool()], auto_use_skills=False
+    )
+
+    events = list(agent.stream("run it"))
+
+    delta = next(event for event in events if event.type == "tool_output_delta")
+    assert delta.payload["chunk_metadata"] == {"server": "demo"}
+    completed = next(event for event in events if event.type == "tool_completed")
+    assert completed.payload["metadata"] == {"server": "demo"}
+    assert completed.payload["output_chars"] == 6
+    assert completed.payload["model_output_chars"] == 6
+    assert completed.payload["model_output_reduced"] is False
 
 
 def test_first_chunk_reaches_consumer_before_tool_finishes() -> None:

@@ -105,16 +105,21 @@ class TestNarrationIsFree:
         assert "Looking now." in " ".join(
             str(e.payload.get("summary", "")) for e in decisions
         )
+        assert decisions[0].message == decisions[0].payload["summary"]
 
-    def test_a_label_is_composed_when_it_said_nothing(self) -> None:
+    def test_silent_model_gets_only_a_factual_tool_action(self) -> None:
         llm = CountingLLM([("", [("read_file", {"path": "app.py"})]), ("done", [])])
         agent = Agent(llm=llm, tools=[tool("read_file")], progress_summaries=True,
                       auto_use_skills=False, max_iterations=4)
         result = agent.run("look")
-        assert "Reading app.py" in " ".join(
-            str(e.payload.get("summary", "")) for e in result.events
-            if e.type == "agent_decision"
+        decisions = [e for e in result.events if e.type == "agent_decision"]
+        assert any(
+            e.payload.get("summary") == "Reading app.py."
+            and e.payload.get("generated_by_model") is False
+            and e.payload.get("summary_source") == "tool_call"
+            for e in decisions
         )
+        assert any(e.type == "tool_called" for e in result.events)
 
     def test_nothing_is_said_when_it_is_off(self) -> None:
         agent, _ = build(narrate=False)
@@ -170,14 +175,27 @@ class TestWhatItSays:
         line = self._summaries(result.events, "agent_observation")
         assert "—" not in line, f"invented a detail: {line}"
 
-    def test_the_final_turn_says_it_is_answering(self) -> None:
-        """Only when the model itself is silent — its own closing line
-        wins here too."""
+    def test_a_silent_final_turn_gets_no_invented_decision(self) -> None:
         llm = CountingLLM([("", [("read_file", {"path": "app.py"})]), ("", [])])
         agent = Agent(llm=llm, tools=[tool("read_file")], progress_summaries=True,
                       auto_use_skills=False, max_iterations=4)
         result = agent.run("look")
-        assert "final answer" in self._summaries(result.events, "agent_decision")
+        assert self._summaries(result.events, "agent_decision") == "Reading app.py."
+
+    def test_final_answer_is_not_duplicated_as_a_decision(self) -> None:
+        agent, _ = build(narrate=True)
+        result = agent.run("look")
+        summaries = self._summaries(result.events, "agent_decision")
+        assert "Looking now." in summaries
+        assert "Done." not in summaries
+
+    def test_observations_are_not_attributed_to_the_model(self) -> None:
+        agent, _ = build(narrate=True)
+        result = agent.run("look")
+        observations = [e for e in result.events if e.type == "agent_observation"]
+        assert observations
+        assert all(e.payload["generated_by_model"] is False for e in observations)
+        assert all(e.message == e.payload["summary"] for e in observations)
 
 
 class TestTheClauseJoiner:

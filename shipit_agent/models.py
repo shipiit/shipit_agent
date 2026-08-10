@@ -39,9 +39,11 @@ EventType = Literal[
     "usage_tick",
     "interactive_request",
     "mcp_attached",
+    "skills_selected",
     "llm_retry",
     "tool_retry",
     "run_completed",
+    "run_failed",
     "run_cancelled",
     "guardrail_triggered",
     "lockdown_engaged",
@@ -101,6 +103,21 @@ class AgentEvent:
     message: str
     payload: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
+
+    @property
+    def display_message(self) -> str:
+        """Return the concise, user-facing text for this event."""
+        summary = self.payload.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            return summary.strip()
+        message = self.message.strip()
+        if message:
+            return message
+        for key in ("chunk", "delta"):
+            value = self.payload.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return ""
 
     def to_dict(self) -> dict[str, Any]:
         return {

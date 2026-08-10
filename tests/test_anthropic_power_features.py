@@ -78,6 +78,40 @@ _TEXT_RESPONSE = _ns(content=[_ns(type="text", text="ok")], usage=None)
 # Endpoint routing / backward compatibility
 # ======================================================================
 class TestEndpointRouting:
+    def test_parallel_tool_results_are_batched_in_one_user_message(self) -> None:
+        llm = AnthropicChatLLM(model="claude-sonnet-4")
+        messages = [
+            Message(
+                role="assistant",
+                content="",
+                metadata={
+                    "tool_calls": [
+                        {"id": "t1", "name": "read", "arguments": {}},
+                        {"id": "t2", "name": "search", "arguments": {}},
+                    ]
+                },
+            ),
+            Message(
+                role="tool",
+                name="read",
+                content="a",
+                metadata={"tool_call_id": "t1"},
+            ),
+            Message(
+                role="tool",
+                name="search",
+                content="b",
+                metadata={"tool_call_id": "t2"},
+            ),
+        ]
+
+        converted = llm._convert_messages(messages)
+        assert [message["role"] for message in converted] == ["assistant", "user"]
+        assert [block["tool_use_id"] for block in converted[1]["content"]] == [
+            "t1",
+            "t2",
+        ]
+
     def test_flags_off_uses_ga_endpoint(self, monkeypatch) -> None:
         caps = _install_fake_anthropic(monkeypatch, _TEXT_RESPONSE)
         llm = AnthropicChatLLM(model="claude-sonnet-4")

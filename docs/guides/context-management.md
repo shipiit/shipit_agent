@@ -42,11 +42,16 @@ chat.send("Continue by fixing the highest-priority issue")
 ```
 
 This enables progressive code-mode tool discovery, chooses the model's known
-context window for checkpoint compaction, and raises the default loop budget
-to eight iterations. It also limits each model-visible tool result to 16,000
-characters while retaining the complete result in `AgentResult.tool_results`
-and events. Pass `code_mode`, `context_window_tokens`, `max_iterations`, or
-`max_tool_output_chars` explicitly to override any of those values.
+context window for checkpoint compaction, raises the default loop budget to
+eight iterations, and runs independent calls concurrently with a six-call
+ceiling. Each model-visible result is limited to 16,000 characters and a
+parallel group shares a 48,000-character budget. Complete sanitized results
+remain in `AgentResult.tool_results` and live events; large results are also
+saved under `.shipit/tool-results/`, and the bounded model extract includes the
+recovery path. Pass `code_mode`, `context_window_tokens`, `max_iterations`,
+`parallel_tool_execution`, `max_tool_output_chars`,
+`max_tool_output_group_chars`, or `persist_large_tool_outputs` explicitly to
+override these defaults.
 
 Optimized project agents also default to durable project-local stores:
 

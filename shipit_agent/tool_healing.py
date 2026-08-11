@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import re
+import ast
 from collections.abc import Mapping
 from typing import Any
 
@@ -38,6 +39,67 @@ _TAGGED_RE = re.compile(
 )
 # ```json ... ``` fenced block (also bare ``` fences)
 _FENCED_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+# Gemma-observed compact call syntax: ```call:read_file{path:app.py}```.
+# Keep the body to one line and disallow nested objects; complex edits must use
+# the provider's structured channel rather than an increasingly permissive
+# text parser.
+_RELAXED_CALL_RE = re.compile(
+    r"(?:```)?call:(?P<name>[A-Za-z_][A-Za-z0-9_.-]*)"
+    r"\{(?P<body>[^{}\r\n]+)\}(?:```)?",
+    re.IGNORECASE,
+)
+_AT_CALL_RE = re.compile(
+    r"(?m)^[ \t]*@(?P<name>[A-Za-z_][A-Za-z0-9_.-]*)"
+    r"\((?P<body>[^()\r\n]*)\)[ \t]*$"
+)
+_BACKTICK_CALL_RE = re.compile(
+    r"(?m)^[ \t>]*`(?P<name>[A-Za-z_][A-Za-z0-9_.-]*)"
+    r"\((?P<body>[^()\r\n]*)\)`[ \t]*$"
+)
+# Bare Python-style fallback emitted by open-weight models after a provider
+# rejects their native tool-call body: ``read_file(path="app.py")``.  The
+# name must still be in the runtime allowlist and every keyword is checked
+# against that tool's schema before promotion.
+_DECLARED_CALL_RE = re.compile(
+    r"(?<![A-Za-z0-9_`@])(?P<name>[A-Za-z_][A-Za-z0-9_.-]*)"
+    r"\((?P<body>[^()\r\n]*)\)"
+)
+# XML/JSX attribute shape, observed live from Gemma when the provider
+# rejected its native tool-call body: ``bash command="ls" />``. It is a real
+# call — the name is declared, the argument is right — but no JSON, Python or
+# markdown parser recognises it, so every layer dropped it and the run made
+# zero tool calls while spending 55,821 prompt tokens.
+#
+# The closing ``>`` is required. Without it this would match ordinary prose
+# that happens to contain ``word key="value"``, and healing must not invent a
+# call out of a sentence.
+_ATTR_PAIR = (
+    r"[A-Za-z_][A-Za-z0-9_.-]*\s*=\s*(?:\"[^\"]*\"|'[^']*')"
+)
+_ATTR_PAIR_RE = re.compile(_ATTR_PAIR)
+_ATTR_CALL_RE = re.compile(
+    r"</?(?P<name>[A-Za-z_][A-Za-z0-9_.-]*)"
+    r"(?P<body>(?:\s+" + _ATTR_PAIR + r")+)\s*/?>"
+    r"|(?:^|(?<=[\s`]))(?P<name2>[A-Za-z_][A-Za-z0-9_.-]*)"
+    r"(?P<body2>(?:\s+" + _ATTR_PAIR + r")+)\s*/?>",
+    re.MULTILINE,
+)
+
+
+def _attributes_to_keywords(body: str) -> str:
+    """``command="ls" limit="3"`` -> ``command="ls", limit="3"``.
+
+    Turns an attribute list into the keyword body ``_try_parse_at_call``
+    already knows how to read safely, so this shape reuses the same AST
+    parse and the same schema validation rather than a second code path.
+    """
+    return ", ".join(match.group(0) for match in _ATTR_PAIR_RE.finditer(body))
+
+
+_TABLE_CALL_RE = re.compile(
+    r"(?m)^\|\s*`?(?P<name>[A-Za-z_][A-Za-z0-9_.-]*)`?\s*\|"
+    r"(?P<body>[^\r\n|]+)\|\s*$"
+)
 
 
 #: A parameter name in any real tool schema is an identifier.
@@ -89,6 +151,25 @@ def _coerce_value(value: Any) -> Any:
         return value
 
 
+def coerce_argument_values(arguments: dict, schema: dict) -> dict:
+    """Coerce encoded arrays/objects only when the JSON Schema requests it."""
+    properties = schema.get("properties") or {}
+    coerced = dict(arguments)
+    for name, value in arguments.items():
+        declaration = properties.get(name)
+        if not isinstance(declaration, dict) or not isinstance(value, str):
+            continue
+        expected = declaration.get("type")
+        if expected not in {"array", "object"}:
+            continue
+        parsed = _coerce_value(value)
+        if (expected == "array" and isinstance(parsed, list)) or (
+            expected == "object" and isinstance(parsed, dict)
+        ):
+            coerced[name] = parsed
+    return coerced
+
+
 def _coerce_arguments(arguments: Any) -> dict | None:
     """Normalise an arguments payload into a dict, unwrapping encodings.
 
@@ -136,6 +217,8 @@ def _arguments_fit_schema(
     """
     properties = schema.get("properties") or {}
     required = schema.get("required") or []
+    if strict_required and not properties:
+        return False
     if not arguments:
         return not required
     if properties and not any(key in properties for key in arguments):
@@ -179,6 +262,77 @@ def _try_parse_call(
     if not _qualifies(name, coerced, schemas):
         return None
     return ToolCall(name=name, arguments=coerced)
+
+
+def _parse_relaxed_scalar(value: str) -> Any:
+    value = value.strip()
+    if not value:
+        raise ValueError("empty argument")
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            return parser(value)
+        except (ValueError, SyntaxError, json.JSONDecodeError):
+            continue
+    return value.strip("`\"'")
+
+
+def _try_parse_relaxed_call(
+    name: str,
+    body: str,
+    allowed: set[str],
+    schemas: Mapping[str, dict] | None,
+) -> ToolCall | None:
+    """Parse a bounded ``call:name{key:value}`` model fallback."""
+    if name not in allowed:
+        return None
+    arguments: dict[str, Any] = {}
+    for field in body.split(","):
+        separator = ":" if ":" in field else "=" if "=" in field else None
+        if separator is None:
+            return None
+        key, value = field.split(separator, 1)
+        key = key.strip()
+        if not _ARGUMENT_NAME.fullmatch(key) or key in arguments:
+            return None
+        try:
+            arguments[key] = _parse_relaxed_scalar(value)
+        except ValueError:
+            return None
+    if not _qualifies(name, arguments, schemas):
+        return None
+    return ToolCall(name=name, arguments=arguments)
+
+
+def _try_parse_at_call(
+    name: str,
+    body: str,
+    allowed: set[str],
+    schemas: Mapping[str, dict] | None,
+) -> ToolCall | None:
+    """Parse explicit ``@tool(key=value)`` without evaluating code."""
+    if name not in allowed:
+        return None
+    try:
+        # Parse only the keyword body under a fixed safe identifier. Tool
+        # names may be namespaced (or contain punctuation) and are validated
+        # separately against ``allowed``; they must never become executable
+        # Python source.
+        expression = ast.parse(f"_tool_({body})", mode="eval").body
+    except SyntaxError:
+        return None
+    if not isinstance(expression, ast.Call) or expression.args:
+        return None
+    arguments: dict[str, Any] = {}
+    for keyword in expression.keywords:
+        if keyword.arg is None or keyword.arg in arguments:
+            return None
+        try:
+            arguments[keyword.arg] = ast.literal_eval(keyword.value)
+        except (ValueError, TypeError):
+            return None
+    if not _qualifies(name, arguments, schemas):
+        return None
+    return ToolCall(name=name, arguments=arguments)
 
 
 def _match_by_schema(
@@ -377,6 +531,77 @@ def heal_tool_calls(
                 calls.append(call)
                 consumed.append((start, end))
 
+    if not calls:
+        for match in _RELAXED_CALL_RE.finditer(text):
+            call = _try_parse_relaxed_call(
+                match.group("name"),
+                match.group("body"),
+                allowed_names,
+                schemas,
+            )
+            if call is not None:
+                calls.append(call)
+                consumed.append(match.span())
+
+    if not calls:
+        for match in _AT_CALL_RE.finditer(text):
+            call = _try_parse_at_call(
+                match.group("name"),
+                match.group("body"),
+                allowed_names,
+                schemas,
+            )
+            if call is not None:
+                calls.append(call)
+                consumed.append(match.span())
+
+    if not calls:
+        for match in _BACKTICK_CALL_RE.finditer(text):
+            call = _try_parse_at_call(
+                match.group("name"),
+                match.group("body"),
+                allowed_names,
+                schemas,
+            )
+            if call is not None:
+                calls.append(call)
+                consumed.append(match.span())
+
+    if not calls:
+        for match in _DECLARED_CALL_RE.finditer(text):
+            call = _try_parse_at_call(
+                match.group("name"),
+                match.group("body"),
+                allowed_names,
+                schemas,
+            )
+            if call is not None:
+                calls.append(call)
+                consumed.append(match.span())
+
+    if not calls:
+        for match in _TABLE_CALL_RE.finditer(text):
+            call = _try_parse_at_call(
+                match.group("name"),
+                match.group("body").replace("`", "").strip(),
+                allowed_names,
+                schemas,
+            )
+            if call is not None:
+                calls.append(call)
+                consumed.append(match.span())
+
+    if not calls:
+        for match in _ATTR_CALL_RE.finditer(text):
+            name = match.group("name") or match.group("name2")
+            body = match.group("body") or match.group("body2")
+            call = _try_parse_at_call(
+                name, _attributes_to_keywords(body), allowed_names, schemas
+            )
+            if call is not None:
+                calls.append(call)
+                consumed.append(match.span())
+
     if not calls and schemas:
         # Last resort: an arguments object with no name, identified by the
         # schema it satisfies. Only ever reached once every named form has
@@ -397,6 +622,20 @@ def heal_tool_calls(
     if not calls:
         return text, []
 
+    # Repeated fallback prose often contains the same rejected call several
+    # times. Remove every promoted span from the visible draft, but execute
+    # an identical declared call only once.
+    unique_calls: list[ToolCall] = []
+    seen_calls: set[tuple[str, str]] = set()
+    for call in calls:
+        fingerprint = (
+            call.name,
+            json.dumps(call.arguments, sort_keys=True, default=str),
+        )
+        if fingerprint not in seen_calls:
+            seen_calls.add(fingerprint)
+            unique_calls.append(call)
+
     # Remove exactly the promoted spans, keep everything else.
     remaining: list[str] = []
     cursor = 0
@@ -405,4 +644,4 @@ def heal_tool_calls(
         cursor = end
     remaining.append(text[cursor:])
     cleaned = "".join(remaining).strip()
-    return cleaned, calls
+    return cleaned, unique_calls

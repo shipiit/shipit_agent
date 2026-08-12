@@ -2,7 +2,7 @@
 
 An agent with 50+ tools pays for every JSON schema on every step, even
 though a typical run touches three or four of them. Deferral splits the
-catalogue the way Claude Code does:
+catalogue on demand:
 
 - A small **core set** keeps its full schema in every request.
 - Every other tool is listed **by name only** in the system prompt.

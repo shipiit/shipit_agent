@@ -20,7 +20,7 @@ window instead of burning through it.
 ### Added
 
 - **`Agent(deferred_tools=...)` — the tool catalogue on demand**
-  (`shipit_agent/deferral/`). Claude-Code-style tool paging, provider-agnostic:
+  (`shipit_agent/deferral/`). Tool paging, provider-agnostic:
   core tools keep their full schema in every request; every other tool is
   listed by *name only* in the system prompt until it is loaded. `tool_search`
   now finds **and loads** deferred tools — matches become directly callable
@@ -133,25 +133,23 @@ window instead of burning through it.
   `unrestricted=True` mode that allows redirects, heredocs, pipes-to-file and
   command/process substitution (the safe conservative filter stays the
   default); and a companion `bash_job` tool to poll or kill background jobs
-  by id (Claude Code's BashOutput/KillShell). A rejected command now returns
+  by id. A rejected command now returns
   an error result instead of raising (a raised tool exception could crash the
   run).
 - **`multi_edit`** — a batch of exact-string edits applied to ONE file
-  atomically (Claude Code's MultiEdit): edits apply in order to an in-memory
+  atomically: edits apply in order to an in-memory
   copy and write once; if any fails, nothing is written. Same read-gate,
   mtime staleness, and UTF-8 refusal as `edit_file`.
 - **git worktree isolation** — `git_ops` gains `worktree_add` /
   `worktree_remove` / `worktree_list` so an agent can work on an isolated
-  branch/worktree without touching the user's tree (Codex-style).
+  branch or worktree, in isolation from the user's working tree.
 - **Readability web extraction** — `open_url` now returns structured markdown
   (headings, lists, paragraphs) with nav/header/footer/aside/script dropped,
   instead of flat tag-stripped soup that buried the signal.
 - **Compaction re-grounding** — after a fresh compaction the most-recently-read
   files are re-read from disk and injected as current contents, so the model
-  works from the code, not a prose summary of it (Claude Code re-establishes
-  file state post-compaction). Restores the read-gate for those files.
-- **Plan mode as a workflow** — a `present_plan` tool (Claude Code's
-  ExitPlanMode): in plan mode the agent researches read-only, then submits a
+  works from the code, not a prose summary of it. Restores the read-gate for those files.
+- **Plan mode as a workflow** — a `present_plan` tool: in plan mode the agent researches read-only, then submits a
   structured plan (title + ordered steps) that is captured and surfaced for
   approval via the interactive-request channel, instead of plan mode being a
   bare deny-gate.
@@ -165,12 +163,11 @@ window instead of burning through it.
   now clears the gate, forcing a cheap re-read before the next edit.
 - **Higher default iteration budget** — `Agent.max_iterations` 4 → 12 (16
   with skills). A real multi-step task (read several files, edit, test, fix)
-  no longer gets cut to a summary where Claude Code would keep going.
-- **Larger `read_file` window** — 250 → 2000 lines, 12K → 80K chars, matching
-  Claude Code's default. Less paging, fewer edits against unseen regions.
+  no longer gets cut to a summary before the context window is the real constraint.
+- **Larger `read_file` window** — 250 → 2000 lines, 12K → 80K chars. Less paging, fewer edits against unseen regions.
 - **End-of-run summary** — a `run_summary` event (and `run_completed.summary`)
   closes every run with iterations, tool calls, compactions, token usage, and
-  an estimated cost, like Claude Code / Codex print at end of turn. Canonical
+  an estimated cost. Canonical
   for reconnecting clients. `FunctionTool(read_only=...)` also gained a
   three-state default (`None` = use the name heuristic).
 
@@ -180,7 +177,7 @@ window instead of burning through it.
   call is read-only (grep, glob, file reads, lookups) fans out concurrently;
   any group containing a write/send/mutate stays serial and ordered. This
   both fixes a latent race (two `edit_file`s to one path racing across
-  isolated state copies) and delivers Claude-Code-style batched-read speed.
+  isolated state copies) and delivers fast batched-read execution.
   Shared decision on `RuntimeCore.read_only_calls`, so both loops agree.
   `FunctionTool(read_only=True)` lets a caller declare a pure function
   parallel-safe.

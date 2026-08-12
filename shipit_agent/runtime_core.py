@@ -402,7 +402,7 @@ class RuntimeCore:
         artifact layers trust. Read-only calls (grep, glob, file reads, a
         lookup) have no side effects and no ordering constraint, so they can
         fan out; anything that writes, sends, or mutates must stay ordered.
-        Claude Code's user-visible speed is exactly this: batch the reads,
+        The user-visible speed win is exactly this: batch the reads,
         serialize the writes.
         """
         from shipit_agent.tools.contracts import contract_for
@@ -1054,8 +1054,8 @@ class RuntimeCore:
     def regrounding_messages(shared_state: dict[str, Any] | None) -> list[Message]:
         """Fresh reads of the files a just-fired compaction summarized away.
 
-        Claude Code re-establishes file state after compaction rather than
-        leaving the model with a description of code. The most recently read
+        Re-establish file state after compaction rather than leaving the
+        model with a description of code. The most recently read
         files (up to 3) are re-read from disk and returned as tool messages,
         so the post-compaction context holds current contents, not prose.
         Consumes the hint so it fires once per compaction. Best-effort: an

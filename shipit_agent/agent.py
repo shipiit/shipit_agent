@@ -180,8 +180,9 @@ class Agent:
     # ── runtime tuning ────────────────────────────────────────────────
     # A hard task should not stop after a handful of tool calls. 4 was too
     # tight — a real multi-step run (read several files, edit, test, fix)
-    # blows through it and gets cut to a summary where Claude Code would keep
-    # going. Raised to 12; skills still boost further, autopilot sets its own.
+    # blows through it and gets cut to a summary before the context window
+    # is the real constraint. Raised to 12; skills boost further; autopilot
+    # sets its own.
     max_iterations: int = 12  # auto-boosted → 16 when skills are active
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
@@ -216,7 +217,7 @@ class Agent:
     verifier: Any = None
 
     # ── permissions / control plane (v1.0.11) ─────────────────────────
-    # Claude Code-style rule-based gate over tool calls. Set a mode
+    # Rule-based gate over tool calls. Set a mode
     # ("default" | "acceptEdits" | "plan" | "bypass"), or pass a full
     # ``PermissionEngine`` / kwargs dict via ``permissions``, or a
     # ``permission_callback(name, args) -> PermissionResult | None`` for
@@ -246,7 +247,7 @@ class Agent:
     code_mode: bool = False
 
     # ── deferred tool loading (v1.7) ──────────────────────────────────
-    # Claude-Code-style tool paging: core tools keep their full schema in
+    # Tool paging: core tools keep their full schema in
     # every request; everything else is listed by NAME only until
     # `tool_search` (or a direct call) loads it. Cuts the fixed per-step
     # schema cost to the working set. ``True`` defers everything outside
@@ -388,7 +389,7 @@ class Agent:
             if skill_path.exists():
                 self.skill_registry = FileSkillRegistry(skill_path)
 
-        # Local SKILL.md files use the same convention as Codex/Claude Code.
+        # Local SKILL.md files use the standard SKILL.md convention.
         # They override packaged entries with the same id so repository rules
         # remain authoritative without copying the full catalog.
         if self.auto_project_skills:
@@ -1192,7 +1193,7 @@ class Agent:
         style: str = "auto",
         detail: bool = False,
     ) -> str:
-        """Run with a live, Claude-Code-style display and return the answer.
+        """Run with a live, streaming display and return the answer.
 
         Tokens print as they're generated (when the LLM adapter streams),
         tool calls appear as ⚙ cards with args, status, and duration, and a

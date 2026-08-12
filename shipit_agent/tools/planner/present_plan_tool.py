@@ -1,4 +1,4 @@
-"""``present_plan`` — the plan-mode exit affordance (Claude Code's ExitPlanMode).
+"""``present_plan`` — the plan-mode exit affordance.
 
 In plan mode the agent researches read-only and must not act. When it has a
 plan, it calls this tool to *submit* it: the plan is captured as a structured

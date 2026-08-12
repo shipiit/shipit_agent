@@ -1,5 +1,5 @@
 """Parallel execution runs read-only groups concurrently and keeps writes
-ordered — Claude Code's batch-reads-serialize-writes behaviour.
+ordered — the batch-reads-serialize-writes behaviour.
 """
 
 from __future__ import annotations

@@ -160,7 +160,7 @@ class GitOpsTool:
         elif action == "worktree_list":
             argv = ["worktree", "list"]
         elif action == "worktree_add":
-            # Isolated workspace on a new branch, like Codex: work without
+            # Isolated workspace on a new branch: work without
             # touching the user's tree, and let several agents run in
             # parallel. `ref` is the new worktree path; `message` (optional)
             # names the branch to create (defaults to the path's basename).

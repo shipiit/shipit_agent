@@ -47,15 +47,15 @@ class BashTool:
         description: str = "Run a shell command inside the local project root with basic safety checks.",
         prompt: str | None = None,
         default_timeout: float = 30.0,
-        # Claude Code's Bash allows up to 600s so real test suites and builds
-        # aren't killed mid-run. Raised from 120s.
+        # Allow up to 600s so real test suites and builds aren't killed
+        # mid-run. Raised from 120s.
         max_timeout: float = 600.0,
         allowed_command_prefixes: list[str] | None = None,
         blocked_substrings: list[str] | None = None,
         #: Opt in to a full shell — redirections (``>``/``>>``/``<``),
         #: heredocs, pipes into files, and command/process substitution. The
         #: safe default keeps the conservative syntactic filter; set this for
-        #: a Claude-Code-style bash when the environment is already trusted /
+        #: a full shell when the environment is already trusted /
         #: sandboxed. The allowlist and blocked-substring checks still apply.
         unrestricted: bool = False,
     ) -> None:
@@ -465,7 +465,7 @@ class BashTool:
 class BashJobTool:
     """Poll or kill a background job started by the bash tool.
 
-    Claude Code's BashOutput / KillShell parity: the bash tool can spawn a
+    The bash tool can spawn a
     long-running command detached (a dev server, a watcher, a slow build);
     this tool reads its recent output or stops it, by job id. Bound to the
     same BashTool instance so it shares the live job table.

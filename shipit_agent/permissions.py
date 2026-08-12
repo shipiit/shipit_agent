@@ -1,12 +1,12 @@
 """Permission engine — a fast, rule-based control plane for tool calls.
 
-This is the Claude Code-style permission layer: every proposed tool call is
+A rule-based permission layer: every proposed tool call is
 checked against declarative **allow / deny / ask** rules and a **mode** before
 it runs — no LLM required (unlike :mod:`shipit_agent.verifier`, which is an
 *LLM* veto and complements this). The two can run together: the permission
 engine is the cheap first gate; the verifier is the smart second opinion.
 
-Modes (mirrors Claude Code):
+Modes:
 
 - ``default``     — apply rules; unmatched tools fall back to ``default_decision``.
 - ``acceptEdits`` — auto-allow file edit/write tools; everything else via rules.
@@ -41,7 +41,7 @@ class PermissionResult:
     """The outcome of a permission check.
 
     ``updated_arguments`` lets a rule/hook **rewrite** the call before it runs
-    (Claude Code's ``updatedInput``). ``None`` means "use the original args".
+    (an argument rewrite). ``None`` means "use the original args".
     """
 
     decision: PermissionDecision

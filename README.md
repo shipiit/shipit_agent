@@ -68,7 +68,7 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
 ```
 
 > The only hard dependency is `pydantic`. Everything else (a provider SDK, Playwright, a vector
-> store) is an optional extra you install when you need it. **Python 3.11+ · MIT · 1850+ tests.**
+> store) is an optional extra you install when you need it. **Python 3.11+ · MIT · 3,500+ tests.**
 
 ---
 
@@ -96,38 +96,40 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
 
 ---
 
-## What's new in v1.0.15 — The Super Agent
+## What's new in v1.7.0 — the working set
 
-One release that makes a shipit agent useful to **every sector** — and makes every run readable.
+The biggest capability release yet: do the powerful thing without burning tokens or trust.
 All of it works with any LLM provider.
 
 ```python
-from shipit_agent import Agent, AgentScheduler, connect_mcp, format_activity
+from shipit_agent import Agent
 
-# 1. Sector specialists in one line — finance, marketing, engineering, design, research, sales…
-agent = Agent.for_role("finance-analyst", llm=llm)
+# 1. Deferred tool loading — a small core stays resident; the rest (and MCP
+#    tools) are listed by name and loaded on demand via tool_search.
+agent = Agent.with_builtins(llm=llm, deferred_tools=True)
 
-# 2. Prebuilt MCP catalog — 12 well-known servers by name, validated up front
-agent = Agent.for_role("finance-analyst", llm=llm,
-                       mcps=[connect_mcp("postgres", args=["postgresql://localhost/finance"])])
+# 2. Attachments — images, PDFs, and code/markdown files on the turn.
+agent.run("What changed here?", images=["diagram.png"], files=["spec.pdf", "app.py"])
 
-# 3. Real deliverables — polished PDF / Excel (live formulas) / Word / PowerPoint / HTML
-result = agent.run("Close Q2: P&L workbook with a net-income formula + a board deck.")
+# 3. Batch, atomic edits to one file, and a full shell when you want it.
+#    multi_edit applies many edits at once; bash gets a 600s ceiling,
+#    an unrestricted mode, and a bash_job companion to poll/kill jobs.
 
-# 4. Claude-Code-style tool logs — cards with args, ✓/✗, duration, output preview
-print(format_activity(result))     # ⚙ build_document(kind="xlsx", …) ✓ 228ms
-print(result.summary())            # duration, iterations, per-tool ms, token usage
+# 4. Structured output straight from the provider (no parse-retry needed).
+agent.run("Extract the invoice", output_schema=InvoiceSchema)
 
-# 5. Scheduled jobs — cron for agents (durable with SQLiteJobStore)
-sched = AgentScheduler(agent)
-sched.add("Rebuild the close package.", at="07:00")
-sched.run_forever()
+# 5. Plan mode as a workflow — the agent researches read-only, then submits a
+#    structured plan for approval before it acts.
 ```
 
-Plus: MCP **resources & prompts** + the 2025 **streamable-HTTP** transport (bearer auth),
-**background subagents** (`background=true` → task id → `collect`), live-updatable tool events
-(`call_id` correlation), and observable **context compaction**.
-See the [full guide](https://docs.shipiit.com/guides/super-agent/) and [changelog](CHANGELOG.md).
+Plus: **read parallelization** (read-only tools fan out, writes stay ordered),
+**prompt caching across the conversation prefix**, **compaction re-grounding**
+(re-reads files after summarizing), **MCP hardening** (name sanitization,
+collision-safe, timeouts, respawn re-handshake), the **`orchestrator`** role,
+**connection cards**, and an end-of-run **usage/cost summary**. Retries back off
+with jitter, every LLM call and MCP call has a timeout, and eviction no longer
+corrupts saved sessions. Verified live on AWS Bedrock Mantle (Gemma 4) and
+Hetzner inference. See the [changelog](CHANGELOG.md).
 
 ---
 
@@ -201,7 +203,7 @@ pip install "shipit-agent[all]"              # everything
 git clone https://github.com/shipiit/shipit_agent.git
 cd shipit_agent
 pip install -e ".[dev]"     # editable install with test/docs tooling
-pytest -q                   # 1850+ tests
+pytest -q                   # 3,500+ tests
 ruff check .
 ```
 
@@ -507,7 +509,7 @@ Events also serialize to ready-made **SSE / WebSocket** packets for web UIs.
 
 ## The control plane
 
-A Claude Code-style safety layer — rule-based, no extra LLM call.
+A rule-based safety layer — no extra LLM call.
 
 ```python
 from shipit_agent import Agent, PermissionEngine

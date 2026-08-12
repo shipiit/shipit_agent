@@ -1,9 +1,9 @@
-# SHIPIT Agent 1.7.0 — Claude Code / Codex parity
+# SHIPIT Agent 1.7.0 — the working set
 
-The release that closes the gap to Claude Code and the OpenAI Codex/Agents
-SDK. One theme runs through it: **do the powerful thing without burning
-tokens or trust** — load the tools a step actually needs, cache what repeats,
-recover instead of wedging, and keep long runs correct.
+The biggest capability release yet. One theme runs through it: **do the
+powerful thing without burning tokens or trust** — load the tools a step
+actually needs, cache what repeats, recover instead of wedging, and keep long
+runs correct.
 
 Everything here works over **every provider** through one interface —
 Anthropic, OpenAI, AWS Bedrock (incl. Bedrock Mantle / Gemma 4), Vertex,
@@ -13,7 +13,7 @@ inference**. 3,500+ tests.
 
 ---
 
-## Token efficiency — like Claude Code
+## Token efficiency
 
 - **Deferred tool loading** (`Agent(deferred_tools=True)`): a small core set
   keeps its schema in every request; everything else — including MCP tools —
@@ -22,16 +22,16 @@ inference**. 3,500+ tests.
 - **Prompt caching across the conversation prefix** on Anthropic-family models
   (native and Bedrock/Vertex via LiteLLM), so each step extends the previous
   request from cache instead of re-billing the growing history.
-- **Read-parallelization from tool contracts**: a group of read-only calls
+- **Read parallelization from tool contracts**: a group of read-only calls
   (grep, glob, file reads, lookups) fans out concurrently; any write/send
-  stays serial and ordered. Claude Code's batched-read speed.
+  stays serial and ordered.
 
 ## A loop that never wedges
 
 - **Backoff + jitter** on LLM retries, **per-request timeouts** on every
   adapter, **MCP call timeouts**, **sub-agent timeouts**.
-- **Async-loop parity**: compaction and the argument gate now actually run on
-  the async path; the sync loop uses the shared stall-nudge decision.
+- **Async-loop parity**: compaction and the argument gate now run on the async
+  path; both loops share the stall-nudge decision.
 - **Compaction** reuses its checkpoint (no re-summarizing every step) and its
   tokens are counted; **higher default iteration budget** (12, 16 with skills)
   so hard tasks keep going.
@@ -57,7 +57,7 @@ inference**. 3,500+ tests.
 - **`agent.run(prompt, images=[...], files=[...])`** — images by URL/path/
   base64; text/markdown/code files inlined; PDFs as native document blocks.
 - **`read_file` sees images and PDFs** instead of returning UTF-8 garbage.
-- **Vision bridge**: tool screenshots (computer_use, MCP image results) reach
+- **Vision bridge**: tool screenshots (computer use, MCP image results) reach
   the model as image blocks on the next step.
 
 ## Multi-agent, connections, plan mode
@@ -66,9 +66,9 @@ inference**. 3,500+ tests.
   (a role can't re-grant tools the parent lacks), and per-subagent timeouts.
   New **`orchestrator`** role.
 - **Connection cards** — an unauthenticated connector files a request and
-  returns an actionable next step (`/login` parity).
+  returns an actionable next step for the user.
 - **Plan mode as a workflow** — a `present_plan` tool captures a structured
-  plan and surfaces it for approval.
+  plan and surfaces it for approval before the agent acts.
 
 ## Correctness fixes
 

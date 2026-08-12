@@ -1963,9 +1963,9 @@ detail you were not given and do not say what you will do next."""
             content=response.content,
             format="markdown",
         )
-        # A tidy closing accounting, like Claude Code / Codex print at end of
-        # turn: iterations, tool calls, compactions, and token/cost usage. The
-        # data was all tracked; this surfaces it as one closing artifact.
+        # A tidy closing accounting: iterations, tool calls, compactions,
+        # and token/cost usage. The data was all tracked; this surfaces it
+        # as one closing artifact at end of turn.
         summary = self._build_run_summary(state)
         self.emit(state, "run_summary", summary["headline"], **summary)
         self.emit(

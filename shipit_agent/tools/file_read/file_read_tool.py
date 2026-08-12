@@ -13,7 +13,7 @@ class FileReadTool:
         root_dir: str | Path = "/tmp",
         name: str = "read_file",
         description: str = "Read a file from the local project with optional line ranges.",
-        # Claude Code reads up to ~2000 lines by default; a small window
+        # Read up to ~2000 lines by default; a small window
         # forces the model to page and risks edits against unseen regions.
         max_chars: int = 80_000,
         prompt: str | None = None,

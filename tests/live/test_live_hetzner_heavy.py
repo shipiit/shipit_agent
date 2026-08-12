@@ -1,7 +1,7 @@
 """Heavy real-user live tests — Hetzner inference (OpenAI-compatible API).
 
 One agent, twelve capabilities (nine local tools + a three-tool CRM MCP
-server), deferred tool loading on — the Claude-Code working shape. Each
+server), deferred tool loading on — the full working shape. Each
 model answers three real-user asks:
 
 1. multi-tool orchestration (CRM lookup → tickets → email),

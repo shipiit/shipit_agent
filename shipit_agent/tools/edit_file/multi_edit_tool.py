@@ -1,6 +1,6 @@
 """``multi_edit`` — a batch of edits applied to one file, atomically.
 
-Claude Code's MultiEdit: on a multi-hunk change, one string-replace per
+On a multi-hunk change, one string-replace per
 tool call is slow (a round-trip per hunk) and unsafe (an earlier edit can
 invalidate a later hunk's ``old_text``). This applies every edit to an
 in-memory copy in order and writes once — all succeed or nothing is written.

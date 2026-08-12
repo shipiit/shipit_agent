@@ -65,13 +65,18 @@ class OpenAIChatLLM:
         response_format: dict[str, Any] | None = None,
         text_delta_callback: Any = None,
         tool_input_callback: Any = None,
+        timeout: float | None = None,
     ) -> LLMResponse:
         try:
             from openai import OpenAI
         except ImportError as exc:
             raise RuntimeError("Install `openai` to use OpenAIChatLLM.") from exc
 
-        client = OpenAI(api_key=self.api_key, **self.client_kwargs)
+        client_kwargs = dict(self.client_kwargs)
+        if timeout is not None:
+            # Per-request override wins over any client-level default.
+            client_kwargs["timeout"] = timeout
+        client = OpenAI(api_key=self.api_key, **client_kwargs)
         payload_messages = [_serialize_message(m) for m in messages]
 
         kwargs: dict[str, Any] = {
@@ -194,7 +199,12 @@ class OpenAIChatLLM:
         except Exception as first_exc:
             exc_name = type(first_exc).__name__
             status = getattr(first_exc, "status_code", None)
-            if status in (429, 500, 502, 503, 529) or "RateLimitError" in exc_name:
+            if (
+                status in (429, 500, 502, 503, 529)
+                or "RateLimitError" in exc_name
+                or "ServiceUnavailable" in exc_name
+                or "InternalServerError" in exc_name
+            ):
                 raise ConnectionError(f"{exc_name}: {first_exc}") from first_exc
             try:  # provider may not support stream_options
                 stream = client.chat.completions.create(**kwargs, stream=True)
@@ -247,7 +257,10 @@ class OpenAIChatLLM:
             text = getattr(delta, "content", None)
             if text:
                 content_parts.append(text)
-                on_delta(text)
+                # Streaming mode is entered when EITHER callback is set;
+                # a tool-input-only caller has no text callback to invoke.
+                if on_delta is not None:
+                    on_delta(text)
             reasoning = getattr(delta, "reasoning_content", None)
             if reasoning:
                 reasoning_parts.append(str(reasoning))
@@ -257,7 +270,11 @@ class OpenAIChatLLM:
                 fn = getattr(frag, "function", None)
                 if fn is not None:
                     if getattr(fn, "name", None):
-                        slot["name"] += fn.name
+                        # Assign, don't concatenate: a provider that repeats
+                        # the name on every fragment would otherwise build
+                        # "get_weatherget_weather". Names arrive whole; only
+                        # ARGUMENTS stream in fragments.
+                        slot["name"] = fn.name
                     if getattr(fn, "arguments", None):
                         slot["arguments"] += fn.arguments
                         if on_tool_input is not None and slot["name"]:

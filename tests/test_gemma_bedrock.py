@@ -17,8 +17,32 @@ from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms import BedrockChatLLM, BedrockGemmaChatLLM
 
 
+def _native_mantle() -> bool:
+    from shipit_agent.llms.litellm_adapter import _litellm_supports_bedrock_mantle
+
+    return _litellm_supports_bedrock_mantle()
+
+
 class TestGemmaRouting:
-    def test_gemma4_routes_to_mantle(self) -> None:
+    """Gemma 4 rides Bedrock's OpenAI-compatible mantle endpoint, never
+    Converse. Preferred: LiteLLM's native `bedrock_mantle/` provider
+    (https://docs.litellm.ai/docs/providers/bedrock_mantle); fallback for
+    older LiteLLM installs: the OpenAI-adapter shim aimed at the mantle URL."""
+
+    def test_gemma4_routes_natively_with_bearer_key(self, monkeypatch) -> None:
+        """With a Bedrock API key present, LiteLLM's native provider wins."""
+        monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-key")
+        llm = BedrockChatLLM(model="google.gemma-4-31b")
+        if _native_mantle():
+            assert llm._mantle_delegate is None
+            assert llm.model == "bedrock_mantle/google.gemma-4-31b"
+        else:
+            assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
+
+    def test_gemma4_without_bearer_key_uses_the_shim(self, monkeypatch) -> None:
+        """SigV4-only environments must not be routed to the bearer-token
+        native provider (it 401s — verified live)."""
+        monkeypatch.delenv("BEDROCK_MANTLE_API_KEY", raising=False)
         llm = BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
         assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
         assert llm._mantle_delegate.model == "google.gemma-4-31b"
@@ -27,13 +51,18 @@ class TestGemmaRouting:
             == "https://bedrock-mantle.us-east-1.api.aws/openai/v1"
         )
 
-    def test_bedrock_prefix_stripped(self) -> None:
+    def test_bedrock_prefix_stripped(self, monkeypatch) -> None:
+        monkeypatch.delenv("BEDROCK_MANTLE_API_KEY", raising=False)
         llm = BedrockChatLLM(model="bedrock/google.gemma-4-e2b")
         assert llm._mantle_delegate.model == "google.gemma-4-e2b"
 
-    def test_region_from_aws_region_name(self) -> None:
-        llm = BedrockChatLLM(model="google.gemma-4-26b-a4b", aws_region_name="eu-central-1")
-        assert "eu-central-1" in llm._mantle_delegate.client_kwargs["base_url"]
+    def test_explicit_bedrock_mantle_prefix_is_honoured(self, monkeypatch) -> None:
+        monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-key")
+        llm = BedrockChatLLM(model="bedrock_mantle/google.gemma-4-26b-a4b")
+        if _native_mantle():
+            assert llm.model == "bedrock_mantle/google.gemma-4-26b-a4b"
+        else:
+            assert llm._mantle_delegate.model == "google.gemma-4-26b-a4b"
 
     def test_non_gemma4_uses_converse(self) -> None:
         llm = BedrockChatLLM(model="bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0")
@@ -82,8 +111,17 @@ def _text_response(text: str):
     return _ns(choices=[_ns(message=msg)], usage=None)
 
 
+def _force_shim_path(monkeypatch) -> None:
+    """Pin these tests to the OpenAI-adapter fallback, which must keep
+    working on LiteLLM installs without the native bedrock_mantle provider."""
+    import shipit_agent.llms.litellm_adapter as adapter
+
+    monkeypatch.setattr(adapter, "_litellm_supports_bedrock_mantle", lambda: False)
+
+
 class TestGemmaAgentic:
     def test_gemma4_parses_native_tool_call(self, monkeypatch) -> None:
+        _force_shim_path(monkeypatch)
         _install_fake_openai(monkeypatch, _tool_call_response("add", '{"a": 2, "b": 3}'))
         llm = BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
         from shipit_agent.models import Message
@@ -96,6 +134,7 @@ class TestGemmaAgentic:
         assert resp.tool_calls[0].arguments == {"a": 2, "b": 3}
 
     def test_gemma4_full_agent_loop(self, monkeypatch) -> None:
+        _force_shim_path(monkeypatch)
         # Turn 1: model calls the tool. Turn 2: model answers.
         _install_fake_openai(
             monkeypatch,

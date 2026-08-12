@@ -141,9 +141,11 @@ class TestThePromptStaysSmall:
         assert decision
         assert all("15 entries for Qilin" not in p for p in decision)
 
-    def test_the_observation_prompt_sees_a_bounded_head_only(self) -> None:
-        """An observation that cannot look at what came back can only restate
-        the tool's name — so it gets a head of the result, never the body."""
+    def test_the_observation_never_reaches_the_narrator(self) -> None:
+        """Observations are composed from tool metadata — factual and free.
+        Narration spends its one completion per step on the decision line;
+        a second per-step call to restate tool output doubled the cost for
+        the least informative line."""
         big = "x" * 5_000
 
         def _huge(query: str) -> str:
@@ -158,8 +160,7 @@ class TestThePromptStaysSmall:
             auto_use_skills=False, progress_summaries=True,
         ).run("Search echo for Qilin")
         observation = [p for p in narrator.prompts if "just came back" in p]
-        assert observation
-        assert all(len(p) < 1_500 for p in observation)
+        assert observation == []
 
     def test_it_knows_what_the_last_step_found(self) -> None:
         """Without this the line cannot say why this step follows the last."""
@@ -173,9 +174,9 @@ class TestThePromptStaysSmall:
         _result, narrator = _run(TwoCalls(), Narrator(), max_iterations=5)
         assert any("Last step:" in p for p in narrator.prompts)
 
-    def test_both_lines_are_narrated(self) -> None:
-        """"Asked question openai/openai-python." is as thin an observation as
-        the composed decision was a decision, and for the same reason."""
+    def test_only_the_decision_line_is_narrated(self) -> None:
+        """One narration completion per step, spent on the forward-looking
+        line a watcher can act on. The observation is composed for free."""
         _result, narrator = _run(Silent(), Narrator())
         assert any("About to run:" in p for p in narrator.prompts)
-        assert any("just came back" in p for p in narrator.prompts)
+        assert not any("just came back" in p for p in narrator.prompts)

@@ -28,7 +28,7 @@ from shipit_agent.tools.open_url import OPEN_URL_PROMPT
 from shipit_agent.tools.planner import PLANNER_PROMPT
 from shipit_agent.tools.playwright_browser import PLAYWRIGHT_BROWSER_PROMPT
 from shipit_agent.tools.prompt import PROMPT_TOOL_PROMPT
-from shipit_agent.tools.sub_agent import SUB_AGENT_PROMPT
+from shipit_agent.tools.sub_agent import SUB_AGENT_PROMPT  # noqa: F401
 from shipit_agent.tools.tool_search import TOOL_SEARCH_PROMPT
 from shipit_agent.tools.verifier import VERIFIER_PROMPT
 from shipit_agent.tools.web_search import WEB_SEARCH_PROMPT
@@ -103,10 +103,15 @@ def test_builtin_tools_use_local_prompt_constants() -> None:
     assert WorkspaceFilesTool().prompt == WORKSPACE_FILES_PROMPT
 
 
-def test_sub_agent_uses_local_prompt_constant() -> None:
+def test_sub_agent_uses_child_facing_system_prompt() -> None:
     from shipit_agent import SubAgentTool
+    from shipit_agent.tools.sub_agent.prompt import SUB_AGENT_SYSTEM_PROMPT
 
-    assert SubAgentTool(llm=SimpleEchoLLM()).prompt == SUB_AGENT_PROMPT
+    # The child's system prompt is child-facing (final-report contract), not
+    # the parent-facing "when to delegate" text (which is prompt_instructions).
+    tool = SubAgentTool(llm=SimpleEchoLLM())
+    assert tool.prompt == SUB_AGENT_SYSTEM_PROMPT
+    assert "final message is the entire deliverable" in tool.prompt
 
 
 def test_capability_prompt_groups_tools_without_dropping_any() -> None:

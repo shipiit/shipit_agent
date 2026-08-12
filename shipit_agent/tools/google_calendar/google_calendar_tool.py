@@ -72,7 +72,7 @@ class GoogleCalendarTool(ConnectorToolBase):
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
         record = self._get_record(context)
         if record is None:
-            return self._not_connected_output()
+            return self._not_connected_output(context)
         service = self._build_service(record)
         action = str(kwargs.get("action", "list_events"))
         if action != "list_events":

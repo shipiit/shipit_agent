@@ -142,6 +142,12 @@ class Agent:
     #: of every later turn; once its content is in the answer below it,
     #: the payload is pure cost. Set False to keep whole transcripts.
     evict_prior_tool_outputs: bool = True
+    #: A ``shipit_agent.multimodal.MediaParser`` (or compatible). When set,
+    #: inline media references in the user prompt — ``[https://…/x.png]``,
+    #: ``![alt](url)``, ``[media:id]`` — are turned into image/document
+    #: content blocks on the user turn. Needs a vision-capable model.
+    #: Independent of ``run(images=[...])``, which attaches explicitly.
+    media_parser: Any = None
     prompt: str = DEFAULT_AGENT_PROMPT
     tools: list[Any] = field(default_factory=list)
     mcps: list[Any] = field(default_factory=list)
@@ -172,7 +178,11 @@ class Agent:
     trace_id: str | None = None
 
     # ── runtime tuning ────────────────────────────────────────────────
-    max_iterations: int = 4  # auto-boosted → 8 when skills are active
+    # A hard task should not stop after a handful of tool calls. 4 was too
+    # tight — a real multi-step run (read several files, edit, test, fix)
+    # blows through it and gets cut to a summary where Claude Code would keep
+    # going. Raised to 12; skills still boost further, autopilot sets its own.
+    max_iterations: int = 12  # auto-boosted → 16 when skills are active
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
     parallel_tool_execution: bool = False
@@ -234,6 +244,15 @@ class Agent:
     # block by ~79% and lets one call compose several resources. Bindings are
     # gated exactly as the equivalent tool calls. See shipit_agent.codemode.
     code_mode: bool = False
+
+    # ── deferred tool loading (v1.7) ──────────────────────────────────
+    # Claude-Code-style tool paging: core tools keep their full schema in
+    # every request; everything else is listed by NAME only until
+    # `tool_search` (or a direct call) loads it. Cuts the fixed per-step
+    # schema cost to the working set. ``True`` defers everything outside
+    # the core set; a list of names defers exactly those. Ignored when
+    # ``code_mode`` is on (code mode collapses the catalogue its own way).
+    deferred_tools: Any = False
 
     # ── lockdown (exfiltration guard) ─────────────────────────────────
     # Once a tool reports it returned sensitive data, the run may only make
@@ -885,13 +904,13 @@ class Agent:
 
         Skills bring additional tools that the agent needs more turns to
         use effectively. When the caller left ``max_iterations`` at the
-        default (4), we raise it to 8 so the agent can complete multi-step
+        default (12), we raise it to 16 so the agent can complete multi-step
         skill-driven workflows without cutting off early.
 
-        An explicit override (max_iterations > 4) is always respected.
+        An explicit override (a value other than the default 12) is respected.
         """
-        if selected_skills and self.max_iterations <= 4:
-            return max(8, self.max_iterations)
+        if selected_skills and self.max_iterations <= 12:
+            return max(16, self.max_iterations)
         return self.max_iterations
 
     def _effective_permissions(self) -> Any:
@@ -950,14 +969,64 @@ class Agent:
         expanded = expand_command(self.project_root, user_prompt)
         return expanded if expanded is not None else user_prompt
 
+    def _user_content_blocks(
+        self,
+        prompt_text: str,
+        images: list[str] | None,
+        files: list[str] | None = None,
+    ) -> list[dict[str, Any]] | None:
+        """Content blocks for a user turn with attachments, or None.
+
+        None keeps every existing caller on the exact string path they had —
+        blocks appear only when the turn actually carries attachments.
+        """
+        if not images and not files and self.media_parser is None:
+            return None
+        blocks: list[dict[str, Any]] | None = None
+        if self.media_parser is not None:
+            from shipit_agent.multimodal import build_multimodal_message
+
+            try:
+                parsed = self.media_parser.parse(prompt_text)
+                blocks = list(build_multimodal_message(parsed).get("content") or [])
+            except Exception:
+                logger.warning("media_parser failed; sending prompt as text only")
+                blocks = None
+        if blocks is None:
+            blocks = [{"type": "text", "text": prompt_text}]
+        base_block_count = len(blocks)
+        if files:
+            from shipit_agent.multimodal.builder import file_blocks_from
+
+            for file in files:
+                blocks.extend(file_blocks_from(file))
+        if images:
+            from shipit_agent.multimodal.builder import image_block_from
+
+            blocks.extend(image_block_from(image) for image in images)
+        nothing_attached = len(blocks) == base_block_count and all(
+            isinstance(b, dict) and b.get("type") == "text" for b in blocks
+        )
+        return None if nothing_attached else blocks
+
     def run(
         self,
         user_prompt: str,
         *,
+        images: list[str] | None = None,
+        files: list[str] | None = None,
         output_schema: Any = None,
         max_validation_retries: int = 2,
     ) -> AgentResult:
         """Execute the agent loop and return the final result.
+
+        ``images`` attaches pictures to this turn — each entry may be an
+        ``http(s)`` URL, a local file path, or a base64/data: payload
+        (needs a vision-capable model). ``files`` attaches documents: text,
+        markdown and code files are inlined (portable to every provider);
+        PDFs ride as native document blocks where the provider reads PDF.
+        With ``Agent(media_parser=...)`` set, inline references in the
+        prompt (``[https://…/x.png]``, ``![alt](url)``) attach automatically.
 
         Steps:
         1. Optionally append structured output schema instructions.
@@ -974,10 +1043,19 @@ class Agent:
         # final answer as JSON. Bedrock returns empty content when schema
         # instructions pollute the system prompt.
         effective_user_prompt = user_prompt
+        response_format: dict[str, Any] | None = None
         if output_schema:
-            from shipit_agent.structured import build_schema_prompt
+            from shipit_agent.structured import (
+                build_schema_prompt,
+                schema_to_response_format,
+            )
 
             effective_user_prompt = user_prompt + build_schema_prompt(output_schema)
+            # Native response_format is applied by the runtime only on the
+            # tool-less final turn; the prompt instruction above still drives
+            # the format on providers/mid-loop, and validate_with_retry below
+            # remains the safety net.
+            response_format = schema_to_response_format(output_schema) or None
 
         if self.rag is not None:
             self.rag.begin_run()
@@ -1035,9 +1113,16 @@ class Agent:
             heal_tool_calls=self.heal_tool_calls,
             approvals=self.approvals,
             code_mode=self.code_mode,
+            deferred_tools=self.deferred_tools,
             lockdown=self.lockdown,
+            response_format=response_format,
         )
-        state, response = runtime.run(effective_user_prompt)
+        state, response = runtime.run(
+            effective_user_prompt,
+            user_content=self._user_content_blocks(
+                effective_user_prompt, images, files
+            ),
+        )
 
         # Optionally parse structured output from the LLM response, with
         # validation-retry: if the first parse fails, send the error back
@@ -1249,6 +1334,7 @@ class Agent:
             heal_tool_calls=self.heal_tool_calls,
             approvals=self.approvals,
             code_mode=self.code_mode,
+            deferred_tools=self.deferred_tools,
             lockdown=self.lockdown,
         )
         for event in runtime.stream(user_prompt):

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from dataclasses import dataclass, field
 from itertools import count
 from typing import Any
@@ -34,7 +35,7 @@ from typing import Any
 from shipit_agent.llms.base import LLM
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
-from .prompt import SUB_AGENT_PROMPT
+from .prompt import SUB_AGENT_SYSTEM_PROMPT
 
 __all__ = [
     "SubAgentTool",
@@ -148,11 +149,20 @@ class SubAgentTool:
         max_workers: int = 4,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         tools: list[Any] | None = None,
+        #: Per-subagent wall-clock ceiling. A delegated run without one can
+        #: hang the parent forever — ``future.result()`` blocks with no
+        #: deadline, and a hung non-daemon worker also wedges interpreter
+        #: exit. ``None`` keeps the old unbounded behaviour.
+        timeout: float | None = None,
     ) -> None:
         self.llm = llm
+        self.timeout = timeout
         self.name = name
         self.description = description
-        self.prompt = prompt or SUB_AGENT_PROMPT
+        # The CHILD's system prompt (final-report contract), not the parent-
+        # facing "when to delegate" text — those were swapped, so every
+        # general-purpose sub-agent used to be told how to delegate.
+        self.prompt = prompt or SUB_AGENT_SYSTEM_PROMPT
         self.max_iterations = max_iterations
         # An explicit toolset overrides inheritance entirely — for callers who
         # want a subagent narrower than any subset the parent happens to hold.
@@ -184,6 +194,36 @@ class SubAgentTool:
         self._meta: dict[str, dict[str, Any]] = {}
         self._task_ids = count(1)
         self._lock = threading.Lock()
+
+    def close(self) -> None:
+        """Release the thread pool, cancelling anything still queued."""
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def __del__(self) -> None:  # best-effort; GC order is not guaranteed
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def _result_with_timeout(self, future: Future[SubAgentResult]) -> SubAgentResult:
+        """``future.result()`` bounded by ``self.timeout``.
+
+        On expiry the future is cancelled and a failed ``SubAgentResult`` is
+        returned rather than raised, so one slow child degrades to a reported
+        failure the parent can reason about instead of hanging the run.
+        """
+        try:
+            return future.result(timeout=self.timeout)
+        except FuturesTimeout:
+            future.cancel()
+            return SubAgentResult(
+                task="",
+                output=(
+                    f"Sub-agent exceeded its {self.timeout:.0f}s time limit "
+                    "and was abandoned."
+                ),
+                error="timeout",
+            )
 
     # ── schema ───────────────────────────────────────────────────────────
 
@@ -305,6 +345,20 @@ class SubAgentTool:
                 agent = None
         if agent is None:
             agent = Agent(prompt=self.prompt, **kwargs)
+        else:
+            # for_role re-adds its role's full builtin set on top of the
+            # inherited `tools`, which quietly re-grants write_file/bash and
+            # even ask_user_async to a child that was meant to be read-only.
+            # Constrain it back to what the parent actually holds, minus the
+            # never-inherited human-interaction tools — the control plane is
+            # inherited, so delegation must not widen the toolset.
+            allowed = {getattr(t, "name", "") for t in tools}
+            agent.tools = [
+                t
+                for t in agent.tools
+                if getattr(t, "name", "") in allowed
+                and getattr(t, "name", "") not in _NEVER_INHERITED
+            ]
         agent.metadata = {**agent.metadata, DEPTH_STATE_KEY: depth + 1}
         return agent
 
@@ -478,7 +532,7 @@ class SubAgentTool:
                 metadata={"ok": False, "collect": collect},
             )
         try:
-            result = future.result()
+            result = self._result_with_timeout(future)
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self._tasks.pop(collect, None)
@@ -509,7 +563,7 @@ class SubAgentTool:
         results: list[dict[str, Any]] = []
         for task_id, future in outstanding:
             try:
-                result = future.result()
+                result = self._result_with_timeout(future)
                 sections.append(f"## {task_id}: {result.task}\n{result.report()}")
                 results.append(result.to_dict())
             except Exception as exc:  # noqa: BLE001

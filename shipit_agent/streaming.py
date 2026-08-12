@@ -74,6 +74,7 @@ _CANONICAL = frozenset(
         "tool_completed",
         "tool_failed",
         "tool_denied",
+        "tool_arguments_rejected",
         "action_queued",
         "sub_agent_event",
         "run_completed",
@@ -87,6 +88,17 @@ _CANONICAL = frozenset(
         "planning_started",
         "planning_completed",
         "reasoning_completed",
+        # The run's outcome and its public narration are the record, not an
+        # in-flight moment — a reconnecting client that drops `final_answer`
+        # has silently lost the answer itself.
+        "final_answer",
+        "run_summary",
+        "agent_decision",
+        "agent_observation",
+        "tool_group_started",
+        "tool_group_completed",
+        "artifact_created",
+        "skills_selected",
     }
 )
 

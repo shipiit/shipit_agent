@@ -212,6 +212,151 @@ def _match_by_schema(
     return ToolCall(name=fits[0], arguments=coerced)
 
 
+#: Unquoted identifier keys — `{query: "x"}` — the pseudo-JSON a weak model
+#: writes when it serialises a call by hand. Quoting them is the entire
+#: repair; values are left alone so a brace inside a string never corrupts.
+_UNQUOTED_KEY_RE = re.compile(r'([{,]\s*)([A-Za-z_][A-Za-z0-9_.-]*)\s*:')
+
+
+def _relaxed_json(raw: str) -> Any:
+    """``json.loads`` with one observed-in-the-wild relaxation: unquoted keys.
+
+    Returns None when even the relaxed form does not parse — healing must
+    promote calls, never invent them.
+    """
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    try:
+        return json.loads(_UNQUOTED_KEY_RE.sub(r'\1"\2":', raw))
+    except json.JSONDecodeError:
+        return None
+
+
+#: `name(key="value", n=3)` — Python keyword-call syntax, Gemma's OTHER
+#: hand-written form (its official docs teach `tool_code` blocks in this
+#: shape, and it emits the bare call in prose too).
+_PYCALL_KWARG_RE = re.compile(
+    r"\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.+?)\s*$", re.DOTALL
+)
+
+
+def _split_call_args(body: str) -> list[str]:
+    """Split a call body on commas outside quotes/brackets."""
+    parts: list[str] = []
+    depth = 0
+    quote = ""
+    start = 0
+    for i, ch in enumerate(body):
+        if quote:
+            if ch == quote and body[i - 1 : i] != "\\":
+                quote = ""
+            continue
+        if ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(body[start:i])
+            start = i + 1
+    parts.append(body[start:])
+    return [p for p in parts if p.strip()]
+
+
+def _parse_python_kwargs(body: str) -> dict | None:
+    """``city="Paris", n=3`` → ``{"city": "Paris", "n": 3}``, or None."""
+    if not body.strip():
+        return None
+    arguments: dict[str, Any] = {}
+    for part in _split_call_args(body):
+        match = _PYCALL_KWARG_RE.match(part)
+        if match is None:
+            return None
+        key, raw = match.group(1), match.group(2).strip()
+        value = _relaxed_json(raw)
+        if value is None:
+            if (raw[:1] == raw[-1:] and raw[:1] in "\"'") and len(raw) >= 2:
+                value = raw[1:-1]
+            else:
+                value = raw
+        arguments[key] = value
+    return arguments or None
+
+
+def _python_style_calls(
+    text: str,
+    allowed: set[str],
+) -> list[tuple[tuple[int, int], dict]]:
+    """Spans and arguments of ``tool_name(key="value")`` calls in prose."""
+    found: list[tuple[tuple[int, int], dict]] = []
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(n) for n in sorted(allowed)) + r")\s*\(([^()]*)\)"
+    )
+    for match in pattern.finditer(text[:_MAX_SCAN_CHARS]):
+        arguments = _parse_python_kwargs(match.group(2))
+        if arguments is not None:
+            found.append((match.span(), {"name": match.group(1), "arguments": arguments}))
+    return found
+
+
+def _name_adjacent_calls(
+    text: str,
+    allowed: set[str],
+    schemas: Mapping[str, dict] | None,
+) -> list[tuple[tuple[int, int], ToolCall]]:
+    """Calls written as ``tool_name{...}`` / ``tool_name({...})`` in prose.
+
+    Observed live from Gemma via bedrock-mantle::
+
+        I will search for the correct tool.\\n\\n联tool_search{query: "get
+        current weather for a city"}
+
+    The tool name is glued to a pseudo-JSON object (often with unquoted
+    keys, sometimes behind a non-ASCII verb). Neither the tagged, fenced,
+    nor bare-JSON forms match it, so the turn ends with narration instead
+    of the call. The name must be one of *allowed* and the arguments must
+    fit the tool's schema — same bar as every other healed form.
+    """
+    found: list[tuple[tuple[int, int], ToolCall]] = []
+    for start, end in _balanced_json_spans(text):
+        prefix = text[:start].rstrip()
+        opened = prefix.endswith("(")
+        if opened:
+            prefix = prefix[:-1].rstrip()
+        name = next((n for n in allowed if prefix.endswith(n)), None)
+        if name is None:
+            continue
+        data = _relaxed_json(text[start:end])
+        if not isinstance(data, dict):
+            continue
+        coerced = _coerce_arguments(data)
+        if coerced is None:
+            continue
+        # The model wrote the tool's literal name against the brace, so
+        # identity is not in question — only the arguments are. Prefer the
+        # schema bar, but accept identifier-shaped keys the schema does not
+        # declare (observed: ``weather_lookup{location: "Paris"}`` from a
+        # model that had only the tool's NAME — deferred schemas invite an
+        # invented argument). Promoting hands the call to the argument gate
+        # and the tool, whose corrective errors teach the model the real
+        # parameter; refusing buries the call in prose and ends the run.
+        # Junk keys (``{",'query'": ""}``) still fail both bars.
+        if not (
+            _qualifies(name, coerced, schemas)
+            or _plausible_argument_names(coerced)
+        ):
+            continue
+        span_start = len(prefix) - len(name)
+        span_end = end
+        if opened and text[end:end + 1] == ")":
+            span_end += 1
+        found.append(((span_start, span_end), ToolCall(name=name, arguments=coerced)))
+    return found
+
+
 def _balanced_json_spans(text: str) -> list[tuple[int, int]]:
     """Spans of top-level {...} objects (string-aware, bounded)."""
     spans: list[tuple[int, int]] = []
@@ -376,6 +521,29 @@ def heal_tool_calls(
             if call is not None:
                 calls.append(call)
                 consumed.append((start, end))
+
+    if not calls:
+        # A declared tool name glued to a (pseudo-)JSON object in prose.
+        for span, call in _name_adjacent_calls(text, allowed_names, schemas):
+            calls.append(call)
+            consumed.append(span)
+
+    if not calls:
+        # Python keyword-call syntax: `weather_lookup(city="Paris")`. Same
+        # confidence argument as the brace form — the model wrote the tool's
+        # literal name — and the same bars on the parsed arguments.
+        for span, parsed in _python_style_calls(text, allowed_names):
+            coerced = _coerce_arguments(parsed["arguments"])
+            if coerced is None:
+                continue
+            name = parsed["name"]
+            if not (
+                _qualifies(name, coerced, schemas)
+                or _plausible_argument_names(coerced)
+            ):
+                continue
+            calls.append(ToolCall(name=name, arguments=coerced))
+            consumed.append(span)
 
     if not calls and schemas:
         # Last resort: an arguments object with no name, identified by the

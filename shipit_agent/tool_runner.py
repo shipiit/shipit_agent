@@ -163,6 +163,13 @@ class ToolRunner:
         if tool is None:
             raise KeyError(f"Unknown tool: {tool_call.name}")
 
+        # Deferred tool loading: a direct call to a deferred tool counts as
+        # loading it — its schema is advertised on every later step. Shared
+        # by both loops because every execution funnels through here.
+        loaded = context.state.get("loaded_tool_names")
+        if isinstance(loaded, set):
+            loaded.add(tool_call.name)
+
         # Filter out reserved argument names that would collide with the
         # positional `context` parameter passed by the runner.
         safe_arguments = {

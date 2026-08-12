@@ -144,6 +144,8 @@ VERBS: dict[str, VerbSpec] = {
                           args=("path", "file", "filename"), count_verb=("Made", "Making")),
     "notebook_edit": VerbSpec("Edited notebook", "Editing notebook", EDIT,
                               "notebook", args=("path", "notebook_path"), count_verb=("Edited", "Editing")),
+    "multi_edit": VerbSpec("Edited", "Editing", EDIT, "file",
+                           args=("path", "file"), count_verb=("Made", "Making")),
     "glob_files": VerbSpec("Searched for", "Searching for", SEARCH, "pattern",
                            args=("pattern", "glob"), read_only=True),
     "grep_files": VerbSpec("Searched for", "Searching for", SEARCH, "search",
@@ -157,6 +159,8 @@ VERBS: dict[str, VerbSpec] = {
     # ── shell & code ─────────────────────────────────────────────────────
     "bash": VerbSpec("Ran", "Running", CODE, "command",
                      args=("command", "cmd", "script")),
+    "bash_job": VerbSpec("Checked background job", "Checking background job",
+                         CODE, args=("job_id",), intransitive=True),
     "execute_code": VerbSpec("Ran code", "Running code", CODE,
                              args=("code",), intransitive=True),
     "run_code": VerbSpec("Ran code", "Running code", CODE,
@@ -196,6 +200,8 @@ VERBS: dict[str, VerbSpec] = {
     # ── reasoning helpers ────────────────────────────────────────────────
     "plan_task": VerbSpec("Planned", "Planning", THINK, "plan",
                           args=("goal", "task"), read_only=True, count_verb=("Made", "Making")),
+    "present_plan": VerbSpec("Presented plan", "Presenting plan", THINK,
+                             read_only=True, intransitive=True),
     "decompose_problem": VerbSpec("Decomposed", "Decomposing", THINK, "problem",
                                   args=("problem", "prompt"), read_only=True),
     "synthesize_evidence": VerbSpec("Synthesized evidence", "Synthesizing evidence",

@@ -242,7 +242,7 @@ class GitHubTool(HTTPConnectorToolBase):
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
         record = self._get_record(context)
         if record is None:
-            return self._not_connected_output()
+            return self._not_connected_output(context)
         record = self._ensure_base_url(record)
 
         action = str(kwargs.get("action", "search_issues")).strip()

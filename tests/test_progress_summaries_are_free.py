@@ -107,14 +107,28 @@ class TestNarrationIsFree:
 
     def test_a_decision_llm_is_used_when_one_is_given(self) -> None:
         """Opting in is the only way to spend anything here — and then it is
-        a model you chose, not the run's own."""
+        a model you chose, not the run's own, and only for the DECISION line
+        (the model said nothing alongside its call, so there is no prose to
+        reuse). Observations are always composed and never reach it."""
         spare = CountingLLM([("Looking into it now.", [])])
-        agent, main = build(narrate=True, decision_llm=spare)
-        before = main.calls
+        silent_main = CountingLLM(
+            [("", [("read_file", {"path": "app.py"})]), ("Done.", [])]
+        )
+        agent = Agent(
+            llm=silent_main,
+            tools=[tool("read_file")],
+            progress_summaries=True,
+            decision_llm=spare,
+            auto_use_skills=False,
+            max_iterations=4,
+        )
         agent.run("look")
-        assert spare.calls > 0
+        # Exactly one narration call: the decision. The observation is
+        # composed from tool metadata — a second call per step would double
+        # the narration cost for a line that restates tool output.
+        assert spare.calls == 1
         # The narration went to the spare model, not the expensive one.
-        assert main.calls == before + _main_calls_without_narration()
+        assert silent_main.calls == _main_calls_without_narration()
 
     def test_the_models_own_words_are_used_when_it_spoke(self) -> None:
         """A model that says why it is calling a tool has already written

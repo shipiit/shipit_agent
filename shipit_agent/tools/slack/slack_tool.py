@@ -112,7 +112,7 @@ class SlackTool(HTTPConnectorToolBase):
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
         record = self._get_record(context)
         if record is None:
-            return self._not_connected_output()
+            return self._not_connected_output(context)
         action = str(kwargs.get("action", "search_messages"))
         if action == "search_messages":
             data = self._unwrap_ok(

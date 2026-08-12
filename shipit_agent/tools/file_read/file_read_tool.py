@@ -13,7 +13,9 @@ class FileReadTool:
         root_dir: str | Path = "/tmp",
         name: str = "read_file",
         description: str = "Read a file from the local project with optional line ranges.",
-        max_chars: int = 12000,
+        # Claude Code reads up to ~2000 lines by default; a small window
+        # forces the model to page and risks edits against unseen regions.
+        max_chars: int = 80_000,
         prompt: str | None = None,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
@@ -62,12 +64,79 @@ class FileReadTool:
             )
         return candidate
 
+    #: Files read as VISION, not text — the model gets the actual pixels.
+    _IMAGE_TYPES = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }
+    #: Keep an image readable without flooding a request: ~4MB on disk
+    #: (≈5.3MB as base64) is beyond what any provider needs for legibility.
+    _MAX_MEDIA_BYTES = 4_000_000
+
+    def _read_media(self, path: Path) -> ToolOutput | None:
+        """Vision output for image/PDF files, or None for text files.
+
+        Reading a PNG with ``read_text`` produces U+FFFD soup; the useful
+        rendering of an image is the image. The base64 rides in metadata
+        under the ``image_base64`` convention, which the runtime bridges
+        into a user-turn image block on the next step. PDFs surface as an
+        Anthropic ``document`` block where supported, falling back to a
+        pointer at the pdf tool for text extraction elsewhere.
+        """
+        import base64
+
+        suffix = path.suffix.lower()
+        media_type = self._IMAGE_TYPES.get(suffix)
+        is_pdf = suffix == ".pdf"
+        if media_type is None and not is_pdf:
+            return None
+        size = path.stat().st_size
+        if size > self._MAX_MEDIA_BYTES:
+            return ToolOutput(
+                text=(
+                    f"{path.name} is {size:,} bytes — too large to attach "
+                    f"whole. Use a smaller copy, or (for PDFs) the `pdf` "
+                    f"tool to extract text page by page."
+                ),
+                metadata={"path": str(path), "media_too_large": True},
+            )
+        data = base64.standard_b64encode(path.read_bytes()).decode("ascii")
+        if is_pdf:
+            return ToolOutput(
+                text=(
+                    f"[PDF file: {path.name}, {size:,} bytes — attached for "
+                    "reading. Use the `pdf` tool for page-level text "
+                    "extraction if needed.]"
+                ),
+                metadata={
+                    "path": str(path),
+                    "document_base64": data,
+                    "media_type": "application/pdf",
+                },
+            )
+        return ToolOutput(
+            text=f"[image file: {path.name}, {size:,} bytes — attached]",
+            metadata={
+                "path": str(path),
+                "image_base64": data,
+                "media_type": media_type,
+                "vision": True,
+            },
+        )
+
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         path = self._resolve(str(kwargs["path"]))
         if not path.exists():
             return ToolOutput(text=f"File not found: {path}")
         if path.is_dir():
             return ToolOutput(text=f"Path is a directory, not a file: {path}")
+
+        media = self._read_media(path)
+        if media is not None:
+            return media
 
         # Decode lossily for display, but flag when invalid bytes were
         # replaced with U+FFFD so the caller knows the on-disk content is not
@@ -76,7 +145,7 @@ class FileReadTool:
         had_replacement = "�" in content
         lines = content.splitlines()
         start_line = max(1, int(kwargs.get("start_line", 1)))
-        max_lines = max(1, int(kwargs.get("max_lines", min(len(lines) or 1, 250))))
+        max_lines = max(1, int(kwargs.get("max_lines", min(len(lines) or 1, 2000))))
         start_index = start_line - 1
         sliced = lines[start_index : start_index + max_lines]
         numbered = "\n".join(

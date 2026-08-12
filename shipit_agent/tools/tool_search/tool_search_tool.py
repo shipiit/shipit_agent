@@ -191,6 +191,11 @@ class ToolSearchTool:
             if match["prompt_instructions"]:
                 lines.append(f"   ↳ when to use: {match['prompt_instructions']}")
 
+        # Deferred tool loading: matching a deferred tool loads it — its
+        # full schema is advertised from the next step onward. A signature
+        # line per loaded tool lets the model plan the call immediately.
+        loaded_names = self._load_deferred(context, meaningful, lines)
+
         return ToolOutput(
             text="\n".join(lines),
             metadata={
@@ -198,5 +203,41 @@ class ToolSearchTool:
                 "limit": limit,
                 "total_candidates": len(tools),
                 "matches": meaningful,
+                "loaded": loaded_names,
             },
         )
+
+    def _load_deferred(
+        self,
+        context: ToolContext,
+        matches: list[dict[str, Any]],
+        lines: list[str],
+    ) -> list[str]:
+        """Mark matched deferred tools as loaded; append signature lines."""
+        from shipit_agent.deferral import (
+            DEFERRED_NAMES_KEY,
+            LOADED_NAMES_KEY,
+            SCHEMAS_BY_NAME_KEY,
+            signature_line,
+        )
+
+        deferred = context.state.get(DEFERRED_NAMES_KEY)
+        loaded = context.state.get(LOADED_NAMES_KEY)
+        if not deferred or not isinstance(loaded, set):
+            return []
+        schemas = context.state.get(SCHEMAS_BY_NAME_KEY) or {}
+        newly_loaded = [
+            m["name"] for m in matches if m["name"] in deferred and m["name"] not in loaded
+        ]
+        if not newly_loaded:
+            return []
+        loaded.update(newly_loaded)
+        lines.append("")
+        lines.append(
+            "Loaded and now directly callable (full definitions available "
+            "from your next step):"
+        )
+        for name in newly_loaded:
+            signature = signature_line(schemas.get(name))
+            lines.append(f"- {signature or name}")
+        return newly_loaded

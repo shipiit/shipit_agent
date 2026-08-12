@@ -165,8 +165,13 @@ class PermissionEngine:
             return PermissionResult(PermissionDecision.ALLOW, reason="bypass mode")
 
         if self.mode == "plan":
-            if _matches_any(tool_name, self.allow) or self.is_read_only(
-                tool_name, tool
+            # present_plan is the exit affordance: it produces a plan for
+            # approval, so it is always allowed in plan mode even though it
+            # is the thing plan mode is building toward.
+            if (
+                tool_name == "present_plan"
+                or _matches_any(tool_name, self.allow)
+                or self.is_read_only(tool_name, tool)
             ):
                 return PermissionResult(
                     PermissionDecision.ALLOW, reason="read-only (plan mode)"
@@ -175,8 +180,8 @@ class PermissionEngine:
                 PermissionDecision.DENY,
                 reason=(
                     "Plan mode is read-only — do not call mutating tools. "
-                    "Produce a step-by-step plan of what you WOULD do instead, "
-                    "then stop and wait for approval."
+                    "Research read-only, then call present_plan with your "
+                    "step-by-step plan and stop for approval."
                 ),
             )
 

@@ -74,7 +74,7 @@ class JiraTool(HTTPConnectorToolBase):
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
         record = self._get_record(context)
         if record is None:
-            return self._not_connected_output()
+            return self._not_connected_output(context)
         action = str(kwargs.get("action", "search_issues")).strip().lower()
         if action == "search_issues":
             data = self._request_json(

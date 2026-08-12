@@ -18,9 +18,15 @@ MCP_PROTOCOL_VERSION = "2025-11-25"
 _MAX_TOOL_NAME_LENGTH = 64
 
 
-def _namespaced_mcp_tool_name(server_name: str, tool_name: str) -> str:
-    """Return a deterministic provider-safe exposed MCP tool name."""
-    raw = f"{server_name}__{tool_name}"
+def _sanitize_tool_name(raw: str) -> str:
+    """A provider-safe tool name: ``[A-Za-z0-9_-]``, ≤64 chars, non-empty.
+
+    Applied to EVERY exposed MCP tool name, prefixed or not. Servers report
+    whatever they like — ``deepwiki**ask_question`` was observed live and
+    forwarded verbatim to Bedrock, which rejects it. ``remote_name`` keeps
+    the server's exact string for the wire call, so sanitizing the exposed
+    name costs nothing in correctness.
+    """
     safe = re.sub(r"[^A-Za-z0-9_-]+", "_", raw).strip("_-") or "mcp_tool"
     if safe[0].isdigit():
         safe = f"mcp_{safe}"
@@ -28,6 +34,11 @@ def _namespaced_mcp_tool_name(server_name: str, tool_name: str) -> str:
         return safe
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
     return f"{safe[: _MAX_TOOL_NAME_LENGTH - 9]}_{digest}"
+
+
+def _namespaced_mcp_tool_name(server_name: str, tool_name: str) -> str:
+    """Return a deterministic provider-safe exposed MCP tool name."""
+    return _sanitize_tool_name(f"{server_name}__{tool_name}")
 
 
 class MCPTransport(Protocol):
@@ -163,9 +174,32 @@ class MCPRemoteTool:
         is_error = bool(result.get("isError", False))
         rendered = "\n".join(part for part in text_parts if part).strip()
         summary = _mcp_result_summary(result, rendered)
+        # An MCP tool that returned an image gets it in front of the model,
+        # not a "[image: image/png]" placeholder: the first image block's
+        # data rides the runtime's vision-bridge convention.
+        image = next(
+            (
+                item
+                for item in content
+                if isinstance(item, dict)
+                and item.get("type") == "image"
+                and item.get("data")
+            ),
+            None,
+        )
+        vision_metadata = (
+            {
+                "image_base64": str(image.get("data", "")),
+                "media_type": str(image.get("mimeType") or "image/png"),
+                "vision": True,
+            }
+            if image is not None
+            else {}
+        )
         return ToolOutput(
             text=rendered,
             metadata={
+                **vision_metadata,
                 "server": self.server_name,
                 "ok": not is_error,
                 "is_error": is_error,
@@ -234,12 +268,22 @@ class MCPServer:
         return list(self.tools)
 
 
+#: Per-request ceiling for MCP servers. A wedged server without one hangs
+#: the whole run forever — cancel() only takes effect between steps.
+_MCP_DEFAULT_TIMEOUT = 60.0
+
+
 class MCPSubprocessTransport:
     def __init__(
-        self, command: list[str], *, env: dict[str, str] | None = None
+        self,
+        command: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout: float = _MCP_DEFAULT_TIMEOUT,
     ) -> None:
         self.command = command
         self.env = env
+        self.timeout = timeout
         self._id_counter = count(1)
 
     def request(
@@ -251,14 +295,21 @@ class MCPSubprocessTransport:
             "method": method,
             "params": params or {},
         }
-        completed = subprocess.run(
-            self.command,
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            env=self.env,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                self.command,
+                input=json.dumps(payload),
+                capture_output=True,
+                text=True,
+                env=self.env,
+                check=False,
+                timeout=self.timeout or None,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise MCPError(
+                f"MCP subprocess timed out after {self.timeout:.0f}s "
+                f"on {method!r}"
+            ) from exc
         if completed.returncode != 0:
             raise MCPError(
                 completed.stderr.strip()
@@ -278,13 +329,22 @@ class MCPSubprocessTransport:
 
 class PersistentMCPSubprocessTransport:
     def __init__(
-        self, command: list[str], *, env: dict[str, str] | None = None
+        self,
+        command: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout: float = _MCP_DEFAULT_TIMEOUT,
     ) -> None:
         self.command = command
         self.env = {**os.environ, **(env or {})}
+        self.timeout = timeout
         self._id_counter = count(1)
         self._lock = threading.Lock()
         self._process: subprocess.Popen[str] | None = None
+        #: Bumped on every (re)spawn. RemoteMCPServer compares it against the
+        #: generation it handshook with — a crashed-and-respawned server must
+        #: be re-`initialize`d before it can serve `tools/call`.
+        self.generation = 0
 
     def _ensure_process(self) -> subprocess.Popen[str]:
         if self._process is not None and self._process.poll() is None:
@@ -297,7 +357,37 @@ class PersistentMCPSubprocessTransport:
             text=True,
             env=self.env,
         )
+        self.generation += 1
         return self._process
+
+    def _readline_with_deadline(self, process: subprocess.Popen[str]) -> str:
+        """A readline that cannot wedge the run.
+
+        ``process.stdout.readline()`` under ``self._lock`` with no deadline
+        turns one hung MCP server into a hung agent — observed shape, and
+        ``cancel()`` cannot interrupt it. The read runs on a worker thread;
+        on expiry the process is killed (its pipe state is undefined mid-
+        message, so respawn-next-request is the only safe recovery) and a
+        readable MCPError surfaces to the model.
+        """
+        if not self.timeout:
+            return process.stdout.readline()  # type: ignore[union-attr]
+        result: list[str] = []
+
+        def _read() -> None:
+            result.append(process.stdout.readline())  # type: ignore[union-attr]
+
+        reader = threading.Thread(target=_read, daemon=True)
+        reader.start()
+        reader.join(self.timeout)
+        if reader.is_alive():
+            process.kill()
+            raise MCPError(
+                f"Persistent MCP subprocess timed out after "
+                f"{self.timeout:.0f}s; the process was killed and will be "
+                "respawned on the next request."
+            )
+        return result[0] if result else ""
 
     def request(
         self, method: str, params: dict[str, Any] | None = None
@@ -314,7 +404,7 @@ class PersistentMCPSubprocessTransport:
             }
             process.stdin.write(json.dumps(payload) + "\n")
             process.stdin.flush()
-            line = process.stdout.readline()
+            line = self._readline_with_deadline(process)
             if not line:
                 stderr = process.stderr.read() if process.stderr is not None else ""
                 raise MCPError(
@@ -494,12 +584,22 @@ class RemoteMCPServer(MCPServer):
     ] | None = None
     server_capabilities: dict[str, Any] = field(default_factory=dict)
     server_info: dict[str, Any] = field(default_factory=dict)
+    #: The server's own usage guidance from the `initialize` handshake.
+    instructions: str = ""
     _discovered: bool = False
     _initialized: bool = False
+    _handshook_generation: int = 0
 
     def initialize(self) -> None:
         if self.transport is None:
             raise MCPError("RemoteMCPServer requires a transport.")
+        # A transport that respawned its process (crash mid-run) bumps its
+        # generation; the new process has never seen `initialize`, and most
+        # servers reject or misbehave on `tools/call` without the handshake.
+        generation = getattr(self.transport, "generation", None)
+        if self._initialized and generation not in (None, 0):
+            if generation != self._handshook_generation:
+                self._initialized = False
         if self._initialized:
             return
         result = self.transport.request(
@@ -515,7 +615,11 @@ class RemoteMCPServer(MCPServer):
         )
         self.server_capabilities = dict(result.get("capabilities", {}))
         self.server_info = dict(result.get("serverInfo", {}))
+        # The spec's `instructions` field is the server telling the model
+        # how to use it — dropping it wasted the server author's one channel.
+        self.instructions = str(result.get("instructions") or "")
         self._initialized = True
+        self._handshook_generation = getattr(self.transport, "generation", 0)
 
     def _tool_allowed(self, item: dict[str, Any]) -> bool:
         name = str(item.get("name", ""))
@@ -647,10 +751,13 @@ class RemoteMCPServer(MCPServer):
                 if not self._tool_allowed(item):
                     continue
                 remote_name = str(item["name"])
+                # Sanitization is unconditional — only the server prefix is
+                # opt-in. The raw name still goes on the wire via
+                # ``remote_name``; providers only ever see the safe one.
                 exposed_name = (
                     _namespaced_mcp_tool_name(self.name, remote_name)
                     if self.include_server_in_tool_names
-                    else remote_name
+                    else _sanitize_tool_name(remote_name)
                 )
                 if exposed_name in exposed_names:
                     digest = hashlib.sha256(remote_name.encode("utf-8")).hexdigest()[:8]

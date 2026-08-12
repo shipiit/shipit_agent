@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Callable
 
 from shipit_agent.llms.base import LLMResponse
@@ -20,17 +21,39 @@ def _normalize_content(content: Any) -> Any:
         return content
     normalized: list[Any] = []
     for block in content:
-        if (
-            isinstance(block, dict)
-            and block.get("type") == "image"
-            and isinstance(block.get("source"), dict)
-            and block["source"].get("type") == "base64"
-        ):
-            src = block["source"]
-            url = f"data:{src.get('media_type', 'image/png')};base64,{src.get('data', '')}"
-            normalized.append({"type": "image_url", "image_url": {"url": url}})
-        else:
-            normalized.append(block)
+        source = block.get("source") if isinstance(block, dict) else None
+        block_type = block.get("type") if isinstance(block, dict) else None
+        if block_type == "image" and isinstance(source, dict):
+            if source.get("type") == "base64":
+                url = (
+                    f"data:{source.get('media_type', 'image/png')};"
+                    f"base64,{source.get('data', '')}"
+                )
+                normalized.append({"type": "image_url", "image_url": {"url": url}})
+                continue
+            if source.get("type") == "url":
+                # A URL-source Anthropic block forwarded untranslated is
+                # rejected by every OpenAI-shaped endpoint.
+                normalized.append(
+                    {"type": "image_url", "image_url": {"url": source.get("url", "")}}
+                )
+                continue
+        if block_type == "document" and isinstance(source, dict):
+            # OpenAI-shaped endpoints have no document block; degrade to a
+            # named placeholder rather than forwarding a rejected shape.
+            name = source.get("url") or source.get("media_type") or "attached"
+            normalized.append(
+                {"type": "text", "text": f"[document attachment: {name} — "
+                 "content not displayable on this provider]"}
+            )
+            continue
+        if block_type in ("audio", "video"):
+            normalized.append(
+                {"type": "text", "text": f"[{block_type} attachment — "
+                 "not supported on this provider]"}
+            )
+            continue
+        normalized.append(block)
     return normalized
 
 
@@ -144,6 +167,31 @@ def _apply_prompt_caching(
         new_tools = list(tools)
         new_tools[-1] = _with_cache_control(new_tools[-1])
 
+    # Third breakpoint: the last message, so the whole conversation prefix
+    # is cached. Each step of an agent run extends the previous request;
+    # without this marker the growing history is re-billed as uncached
+    # input every iteration. String content is promoted to the block form
+    # so the marker has a home.
+    if new_messages:
+        last_msg = new_messages[-1]
+        if last_msg.get("role") != "system":
+            content = last_msg.get("content")
+            if isinstance(content, str) and content:
+                new_messages[-1] = {
+                    **last_msg,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": content,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                }
+            elif isinstance(content, list) and content and isinstance(content[-1], dict):
+                marked = list(content)
+                marked[-1] = _with_cache_control(marked[-1])
+                new_messages[-1] = {**last_msg, "content": marked}
+
     return new_messages, new_tools
 
 
@@ -170,6 +218,7 @@ class LiteLLMChatLLM:
         response_format: dict[str, Any] | None = None,
         text_delta_callback: Callable[[str], None] | None = None,
         tool_input_callback: Callable[[str, str, str], None] | None = None,
+        timeout: float | None = None,
     ) -> LLMResponse:
         """Run a chat completion.
 
@@ -200,6 +249,10 @@ class LiteLLMChatLLM:
         extra_kwargs = dict(self.completion_kwargs)
         if response_format:
             extra_kwargs["response_format"] = response_format
+        if timeout is not None:
+            # LiteLLM accepts a per-call `timeout` and forwards it to every
+            # provider it wraps; the per-request value wins.
+            extra_kwargs["timeout"] = timeout
 
         if text_delta_callback is not None or tool_input_callback is not None:
             return _stream_completion(
@@ -482,22 +535,58 @@ def _extract_reasoning(message: Any) -> str | None:
     return None
 
 
+def _litellm_supports_bedrock_mantle() -> bool:
+    """Does the installed LiteLLM ship the native ``bedrock_mantle`` provider?
+
+    Added in LiteLLM ~1.84 (mirrors AWS's Bedrock Mantle OpenAI-compatible
+    surface — https://docs.litellm.ai/docs/providers/bedrock_mantle). Feature-
+    detected rather than version-compared so forks and backports behave.
+    """
+    try:
+        import litellm  # type: ignore
+
+        return any("bedrock_mantle" == p.value for p in litellm.LlmProviders)
+    except Exception:
+        return False
+
+
 class BedrockChatLLM(LiteLLMChatLLM):
     def __init__(
         self, model: str = "bedrock/openai.gpt-oss-120b-1:0", **completion_kwargs: Any
     ) -> None:
         self._mantle_delegate: Any = None
 
-        # Gemma 4 on Bedrock is served through the OpenAI-compatible
-        # `bedrock-mantle` endpoint (with native function calling for agentic
-        # use), NOT the Converse API the rest of Bedrock uses. Route it there
-        # transparently so callers keep using BedrockChatLLM — pass a
-        # `google.gemma-4-*` id and it just works (needs a Bedrock API key in
+        # Bedrock Mantle models (Gemma 4 et al.) are served through the
+        # OpenAI-compatible `bedrock-mantle` endpoint, NOT the Converse API
+        # the rest of Bedrock uses. Accept the id in any spelling callers
+        # use: `bedrock_mantle/google.gemma-4-…`, `bedrock/google.gemma-4-…`,
+        # or a bare `google.gemma-4-…`.
+        #
+        # Preferred route: LiteLLM's native `bedrock_mantle/` provider
+        # (https://docs.litellm.ai/docs/providers/bedrock_mantle) — but it
+        # authenticates with a Bedrock API key as a BEARER token, not SigV4,
+        # so it is only taken when such a key is actually present. A SigV4-
+        # only environment falls through to the shim below (verified live:
+        # the native route 401s without BEDROCK_MANTLE_API_KEY).
+        lowered = model.lower()
+        is_mantle = "gemma-4" in lowered or lowered.startswith("bedrock_mantle/")
+        has_mantle_key = bool(
+            completion_kwargs.get("api_key")
+            or os.getenv("BEDROCK_MANTLE_API_KEY")
+        )
+        if is_mantle and has_mantle_key and _litellm_supports_bedrock_mantle():
+            bare = model.split("/", 1)[-1] if "/" in model else model
+            completion_kwargs.pop("base_url", None)
+            super().__init__(model=f"bedrock_mantle/{bare}", **completion_kwargs)
+            return
+
+        # Fallback for older LiteLLM installs: the OpenAI-compatible shim
+        # pointed at the mantle URL (needs a Bedrock API key in
         # AWS_BEARER_TOKEN_BEDROCK). ``complete()`` forwards to the delegate.
-        if "gemma-4" in model.lower():
+        if is_mantle:
             from shipit_agent.llms.openai_adapter import BedrockGemmaChatLLM
 
-            mantle_model = model.split("bedrock/", 1)[-1]
+            mantle_model = model.split("/", 1)[-1] if "/" in model else model
             region = completion_kwargs.pop("aws_region_name", None) or (
                 completion_kwargs.pop("region", None)
             )

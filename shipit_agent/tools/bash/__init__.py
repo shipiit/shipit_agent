@@ -1,3 +1,3 @@
-from .bash_tool import BashTool
+from .bash_tool import BashJobTool, BashTool
 
-__all__ = ["BashTool"]
+__all__ = ["BashTool", "BashJobTool"]

@@ -54,12 +54,14 @@ from shipit_agent.tools import (
     DocumentBuilderTool,
     DownloadFileTool,
     BashTool,
+    BashJobTool,
     CodeExecutionTool,
     ConfluenceTool,
     CustomAPITool,
     DashboardRenderTool,
     DecisionMatrixTool,
     EditFileTool,
+    MultiEditTool,
     EvidenceSynthesisTool,
     FigmaTool,
     FileReadTool,
@@ -83,6 +85,7 @@ from shipit_agent.tools import (
     OpenURLTool,
     PDFTool,
     PlannerTool,
+    PresentPlanTool,
     PlaywrightBrowserTool,
     PromptTool,
     SalesforceTool,
@@ -125,6 +128,8 @@ def get_builtin_tool_map(
         web_search_api_key: API key for paid search providers.
         web_search_config: Extra provider-specific config.
     """
+    # Built once so the companion bash_job tool shares its live job table.
+    bash_tool = BashTool(root_dir=project_root)
     tools: list[Tool] = [
         # ── web & browsing ────────────────────────────────────────
         WebSearchTool(
@@ -135,9 +140,11 @@ def get_builtin_tool_map(
         OpenURLTool(),
         PlaywrightBrowserTool(),
         # ── file operations ───────────────────────────────────────
-        BashTool(root_dir=project_root),
+        bash_tool,
+        BashJobTool(bash_tool),
         FileReadTool(root_dir=project_root),
         EditFileTool(root_dir=project_root),
+        MultiEditTool(root_dir=project_root),
         FileWriteTool(root_dir=project_root),
         GlobSearchTool(root_dir=project_root),
         GrepSearchTool(root_dir=project_root),
@@ -160,6 +167,7 @@ def get_builtin_tool_map(
         # ── planning & reasoning ──────────────────────────────────
         MemoryTool(),
         PlannerTool(),
+        PresentPlanTool(),
         TodoTool(),
         ThoughtDecompositionTool(),
         EvidenceSynthesisTool(),

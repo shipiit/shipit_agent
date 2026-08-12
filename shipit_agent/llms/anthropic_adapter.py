@@ -286,6 +286,13 @@ class AnthropicChatLLM:
                 }
 
         converted_messages = self._convert_messages(messages)
+        if self.prompt_caching and converted_messages:
+            # Messages: mark the last content block so the whole conversation
+            # prefix is cached. Each step's request extends the previous one,
+            # so without this breakpoint a multi-turn agent re-pays the full
+            # history as uncached input on every iteration — the growing part
+            # of the prompt, and by far the largest by mid-run.
+            self._mark_message_prefix_cached(converted_messages)
 
         # Citations (#8): attach document content blocks to the LAST user
         # message so the model can ground its answer in them. Documents are
@@ -327,6 +334,33 @@ class AnthropicChatLLM:
         return kwargs
 
     @staticmethod
+    def _mark_message_prefix_cached(messages: list[dict[str, Any]]) -> None:
+        """Put a cache breakpoint on the last content block of the history.
+
+        Anthropic allows 4 breakpoints per request; system and tools use two,
+        this uses a third. Bare-string content is promoted to the block form
+        so the marker has somewhere to sit. Best-effort by design: an odd
+        message shape means no marker, never a failed request.
+        """
+        try:
+            last = messages[-1]
+            content = last.get("content")
+            if isinstance(content, str):
+                if not content:
+                    return
+                content = [{"type": "text", "text": content}]
+                last["content"] = content
+            if isinstance(content, list) and content and isinstance(content[-1], dict):
+                block_type = content[-1].get("type")
+                if block_type in ("text", "tool_result", "tool_use", "document"):
+                    content[-1] = {
+                        **content[-1],
+                        "cache_control": {"type": "ephemeral"},
+                    }
+        except Exception:
+            pass
+
+    @staticmethod
     def _attach_documents(
         messages: list[dict[str, Any]], documents: list[dict[str, Any]]
     ) -> None:
@@ -355,6 +389,7 @@ class AnthropicChatLLM:
         documents: list[dict[str, Any]] | None = None,
         text_delta_callback: Any = None,
         tool_input_callback: Any = None,
+        timeout: float | None = None,
     ) -> LLMResponse:
         try:
             import anthropic
@@ -372,7 +407,11 @@ class AnthropicChatLLM:
                     "Install `anthropic` to use AnthropicChatLLM."
                 ) from exc
 
-        client = anthropic.Anthropic(api_key=self.api_key, **self.client_kwargs)
+        client_kwargs = dict(self.client_kwargs)
+        if timeout is not None:
+            # Per-request override wins over any client-level default.
+            client_kwargs["timeout"] = timeout
+        client = anthropic.Anthropic(api_key=self.api_key, **client_kwargs)
 
         kwargs = self._build_request_kwargs(
             messages=messages,

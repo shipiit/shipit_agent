@@ -81,6 +81,7 @@ class AsyncAgentRuntime(RuntimeCore):
         evict_prior_tool_outputs: bool = True,
         lockdown: Any = None,
         code_mode: bool = False,
+        deferred_tools: Any = False,
     ) -> None:
         self.llm = llm
         self.prompt = prompt
@@ -114,6 +115,7 @@ class AsyncAgentRuntime(RuntimeCore):
             heal_tool_calls=heal_tool_calls,
             lockdown=lockdown,
             code_mode=code_mode,
+            deferred_tools=deferred_tools,
             context_window_tokens=context_window_tokens,
             max_tool_output_chars=max_tool_output_chars,
             max_tool_output_group_chars=max_tool_output_group_chars,
@@ -150,15 +152,24 @@ class AsyncAgentRuntime(RuntimeCore):
         self, *, messages: list[Message], tools: list[dict[str, Any]], base_prompt: str
     ) -> LLMResponse:
         """Run the synchronous LLM.complete in a thread to avoid blocking."""
+        from shipit_agent.llms.base import accepts_kwarg
+
+        complete_kwargs: dict[str, Any] = dict(
+            messages=messages,
+            tools=tools,
+            system_prompt=base_prompt,
+            metadata=dict(self.metadata),
+        )
+        # Per-request timeout, only for adapters that can honour it — same
+        # decision as the sync loop.
+        if self.retry_policy.request_timeout is not None and accepts_kwarg(
+            self.llm.complete, "timeout"
+        ):
+            complete_kwargs["timeout"] = self.retry_policy.request_timeout
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
-            lambda: self.llm.complete(
-                messages=messages,
-                tools=tools,
-                system_prompt=base_prompt,
-                metadata=dict(self.metadata),
-            ),
+            lambda: self.llm.complete(**complete_kwargs),
         )
 
     async def _complete_with_retry(
@@ -179,13 +190,17 @@ class AsyncAgentRuntime(RuntimeCore):
                 if attempt >= self.retry_policy.max_llm_retries:
                     raise
                 attempt += 1
+                delay = self.retry_policy.llm_retry_delay(attempt)
                 self.emit(
                     state,
                     "llm_retry",
                     "Retrying LLM completion",
                     attempt=attempt,
                     error=str(exc),
+                    delay=round(delay, 3),
                 )
+                if delay > 0:
+                    await asyncio.sleep(delay)
 
     async def _run_tool_async(
         self,
@@ -286,6 +301,30 @@ class AsyncAgentRuntime(RuntimeCore):
                 },
             )
             return None, msg
+
+        # ── Argument gate ────────────────────────────────────────────────
+        # Mirrors runtime.py: repair recoverable argument names, refuse a
+        # call whose required arguments are all absent, and say which one is
+        # missing so the next step can supply it.
+        argument_error = self.check_arguments(tool, tool_call)
+        if argument_error:
+            self.emit(
+                state,
+                "tool_arguments_rejected",
+                f"Tool call missing arguments: {tool_call.name}",
+                tool=tool_call.name,
+                arguments=dict(tool_call.arguments or {}),
+                iteration=iteration,
+            )
+            return None, Message(
+                role="tool",
+                name=tool_call.name,
+                content=argument_error,
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "error": "missing_required_arguments",
+                },
+            )
 
         # ── Permission gate: blocking hooks + rule-based permission engine ──
         decision = self.authorize(tool_call.name, tool_call.arguments, tool)
@@ -496,14 +535,26 @@ class AsyncAgentRuntime(RuntimeCore):
             )
         return tool_result, msg
 
-    async def run(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
+    async def run(
+        self,
+        user_prompt: str,
+        *,
+        user_content: list[dict[str, Any]] | None = None,
+    ) -> tuple[RuntimeState, LLMResponse]:
         # Guarantee MCP cleanup even if registry construction or the loop raises.
+        # ``user_content`` mirrors the sync loop: block-shaped user turn,
+        # plain text everywhere else.
         try:
-            return await self._run_inner(user_prompt)
+            return await self._run_inner(user_prompt, user_content=user_content)
         finally:
             self.close_mcps()
 
-    async def _run_inner(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
+    async def _run_inner(
+        self,
+        user_prompt: str,
+        *,
+        user_content: list[dict[str, Any]] | None = None,
+    ) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
 
         # Guardrails: blocked prompts never reach the LLM.
@@ -527,7 +578,7 @@ class AsyncAgentRuntime(RuntimeCore):
         # model sees the same connection/MCP metadata that tools can search.
         shared_state: dict[str, Any] = self.build_shared_state(registry, state)
         tool_prompt = build_tools_prompt(
-            registry.values(), connections=self.connections.all()
+            registry.values(), connections=self.connections.all(), mcps=self.mcps
         )
         base_prompt = (
             self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
@@ -542,6 +593,10 @@ class AsyncAgentRuntime(RuntimeCore):
         # Earlier turns' tool payloads have already been read into the
         # answers below them; re-sending them costs their whole length on
         # every step of this turn. The calls and arguments stay.
+        #
+        # Eviction is a per-REQUEST view only — the originals are kept aside
+        # and written back at save time. (See sync AgentRuntime for details.)
+        original_prior = [m for m in prior_messages if m.role != "system"]
         if self.evict_prior_tool_outputs:
             prior_messages = evict_prior_tool_outputs(list(prior_messages))
         # Exactly one fresh system message at the front; strip any persisted
@@ -551,7 +606,9 @@ class AsyncAgentRuntime(RuntimeCore):
             Message(role="system", content=base_prompt, metadata=dict(self.metadata))
         )
         state.messages.extend(m for m in prior_messages if m.role != "system")
-        state.messages.append(Message(role="user", content=user_prompt))
+        state.messages.append(
+            Message(role="user", content=user_content or user_prompt)
+        )
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
 
@@ -584,6 +641,31 @@ class AsyncAgentRuntime(RuntimeCore):
         # Built by RuntimeCore, so both loops publish identical tool state.
         tool_runner = ToolRunner(registry)
 
+        # Deferred tool loading — same decision as the sync loop, made by
+        # RuntimeCore: core schemas stay resident, the rest are names in an
+        # index until tool_search (or a direct call) loads them.
+        deferral_index = self.setup_deferral(registry, shared_state)
+        if deferral_index:
+            from shipit_agent.deferral import DEFERRED_NAMES_KEY
+
+            deferred_names = shared_state.get(DEFERRED_NAMES_KEY) or set()
+            resident_tools = [
+                tool
+                for tool in registry.values()
+                if getattr(tool, "name", "") not in deferred_names
+            ]
+            resident_prompt = build_tools_prompt(
+                resident_tools, connections=self.connections.all(), mcps=self.mcps
+            )
+            base_prompt = "\n\n".join(
+                part
+                for part in (self.prompt, resident_prompt, deferral_index)
+                if part
+            )
+            state.messages[0] = Message(
+                role="system", content=base_prompt, metadata=dict(self.metadata)
+            )
+
         response = LLMResponse(content="")
         # id() of the response already appended as an assistant message in the
         # loop, so the trailing append doesn't duplicate the final text.
@@ -599,12 +681,25 @@ class AsyncAgentRuntime(RuntimeCore):
                 if not response.content:
                     response = LLMResponse(content="[cancelled]")
                 break
+            # Deferred loading grows the advertised set mid-run, so the
+            # selection is re-evaluated every step (a no-op when off).
+            active_schemas = self.select_step_schemas(tool_schemas, shared_state)
             if self.hooks:
-                self.hooks.run_before_llm(list(state.messages), tool_schemas)
+                self.hooks.run_before_llm(list(state.messages), active_schemas)
+
+            # Mirrors runtime.py: compact when the window demands it (no-op
+            # unless context_window_tokens is set), then re-ground.
+            compacted_messages = self.compact(
+                state, list(state.messages), iteration, shared_state
+            )
+            regrounding = self.regrounding_messages(shared_state)
+            if regrounding:
+                state.messages.extend(regrounding)
+                compacted_messages = [*compacted_messages, *regrounding]
 
             step_messages, step_schemas = self.step_request(
-                messages=list(state.messages),
-                tool_schemas=tool_schemas,
+                messages=compacted_messages,
+                tool_schemas=active_schemas,
                 iteration=iteration,
                 ran_tools=bool(state.tool_results),
             )
@@ -698,7 +793,17 @@ class AsyncAgentRuntime(RuntimeCore):
             )
             appended_response_id = id(response)
 
-            if self.parallel_tool_execution and len(response.tool_calls) > 1:
+            # Only read-only groups fan out — writes keep their order (see
+            # runtime.py for the full rationale). Shared decision on
+            # RuntimeCore so both loops agree on what is parallel-safe.
+            group_is_parallel_safe = all(
+                self.read_only_calls(response.tool_calls, registry)
+            )
+            if (
+                self.parallel_tool_execution
+                and len(response.tool_calls) > 1
+                and group_is_parallel_safe
+            ):
                 # Run tools concurrently — each on its own isolated copy of
                 # shared_state so concurrent writes can't corrupt each other;
                 # merged back in original order after all complete.
@@ -740,6 +845,12 @@ class AsyncAgentRuntime(RuntimeCore):
                     if tool_result is not None:
                         state.tool_results.append(tool_result)
                     state.messages.append(msg)
+                    if tool_result is not None:
+                        vision = self.vision_followup(
+                            tool_result, response.tool_calls[idx].name
+                        )
+                        if vision is not None:
+                            state.messages.append(vision)
             else:
                 for idx, tc in enumerate(response.tool_calls):
                     context = ToolContext(
@@ -762,6 +873,12 @@ class AsyncAgentRuntime(RuntimeCore):
                     if tool_result is not None:
                         state.tool_results.append(tool_result)
                     state.messages.append(msg)
+                    if tool_result is not None:
+                        # Mirrors runtime.py: an image-bearing tool result is
+                        # bridged into a user-turn image block.
+                        vision = self.vision_followup(tool_result, tc.name)
+                        if vision is not None:
+                            state.messages.append(vision)
 
         # Summarization if hit iteration cap
         hit_iteration_cap = bool(response.tool_calls) and not response.content
@@ -810,12 +927,22 @@ class AsyncAgentRuntime(RuntimeCore):
                 )
             )
 
+        # Reassemble with the ORIGINAL prior turns (see eviction note above):
+        # [fresh system] + [unevicted prior] + [everything this run added].
+        persisted_messages = [
+            state.messages[0],
+            *original_prior,
+            *state.messages[1 + len(original_prior) :],
+        ]
         self.session_store.save(
-            SessionRecord(session_id=self.session_id, messages=list(state.messages))
+            SessionRecord(session_id=self.session_id, messages=persisted_messages)
         )
         self.surface_give_up(state.tool_results)
         response.content = self.sanitize_output(state, response.content)
 
+        # Closing accounting, same shape as the sync loop.
+        summary = self._build_run_summary(state)
+        self.emit(state, "run_summary", summary["headline"], **summary)
         self.emit(
             state,
             "run_completed",
@@ -824,6 +951,7 @@ class AsyncAgentRuntime(RuntimeCore):
             content=response.content,
             format="markdown",
             usage=dict(self._total_usage),
+            summary=summary,
         )
 
         # MCP transports are closed by run()'s finally (covers the error path).

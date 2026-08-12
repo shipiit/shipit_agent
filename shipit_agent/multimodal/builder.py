@@ -96,6 +96,108 @@ def build_multimodal_message(
     return {"role": role, "content": blocks}
 
 
+_IMAGE_MIME_BY_SUFFIX = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+
+
+def image_block_from(source: str) -> dict[str, Any]:
+    """An Anthropic-shape image block from whatever a caller has in hand.
+
+    Accepts, in order of detection: an ``http(s)`` URL (URL-source block —
+    adapters translate per provider), a local file path (read and base64d,
+    so it works on every provider), or a raw base64 string (assumed PNG
+    unless it carries a ``data:`` prefix naming the type).
+    """
+    import base64
+    from pathlib import Path
+
+    text = str(source).strip()
+    if text.startswith(("http://", "https://")):
+        return {"type": "image", "source": {"type": "url", "url": text}}
+    if text.startswith("data:"):
+        header, _, data = text.partition(",")
+        media_type = header.removeprefix("data:").split(";", 1)[0] or "image/png"
+        return {
+            "type": "image",
+            "source": {"type": "base64", "media_type": media_type, "data": data},
+        }
+    path = Path(text)
+    if path.exists() and path.is_file():
+        media_type = _IMAGE_MIME_BY_SUFFIX.get(path.suffix.lower(), "image/png")
+        data = base64.standard_b64encode(path.read_bytes()).decode("ascii")
+        return {
+            "type": "image",
+            "source": {"type": "base64", "media_type": media_type, "data": data},
+        }
+    # Last resort: treat as raw base64 payload.
+    return {
+        "type": "image",
+        "source": {"type": "base64", "media_type": "image/png", "data": text},
+    }
+
+
+#: Inline attachment budget for text/code files. Beyond this the model
+#: should read the file with tools, not carry it in the prompt.
+MAX_INLINE_FILE_CHARS = 100_000
+
+
+def file_blocks_from(source: str) -> list[dict[str, Any]]:
+    """Content blocks for an attached file of any kind.
+
+    - Images → an image block (``image_block_from``).
+    - PDFs → an Anthropic ``document`` block (native PDF reading where the
+      provider supports it; adapters degrade it to a named placeholder
+      elsewhere).
+    - Everything else (text, markdown, code, config…) → a fenced text
+    block with the filename as header — portable to every provider.
+    """
+    import base64
+    from pathlib import Path
+
+    path = Path(str(source).strip())
+    if not path.exists() or not path.is_file():
+        return [{"type": "text", "text": f"[attached file not found: {source}]"}]
+    suffix = path.suffix.lower()
+    if suffix in _IMAGE_MIME_BY_SUFFIX:
+        return [image_block_from(str(path))]
+    if suffix == ".pdf":
+        data = base64.standard_b64encode(path.read_bytes()).decode("ascii")
+        return [
+            {
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": data,
+                },
+                "title": path.name,
+            }
+        ]
+    text = path.read_text(encoding="utf-8", errors="replace")
+    clipped = ""
+    if len(text) > MAX_INLINE_FILE_CHARS:
+        text = text[:MAX_INLINE_FILE_CHARS]
+        clipped = (
+            f"\n…[truncated at {MAX_INLINE_FILE_CHARS:,} characters — "
+            "read the file with tools for the rest]"
+        )
+    language = suffix.lstrip(".") or "text"
+    return [
+        {
+            "type": "text",
+            "text": (
+                f"Attached file: {path.name}\n"
+                f"```{language}\n{text}{clipped}\n```"
+            ),
+        }
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------

@@ -52,7 +52,7 @@ class CustomAPITool(HTTPConnectorToolBase):
     def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput:
         record = self._get_record(context)
         if record is None:
-            return self._not_connected_output()
+            return self._not_connected_output(context)
         data = self._request_json(
             record=record,
             method=str(kwargs.get("method", "GET")),

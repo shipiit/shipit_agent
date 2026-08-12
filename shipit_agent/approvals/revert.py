@@ -150,6 +150,7 @@ _FILE_REVERTER = FileSnapshotReverter()
 REVERTERS: dict[str, Reverter] = {
     "write_file": _FILE_REVERTER,
     "edit_file": _FILE_REVERTER,
+    "multi_edit": _FILE_REVERTER,
     "notebook_edit": _FILE_REVERTER,
     "download_file": _FILE_REVERTER,
     "build_document": _FILE_REVERTER,

@@ -206,25 +206,49 @@ class CostRouter:
 
     # ── LLM adapter shape — make the router itself a drop-in LLM ──
 
-    def complete(self, messages: Iterable[Message], **kwargs: Any) -> Any:
+    def complete(
+        self, messages: Iterable[Message] | None = None, **kwargs: Any
+    ) -> Any:
         """Forward to the tier-appropriate LLM. Looks at the last user
-        message (or the concatenated prompt) to classify."""
+        message (or the concatenated prompt) to classify.
+
+        Accepts ``messages`` positionally (this class's historical shape) or
+        as a keyword (the ``LLM`` protocol every shipit adapter follows).
+        The delegate is always called keyword-style — adapters' ``complete``
+        is keyword-only, so the old positional forward was a guaranteed
+        ``TypeError`` the moment the router was used as an ``llm=``. Kwargs
+        the chosen adapter cannot accept (streaming callbacks, timeouts) are
+        filtered the same way the runtime filters them.
+        """
+        from shipit_agent.llms.base import accepts_kwarg
+
+        if messages is None:
+            messages = kwargs.pop("messages", [])
         msgs = list(messages)
         prompt = self._prompt_from_messages(msgs)
         llm, tier = self.route(prompt)
-        response = llm.complete(msgs, **kwargs)
+        forwarded = {
+            key: value
+            for key, value in kwargs.items()
+            if accepts_kwarg(llm.complete, key)
+        }
+        response = llm.complete(messages=msgs, **forwarded)
         self._record(tier, response)
         return response
 
     def stream(self, messages: Iterable[Message], **kwargs: Any):
+        """Forward to the tier LLM's ``stream`` when it has one; otherwise
+        degrade to one event carrying the completed response's text."""
         msgs = list(messages)
         prompt = self._prompt_from_messages(msgs)
         llm, tier = self.route(prompt)
-        stream_ = llm.stream(msgs, **kwargs)
-        for event in stream_:
-            yield event
-        # No token count here — the underlying LLM owns accounting during stream.
-        self._record(tier, None)
+        if hasattr(llm, "stream"):
+            yield from llm.stream(msgs, **kwargs)
+            # No token count — the underlying LLM owns accounting mid-stream.
+            self._record(tier, None)
+            return
+        response = self.complete(msgs, **kwargs)
+        yield getattr(response, "content", "")
 
     # ── accounting ──────────────────────────────────────────────
 

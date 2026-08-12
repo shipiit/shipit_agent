@@ -377,3 +377,102 @@ class TestVarKwargsAreNotParameters:
         assert _arguments_fit_schema(
             {"a": 2, "b": 3}, self._parameters(), strict_required=True
         )
+
+
+class TestNameAdjacentCalls:
+    """`tool_name{...}` glued into prose — observed live from Gemma on
+    bedrock-mantle, often with unquoted keys and a non-ASCII verb prefix."""
+
+    ALLOWED = {"tool_search", "weather_lookup"}
+    SCHEMAS = {
+        "tool_search": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+    }
+
+    def _heal(self, text):
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        return heal_tool_calls(text, set(self.ALLOWED), schemas=self.SCHEMAS)
+
+    def test_the_observed_wreckage_is_promoted(self):
+        text = (
+            'I will search for the correct tool to find the weather.\n\n'
+            '联tool_search{query: "get current weather for a city"}'
+        )
+        cleaned, calls = self._heal(text)
+        assert len(calls) == 1
+        assert calls[0].name == "tool_search"
+        assert calls[0].arguments == {"query": "get current weather for a city"}
+        assert "tool_search" not in cleaned
+        assert "I will search" in cleaned  # prose kept
+
+    def test_parenthesised_form(self):
+        cleaned, calls = self._heal('Now: tool_search({"query": "weather"})')
+        assert len(calls) == 1
+        assert calls[0].arguments == {"query": "weather"}
+        assert ")" not in cleaned.replace("Now:", "")
+
+    def test_unknown_name_is_left_alone(self):
+        text = 'mystery_tool{query: "x"}'
+        cleaned, calls = self._heal(text)
+        assert calls == []
+        assert cleaned == text
+
+    def test_arguments_must_fit_the_schema(self):
+        # A brace blob that names a real tool but carries wreckage keys
+        # stays prose — same bar as every other healed form.
+        text = 'tool_search{",\'query\'": ""}'
+        cleaned, calls = self._heal(text)
+        assert calls == []
+        assert cleaned == text
+
+
+class TestPythonStyleCalls:
+    """`weather_lookup(city="Paris")` — Python keyword-call syntax in bare
+    prose (no tag, no fence), observed live from Gemma on bedrock-mantle."""
+
+    ALLOWED = {"weather_lookup", "tool_search"}
+    SCHEMAS = {
+        "weather_lookup": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+        },
+    }
+
+    def _heal(self, text):
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        return heal_tool_calls(text, set(self.ALLOWED), schemas=self.SCHEMAS)
+
+    def test_the_observed_wreckage_is_promoted(self):
+        text = (
+            'I will look up the current weather in Paris.\n\n mitten\n'
+            '  weather_lookup(city="Paris")\n'
+        )
+        cleaned, calls = self._heal(text)
+        assert len(calls) == 1
+        assert calls[0].name == "weather_lookup"
+        assert calls[0].arguments == {"city": "Paris"}
+        assert "weather_lookup" not in cleaned
+
+    def test_multiple_kwargs_and_numbers(self):
+        _, calls = self._heal('tool_search(query="weather", limit=3)')
+        assert calls and calls[0].arguments == {"query": "weather", "limit": 3}
+
+    def test_positional_args_are_not_guessed(self):
+        # `name("Paris")` has no keyword; promoting would mean inventing
+        # the parameter name.
+        text = 'weather_lookup("Paris")'
+        cleaned, calls = self._heal(text)
+        assert calls == []
+        assert cleaned == text
+
+    def test_prose_parentheses_are_not_calls(self):
+        text = "The weather_lookup (as documented) is a tool."
+        cleaned, calls = self._heal(text)
+        assert calls == []
+        assert cleaned == text

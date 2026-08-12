@@ -12,6 +12,8 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
     "files & code": {
         "bash",
         "edit_file",
+        "multi_edit",
+        "bash_job",
         "glob_files",
         "grep_files",
         "notebook_edit",
@@ -32,6 +34,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "decision_matrix",
         "decompose_problem",
         "plan_task",
+        "present_plan",
         "synthesize_evidence",
         "todo",
         "verify_output",
@@ -162,10 +165,24 @@ How to use them:
 """.strip()
 
 
+#: The boilerplate MCP tool guidance. With 100 MCP tools attached, printing
+#: it per tool is 100 copies of the same sentence in every request — exactly
+#: the duplication this prompt already eliminates for descriptions. Tools
+#: whose server (or author) wrote REAL guidance still get their line.
+_GENERIC_MCP_GUIDANCE = frozenset(
+    {
+        "Use this MCP tool when the remote capability is the right fit for the task.",
+        "Use this MCP tool when the remote server provides the best capability for the task.",
+        "Use this when the attached MCP server exposes the capability you need.",
+    }
+)
+
+
 def build_tools_prompt(
     tools: list[Tool],
     *,
     connections: Iterable[Any] = (),
+    mcps: Iterable[Any] = (),
 ) -> str:
     if not tools:
         return ""
@@ -206,8 +223,21 @@ def build_tools_prompt(
             lines.append(f"- {tool.name} [{', '.join(tags)}]")
             prompt = getattr(tool, "prompt", "").strip()
             prompt_instructions = getattr(tool, "prompt_instructions", "").strip()
-            if prompt:
+            if prompt and prompt not in _GENERIC_MCP_GUIDANCE:
                 lines.append(f"  Guidance: {prompt}")
-            elif prompt_instructions:
+            elif (
+                prompt_instructions
+                and prompt_instructions not in _GENERIC_MCP_GUIDANCE
+            ):
                 lines.append(f"  Guidance: {prompt_instructions}")
+
+    # One block per MCP server that sent `instructions` in its handshake —
+    # the server author's own usage guidance, said once, instead of a
+    # boilerplate line repeated under every one of its tools.
+    for mcp in mcps or ():
+        instructions = str(getattr(mcp, "instructions", "") or "").strip()
+        if instructions:
+            name = getattr(mcp, "name", "mcp")
+            lines.append(f"\n## MCP server: {name}")
+            lines.append(instructions)
     return "\n".join(lines)

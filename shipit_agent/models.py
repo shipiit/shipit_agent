@@ -17,6 +17,9 @@ EventType = Literal[
     "tool_completed",
     "tool_failed",
     "tool_denied",
+    # A structured call refused by the argument gate before it could run —
+    # part of the record, not an in-flight moment.
+    "tool_arguments_rejected",
     "action_queued",
     "connection_requested",
     # A file a tool left behind — a page, a workbook, a document.
@@ -31,6 +34,8 @@ EventType = Literal[
     # The answer, as its own event: a client should not have to infer it from
     # run_completed's payload.
     "final_answer",
+    # A closing accounting — iterations, tool calls, tokens, estimated cost.
+    "run_summary",
     "text_delta",
     "tool_input_started",
     "tool_input_delta",
@@ -58,9 +63,25 @@ EventType = Literal[
 @dataclass(slots=True)
 class Message:
     role: Role
-    content: str
+    #: Plain text, or a list of provider-portable content blocks for
+    #: multimodal turns — Anthropic-shape ``{"type": "image", "source":
+    #: {"type": "base64" | "url", ...}}`` plus ``{"type": "text", ...}``.
+    #: Adapters translate blocks to each provider's wire shape; runtime
+    #: code that needs prose reads :attr:`text`, never ``content`` raw.
+    content: str | list[dict[str, Any]]
     name: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def text(self) -> str:
+        """The textual portion of the content, whatever its shape."""
+        if isinstance(self.content, str):
+            return self.content
+        return "\n".join(
+            str(block.get("text", ""))
+            for block in self.content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {

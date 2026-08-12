@@ -7,7 +7,213 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+The theme is the working set: schemas for the tools a step can actually use,
+cache hits for everything the step repeats, and recovery that waits out the
+window instead of burning through it.
+
+### Added
+
+- **`Agent(deferred_tools=...)` — the tool catalogue on demand**
+  (`shipit_agent/deferral/`). Claude-Code-style tool paging, provider-agnostic:
+  core tools keep their full schema in every request; every other tool is
+  listed by *name only* in the system prompt until it is loaded. `tool_search`
+  now finds **and loads** deferred tools — matches become directly callable
+  from the next step, and the search result carries a one-line signature per
+  loaded tool so the model can plan the call immediately. Calling a deferred
+  tool directly also works (and loads it). `True` defers everything outside
+  the core set; a list of names defers exactly those. The selection lives on
+  `RuntimeCore`, so the sync and async loops share one behaviour and the
+  parity test enrols it automatically. Code mode wins when both are enabled.
+- **Backoff between LLM retries** — `RetryPolicy` gains
+  `llm_retry_base_delay` / `llm_retry_max_delay` / `llm_retry_jitter`.
+  Exponential with up to +25% jitter, in both loops; a 429 retried after half
+  a second is a recovery, retried immediately it is two more 429s. The
+  `llm_retry` event now reports the chosen delay. Set the base delay to 0 to
+  keep the old immediate-retry behaviour.
+- **`RetryPolicy(request_timeout=...)`** — per-request LLM timeout, forwarded
+  to adapters whose `complete()` accepts a `timeout` kwarg (OpenAI, Anthropic
+  and LiteLLM adapters now do; older custom adapters are detected and skipped,
+  never broken). Without one, a hung connection hangs the run — `cancel()`
+  only takes effect between steps.
+
+### Changed
+
+- **Prompt caching now covers the conversation prefix** on Anthropic-family
+  models (native adapter and the LiteLLM path used by Bedrock/Vertex Claude):
+  a third `cache_control` breakpoint on the last message means each step's
+  request extends the previous one from cache, instead of re-billing the
+  growing history as uncached input on every iteration.
+- **Failed streaming attempts reset their tool-input parsers** before the
+  retry, so a retried completion starts from clean state instead of appending
+  fragments onto a dead parse.
+- **`decision_llm` narration tokens are now tracked** — narration is a real
+  model call; its usage lands in the run totals and `usage_tick` events
+  instead of escaping cost accounting.
+
+### Changed (second wave — validated live on Gemma / Bedrock Mantle)
+
+- **Async loop parity, for real**: the async runtime now actually invokes
+  compaction and the argument gate (both existed on `RuntimeCore` but were
+  never called on the async path — an async run past the window just sent an
+  oversized request; an empty structured call just ran). The sync loop's
+  nudge-on-stall now uses the shared `RuntimeCore` decision too, retiring a
+  stale pre-fix copy.
+- **Compaction reuses its checkpoint** instead of writing a brand-new summary
+  on every step past the threshold, and the summarizer's own tokens are
+  counted in run usage.
+- **Narration economy**: `agent_observation` is now always composed from tool
+  metadata — free — so narration spends its one completion per step on the
+  `agent_decision` line only. (Previously a configured `decision_llm` was
+  called twice per iteration.)
+- **Two new healed tool-call formats**, both observed live from Gemma 4 on
+  Bedrock Mantle: a declared tool name glued to a pseudo-JSON object
+  (`tool_search{query: "…"}`, unquoted keys, non-ASCII verb prefixes) and
+  Python keyword-call syntax (`weather_lookup(city="Paris")`). Identity is
+  the model's own literal tool name; junk-key wreckage still fails the bar.
+- **Native `bedrock_mantle/` routing**: `BedrockChatLLM` prefers LiteLLM's
+  native Bedrock Mantle provider when a Bedrock API key is present
+  (`BEDROCK_MANTLE_API_KEY` — the provider authenticates by Bearer token,
+  not SigV4; routing there without a key 401s, verified live). SigV4-only
+  environments keep the OpenAI-compatible shim. Accepts
+  `bedrock_mantle/<id>`, `bedrock/<id>`, or a bare id.
+- **Stream classification**: `final_answer`, `agent_decision`,
+  `agent_observation`, `tool_group_*`, `tool_arguments_rejected`,
+  `artifact_created` and `skills_selected` are now canonical — a reconnecting
+  client no longer silently drops the answer or the record that a call was
+  refused. `tool_arguments_rejected` joined the public `EventType`.
+- Bedrock-Anthropic pricing entries carry `cache_read`/`cache_write` rates
+  (0.1×/1.25× of input), so cached tokens no longer price at $0 there.
+
+### Added (third wave — media, MCP robustness)
+
+- **Attachments**: `agent.run(prompt, images=[...], files=[...])` — images by
+  URL/path/base64 (vision models); text/markdown/code files inlined as
+  fenced blocks (every provider); PDFs as native document blocks where the
+  provider reads PDF. `Agent(media_parser=...)` now actually works (the
+  documented example used to raise `TypeError`).
+- **`read_file` can see** — PNG/JPG/GIF/WebP return the image itself to the
+  model instead of UTF-8 replacement soup; PDFs attach as documents.
+- **The vision bridge** — any tool result carrying `image_base64` metadata
+  (computer_use screenshots, MCP image results, `read_file`) becomes a
+  user-turn image block on the next step, in both loops. Only the newest 3
+  images ride each request; older ones become a one-line stub.
+- **`Message.content` may be a block list**; `Message.text` extracts prose.
+  Eviction, truncation, compaction and context tracking all handle blocks
+  (images estimate at a flat ~1,500 tokens).
+- **MCP robustness**: exposed tool names are sanitized unconditionally
+  (`deepwiki**ask_question` → `deepwiki_ask_question`; the raw name still
+  goes on the wire); two servers exposing the same name no longer crash the
+  run (the later one is re-exposed as `{server}__{name}`); both subprocess
+  transports enforce a per-request timeout (60s default) so a wedged server
+  can't hang the run; a crashed-and-respawned server is re-handshaken before
+  its next call; the server's `initialize.instructions` now reach the system
+  prompt as one `## MCP server:` block, and the boilerplate per-tool MCP
+  guidance line is no longer repeated under every tool.
+
+### Added (fourth wave — connections, sub-agents, orchestration)
+
+- **Connection cards** — a connector called with no credential now files a
+  connection request and returns an actionable result ("Connect Slack — it
+  needs a token"), so the runtime emits its `connection_requested` card and
+  the run continues, instead of a dead-end "not connected" string. The
+  `/login` parity. All 17 connectors.
+- **`orchestrator` role** — a lead agent that plans, delegates independent
+  pieces to specialist sub-agents (`sub_agent` + `plan_task` + synthesis
+  tools), and combines their reports. `Agent.for_role("orchestrator", ...)`.
+
+### Added (seventh wave — tool depth & plan workflow)
+
+- **bash tool depth** — 600s timeout ceiling (was 120s); an opt-in
+  `unrestricted=True` mode that allows redirects, heredocs, pipes-to-file and
+  command/process substitution (the safe conservative filter stays the
+  default); and a companion `bash_job` tool to poll or kill background jobs
+  by id (Claude Code's BashOutput/KillShell). A rejected command now returns
+  an error result instead of raising (a raised tool exception could crash the
+  run).
+- **`multi_edit`** — a batch of exact-string edits applied to ONE file
+  atomically (Claude Code's MultiEdit): edits apply in order to an in-memory
+  copy and write once; if any fails, nothing is written. Same read-gate,
+  mtime staleness, and UTF-8 refusal as `edit_file`.
+- **git worktree isolation** — `git_ops` gains `worktree_add` /
+  `worktree_remove` / `worktree_list` so an agent can work on an isolated
+  branch/worktree without touching the user's tree (Codex-style).
+- **Readability web extraction** — `open_url` now returns structured markdown
+  (headings, lists, paragraphs) with nav/header/footer/aside/script dropped,
+  instead of flat tag-stripped soup that buried the signal.
+- **Compaction re-grounding** — after a fresh compaction the most-recently-read
+  files are re-read from disk and injected as current contents, so the model
+  works from the code, not a prose summary of it (Claude Code re-establishes
+  file state post-compaction). Restores the read-gate for those files.
+- **Plan mode as a workflow** — a `present_plan` tool (Claude Code's
+  ExitPlanMode): in plan mode the agent researches read-only, then submits a
+  structured plan (title + ordered steps) that is captured and surfaced for
+  approval via the interactive-request channel, instead of plan mode being a
+  bare deny-gate.
+
+### Added (sixth wave — long-run trust & polish)
+
+- **Read-before-edit gate is reset at compaction** — fixes a silent
+  correctness bug: after a file's contents were summarized out of context,
+  `read_files`/`read_file_mtimes` still claimed it was read, so `edit_file`
+  allowed a write against contents the model could no longer see. Compaction
+  now clears the gate, forcing a cheap re-read before the next edit.
+- **Higher default iteration budget** — `Agent.max_iterations` 4 → 12 (16
+  with skills). A real multi-step task (read several files, edit, test, fix)
+  no longer gets cut to a summary where Claude Code would keep going.
+- **Larger `read_file` window** — 250 → 2000 lines, 12K → 80K chars, matching
+  Claude Code's default. Less paging, fewer edits against unseen regions.
+- **End-of-run summary** — a `run_summary` event (and `run_completed.summary`)
+  closes every run with iterations, tool calls, compactions, token usage, and
+  an estimated cost, like Claude Code / Codex print at end of turn. Canonical
+  for reconnecting clients. `FunctionTool(read_only=...)` also gained a
+  three-state default (`None` = use the name heuristic).
+
+### Added (fifth wave — parallel reads, native structured output)
+
+- **Read-parallelization from tool contracts** — a tool group where every
+  call is read-only (grep, glob, file reads, lookups) fans out concurrently;
+  any group containing a write/send/mutate stays serial and ordered. This
+  both fixes a latent race (two `edit_file`s to one path racing across
+  isolated state copies) and delivers Claude-Code-style batched-read speed.
+  Shared decision on `RuntimeCore.read_only_calls`, so both loops agree.
+  `FunctionTool(read_only=True)` lets a caller declare a pure function
+  parallel-safe.
+- **Native `response_format` structured output** — when `output_schema` is
+  set, the tool-less final/synthesis turn now sends the provider's native
+  `response_format` (guarded by `accepts_kwarg`), guaranteeing parseable
+  JSON where the provider supports it. Never applied mid-loop (JSON-mode
+  would suppress tool calls); the prompt-instruction + validate-with-retry
+  path remains the fallback.
+
+### Fixed (sub-agents)
+
+- **The sub-agent's system prompt was the delegator's text.** Every
+  general-purpose sub-agent was told *how to delegate* instead of that its
+  final message is the whole deliverable. Split into a child-facing
+  `SUB_AGENT_SYSTEM_PROMPT` (final-report contract: your final message is all
+  the parent sees; don't ask the human; lead with the answer then the
+  evidence) and the parent-facing `SUB_AGENT_PROMPT` (now the tool's
+  `prompt_instructions`).
+- **`agent_type` re-granted tools the parent didn't have.** `for_role`
+  re-added the role's full builtin set on top of the inherited subset — a
+  read-only child regained `write_file`/`bash`, and 7 roles even regained
+  `ask_user_async` (a background child could block on a human nobody was
+  watching). The role agent's toolset is now intersected back to the
+  inherited set minus the never-inherited human-interaction tools.
+- **Sub-agents could hang the parent forever.** `SubAgentTool(timeout=...)`
+  bounds every collect; on expiry the future is cancelled and a failed
+  result is reported. Added `close()` / `__del__` so the thread pool is
+  released (was leaking non-daemon threads that also wedged interpreter
+  exit).
+
+### Fixed
+
+- **Eviction no longer corrupts persisted sessions.** With
+  `evict_prior_tool_outputs=True` (the default), the evicted stubs were being
+  written back to the session store — turn 3 permanently destroyed what turn 1
+  retrieved, for replay, audit and every future turn. Eviction is now strictly
+  a per-request view: the store always keeps the original transcript. Both
+  loops.
 
 ---
 

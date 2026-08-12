@@ -166,13 +166,27 @@ def get_model_limits(model: str | None) -> ModelLimits:
     return ModelLimits(DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_OUTPUT)
 
 
-def estimate_tokens(text: str) -> int:
+def estimate_tokens(text: Any) -> int:
     """Rough token count — ~4 characters per token for English prose.
 
     Deliberately an estimate: an exact count needs the provider's tokenizer,
     which we cannot assume is installed. The 0.85 trigger leaves ample headroom
     for the error, and under-counting only means compacting slightly late.
+
+    Block-shaped content (multimodal turns) is costed as its text parts
+    plus a flat ~1,500 tokens per image — the right order of magnitude for
+    every provider, which is all a compaction trigger needs.
     """
+    if isinstance(text, list):
+        total = 0
+        for block in text:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "image":
+                total += 1_500
+            else:
+                total += len(str(block.get("text", ""))) // 4
+        return total
     return len(text) // 4 if text else 0
 
 
@@ -309,6 +323,9 @@ class Compactor:
         )
         self._on_summary_failure = on_summary_failure
         self.checkpoints: list[CompactionCheckpoint] = []
+        # Usage of the most recent summarizer call, for the caller's cost
+        # accounting — a summary is a real completion and its tokens count.
+        self.last_summary_usage: dict[str, int] = {}
 
     # ── decision ─────────────────────────────────────────────────────────
 
@@ -363,7 +380,11 @@ class Compactor:
     def _transcript(messages: Sequence[Message]) -> list[str]:
         lines: list[str] = []
         for message in messages:
-            text = (message.content or "").strip()
+            # ``text`` extracts the prose from block-shaped (multimodal)
+            # content; a summary has no use for base64 pixels.
+            text = (getattr(message, "text", None) or "").strip() if not isinstance(
+                message.content, str
+            ) else (message.content or "").strip()
             if not text:
                 continue
             label = f"tool {message.name}" if message.role == "tool" else message.role
@@ -372,6 +393,7 @@ class Compactor:
 
     def _summarize(self, older: Sequence[Message]) -> str:
         lines = self._transcript(older)
+        self.last_summary_usage = {}
         if not lines:
             return ""
 
@@ -388,6 +410,7 @@ class Compactor:
                     system_prompt=COMPACTION_SYSTEM_PROMPT,
                     metadata={"purpose": "context_compaction"},
                 )
+                self.last_summary_usage = dict(getattr(response, "usage", None) or {})
                 summary = (getattr(response, "content", "") or "").strip()
                 if summary:
                     return (

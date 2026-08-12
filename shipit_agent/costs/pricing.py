@@ -66,13 +66,20 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "llama-4-scout": {"input": 0.11, "output": 0.34},
     "llama-4-maverick": {"input": 0.50, "output": 0.77},
     # ── AWS Bedrock (same models, different IDs) ─────────────────────
+    # Cache rates use Anthropic's standard multipliers (read 0.1×, write
+    # 1.25× of input) — prompt caching is on by default for these models,
+    # and entries without cache rates silently price cached tokens at $0.
     "anthropic.claude-sonnet-4-20250514-v1:0": {
         "input": 3.00,
         "output": 15.00,
+        "cache_read": 0.30,
+        "cache_write": 3.75,
     },
     "anthropic.claude-haiku-4-20250514-v1:0": {
         "input": 0.80,
         "output": 4.00,
+        "cache_read": 0.08,
+        "cache_write": 1.00,
     },
 }
 

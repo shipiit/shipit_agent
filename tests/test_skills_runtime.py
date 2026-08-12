@@ -188,7 +188,7 @@ def test_agent_does_not_inject_unrelated_skills_from_incidental_words() -> None:
 
     assert agent._selected_skills(prompt) == []
     assert agent._skill_tool_names(agent._selected_skills(prompt)) == []
-    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 4
+    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 12
 
 
 def test_skill_trigger_does_not_match_inside_an_informational_word() -> None:
@@ -200,7 +200,7 @@ def test_skill_trigger_does_not_match_inside_an_informational_word() -> None:
 
     assert agent._selected_skills(prompt) == []
     assert agent._effective_tools(prompt) == []
-    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 4
+    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 12
 
 
 def test_agent_applies_default_skill_ids() -> None:
@@ -379,12 +379,11 @@ def test_agent_result_metadata_includes_used_skills_and_skill_tools() -> None:
 def test_bash_tool_blocks_commands_outside_allowlist(tmp_path: Path) -> None:
     tool = BashTool(root_dir=tmp_path)
 
-    try:
-        tool.run(context=type("Ctx", (), {"state": {}})(), command="nc -l 8080")
-    except ValueError as exc:
-        assert "allowlist" in str(exc)
-    else:
-        raise AssertionError("Expected allowlist validation to reject nc")
+    # A rejected command comes back as an error result (not a raised
+    # exception, which would crash the run) the model can react to.
+    out = tool.run(context=type("Ctx", (), {"state": {}})(), command="nc -l 8080")
+    assert "allowlist" in out.text
+    assert out.metadata.get("error") == "invalid_command"
 
 
 def test_bash_tool_allows_cd_then_allowed_command(tmp_path: Path) -> None:
@@ -472,7 +471,7 @@ def test_agent_boosts_max_iterations_when_skills_are_active() -> None:
     )
     selected = agent._selected_skills("scrape it")
     effective_max = agent._effective_max_iterations(selected)
-    assert effective_max >= 8
+    assert effective_max >= 16
 
 
 def test_selected_skills_are_visible_in_the_complete_event_stream() -> None:
@@ -552,7 +551,7 @@ def test_agent_no_boost_without_skills() -> None:
     )
     selected = agent._selected_skills("hello")
     effective_max = agent._effective_max_iterations(selected)
-    assert effective_max == 4
+    assert effective_max == 12
 
 
 def test_tool_bundle_names_all_exist_in_builtins() -> None:

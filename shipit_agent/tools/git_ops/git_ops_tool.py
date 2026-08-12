@@ -20,8 +20,14 @@ from typing import Any, ClassVar
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.formatting import clip_text
 
-_READ_ACTIONS = {"status", "diff", "log", "show", "blame", "branch", "stash_list"}
-_WRITE_ACTIONS = {"add", "commit", "checkout", "stash", "stash_pop"}
+_READ_ACTIONS = {
+    "status", "diff", "log", "show", "blame", "branch", "stash_list",
+    "worktree_list",
+}
+_WRITE_ACTIONS = {
+    "add", "commit", "checkout", "stash", "stash_pop",
+    "worktree_add", "worktree_remove",
+}
 _GATED_ACTIONS = {"push", "reset"}
 
 
@@ -151,6 +157,27 @@ class GitOpsTool:
             argv = ["stash", "pop"]
         elif action == "stash_list":
             argv = ["stash", "list"]
+        elif action == "worktree_list":
+            argv = ["worktree", "list"]
+        elif action == "worktree_add":
+            # Isolated workspace on a new branch, like Codex: work without
+            # touching the user's tree, and let several agents run in
+            # parallel. `ref` is the new worktree path; `message` (optional)
+            # names the branch to create (defaults to the path's basename).
+            if not ref:
+                return ToolOutput(
+                    text="worktree_add needs `ref` (the path for the new worktree).",
+                    metadata={"ok": False},
+                )
+            branch = message or Path(ref).name
+            argv = ["worktree", "add", "-b", branch, ref]
+        elif action == "worktree_remove":
+            if not ref:
+                return ToolOutput(
+                    text="worktree_remove needs `ref` (the worktree path).",
+                    metadata={"ok": False},
+                )
+            argv = ["worktree", "remove", ref]
         elif action == "push":
             argv = ["push"]
         elif action == "reset":

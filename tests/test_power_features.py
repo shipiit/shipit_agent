@@ -258,7 +258,7 @@ class TestParallelToolExecution:
             return "ok"
 
         tools = [
-            FunctionTool.from_callable(limited_tool, name=f"tool_{index}")
+            FunctionTool.from_callable(limited_tool, name=f"tool_{index}", read_only=True)
             for index in range(4)
         ]
         agent = Agent(
@@ -304,7 +304,7 @@ def test_async_parallel_execution_respects_concurrency_limit() -> None:
         return "ok"
 
     tools = [
-        FunctionTool.from_callable(limited_tool, name=f"async_tool_{index}")
+        FunctionTool.from_callable(limited_tool, name=f"async_tool_{index}", read_only=True)
         for index in range(4)
     ]
     runtime = AsyncAgentRuntime(

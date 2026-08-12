@@ -218,6 +218,10 @@ def evict_prior_tool_outputs(
     for message in messages:
         if (
             getattr(message, "role", "") == "tool"
+            # Block-content messages (images) are never evicted here — they
+            # have their own recency-based pruning in step_request, and
+            # replacing a list with a text notice would corrupt the shape.
+            and isinstance(message.content, str)
             and len(message.content or "") >= min_chars
         ):
             evicted.append(
@@ -277,6 +281,8 @@ class RuntimeCore:
         self.evict_prior_tool_outputs = bool(
             options.get("evict_prior_tool_outputs", True)
         )
+        # False | True | iterable of names — see shipit_agent.deferral.
+        self.deferred_tools = options.get("deferred_tools", False)
 
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
@@ -365,14 +371,181 @@ class RuntimeCore:
         last_step = iteration == max_iterations and max_iterations > 1
         step_schemas = [] if last_step else list(tool_schemas)
 
-        reminder = build_reminder(
-            ran_tools=ran_tools,
-            out_of_steps=last_step,
-            custom=self.reminder,
-        )
-        if reminder and tool_schemas:
+        # Screenshots age fast; only the newest few are worth their tokens.
+        # Applied to this per-call copy only — the originals stay stored.
+        messages = self.prune_stale_images(list(messages))
+
+        # The built-in reminders are about tool use, so they attach only when
+        # tools exist — but a caller's own standing instruction applies to
+        # every agent, tools or not. Dropping it silently for a tool-less
+        # agent made `Agent(reminder=...)` a no-op in exactly the
+        # configuration where the caller has no other end-of-context channel.
+        if tool_schemas:
+            reminder = build_reminder(
+                ran_tools=ran_tools,
+                out_of_steps=last_step,
+                custom=self.reminder,
+            )
+        else:
+            reminder = (self.reminder or "").strip() or None
+        if reminder:
             messages = [*messages, Message(role="user", content=reminder)]
         return messages, step_schemas
+
+    # ── parallel safety ──────────────────────────────────────────────────
+
+    @staticmethod
+    def read_only_calls(tool_calls: list[Any], registry: Any) -> list[bool]:
+        """Per-call: is this tool read-only (safe to run concurrently)?
+
+        Uses each tool's contract — the same declaration the permission and
+        artifact layers trust. Read-only calls (grep, glob, file reads, a
+        lookup) have no side effects and no ordering constraint, so they can
+        fan out; anything that writes, sends, or mutates must stay ordered.
+        Claude Code's user-visible speed is exactly this: batch the reads,
+        serialize the writes.
+        """
+        from shipit_agent.tools.contracts import contract_for
+
+        flags: list[bool] = []
+        for call in tool_calls:
+            name = getattr(call, "name", "")
+            tool = registry.get(name) if registry is not None else None
+            flags.append(bool(contract_for(name, tool).read_only))
+        return flags
+
+    # ── vision: tool results that carry an image ─────────────────────────
+
+    #: How many image messages a request keeps. Screenshots age fast — the
+    #: model acts on the newest one; older ones are pure input cost.
+    MAX_VISION_MESSAGES = 3
+
+    def vision_followup(self, tool_result: Any, tool_name: str) -> Message | None:
+        """A user message carrying a tool result's image, or ``None``.
+
+        Tools that produce something to LOOK AT (screenshots, image files,
+        rendered pages) declare it: ``metadata["image_base64"]`` +
+        ``metadata["media_type"]`` (the convention computer_use introduced),
+        or the explicit ``metadata["vision"]`` flag. Providers want images
+        in a *user* turn — Anthropic rejects rich blocks inside tool_result
+        content on several transports — so the bridge is a synthetic user
+        message appended right after the tool message.
+        """
+        metadata = dict(getattr(tool_result, "metadata", None) or {})
+        data = metadata.get("image_base64")
+        if not data or metadata.get("vision") is False:
+            return None
+        media_type = str(metadata.get("media_type") or "image/png")
+        return Message(
+            role="user",
+            content=[
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": str(data),
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": f"[image returned by the {tool_name} tool]",
+                },
+            ],
+            metadata={"vision_bridge": True, "tool": tool_name},
+        )
+
+    @classmethod
+    def prune_stale_images(cls, messages: list[Message]) -> list[Message]:
+        """Keep only the newest ``MAX_VISION_MESSAGES`` image messages.
+
+        Applied to the per-request copy, never the stored conversation — the
+        original screenshots stay in the session for replay. Older images
+        are replaced by a one-line stub so the model still knows something
+        was there (and can re-request it) without paying image tokens for a
+        state of the world that no longer exists.
+        """
+        image_indexes = [
+            i
+            for i, m in enumerate(messages)
+            if isinstance(m.content, list)
+            and any(
+                isinstance(b, dict) and b.get("type") == "image" for b in m.content
+            )
+        ]
+        stale = set(image_indexes[: -cls.MAX_VISION_MESSAGES or None])
+        if not stale:
+            return messages
+        pruned = list(messages)
+        for i in stale:
+            source = (pruned[i].metadata or {}).get("tool", "a tool")
+            pruned[i] = Message(
+                role=pruned[i].role,
+                name=pruned[i].name,
+                content=(
+                    f"[an earlier image from {source} was shown here; it is "
+                    "stale and has been removed — re-run the tool if you "
+                    "need a fresh look]"
+                ),
+                metadata=dict(pruned[i].metadata or {}),
+            )
+        return pruned
+
+    # ── deferred tool loading ────────────────────────────────────────────
+
+    def setup_deferral(self, registry: Any, shared_state: dict[str, Any]) -> str:
+        """Activate deferred tool loading for this run, if configured.
+
+        Publishes the deferred/loaded name sets and a schema lookup into
+        the shared tool state (so ``tool_search`` can load tools and print
+        signatures), and returns the name-only index section for the
+        system prompt — empty when deferral is off or nothing qualifies.
+
+        Code mode already collapses the catalogue its own way; when both
+        are enabled, code mode wins and this is a no-op.
+        """
+        from shipit_agent.deferral import (
+            DEFERRED_NAMES_KEY,
+            LOADED_NAMES_KEY,
+            SCHEMAS_BY_NAME_KEY,
+            deferred_index,
+            resolve_deferred_names,
+        )
+
+        if self.code_mode or not getattr(self, "deferred_tools", False):
+            return ""
+        tools = list(registry.values())
+        deferred = resolve_deferred_names(tools, self.deferred_tools)
+        if not deferred:
+            return ""
+        shared_state[DEFERRED_NAMES_KEY] = deferred
+        shared_state[LOADED_NAMES_KEY] = set()
+        shared_state[SCHEMAS_BY_NAME_KEY] = {
+            name: schema
+            for schema in registry.schemas()
+            if (name := ((schema.get("function") or {}).get("name")))
+        }
+        return deferred_index(tools, deferred)
+
+    def select_step_schemas(
+        self, tool_schemas: list[Any], shared_state: dict[str, Any]
+    ) -> list[Any]:
+        """The schemas this step advertises: core + everything loaded so far.
+
+        Re-evaluated every iteration because the loaded set grows mid-run —
+        a tool_search result on step 2 must be callable on step 3.
+        """
+        from shipit_agent.deferral import (
+            DEFERRED_NAMES_KEY,
+            LOADED_NAMES_KEY,
+            select_schemas,
+        )
+
+        return select_schemas(
+            tool_schemas,
+            shared_state.get(DEFERRED_NAMES_KEY),
+            shared_state.get(LOADED_NAMES_KEY),
+        )
 
     # ── cancellation ─────────────────────────────────────────────────────
 
@@ -469,7 +642,12 @@ class RuntimeCore:
         Identity is required, not assumed: the tool still runs, and its
         output is compared. A tool whose answer changed says so in full.
         """
-        output = str(getattr(tool_result, "output", "") or "")
+        raw_output = getattr(tool_result, "output", "") or ""
+        if not isinstance(raw_output, str):
+            # Block-shaped output (images) has no meaningful char budget and
+            # stringifying it would feed the model "[{'type': 'image'…}]".
+            return raw_output
+        output = raw_output
         name = str(getattr(tool_result, "name", "") or "")
         limit = (
             min(self.max_tool_output_chars, limit_override)
@@ -748,14 +926,44 @@ class RuntimeCore:
         return self._compactor_instance
 
     def compact(
-        self, state: Any, messages: list[Message], iteration: int
+        self,
+        state: Any,
+        messages: list[Message],
+        iteration: int,
+        shared_state: dict[str, Any] | None = None,
     ) -> list[Message]:
-        """Compact if needed, emitting a notice. Returns what to send."""
+        """Compact if needed, emitting a notice. Returns what to send.
+
+        The full history in ``state.messages`` never shrinks — compaction is
+        a per-request view. The latest checkpoint is REUSED as long as its
+        view still fits: without that reuse, every step past the threshold
+        would write a brand-new summary (one extra completion per step,
+        uncounted and identical). A fresh summary is only written when the
+        replayed view itself outgrows the budget again.
+
+        When a fresh summary IS written, the read-before-edit gate is reset:
+        a file whose contents were just summarized out of context is no
+        longer something the model can see, so editing it against a
+        reconstructed ``old_text`` would be a silent staleness bug. Clearing
+        the gate forces a cheap re-read (the file is often still in the hot
+        tail) before the next edit is allowed.
+        """
         if not self.context_window_tokens:
             return messages
-        checkpoint = self.compactor().compact(messages)
+        compactor = self.compactor()
+        latest = compactor.latest()
+        if latest is not None:
+            view = latest.replay(messages)
+            if not compactor.needs_compaction(view):
+                return view
+        checkpoint = compactor.compact(messages)
         if checkpoint is None:
-            return messages
+            return latest.replay(messages) if latest is not None else messages
+        self._reset_read_gate(shared_state)
+        # The summary was a real completion — count its tokens.
+        summary_usage = dict(getattr(compactor, "last_summary_usage", None) or {})
+        if summary_usage:
+            self.track_usage(state, LLMResponse(usage=summary_usage), iteration)
         replayed = checkpoint.replay(messages)
         self.emit(
             state,
@@ -764,10 +972,135 @@ class RuntimeCore:
             before=len(messages),
             after=len(replayed),
             saved_tokens=checkpoint.saved_tokens,
-            checkpoints=len(self.compactor().checkpoints),
+            checkpoints=len(compactor.checkpoints),
             iteration=iteration,
         )
         return replayed
+
+    def _build_run_summary(self, state: Any) -> dict[str, Any]:
+        """A closing accounting of the run — iterations, tools, tokens, cost.
+
+        Everything here was already tracked; this consolidates it into one
+        artifact a UI can print as the run's final line. Cost is a best-effort
+        estimate from the model's public pricing (``0`` / unknown when the
+        model isn't in the table), never a billing figure.
+        """
+        usage = dict(self._total_usage)
+        tool_results = list(getattr(state, "tool_results", []) or [])
+        events = list(getattr(state, "events", []) or [])
+        tool_calls = sum(1 for e in events if e.type == "tool_called")
+        compactions = sum(1 for e in events if e.type == "context_compacted")
+        iterations = max(
+            (e.payload.get("iteration", 0) for e in events if e.type == "step_started"),
+            default=0,
+        )
+        cost_usd: float | None = None
+        model = getattr(self.llm, "model", None)
+        if model:
+            try:
+                from shipit_agent.costs.tracker import CostTracker
+
+                cost_usd = round(
+                    CostTracker().calculate_cost(
+                        str(model),
+                        usage.get("prompt_tokens", 0),
+                        usage.get("completion_tokens", 0),
+                        cache_read_tokens=usage.get("cache_read_input_tokens", 0),
+                        cache_write_tokens=usage.get("cache_creation_input_tokens", 0),
+                    ),
+                    6,
+                )
+            except Exception:
+                cost_usd = None
+        total = usage.get("total_tokens", 0)
+        cost_str = f", ${cost_usd:.4f}" if cost_usd else ""
+        return {
+            "headline": (
+                f"Run finished: {iterations} iterations, {tool_calls} tool "
+                f"calls, {total:,} tokens{cost_str}"
+            ),
+            "iterations": iterations,
+            "tool_calls": tool_calls,
+            "tool_results": len(tool_results),
+            "compactions": compactions,
+            "usage": usage,
+            "estimated_cost_usd": cost_usd,
+            "gave_up": bool(self.metadata.get("gave_up")),
+        }
+
+    @staticmethod
+    def _reset_read_gate(shared_state: dict[str, Any] | None) -> None:
+        """Drop the read-before-edit record after a compaction.
+
+        ``read_file`` records which paths were read (and their mtimes) so
+        ``edit_file`` can refuse a write against contents the model never
+        saw. After compaction those reads may be summarized away, so the
+        record is stale — clearing it makes the next edit re-read first.
+
+        The paths that WERE read are remembered so the loop can re-inject the
+        most recent one as a fresh read (see ``regrounding_message``): after
+        compaction the model should work from the code, not a prose summary
+        of it.
+        """
+        if not isinstance(shared_state, dict):
+            return
+        shared_state["compaction_reread_hint"] = list(
+            shared_state.get("read_files", [])
+        )[-3:]
+        shared_state["read_files"] = []
+        shared_state["read_file_mtimes"] = {}
+
+    @staticmethod
+    def regrounding_messages(shared_state: dict[str, Any] | None) -> list[Message]:
+        """Fresh reads of the files a just-fired compaction summarized away.
+
+        Claude Code re-establishes file state after compaction rather than
+        leaving the model with a description of code. The most recently read
+        files (up to 3) are re-read from disk and returned as tool messages,
+        so the post-compaction context holds current contents, not prose.
+        Consumes the hint so it fires once per compaction. Best-effort: an
+        unreadable or vanished file is simply skipped.
+        """
+        if not isinstance(shared_state, dict):
+            return []
+        hints = shared_state.pop("compaction_reread_hint", None) or []
+        messages: list[Message] = []
+        read_files = list(shared_state.get("read_files", []))
+        mtimes = dict(shared_state.get("read_file_mtimes", {}))
+        for path_str in hints:
+            try:
+                from pathlib import Path
+
+                path = Path(path_str)
+                if not path.is_file():
+                    continue
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if len(text) > 40_000:
+                    text = text[:40_000] + "\n…[truncated]"
+                messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            f"[re-grounding after compaction] Current contents "
+                            f"of {path.name}:\n{text}"
+                        ),
+                        metadata={"regrounding": True, "path": path_str},
+                    )
+                )
+                # Restore the read-gate for the re-read file so an edit can
+                # follow without another explicit read.
+                if path_str not in read_files:
+                    read_files.append(path_str)
+                try:
+                    mtimes[path_str] = path.stat().st_mtime_ns
+                except OSError:
+                    pass
+            except Exception:
+                continue
+        if messages:
+            shared_state["read_files"] = read_files
+            shared_state["read_file_mtimes"] = mtimes
+        return messages
 
     # ── shared tool state ────────────────────────────────────────────────
 

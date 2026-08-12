@@ -32,6 +32,10 @@ class FunctionTool:
         "Use this when a direct callable can complete the task reliably."
     )
     prompt: str = FUNCTION_TOOL_PROMPT
+    #: Declare a pure/side-effect-free function so the runtime may run it
+    #: concurrently with other reads. ``None`` (default) leaves the decision
+    #: to the name-based contract heuristic — declaring it only overrides.
+    read_only: bool | None = None
 
     @classmethod
     def from_callable(
@@ -40,6 +44,7 @@ class FunctionTool:
         *,
         name: str | None = None,
         description: str | None = None,
+        read_only: bool | None = None,
     ) -> "FunctionTool":
         return cls(
             name=name or func.__name__,
@@ -47,6 +52,7 @@ class FunctionTool:
             or inspect.getdoc(func)
             or f"Function tool for {func.__name__}",
             func=func,
+            read_only=read_only,
         )
 
     def schema(self) -> dict[str, Any]:

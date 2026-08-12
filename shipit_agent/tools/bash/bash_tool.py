@@ -6,6 +6,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.formatting import clip_text
@@ -46,9 +47,17 @@ class BashTool:
         description: str = "Run a shell command inside the local project root with basic safety checks.",
         prompt: str | None = None,
         default_timeout: float = 30.0,
-        max_timeout: float = 120.0,
+        # Claude Code's Bash allows up to 600s so real test suites and builds
+        # aren't killed mid-run. Raised from 120s.
+        max_timeout: float = 600.0,
         allowed_command_prefixes: list[str] | None = None,
         blocked_substrings: list[str] | None = None,
+        #: Opt in to a full shell — redirections (``>``/``>>``/``<``),
+        #: heredocs, pipes into files, and command/process substitution. The
+        #: safe default keeps the conservative syntactic filter; set this for
+        #: a Claude-Code-style bash when the environment is already trusted /
+        #: sandboxed. The allowlist and blocked-substring checks still apply.
+        unrestricted: bool = False,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
         self.name = name
@@ -57,6 +66,10 @@ class BashTool:
         self.prompt_instructions = "Use this for bounded shell inspection, test runs, and local developer workflows."
         self.default_timeout = default_timeout
         self.max_timeout = max_timeout
+        self.unrestricted = unrestricted
+        #: Live background jobs, id → {process, log_path, command}, for the
+        #: companion poll/kill tool.
+        self.background_jobs: dict[str, dict[str, Any]] = {}
         self.allowed_command_prefixes = list(
             allowed_command_prefixes
             or [
@@ -259,20 +272,39 @@ class BashTool:
         # defend against an allowlisted command being handed an absolute path
         # to a sensitive file (e.g. `cat /etc/passwd`) — argument-level path
         # confinement is out of scope for this syntactic guard.
-        if "$(" in normalized:
-            raise ValueError("Command substitution '$(...)' is not allowed")
-        if "`" in normalized:
-            raise ValueError("Command substitution with backticks is not allowed")
-        if "<(" in normalized or ">(" in normalized:
-            raise ValueError("Process substitution '<(...)'/'>(...)' is not allowed")
-        if ">" in normalized or "<" in normalized:
-            raise ValueError("File redirection ('>', '>>', '<') is not allowed")
+        # In unrestricted mode the shell is trusted: redirections, heredocs,
+        # and substitution are exactly what a real developer workflow needs
+        # (`pytest > out.txt`, `cat <<EOF`, `diff <(a) <(b)`). The blocked-
+        # substring guard above still runs. The syntactic bans below apply
+        # only in the conservative default mode.
+        if not self.unrestricted:
+            if "$(" in normalized:
+                raise ValueError("Command substitution '$(...)' is not allowed")
+            if "`" in normalized:
+                raise ValueError(
+                    "Command substitution with backticks is not allowed"
+                )
+            if "<(" in normalized or ">(" in normalized:
+                raise ValueError("Process substitution '<(...)'/'>(...)' is not allowed")
+            if ">" in normalized or "<" in normalized:
+                raise ValueError("File redirection ('>', '>>', '<') is not allowed")
 
+        # The first-token allowlist is a feature of the conservative mode.
+        # Unrestricted mode trusts the environment and runs any command; the
+        # blocked-substring guard above is the remaining backstop.
+        if self.unrestricted:
+            return
         for segment in re.split(r"\s*(?:&&|\|\||;|\|)\s*", normalized):
             stripped = segment.strip()
             if not stripped:
                 continue
-            first = shlex.split(stripped)[0]
+            try:
+                tokens = shlex.split(stripped)
+            except ValueError:
+                raise ValueError("Command could not be parsed for the allowlist check")
+            if not tokens:
+                continue
+            first = tokens[0]
             if not any(
                 first == prefix or first.startswith(f"{prefix}/")
                 for prefix in self.allowed_command_prefixes
@@ -283,7 +315,15 @@ class BashTool:
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         command = str(kwargs.get("command", ""))
-        self._validate_command(command)
+        # A validation failure is a result the model can fix, not a crash: a
+        # raised exception escapes the tool and can take the whole run down.
+        try:
+            self._validate_command(command)
+        except ValueError as exc:
+            return ToolOutput(
+                text=f"Command rejected: {exc}",
+                metadata={"ok": False, "error": "invalid_command", "command": command},
+            )
         timeout = min(
             max(float(kwargs.get("timeout", self.default_timeout)), 1.0),
             self.max_timeout,
@@ -355,10 +395,17 @@ class BashTool:
         except OSError:
             pass
         rel_log = log_path.relative_to(self.root_dir)
+        job_id = f"job_{len(self.background_jobs) + 1}_{process.pid}"
+        self.background_jobs[job_id] = {
+            "process": process,
+            "log_path": log_path,
+            "command": command,
+        }
         lines = [
-            f"Started in background (pid {process.pid}).",
+            f"Started in background as {job_id} (pid {process.pid}).",
             f"Log file: {rel_log}",
-            "Tail it with: tail -n 50 " + str(rel_log),
+            f"Check on it with the bash_job tool using job_id {job_id!r} "
+            "to read output, or the kill action to stop it.",
             "",
             "Early output:",
             early_output or "(no output yet)",
@@ -369,8 +416,122 @@ class BashTool:
                 "command": command,
                 "cwd": str(cwd),
                 "background": True,
+                "job_id": job_id,
                 "pid": process.pid,
                 "log_path": str(rel_log),
                 "early_output": early_output,
             },
         )
+
+    def poll_job(self, job_id: str, *, tail_lines: int = 50) -> dict[str, Any]:
+        """Status + recent output for a background job (for the companion tool)."""
+        job = self.background_jobs.get(job_id)
+        if job is None:
+            known = ", ".join(sorted(self.background_jobs)) or "none"
+            return {"ok": False, "error": f"no such job {job_id!r}; known: {known}"}
+        process = job["process"]
+        code = process.poll()
+        try:
+            text = job["log_path"].read_text(errors="replace")
+        except OSError:
+            text = ""
+        recent = "\n".join(text.splitlines()[-tail_lines:])
+        return {
+            "ok": True,
+            "job_id": job_id,
+            "pid": process.pid,
+            "running": code is None,
+            "exit_code": code,
+            "output": recent,
+        }
+
+    def kill_job(self, job_id: str) -> dict[str, Any]:
+        """Terminate a background job's process group."""
+        import os
+        import signal
+
+        job = self.background_jobs.get(job_id)
+        if job is None:
+            return {"ok": False, "error": f"no such job {job_id!r}"}
+        process = job["process"]
+        if process.poll() is None:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                process.terminate()
+        return {"ok": True, "job_id": job_id, "killed": True}
+
+
+class BashJobTool:
+    """Poll or kill a background job started by the bash tool.
+
+    Claude Code's BashOutput / KillShell parity: the bash tool can spawn a
+    long-running command detached (a dev server, a watcher, a slow build);
+    this tool reads its recent output or stops it, by job id. Bound to the
+    same BashTool instance so it shares the live job table.
+    """
+
+    read_only = False
+
+    def __init__(self, bash_tool: "BashTool", *, name: str = "bash_job") -> None:
+        self._bash = bash_tool
+        self.name = name
+        self.description = (
+            "Read output from, or kill, a background command started by the "
+            "bash tool. Pass the job_id the bash tool returned."
+        )
+        self.prompt_instructions = (
+            "After starting a background command with the bash tool in "
+            "background mode, use this to check on it: the output action "
+            "reads recent log lines, the kill action stops it."
+        )
+
+    def schema(self) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "job_id": {
+                            "type": "string",
+                            "description": "The job id returned by the bash tool.",
+                        },
+                        "action": {
+                            "type": "string",
+                            "enum": ["output", "kill"],
+                            "description": "output = read recent log; kill = stop it.",
+                        },
+                        "tail_lines": {
+                            "type": "number",
+                            "description": "How many trailing log lines to return (default 50).",
+                        },
+                    },
+                    "required": ["job_id"],
+                },
+            },
+        }
+
+    def run(self, context: ToolContext, **kwargs) -> ToolOutput:
+        job_id = str(kwargs.get("job_id", ""))
+        action = str(kwargs.get("action", "output"))
+        if action == "kill":
+            result = self._bash.kill_job(job_id)
+            text = (
+                f"Killed {job_id}."
+                if result.get("ok")
+                else f"Could not kill: {result.get('error')}"
+            )
+            return ToolOutput(text=text, metadata=result)
+        tail = int(kwargs.get("tail_lines", 50) or 50)
+        result = self._bash.poll_job(job_id, tail_lines=tail)
+        if not result.get("ok"):
+            return ToolOutput(text=result.get("error", "unknown job"), metadata=result)
+        status = "running" if result["running"] else f"exited ({result['exit_code']})"
+        text = (
+            f"Job {job_id} is {status}.\n\nRecent output:\n"
+            + (result["output"] or "(no output yet)")
+        )
+        return ToolOutput(text=text, metadata=result)

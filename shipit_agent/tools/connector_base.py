@@ -29,13 +29,57 @@ class ConnectorToolBase:
             return None
         return store.get(self.credential_key)
 
-    def _not_connected_output(self) -> ToolOutput:
+    def _not_connected_output(self, context: ToolContext | None = None) -> ToolOutput:
+        """A missing credential produces an ACTIONABLE result, not a dead end.
+
+        With the run's ConnectionRegistry in reach (published into shared
+        state by the runtime), this files a connection request and returns
+        the ``requested`` metadata that makes the runtime emit its
+        ``connection_requested`` card — the user sees "Connect Slack — it
+        needs a token", the model sees the same instruction, and neither is
+        left guessing. Without a registry (bare tool, unit test) it degrades
+        to the old flat text.
+        """
+        registry = None
+        if context is not None:
+            registry = (getattr(context, "state", None) or {}).get(
+                "connection_registry"
+            )
+        base_metadata = {
+            "provider": self.provider,
+            "connected": False,
+            "credential_key": self.credential_key,
+        }
+        if registry is None:
+            return ToolOutput(
+                text=(
+                    f"{self.provider} is not connected. Configure a "
+                    "credential record first."
+                ),
+                metadata=base_metadata,
+            )
+        reason = f"The {self.provider} tool was called but has no credential."
+        try:
+            registry.request(self.credential_key, reason)
+            connection = registry.get(self.credential_key)
+        except Exception:
+            connection = None
+        next_step = connection.next_step() if connection is not None else ""
+        title = getattr(connection, "title", None) or self.provider
+        auth = getattr(getattr(connection, "auth", None), "value", "unknown")
         return ToolOutput(
-            text=f"{self.provider} is not connected. Configure a credential record first.",
+            text=(
+                f"{self.provider} is not connected. {next_step or 'A credential is required.'} "
+                "The request has been filed; tell the user what is needed and "
+                "continue with what you can do without it."
+            ),
             metadata={
-                "provider": self.provider,
-                "connected": False,
-                "credential_key": self.credential_key,
+                **base_metadata,
+                "requested": True,
+                "connection_id": self.credential_key,
+                "title": title,
+                "reason": reason,
+                "auth": auth,
             },
         )
 

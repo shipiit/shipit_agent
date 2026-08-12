@@ -138,6 +138,38 @@ class TestAnthropicCacheRequest:
         assert kwargs["system"] == "You are helpful."
         assert all("cache_control" not in t for t in kwargs["tools"])
 
+    def test_cache_control_on_message_prefix(self) -> None:
+        """The last message block carries the third breakpoint, so the
+        conversation prefix (the growing part of an agent run) is cached."""
+        llm = AnthropicChatLLM(model="claude-sonnet-4")
+        kwargs = llm._build_request_kwargs(
+            messages=[
+                Message(role="user", content="first"),
+                Message(role="assistant", content="thinking"),
+                Message(role="user", content="second"),
+            ],
+            tools=TOOLS,
+            system_prompt="You are helpful.",
+        )
+        sent_messages = kwargs["messages"]
+        last_content = sent_messages[-1]["content"]
+        assert isinstance(last_content, list)
+        assert last_content[-1]["cache_control"] == {"type": "ephemeral"}
+        # Only the LAST message carries it.
+        for msg in sent_messages[:-1]:
+            content = msg["content"]
+            if isinstance(content, list):
+                assert all("cache_control" not in b for b in content)
+
+    def test_message_prefix_untouched_when_disabled(self) -> None:
+        llm = AnthropicChatLLM(model="claude-sonnet-4", prompt_caching=False)
+        kwargs = llm._build_request_kwargs(
+            messages=[Message(role="user", content="hi")],
+            tools=None,
+            system_prompt=None,
+        )
+        assert kwargs["messages"][-1]["content"] == "hi"
+
 
 # ======================================================================
 # Anthropic adapter — usage parsing
@@ -203,6 +235,24 @@ class TestLiteLLMCacheRequest:
         # Last tool carries the breakpoint; first does not.
         assert "cache_control" not in sent["tools"][0]
         assert sent["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+
+    def test_cache_control_on_last_message_prefix(self, fake_litellm) -> None:
+        fake_litellm.completion.return_value = _make_nonstream_response()
+
+        llm = LiteLLMChatLLM(model="anthropic/claude-sonnet-4")
+        llm.complete(
+            messages=[
+                Message(role="system", content="You are helpful."),
+                Message(role="user", content="first"),
+                Message(role="user", content="second"),
+            ],
+            tools=TOOLS,
+        )
+
+        sent = fake_litellm.completion.call_args.kwargs
+        last_msg = sent["messages"][-1]
+        assert isinstance(last_msg["content"], list)
+        assert last_msg["content"][-1]["cache_control"] == {"type": "ephemeral"}
 
     def test_does_not_mutate_caller_tools(self, fake_litellm) -> None:
         fake_litellm.completion.return_value = _make_nonstream_response()

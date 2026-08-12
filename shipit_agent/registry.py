@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from shipit_agent.exceptions import DuplicateToolError
-from shipit_agent.mcp import MCPServer, discover_mcp_tools
+from shipit_agent.mcp import MCPServer, _sanitize_tool_name, discover_mcp_tools
 from shipit_agent.tools import Tool
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -29,6 +32,19 @@ class ToolRegistry:
                 metadata = getattr(tool, "metadata", None)
                 if isinstance(metadata, dict):
                     metadata.setdefault("server", mcp.name)
+                # Two servers exposing the same tool name is a config fact,
+                # not a bug the user can fix at run start — the later tool is
+                # re-exposed as `{server}__{name}` instead of crashing the
+                # run. Hand-written duplicates still raise: those ARE bugs.
+                if tool.name in registry.tools:
+                    renamed = _sanitize_tool_name(f"{mcp.name}__{tool.name}")
+                    logger.warning(
+                        "MCP tool name collision: %r exists; exposing %s's as %r",
+                        tool.name,
+                        mcp.name,
+                        renamed,
+                    )
+                    tool.name = renamed
                 registry.register(tool)
         return registry
 

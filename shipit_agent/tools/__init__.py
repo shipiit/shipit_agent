@@ -2,7 +2,7 @@ from .agent_tool import AgentTool
 from .ask_user import AskUserTool
 from .ask_user_async import AskUserAsyncTool
 from .artifact_builder import ArtifactBuilderTool
-from .bash import BashTool
+from .bash import BashJobTool, BashTool
 from .base import Tool, ToolContext, ToolOutput, ToolOutputChunk, ToolRunOutput
 from .formatting import clip_text
 from .code_execution import CodeExecutionTool
@@ -13,7 +13,7 @@ from .decision_matrix import DecisionMatrixTool
 from .deep_research import DeepResearchTool
 from .document_builder import DocumentBuilderTool
 from .download_file import DownloadFileTool
-from .edit_file import EditFileTool
+from .edit_file import EditFileTool, MultiEditTool
 from .evidence_synthesis import EvidenceSynthesisTool
 from .function import FunctionTool
 from .file_read import FileReadTool
@@ -38,7 +38,7 @@ from .notion import NotionTool
 from .open_url import OpenURLTool
 from .pdf import PDFTool
 from .playwright_browser import PlaywrightBrowserTool
-from .planner import PlannerTool
+from .planner import PlannerTool, PresentPlanTool
 from .prompt import PromptTool
 from .salesforce import SalesforceTool
 from .slack import SlackTool
@@ -68,6 +68,7 @@ __all__ = [
     "AskUserAsyncTool",
     "ArtifactBuilderTool",
     "BashTool",
+    "BashJobTool",
     "BraveSearchProvider",
     "build_search_provider",
     "ClaudeMemoryTool",
@@ -81,6 +82,7 @@ __all__ = [
     "DownloadFileTool",
     "DuckDuckGoSearchProvider",
     "EditFileTool",
+    "MultiEditTool",
     "EvidenceSynthesisTool",
     "FileReadTool",
     "FileWriteTool",
@@ -107,6 +109,7 @@ __all__ = [
     "PlaywrightBrowserTool",
     "PlaywrightSearchProvider",
     "PlannerTool",
+    "PresentPlanTool",
     "PromptTool",
     "SalesforceTool",
     "SearchProvider",

@@ -14,6 +14,7 @@ from shipit_agent.integrations import CredentialStore
 from shipit_agent.llms.base import (
     LLM,
     LLMResponse,
+    accepts_kwarg,
     accepts_text_delta_callback,
     accepts_tool_input_callback,
 )
@@ -105,27 +106,6 @@ def _merge_tool_state(target: dict[str, Any], child: dict[str, Any]) -> None:
             target[key] = value
 
 
-_INTENT_MARKERS = (
-    "let me",
-    "i will",
-    "i'll",
-    "i am going to",
-    "i'm going to",
-    "first, i",
-    "next, i",
-    "now i",
-    "going to use",
-    "going to call",
-    "let's use",
-)
-
-
-def _is_intent_without_action(text: str | None) -> bool:
-    """Short, action-narrating text with no substance — the stall shape."""
-    stripped = (text or "").strip().lower()
-    if not stripped or len(stripped) > 300:
-        return False
-    return any(marker in stripped for marker in _INTENT_MARKERS)
 
 
 def _join_clauses(parts: list[str]) -> str:
@@ -281,9 +261,15 @@ class AgentRuntime(RuntimeCore):
         heal_tool_calls: bool = True,
         approvals: Any | None = None,
         code_mode: bool = False,
+        deferred_tools: Any = False,
         lockdown: Any = None,
+        #: A provider ``response_format`` dict (from ``output_schema``). Applied
+        #: only on tool-less completions — the final answer / synthesis turn —
+        #: where JSON-mode is safe; a mid-loop step still needs to call tools.
+        response_format: dict[str, Any] | None = None,
     ) -> None:
         self.llm = llm
+        self.response_format = response_format
         # Retained for compatibility only. Progress narration is composed
         # from the run's own tool calls and results, so nothing here is
         # ever called — turning narration on no longer doubles the model
@@ -320,6 +306,7 @@ class AgentRuntime(RuntimeCore):
             heal_tool_calls=heal_tool_calls,
             approvals=approvals,
             code_mode=code_mode,
+            deferred_tools=deferred_tools,
             lockdown=lockdown,
             context_window_tokens=context_window_tokens,
             max_tool_output_chars=max_tool_output_chars,
@@ -902,7 +889,19 @@ class AgentRuntime(RuntimeCore):
                 session_id=self.session_id,
             )
 
-        if self.parallel_tool_execution and len(tool_calls) > 1:
+        # Only read-only calls may run concurrently. Writes/sends/mutations
+        # keep their order — two edit_file calls to the same path racing
+        # across isolated state copies would silently lose one. When every
+        # call in the group reads, the whole group parallelizes (the common
+        # fan-out: several greps/reads at once); a mixed group runs serially
+        # to preserve write ordering.
+        read_flags = self.read_only_calls(tool_calls, registry)
+        group_is_parallel_safe = all(read_flags)
+        if (
+            self.parallel_tool_execution
+            and len(tool_calls) > 1
+            and group_is_parallel_safe
+        ):
             # Run all tool calls concurrently, then append results in
             # original order so the message sequence stays deterministic.
             # Each tool gets its OWN isolated copy of shared_state so concurrent
@@ -949,6 +948,10 @@ class AgentRuntime(RuntimeCore):
                     state.tool_results.append(tool_result)
                     results.append(tool_result)
                 state.messages.append(msg)
+                if tool_result is not None:
+                    vision = self.vision_followup(tool_result, tool_calls[idx].name)
+                    if vision is not None:
+                        state.messages.append(vision)
         else:
             # Sequential execution (default)
             for idx, tc in enumerate(tool_calls):
@@ -982,6 +985,13 @@ class AgentRuntime(RuntimeCore):
                     state.tool_results.append(tool_result)
                     results.append(tool_result)
                 state.messages.append(msg)
+                if tool_result is not None:
+                    # A tool that returned an image gets it in front of the
+                    # model's eyes on the next step, as a user-turn block —
+                    # the bridge computer_use always assumed existed.
+                    vision = self.vision_followup(tool_result, tc.name)
+                    if vision is not None:
+                        state.messages.append(vision)
 
         return results
 
@@ -1135,6 +1145,12 @@ results and do not say what the tool will return.""".strip()
                     "iteration": iteration,
                 },
             )
+            # Narration is a real model call — its tokens count. Without this
+            # the run's usage total (and any Budget watching it) under-reports
+            # by one completion per narrated step.
+            usage = getattr(result, "usage", None)
+            if usage:
+                self.track_usage(state, result, iteration)
             return _first_sentences(getattr(result, "content", ""))
         except Exception as exc:                              # noqa: BLE001
             self.emit(
@@ -1200,24 +1216,15 @@ detail you were not given and do not say what you will do next."""
         failed" is the part a watcher is waiting for, and a summary that
         buries it reads as progress.
 
-        With a ``decision_llm`` configured, that model writes the line
-        instead. It is given a bounded head of each result — enough to say
-        what came back, never the payload — because "Asked question
-        openai/openai-python." is as thin an observation as the composed
-        decision was a decision, and for the same reason: a label built from
-        a tool name cannot know what the tool actually returned.
+        Always composed, never a model call. Narration spends its one
+        completion per step on the DECISION line — the forward-looking one a
+        watcher can act on; the observation is assembled from the results'
+        own names, arguments and declared metadata, which is factual and
+        free. (An earlier version narrated both, doubling the per-step
+        narration cost for a line that mostly restated tool output.)
         """
         if not tool_results or not self.progress_summaries:
             return ""
-
-        narrated = self._narrate_with_decision_model(
-            state=state,
-            prompt=self._observation_prompt(tool_results, user_prompt),
-            purpose="agent_observation_summary",
-            iteration=iteration,
-        )
-        if _looks_like_prose(narrated):
-            return narrated
 
         arguments = _arguments_by_name(tool_calls)
         clauses: list[str] = []
@@ -1311,6 +1318,24 @@ detail you were not given and do not say what you will do next."""
         # custom adapters keep working unchanged (no inline streaming).
         if self._llm_streams_text:
             complete_kwargs["text_delta_callback"] = _on_text_delta
+        # Per-request timeout, only for adapters that can honour it. A hung
+        # connection without one hangs the run — cancel() can't interrupt a
+        # blocked complete() call.
+        if self.retry_policy.request_timeout is not None and accepts_kwarg(
+            self.llm.complete, "timeout"
+        ):
+            complete_kwargs["timeout"] = self.retry_policy.request_timeout
+        # Native structured output — but only when this completion sends no
+        # tools. JSON-mode suppresses tool calls, so applying it mid-loop
+        # would stop the model acting; on the final/synthesis turn (tools
+        # empty) it is exactly right, and it guarantees parseable JSON where
+        # the provider supports it (the prompt+parse path stays the fallback).
+        if (
+            self.response_format
+            and not tools
+            and accepts_kwarg(self.llm.complete, "response_format")
+        ):
+            complete_kwargs["response_format"] = self.response_format
 
         attempt = 0
         while True:
@@ -1320,23 +1345,47 @@ detail you were not given and do not say what you will do next."""
                 if attempt >= self.retry_policy.max_llm_retries:
                     raise
                 attempt += 1
+                # A failed attempt may have streamed partial output; reset the
+                # tool-input parsers so the retry starts from clean state
+                # instead of appending fragments onto a dead parse.
+                parsers.clear()
+                emitted.clear()
+                delay = self.retry_policy.llm_retry_delay(attempt)
                 self.emit(
                     state,
                     "llm_retry",
                     "Retrying LLM completion",
                     attempt=attempt,
                     error=str(exc),
+                    delay=round(delay, 3),
                 )
+                if delay > 0:
+                    time.sleep(delay)
 
-    def run(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
+    def run(
+        self,
+        user_prompt: str,
+        *,
+        user_content: list[dict[str, Any]] | None = None,
+    ) -> tuple[RuntimeState, LLMResponse]:
         # Guarantee MCP cleanup even if registry construction (which opens MCP
         # transports) or the agent loop raises.
+        #
+        # ``user_content`` is the multimodal form of the same turn: content
+        # blocks (text + images/documents) that become the user message,
+        # while ``user_prompt`` stays the plain text used for guardrails,
+        # planning, tool context and events.
         try:
-            return self._run_inner(user_prompt)
+            return self._run_inner(user_prompt, user_content=user_content)
         finally:
             self.close_mcps()
 
-    def _run_inner(self, user_prompt: str) -> tuple[RuntimeState, LLMResponse]:
+    def _run_inner(
+        self,
+        user_prompt: str,
+        *,
+        user_content: list[dict[str, Any]] | None = None,
+    ) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
         shared_state: dict[str, Any] = {}
 
@@ -1371,7 +1420,7 @@ detail you were not given and do not say what you will do next."""
         # model sees the same connection/MCP metadata that tools can search.
         shared_state.update(self.build_shared_state(registry, state))
         tool_prompt = build_tools_prompt(
-            registry.values(), connections=self.connections.all()
+            registry.values(), connections=self.connections.all(), mcps=self.mcps
         )
         base_prompt = (
             self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
@@ -1388,6 +1437,12 @@ detail you were not given and do not say what you will do next."""
         # below them, so what they buy now is nothing and what they cost is
         # their whole length, every step. The calls and arguments stay — those
         # are what stop the model searching for the same thing twice.
+        #
+        # Eviction is a per-REQUEST view only. The originals are kept aside
+        # and written back at save time — persisting the stubs would destroy
+        # on disk what an earlier turn retrieved, for every future reader of
+        # this session (replay, audit, the next turn's own eviction pass).
+        original_prior = [m for m in prior_messages if m.role != "system"]
         if self.evict_prior_tool_outputs:
             prior_messages = evict_prior_tool_outputs(list(prior_messages))
         # Inject exactly one fresh system message at the front, then the prior
@@ -1401,7 +1456,9 @@ detail you were not given and do not say what you will do next."""
             Message(role="system", content=base_prompt, metadata=dict(self.metadata))
         )
         state.messages.extend(m for m in prior_messages if m.role != "system")
-        state.messages.append(Message(role="user", content=user_prompt))
+        state.messages.append(
+            Message(role="user", content=user_content or user_prompt)
+        )
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
 
@@ -1477,6 +1534,32 @@ detail you were not given and do not say what you will do next."""
                     if _is_core((schema.get("function") or {}).get("name"))
                 ]
 
+        # Deferred tool loading: advertise core schemas only; everything else
+        # is a name in the index until tool_search (or a direct call) loads
+        # it. Mirrors the code-mode rebuild above — code mode wins if both
+        # are on (setup_deferral returns "" in that case).
+        deferral_index = self.setup_deferral(registry, shared_state)
+        if deferral_index:
+            from shipit_agent.deferral import DEFERRED_NAMES_KEY
+
+            deferred_names = shared_state.get(DEFERRED_NAMES_KEY) or set()
+            resident_tools = [
+                tool
+                for tool in registry.values()
+                if getattr(tool, "name", "") not in deferred_names
+            ]
+            resident_prompt = build_tools_prompt(
+                resident_tools, connections=self.connections.all(), mcps=self.mcps
+            )
+            base_prompt = "\n\n".join(
+                part
+                for part in (self.prompt, resident_prompt, deferral_index)
+                if part
+            )
+            state.messages[0] = Message(
+                role="system", content=base_prompt, metadata=dict(self.metadata)
+            )
+
         self._run_planner_if_needed(
             state=state,
             registry=registry,
@@ -1502,10 +1585,22 @@ detail you were not given and do not say what you will do next."""
                 if not response.content:
                     response = LLMResponse(content="[cancelled]")
                 break
+            # Deferred loading grows the advertised set mid-run, so the
+            # selection is re-evaluated every step (a no-op when off).
+            active_schemas = self.select_step_schemas(tool_schemas, shared_state)
             if self.hooks:
-                self.hooks.run_before_llm(list(state.messages), tool_schemas)
+                self.hooks.run_before_llm(list(state.messages), active_schemas)
 
-            compacted_messages = self.compact(state, list(state.messages), iteration)
+            compacted_messages = self.compact(
+                state, list(state.messages), iteration, shared_state
+            )
+            # Re-ground after a fresh compaction: append current contents of
+            # the files it summarized away, so the model works from the code
+            # (persisted into state.messages, so it survives to later steps).
+            regrounding = self.regrounding_messages(shared_state)
+            if regrounding:
+                state.messages.extend(regrounding)
+                compacted_messages = [*compacted_messages, *regrounding]
 
             # Placed last, after the whole conversation, because that is where
             # a model attends most reliably. Appended to this per-call copy —
@@ -1513,7 +1608,7 @@ detail you were not given and do not say what you will do next."""
             # stack up across the run.
             compacted_messages, step_schemas = self.step_request(
                 messages=compacted_messages,
-                tool_schemas=tool_schemas,
+                tool_schemas=active_schemas,
                 iteration=iteration,
                 ran_tools=bool(state.tool_results),
             )
@@ -1627,28 +1722,21 @@ detail you were not given and do not say what you will do next."""
                 # search…") but called nothing. One tightly-gated re-prompt —
                 # short intent-shaped text only, capped, never repeated for
                 # identical text — recovers the turn instead of ending it.
-                if (
-                    self.heal_tool_calls
-                    and tool_schemas
-                    and iteration < self.max_iterations
-                    and self._nudges_used < 1
-                    and _is_intent_without_action(response.content)
-                    and (response.content or "").strip() != self._last_nudged_text
+                # The decision lives on RuntimeCore (shared with the async
+                # loop): structural guards — questions and multi-sentence
+                # replies are finished turns, not stalls — plus the one-nudge
+                # cap and the identical-text suppression.
+                if self.should_nudge(
+                    response,
+                    has_tools=bool(tool_schemas),
+                    last=iteration >= self.max_iterations,
                 ):
-                    self._nudges_used += 1
-                    self._last_nudged_text = (response.content or "").strip()
+                    self.record_nudge(response)
                     state.messages.append(
                         Message(role="assistant", content=response.content)
                     )
                     state.messages.append(
-                        Message(
-                            role="user",
-                            content=(
-                                "You described an action but did not call any "
-                                "tool. Call the tool now, or give your final "
-                                "answer directly."
-                            ),
-                        )
+                        Message(role="user", content=self.NUDGE_TEXT)
                     )
                     appended_response_id = id(response)
                     self.emit(
@@ -1828,8 +1916,15 @@ detail you were not given and do not say what you will do next."""
                     metadata=dict(tool_result.metadata),
                 )
             )
+        # Reassemble with the ORIGINAL prior turns (see eviction note above):
+        # [fresh system] + [unevicted prior] + [everything this run added].
+        persisted_messages = [
+            state.messages[0],
+            *original_prior,
+            *state.messages[1 + len(original_prior) :],
+        ]
         self.session_store.save(
-            SessionRecord(session_id=self.session_id, messages=list(state.messages))
+            SessionRecord(session_id=self.session_id, messages=persisted_messages)
         )
         # Expose the final answer as both `output` (legacy) and `content`
         # (explicit markdown string) so consumers can render it directly.
@@ -1868,6 +1963,11 @@ detail you were not given and do not say what you will do next."""
             content=response.content,
             format="markdown",
         )
+        # A tidy closing accounting, like Claude Code / Codex print at end of
+        # turn: iterations, tool calls, compactions, and token/cost usage. The
+        # data was all tracked; this surfaces it as one closing artifact.
+        summary = self._build_run_summary(state)
+        self.emit(state, "run_summary", summary["headline"], **summary)
         self.emit(
             state,
             "run_completed",
@@ -1876,6 +1976,7 @@ detail you were not given and do not say what you will do next."""
             content=response.content,
             format="markdown",
             usage=dict(self._total_usage),
+            summary=summary,
             cancelled=self._cancel_event.is_set(),
         )
         # MCP transports are closed by run()'s finally (covers the error path

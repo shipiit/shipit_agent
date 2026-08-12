@@ -86,7 +86,13 @@ class ContextTracker:
         )
 
     @staticmethod
-    def _estimate_tokens(text: str) -> int:
+    def _estimate_tokens(text: Any) -> int:
+        if isinstance(text, list):
+            # Block-shaped (multimodal) content: text parts + a flat
+            # ~1,500 tokens per image, matching compaction's estimate.
+            from shipit_agent.compaction import estimate_tokens
+
+            return estimate_tokens(text)
         if not text:
             return 0
         return max(1, len(text) // 4)

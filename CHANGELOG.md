@@ -11,6 +11,18 @@ Nothing yet.
 
 ---
 
+## [1.7.1] — 2026-08-12
+
+### Added
+
+- **Attachments on `stream()`** — `agent.stream(prompt, images=[...], files=[...])`
+  now accepts the same image and file attachments as `agent.run()`, so a
+  streaming caller can attach pictures, PDFs, and code/markdown files and
+  consume events as they arrive.
+
+
+---
+
 ## [1.7.0] — 2026-08-12
 
 The theme is the working set: schemas for the tools a step can actually use,

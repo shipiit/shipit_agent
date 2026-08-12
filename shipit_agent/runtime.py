@@ -1983,8 +1983,18 @@ detail you were not given and do not say what you will do next."""
         # too) — don't close here.
         return state, response
 
-    def stream(self, user_prompt: str) -> Iterator[AgentEvent]:
-        """Run the agent in a background thread and yield events as they're emitted."""
+    def stream(
+        self,
+        user_prompt: str,
+        *,
+        user_content: list[dict[str, Any]] | None = None,
+    ) -> Iterator[AgentEvent]:
+        """Run the agent in a background thread and yield events as they're emitted.
+
+        ``user_content`` carries the multimodal form of the turn (image /
+        document / text blocks) exactly as :meth:`run` accepts it, so a
+        streaming caller can attach images and files too.
+        """
         event_queue: queue.Queue[AgentEvent | object] = queue.Queue()
         sentinel = object()
         error_box: dict[str, BaseException] = {}
@@ -1994,7 +2004,7 @@ detail you were not given and do not say what you will do next."""
 
         def _worker() -> None:
             try:
-                self.run(user_prompt)
+                self.run(user_prompt, user_content=user_content)
             except BaseException as exc:  # noqa: BLE001
                 error_box["error"] = exc
                 _subscriber(

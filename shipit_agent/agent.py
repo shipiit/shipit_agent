@@ -1256,7 +1256,13 @@ class Agent:
         renderer.close()
         return output
 
-    def stream(self, user_prompt: str):
+    def stream(
+        self,
+        user_prompt: str,
+        *,
+        images: list[str] | None = None,
+        files: list[str] | None = None,
+    ):
         """Stream agent events as they happen.
 
         Same pipeline as :meth:`run`, but yields :class:`AgentEvent` objects
@@ -1266,6 +1272,14 @@ class Agent:
             for event in agent.stream("Fix the failing test"):
                 if event.type == "text_delta":
                     print(event.payload["chunk"], end="", flush=True)
+
+        ``images`` and ``files`` attach media to the turn, exactly as in
+        :meth:`run` — URLs, local paths, or base64 for images; text/markdown/
+        code files inlined, PDFs as document blocks::
+
+            for event in agent.stream("What changed?",
+                                      images=["diagram.png"], files=["spec.pdf"]):
+                ...
 
         Most callers want one of the three wrappers built on it instead:
 
@@ -1338,7 +1352,8 @@ class Agent:
             deferred_tools=self.deferred_tools,
             lockdown=self.lockdown,
         )
-        for event in runtime.stream(user_prompt):
+        user_content = self._user_content_blocks(user_prompt, images, files)
+        for event in runtime.stream(user_prompt, user_content=user_content):
             yield event
 
         if self.rag is not None:

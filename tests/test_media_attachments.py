@@ -257,3 +257,25 @@ def test_builder_block_helpers(tmp_path):
     [text_block] = file_blocks_from(str(md))
     assert "# hi" in text_block["text"] and "notes.md" in text_block["text"]
     assert file_blocks_from(str(tmp_path / "ghost.txt"))[0]["type"] == "text"
+
+
+def test_agent_stream_accepts_images_and_files(tmp_path):
+    img = tmp_path / "shot.png"
+    img.write_bytes(PNG_BYTES)
+    code = tmp_path / "app.py"
+    code.write_text("def main():\n    return 42\n")
+    llm = RecordingLLM()
+    agent = Agent(
+        llm=llm,
+        auto_use_skills=False,
+        auto_project_memory=False,
+        skill_source=None,
+        max_iterations=2,
+    )
+    list(agent.stream("review this", images=[str(img)], files=[str(code)]))
+    blocks = [m for m in llm.seen_messages[0] if m.role == "user"][-1].content
+    assert isinstance(blocks, list)
+    kinds = [b["type"] for b in blocks]
+    assert "image" in kinds
+    joined = " ".join(b.get("text", "") for b in blocks if b["type"] == "text")
+    assert "def main" in joined

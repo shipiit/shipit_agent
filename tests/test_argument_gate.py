@@ -13,6 +13,7 @@ question. Every layer reported success.
 
 from __future__ import annotations
 
+from shipit_agent.runtime_core import _missing_required
 from shipit_agent.tool_healing import call_carries_nothing, repair_argument_names
 
 SEARCH = {
@@ -60,11 +61,17 @@ class TestRefusingAnEmptyCall:
     def test_a_real_argument_runs(self) -> None:
         assert call_carries_nothing({"query": "qilin"}, SEARCH) == []
 
-    def test_any_real_argument_is_enough(self) -> None:
-        """A schema's required list does not hold for every valid call — a
-        tool with modes legitimately omits what another mode demands. A call
-        that supplied something has expressed an intent, so it runs."""
+    def test_partial_call_still_reports_schema_required_fields(self) -> None:
         assert call_carries_nothing({"collect": "all"}, MODED) == []
+        assert _missing_required({"collect": "all"}, MODED) == ["task"]
+
+    def test_false_and_zero_are_valid_required_values(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {"enabled": {}, "limit": {}},
+            "required": ["enabled", "limit"],
+        }
+        assert _missing_required({"enabled": False, "limit": 0}, schema) == []
 
     def test_a_tool_that_requires_nothing_is_never_refused(self) -> None:
         assert call_carries_nothing({}, {"properties": {"a": {}}}) == []
@@ -74,7 +81,7 @@ class TestEndToEnd:
     """The gate must reject the call, tell the model what to do, and let the
     run continue — not raise, and not run the tool."""
 
-    def _run(self, arguments: dict):
+    def _run(self, arguments: dict, schema: dict = SEARCH):
         from shipit_agent import Agent
         from shipit_agent.llms.base import LLMResponse
         from shipit_agent.models import ToolCall
@@ -88,7 +95,7 @@ class TestEndToEnd:
             prompt_instructions = ""
 
             def schema(self):
-                return {"function": {"name": "search_echo", "parameters": SEARCH}}
+                return {"function": {"name": "search_echo", "parameters": schema}}
 
             def run(self, context, **kwargs):
                 ran.append(kwargs)
@@ -129,3 +136,9 @@ class TestEndToEnd:
         """Repair comes first — a fixable call is not refused."""
         _result, ran = self._run({",'query'": "qilin"})
         assert ran and ran[0]["query"] == "qilin"
+
+    def test_partial_call_is_rejected_before_tool_execution(self) -> None:
+        result, ran = self._run({"collect": "all"}, MODED)
+        assert ran == []
+        tool_messages = [m.content for m in result.messages if m.role == "tool"]
+        assert any("'task'" in message and "required" in message for message in tool_messages)

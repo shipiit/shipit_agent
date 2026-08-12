@@ -308,6 +308,7 @@ from .tools import (
     GoogleSheetsTool,
     GrepSearchTool,
     HumanReviewTool,
+    CallToolTool,
     JiraTool,
     LinearTool,
     LinkedInSearchTool,
@@ -346,6 +347,7 @@ from .tools import (
 __all__ = [
     "AdaptiveAgent",
     "Agent",
+    "CallToolTool",
     "DEFAULT_SKILLS_PATH",
     "AgentBenchmark",
     "AgentChatSession",

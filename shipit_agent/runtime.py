@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import json
 import queue
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -17,6 +19,7 @@ from shipit_agent.llms.base import (
     accepts_text_delta_callback,
     accepts_tool_input_callback,
 )
+from shipit_agent.llms.prompt_cache import prompt_cache_status
 from shipit_agent.mcp import MCPServer
 from shipit_agent.models import AgentEvent, Message, ToolResult
 from shipit_agent.narrate.verbs import summarize
@@ -25,7 +28,11 @@ from shipit_agent.permissions import (
 )
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
-from shipit_agent.runtime_core import RuntimeCore, evict_prior_tool_outputs
+from shipit_agent.runtime_core import (
+    RuntimeCore,
+    _collapse_repeated_lines,
+    evict_prior_tool_outputs,
+)
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -40,6 +47,11 @@ from shipit_agent.tools.helpers import build_tools_prompt
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
 
 
+# Lets long-lived notebook/server processes reject a stale imported runtime
+# before spending tokens on the older two-stage MCP gateway path.
+EXPLICIT_MCP_ROUTING = True
+
+
 @dataclass(slots=True)
 class RuntimeState:
     messages: list[Message] = field(default_factory=list)
@@ -49,6 +61,16 @@ class RuntimeState:
     #: run only. Held on the run rather than the runtime because a pointer
     #: to "the result above" is a lie in the next run, where it is not.
     seen_tool_outputs: dict = field(default_factory=dict)
+    #: Exact failed calls in this run. Used by RuntimeCore to stop a weak
+    #: model from spending every remaining iteration on the same bad input.
+    failed_tool_calls: dict[str, int] = field(default_factory=dict)
+    #: Tool-scoped transport failures for this run. Unlike
+    #: ``failed_tool_calls`` these are independent of arguments: changing a
+    #: query cannot repair an unreachable server.
+    unreachable_tools: dict[str, str] = field(default_factory=dict)
+    #: A successful response is sticky for the turn. This prevents a slower
+    #: concurrent failure from poisoning a tool that already proved reachable.
+    reachable_tools: set[str] = field(default_factory=set)
     #: The last observation line the runtime composed. Narrating the next
     #: step needs to know what the last one found, and this already says it —
     #: which is what lets the decision prompt stay a few hundred characters
@@ -103,29 +125,6 @@ def _merge_tool_state(target: dict[str, Any], child: dict[str, Any]) -> None:
             target[key].update(value)
         else:
             target[key] = value
-
-
-_INTENT_MARKERS = (
-    "let me",
-    "i will",
-    "i'll",
-    "i am going to",
-    "i'm going to",
-    "first, i",
-    "next, i",
-    "now i",
-    "going to use",
-    "going to call",
-    "let's use",
-)
-
-
-def _is_intent_without_action(text: str | None) -> bool:
-    """Short, action-narrating text with no substance — the stall shape."""
-    stripped = (text or "").strip().lower()
-    if not stripped or len(stripped) > 300:
-        return False
-    return any(marker in stripped for marker in _INTENT_MARKERS)
 
 
 def _join_clauses(parts: list[str]) -> str:
@@ -274,6 +273,11 @@ class AgentRuntime(RuntimeCore):
         context_window_tokens: int = 0,
         max_tool_output_chars: int = 0,
         max_tool_output_group_chars: int = 0,
+        repeated_tool_failure_limit: int = 2,
+        transport_circuit_breaker: bool = True,
+        reasoning_markup_tags: tuple[str, ...] = ("thought", "think"),
+        pathological_stream_min_chars: int = 2048,
+        pathological_stream_max_ratio: float = 0.25,
         tool_output_dir: str | None = None,
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
@@ -284,10 +288,8 @@ class AgentRuntime(RuntimeCore):
         lockdown: Any = None,
     ) -> None:
         self.llm = llm
-        # Retained for compatibility only. Progress narration is composed
-        # from the run's own tool calls and results, so nothing here is
-        # ever called — turning narration on no longer doubles the model
-        # calls a run makes.
+        # Optional secondary narrator for providers that cannot return prose
+        # alongside structured tool calls. It is never selected implicitly.
         self.decision_llm = decision_llm
         self.progress_summaries = progress_summaries
         self.prompt = prompt
@@ -324,6 +326,11 @@ class AgentRuntime(RuntimeCore):
             context_window_tokens=context_window_tokens,
             max_tool_output_chars=max_tool_output_chars,
             max_tool_output_group_chars=max_tool_output_group_chars,
+            repeated_tool_failure_limit=repeated_tool_failure_limit,
+            transport_circuit_breaker=transport_circuit_breaker,
+            reasoning_markup_tags=reasoning_markup_tags,
+            pathological_stream_min_chars=pathological_stream_min_chars,
+            pathological_stream_max_ratio=pathological_stream_max_ratio,
             tool_output_dir=tool_output_dir,
             reminder=reminder,
             evict_prior_tool_outputs=evict_prior_tool_outputs,
@@ -341,7 +348,11 @@ class AgentRuntime(RuntimeCore):
         self._emit_lock = threading.Lock()
 
     def registry(self) -> ToolRegistry:
-        return construct_tool_registry(tools=self.tools, mcps=self.mcps)
+        return construct_tool_registry(
+            tools=self.tools,
+            mcps=self.mcps,
+            defer_mcps=self.code_mode,
+        )
 
     def build_tool_schemas(self) -> list[dict[str, Any]]:
         return build_tool_schemas(self.registry())
@@ -444,13 +455,14 @@ class AgentRuntime(RuntimeCore):
         from shipit_agent.tools.execute_code.execute_code_tool import (
             INVOKER_STATE_KEY,
         )
+        from shipit_agent.tools.call_tool import TOOL_INVOKER_STATE_KEY
 
         bound_tools = [
             tool
             for tool in registry.values()
             if getattr(tool, "name", "") not in CORE_TOOLS
         ]
-        if not bound_tools:
+        if not bound_tools and not getattr(registry, "deferred_mcps", []):
             return ""
 
         catalogs = {
@@ -504,9 +516,54 @@ class AgentRuntime(RuntimeCore):
                 raise PermissionError(message.content)
             return result.output, dict(result.metadata)
 
+        def _invoke_tool(
+            tool_name: str, arguments: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            if tool_name in CORE_TOOLS:
+                raise ValueError(
+                    f"'{tool_name}' is directly available; call it directly."
+                )
+            if registry.get(tool_name) is None:
+                raise KeyError(f"no hidden tool named {tool_name!r}")
+
+            counter["n"] += 1
+            record = {"id": f"gateway_{counter['n']}", "name": tool_name}
+            call = type(
+                "GatewayToolCall",
+                (),
+                {"name": tool_name, "arguments": dict(arguments)},
+            )()
+            result, message = self._execute_single_tool(
+                state=state,
+                registry=registry,
+                tool_runner=tool_runner,
+                tool_call=call,
+                tool_call_record=record,
+                context=ToolContext(
+                    prompt=user_prompt,
+                    system_prompt=base_prompt,
+                    metadata=dict(self.metadata),
+                    state=shared_state,
+                    session_id=self.session_id,
+                ),
+                iteration=0,
+            )
+            if result is None:
+                raise PermissionError(message.content)
+            return result.output, dict(result.metadata)
+
         shared_state[BINDINGS_STATE_KEY] = bindings
         shared_state[INVOKER_STATE_KEY] = _invoke
-        return binding_index(bindings)
+        shared_state[TOOL_INVOKER_STATE_KEY] = _invoke_tool
+        if registry.get("execute_code") is not None:
+            return binding_index(bindings)
+        return (
+            "Additional capabilities are hidden to keep this run token-efficient. "
+            "Use `tool_search` with detail='schema', then invoke exactly one "
+            "matching capability through `call_tool`. Do not invent tool names "
+            "or arguments, and do not search for tools unless the user's task "
+            "actually needs external evidence or an action."
+        )
 
     def _defer_tool_call(
         self,
@@ -608,7 +665,24 @@ class AgentRuntime(RuntimeCore):
         # with no query returns the whole corpus, and an answer written from
         # that is about everything except the question.
         argument_error = self.check_arguments(tool, tool_call)
+        repeated_failure = self.block_repeated_failure(
+            state,
+            tool_call=tool_call,
+            tool_call_record=tool_call_record,
+            iteration=iteration,
+        )
+        if repeated_failure is not None:
+            return None, repeated_failure
+        unreachable = self.block_unreachable_tool(
+            state,
+            tool_call=tool_call,
+            tool_call_record=tool_call_record,
+            iteration=iteration,
+        )
+        if unreachable is not None:
+            return None, unreachable
         if argument_error:
+            self.record_tool_failure(state, tool_call)
             self.emit(
                 state,
                 "tool_arguments_rejected",
@@ -782,6 +856,8 @@ class AgentRuntime(RuntimeCore):
 
         if self.hooks:
             tool_result = self.hooks.run_after_tool(tool_call.name, tool_result)
+
+        self.record_tool_outcome(state, tool_call, tool_result)
 
         # Guardrails: sanitize the tool output (indirect prompt-injection
         # neutralized, secrets redacted) BEFORE the model reads it.
@@ -1082,7 +1158,8 @@ Last step: {last or "nothing yet — this is the first step"}
 About to run:
 {actions}
 
-Two or three sentences, 35-60 words, present tense. Say what you are about
+Two or three sentences, 35-60 words, first person, present tense. Write as
+the agent ("I am…"), never about it ("The agent is…"). Say what you are about
 to do and what you are looking for, and connect it to what the last step
 turned up. Name the specific thing you are acting on. Do not say what the
 tool will return.""".strip()
@@ -1174,10 +1251,11 @@ They asked: {_bounded(user_prompt, 200)}
 What just came back:
 {rendered}
 
-Two or three sentences, 35-60 words, past tense. Say what you found, how
-much of it there is, and whether it answers what was asked. If a call failed,
-lead with that. Describe only what is shown above and do not say what you
-will do next."""
+Two or three sentences, 35-60 words, first person, past tense. Write as the
+agent ("I searched…"), never about it ("The agent searched…"). Say what you
+found, how much of it there is, and whether it answers what was asked. If a
+call failed, lead with that. Describe only what is shown above and do not say
+what you will do next."""
 
     def _generate_observation_summary(
         self,
@@ -1227,11 +1305,15 @@ will do next."""
             if _result_failed(result):
                 clauses.append(f"{label} — failed")
             else:
-                # What came back, when the tool chose to say. Silence here
-                # means the tool declared nothing, not that nothing happened.
+                # A bare "Ran bash" duplicates the tool card and carries no
+                # evidence. Emit an observation only when the tool can state
+                # a meaningful result; the next primary-model update can
+                # interpret the complete result in its existing context.
                 detail = _describe_result(result)
-                clauses.append(f"{label} — {detail}" if detail else label)
-        return _join_clauses(clauses) + "."
+                if detail:
+                    clauses.append(f"{label} — {detail}")
+        joined = _join_clauses(clauses)
+        return joined + "." if joined else ""
 
     def _complete_with_retry(
         self,
@@ -1241,33 +1323,118 @@ will do next."""
         tools: list[dict[str, Any]],
         base_prompt: str,
     ) -> LLMResponse:
+        from shipit_agent.reasoning_markup import VisibleTextStreamFilter
+
+        visible_stream = VisibleTextStreamFilter(self.reasoning_markup_tags)
+        visible_raw = ""
+        deferred_visible: list[str] = []
+        live_visible_chars = 0
+        defer_visible = False
+        visible_stream_aborted = False
+        next_visible_check = self.pathological_stream_min_chars
         # When the LLM adapter supports streaming via ``text_delta_callback``,
         # emit each text chunk as a ``text_delta`` event so the SSE adapter
         # downstream can forward tokens inline as they arrive. The callback
         # runs on the same thread that called complete(), so emit() is safe.
-        def _on_text_delta(chunk: str) -> None:
+        def _on_text_delta(chunk: str) -> bool | None:
+            nonlocal visible_raw, live_visible_chars, defer_visible
+            nonlocal visible_stream_aborted, next_visible_check
             if not chunk:
-                return
-            self.emit(state, "text_delta", "", chunk=chunk)
+                return None
+            for visible in visible_stream.feed(chunk):
+                visible_raw = (visible_raw + visible)[-16_384:]
+                if not defer_visible:
+                    # A tool-calling turn needs one public paragraph, not an
+                    # unbounded draft. Hold everything after a paragraph (or
+                    # a generous line cap) until the response tells us whether
+                    # it was a final answer or pre-tool narration.
+                    boundary = visible.find("\n\n")
+                    room = max(0, 600 - live_visible_chars)
+                    if boundary >= 0:
+                        public = visible[:boundary]
+                        if public:
+                            self.emit(state, "text_delta", "", chunk=public[:room])
+                            live_visible_chars += min(len(public), room)
+                        deferred_visible.append(visible[boundary:])
+                        defer_visible = True
+                    elif len(visible) > room:
+                        if room:
+                            self.emit(state, "text_delta", "", chunk=visible[:room])
+                            live_visible_chars += room
+                        deferred_visible.append(visible[room:])
+                        defer_visible = True
+                    else:
+                        self.emit(state, "text_delta", "", chunk=visible)
+                        live_visible_chars += len(visible)
+                else:
+                    deferred_visible.append(visible)
+
+                if next_visible_check and len(visible_raw) >= next_visible_check:
+                    next_visible_check = min(len(visible_raw) * 2, 16_384)
+                    compacted, removed = _collapse_repeated_lines(visible_raw)
+                    ratio = len(compacted) / max(1, len(visible_raw))
+                    if removed >= 3 and ratio <= self.pathological_stream_max_ratio:
+                        visible_stream_aborted = True
+                        self.emit(
+                            state,
+                            "model_output_compacted",
+                            "Stopped pathological repeated visible output stream",
+                            original_chars=len(visible_raw),
+                            compacted_chars=len(compacted),
+                            compression_ratio=round(ratio, 4),
+                            stream_aborted=True,
+                        )
+                        return False
+            return None
 
         # Stream the one interesting argument of a tool call as the model
         # writes it — the file body, the code, the command — so a renderer can
         # show it appearing instead of nothing until the call is complete.
         parsers: dict[str, Any] = {}
         emitted: dict[str, int] = {}
+        raw_tool_inputs: dict[str, str] = {}
+        next_repetition_check: dict[str, int] = {}
 
-        def _on_tool_input(call_id: str, tool_name: str, fragment: str) -> None:
+        def _on_tool_input(
+            call_id: str, tool_name: str, fragment: str
+        ) -> bool | None:
             from shipit_agent.narrate.json_stream import (
                 StreamingToolInputParser,
                 streaming_field_for,
             )
+
+            if self.pathological_stream_min_chars:
+                raw = (raw_tool_inputs.get(call_id, "") + fragment)[
+                    -max(self.pathological_stream_min_chars * 8, 16_384) :
+                ]
+                raw_tool_inputs[call_id] = raw
+                check_at = next_repetition_check.get(
+                    call_id, self.pathological_stream_min_chars
+                )
+                if len(raw) >= check_at:
+                    next_repetition_check[call_id] = min(len(raw) * 2, 16_384)
+                    compacted, removed = _collapse_repeated_lines(raw)
+                    ratio = len(compacted) / max(1, len(raw))
+                    if removed and ratio <= self.pathological_stream_max_ratio:
+                        self.emit(
+                            state,
+                            "model_output_compacted",
+                            "Stopped pathological repeated tool input stream",
+                            tool=tool_name,
+                            call_id=call_id,
+                            original_chars=len(raw),
+                            compacted_chars=len(compacted),
+                            compression_ratio=round(ratio, 4),
+                            stream_aborted=True,
+                        )
+                        return False
 
             parser = parsers.get(call_id)
             if parser is None:
                 field = streaming_field_for(tool_name)
                 if field is None:
                     parsers[call_id] = False  # nothing worth streaming here
-                    return
+                    return None
                 parser = parsers[call_id] = StreamingToolInputParser(field)
                 emitted[call_id] = 0
                 self.emit(
@@ -1279,12 +1446,12 @@ will do next."""
                     field=field,
                 )
             if parser is False:
-                return
+                return None
 
             parser.append(fragment)
             if parser.has_error:
                 parsers[call_id] = False
-                return
+                return None
             value = parser.streaming_value
             new = value[emitted[call_id] :]
             if new:
@@ -1297,6 +1464,7 @@ will do next."""
                     call_id=call_id,
                     delta=new,
                 )
+            return None
 
         complete_kwargs: dict[str, Any] = dict(
             messages=messages,
@@ -1314,11 +1482,27 @@ will do next."""
         attempt = 0
         while True:
             try:
-                return self.llm.complete(**complete_kwargs)
+                response = self.llm.complete(**complete_kwargs)
+                for visible in visible_stream.finish():
+                    deferred_visible.append(visible)
+                if visible_stream_aborted:
+                    response.content = ""
+                    response.tool_calls = []
+                    response.metadata["stream_aborted"] = True
+                    response.metadata["stream_abort_reason"] = "pathological_output"
+                elif not response.tool_calls:
+                    # The loop may still reject this draft and nudge for a
+                    # missing tool call. Keep the remainder private until the
+                    # no-tool branch confirms it is the actual final answer.
+                    response.metadata["_deferred_text_deltas"] = list(
+                        deferred_visible
+                    )
+                return response
             except self.retry_policy.retry_on_exceptions as exc:
                 if attempt >= self.retry_policy.max_llm_retries:
                     raise
                 attempt += 1
+                visible_stream.reset()
                 self.emit(
                     state,
                     "llm_retry",
@@ -1366,9 +1550,40 @@ will do next."""
             if decision.action == "redact" and decision.text:
                 user_prompt = decision.text
         registry = self.registry()
+        # Naming an attached MCP server is an explicit routing decision. Wake
+        # only that catalog and expose its small tool set directly, rather
+        # than requiring a weaker model to infer tool_search -> call_tool.
+        # Unnamed servers remain disconnected and schema-hidden.
+        explicit_mcp_servers = {
+            str(mcp.name)
+            for mcp in self.mcps
+            if str(getattr(mcp, "name", "")).strip()
+            and re.search(
+                rf"(?<![\w-]){re.escape(str(mcp.name))}(?![\w-])",
+                user_prompt,
+                re.IGNORECASE,
+            )
+        }
+        explicitly_discovered: list[Any] = []
+        explicit_discovery_failures: list[dict[str, str]] = []
+        if self.code_mode and explicit_mcp_servers:
+            explicitly_discovered, explicit_discovery_failures = (
+                registry.discover_deferred_mcps(explicit_mcp_servers)
+            )
+            self.metadata["discovered_mcp_tool_count"] = len(
+                explicitly_discovered
+            )
+            self.metadata["explicit_mcp_servers"] = sorted(explicit_mcp_servers)
+        explicit_mcp_tool_names = {
+            str(getattr(tool, "name", ""))
+            for tool in registry.values()
+            if str((getattr(tool, "metadata", None) or {}).get("server", ""))
+            in explicit_mcp_servers
+        }
         # Build the capability control plane before the system prompt so the
         # model sees the same connection/MCP metadata that tools can search.
         shared_state.update(self.build_shared_state(registry, state))
+        shared_state["explicit_mcp_servers"] = sorted(explicit_mcp_servers)
         tool_prompt = build_tools_prompt(
             registry.values(), connections=self.connections.all()
         )
@@ -1428,8 +1643,29 @@ will do next."""
                 f"MCP server attached: {mcp.name}",
                 server=mcp.name,
             )
+        if explicitly_discovered or explicit_discovery_failures:
+            self.emit(
+                state,
+                "mcp_discovery_started",
+                "Discovering explicitly requested MCP capabilities",
+                servers=sorted(explicit_mcp_servers),
+                trigger="explicit_user_request",
+            )
+            self.emit(
+                state,
+                "mcp_discovery_completed",
+                "MCP capability discovery completed",
+                discovered=len(explicitly_discovered),
+                failures=explicit_discovery_failures,
+                servers=sorted(explicit_mcp_servers),
+                trigger="explicit_user_request",
+            )
 
         tool_schemas = registry.schemas()
+        self.metadata["registered_tool_count"] = len(tool_schemas)
+        self.metadata["registered_tool_schema_chars"] = len(
+            json.dumps(tool_schemas, sort_keys=True, default=str)
+        )
         # Built by RuntimeCore, so both loops publish identical tool state —
         # including the sub-agent control plane and the event sink.
         tool_runner = ToolRunner(registry)
@@ -1449,8 +1685,8 @@ will do next."""
             if index:
                 from shipit_agent.codemode import CORE_TOOLS
 
-                def _is_core(name: Any) -> bool:
-                    return name in CORE_TOOLS
+                def _is_exposed(name: Any) -> bool:
+                    return name in CORE_TOOLS or name in explicit_mcp_tool_names
 
                 # Rebuild the system prompt rather than appending to it: the
                 # per-tool instructions block describes every registered tool,
@@ -1459,10 +1695,12 @@ will do next."""
                 core_tools = [
                     tool
                     for tool in registry.values()
-                    if _is_core(getattr(tool, "name", ""))
+                    if _is_exposed(getattr(tool, "name", ""))
                 ]
                 core_prompt = build_tools_prompt(
-                    core_tools, connections=self.connections.all()
+                    core_tools,
+                    connections=self.connections.all(),
+                    compact=True,
                 )
                 base_prompt = "\n\n".join(
                     part for part in (self.prompt, core_prompt, index) if part
@@ -1473,8 +1711,15 @@ will do next."""
                 tool_schemas = [
                     schema
                     for schema in tool_schemas
-                    if _is_core((schema.get("function") or {}).get("name"))
+                    if _is_exposed((schema.get("function") or {}).get("name"))
                 ]
+        self.metadata["exposed_tool_count"] = len(tool_schemas)
+        self.metadata["hidden_tool_count"] = max(
+            0, len(registry.values()) - len(tool_schemas)
+        )
+        self.metadata["exposed_tool_schema_chars"] = len(
+            json.dumps(tool_schemas, sort_keys=True, default=str)
+        )
 
         self._run_planner_if_needed(
             state=state,
@@ -1530,6 +1775,7 @@ will do next."""
                 tools=step_schemas,
                 base_prompt=base_prompt,
             )
+            self.sanitize_response(state, response, iteration)
             self.track_usage(state, response, iteration)
 
             # Self-healing: small models often emit the tool call as TEXT.
@@ -1538,42 +1784,7 @@ will do next."""
             # Arguments are checked against each tool's own schema, and the
             # reasoning channel is searched when the model wrote its call
             # into its thinking instead of its answer.
-            if self.heal_tool_calls and not response.tool_calls:
-                from shipit_agent.tool_healing import (
-                    heal_tool_calls,
-                    schemas_from_tools,
-                )
-
-                _tools = list(registry.values())
-                _names = {tool.name for tool in _tools}
-                _schemas = schemas_from_tools(_tools)
-                healed: list[Any] = []
-                _source = "content"
-                if response.content:
-                    cleaned, healed = heal_tool_calls(
-                        response.content, _names, schemas=_schemas
-                    )
-                    if healed:
-                        response.content = cleaned
-                if (
-                    not healed
-                    and response.reasoning_content
-                    and not (response.content or "").strip()
-                ):
-                    _, healed = heal_tool_calls(
-                        response.reasoning_content, _names, schemas=_schemas
-                    )
-                    _source = "reasoning"
-                if healed:
-                    response.tool_calls = healed
-                    self.emit(
-                        state,
-                        "tool_call_healed",
-                        f"Promoted {len(healed)} text tool call(s)",
-                        tools=[c.name for c in healed],
-                        iteration=iteration,
-                        healed_from=_source,
-                    )
+            self.heal(state, response, registry, iteration)
 
             if self.hooks:
                 self.hooks.run_after_llm(response)
@@ -1594,6 +1805,9 @@ will do next."""
                 )
 
             if response.tool_calls:
+                # A text-format call may have been healed after completion.
+                # Its deferred draft is pre-tool narration, not final prose.
+                response.metadata.pop("_deferred_text_deltas", None)
                 decision_summary = self._generate_decision_summary(
                     state=state,
                     response=response,
@@ -1605,6 +1819,7 @@ will do next."""
                         state,
                         "agent_decision",
                         decision_summary,
+                        phase="decision",
                         summary=decision_summary,
                         next_action="call_tools",
                         tools=[
@@ -1622,31 +1837,116 @@ will do next."""
                     )
 
             if not response.tool_calls:
-                # Nudge-on-stall: the model narrated an action ("Let me
-                # search…") but called nothing. One tightly-gated re-prompt —
-                # short intent-shaped text only, capped, never repeated for
-                # identical text — recovers the turn instead of ending it.
-                if (
-                    self.heal_tool_calls
-                    and tool_schemas
-                    and iteration < self.max_iterations
-                    and self._nudges_used < 1
-                    and _is_intent_without_action(response.content)
-                    and (response.content or "").strip() != self._last_nudged_text
-                ):
-                    self._nudges_used += 1
-                    self._last_nudged_text = (response.content or "").strip()
+                stream_abort_nudge = self.stream_abort_nudge(
+                    response, last=iteration >= self.max_iterations
+                )
+                if stream_abort_nudge is not None:
+                    abort_reason = str(
+                        response.metadata.get("stream_abort_reason")
+                        or "pathological_output"
+                    )
+                    abort_label = abort_reason.replace("_", " ")
                     state.messages.append(
-                        Message(role="assistant", content=response.content)
+                        Message(
+                            role="user",
+                            content=stream_abort_nudge,
+                            metadata={"runtime_nudge": True},
+                        )
+                    )
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        f"Nudged after {abort_label} stream",
+                        nudge=True,
+                        reason=abort_reason,
+                        iteration=iteration,
+                    )
+                    continue
+                requested_nudge = self.requested_tool_nudge(
+                    user_prompt,
+                    registry,
+                    state,
+                    last=iteration >= self.max_iterations,
+                )
+                if requested_nudge is not None:
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content="No structured tool call was produced.",
+                            metadata={"runtime_recovery": "missing_requested_tool"},
+                        )
                     )
                     state.messages.append(
                         Message(
                             role="user",
-                            content=(
-                                "You described an action but did not call any "
-                                "tool. Call the tool now, or give your final "
-                                "answer directly."
-                            ),
+                            content=requested_nudge,
+                            metadata={"runtime_nudge": True},
+                        )
+                    )
+                    appended_response_id = id(response)
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Nudged: explicitly requested tool has not completed",
+                        nudge=True,
+                        missing_tools=self.missing_explicitly_requested_tools(
+                            user_prompt, registry, state
+                        ),
+                        iteration=iteration,
+                    )
+                    continue
+                discovery_nudge = self.discovery_only_nudge(
+                    state,
+                    user_prompt=user_prompt,
+                    last=iteration >= self.max_iterations,
+                )
+                if discovery_nudge is not None:
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content="No structured tool call was produced.",
+                            metadata={"runtime_recovery": "discovery_only"},
+                        )
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=discovery_nudge,
+                            metadata={"runtime_nudge": True},
+                        )
+                    )
+                    appended_response_id = id(response)
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Nudged: discovery found a tool but no capability was executed",
+                        nudge=True,
+                        reason="discovery_only",
+                        iteration=iteration,
+                    )
+                    continue
+                # Nudge-on-stall: the model narrated an action ("Let me
+                # search…") but called nothing. One tightly-gated re-prompt —
+                # short intent-shaped text only, capped, never repeated for
+                # identical text — recovers the turn instead of ending it.
+                if self.should_nudge(
+                    response,
+                    has_tools=bool(tool_schemas),
+                    last=iteration >= self.max_iterations,
+                ):
+                    self.record_nudge(response)
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content="No structured tool call was produced.",
+                            metadata={"runtime_recovery": "intent_without_action"},
+                        )
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=self.NUDGE_TEXT,
+                            metadata={"runtime_nudge": True},
                         )
                     )
                     appended_response_id = id(response)
@@ -1659,6 +1959,10 @@ will do next."""
                     )
                     continue
 
+                for visible in response.metadata.pop(
+                    "_deferred_text_deltas", []
+                ):
+                    self.emit(state, "text_delta", "", chunk=visible)
                 break
 
             tool_call_records = [
@@ -1731,8 +2035,9 @@ will do next."""
                 state.last_observation = observation_summary
                 self.emit(
                     state,
-                    "agent_observation",
+                    "agent_decision",
                     observation_summary,
+                    phase="observation",
                     summary=observation_summary,
                     iteration=iteration,
                     next_action="evaluate_results",
@@ -1828,7 +2133,14 @@ will do next."""
                 )
             )
         self.session_store.save(
-            SessionRecord(session_id=self.session_id, messages=list(state.messages))
+            SessionRecord(
+                session_id=self.session_id,
+                messages=[
+                    message
+                    for message in state.messages
+                    if not message.metadata.get("runtime_nudge")
+                ],
+            )
         )
         # Expose the final answer as both `output` (legacy) and `content`
         # (explicit markdown string) so consumers can render it directly.
@@ -1860,6 +2172,16 @@ will do next."""
             self.metadata["give_up_reason"] = gave_up.metadata.get("give_up_reason", "")
             self.metadata["give_up_needs"] = gave_up.metadata.get("give_up_needs", [])
 
+        unmet = self.unmet_requirements(user_prompt, registry, state)
+        self.metadata["unmet_requirements"] = unmet
+        if unmet:
+            self.emit(
+                state,
+                "requirements_unmet",
+                "Explicitly requested capabilities were not completed",
+                requirements=unmet,
+            )
+
         self.emit(
             state,
             "final_answer",
@@ -1875,6 +2197,22 @@ will do next."""
             content=response.content,
             format="markdown",
             usage=dict(self._total_usage),
+            prompt_cache=prompt_cache_status(
+                self._prompt_cache,
+                read_tokens=self._total_usage["cache_read_input_tokens"],
+                write_tokens=self._total_usage["cache_creation_input_tokens"],
+                usage_reported=self._prompt_cache_usage_reported,
+            ),
+            tool_context={
+                "registered": self.metadata.get("registered_tool_count", 0),
+                "exposed": self.metadata.get("exposed_tool_count", 0),
+                "hidden": self.metadata.get("hidden_tool_count", 0),
+                "schema_chars": self.metadata.get("exposed_tool_schema_chars", 0),
+                "deferred_mcps": self.metadata.get("deferred_mcp_count", 0),
+                "discovered_mcp_tools": self.metadata.get(
+                    "discovered_mcp_tool_count", 0
+                ),
+            },
             cancelled=self._cancel_event.is_set(),
         )
         # MCP transports are closed by run()'s finally (covers the error path

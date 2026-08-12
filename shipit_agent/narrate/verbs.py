@@ -228,6 +228,8 @@ VERBS: dict[str, VerbSpec] = {
                                 args=("name",), read_only=True),
     "tool_search": VerbSpec("Looked for a tool", "Looking for a tool", SEARCH,
                             read_only=True, intransitive=True),
+    "call_tool": VerbSpec("Used", "Using", LINK, "tool", args=("name",),
+                          read_only=True),
     "memory": VerbSpec("Recalled", "Recalling", MEMORY, "memory", plural="memories",
                        args=("query", "content")),
 

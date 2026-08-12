@@ -137,6 +137,8 @@ class DeepAgent:
     guardrails: Any = None
     approvals: Any = None
     code_mode: bool = False
+    tool_context_mode: str = "auto"
+    tool_context_threshold_chars: int = 12_000
     lockdown: Any = None
     heal_tool_calls: bool = True
     # ---- skills (forwarded to inner Agent — see docs/guides/skills.md) ----
@@ -214,6 +216,8 @@ class DeepAgent:
         guardrails: Any = None,
         approvals: Any = None,
         code_mode: bool = False,
+        tool_context_mode: str = "auto",
+        tool_context_threshold_chars: int = 12_000,
         lockdown: Any = None,
         heal_tool_calls: bool = True,
         skill_registry: SkillRegistry | None = None,
@@ -271,6 +275,8 @@ class DeepAgent:
             guardrails=guardrails,
             approvals=approvals,
             code_mode=code_mode,
+            tool_context_mode=tool_context_mode,
+            tool_context_threshold_chars=tool_context_threshold_chars,
             lockdown=lockdown,
             heal_tool_calls=heal_tool_calls,
             skill_registry=skill_registry,
@@ -395,6 +401,8 @@ class DeepAgent:
             "guardrails": self.guardrails,
             "approvals": self.approvals,
             "code_mode": self.code_mode,
+            "tool_context_mode": self.tool_context_mode,
+            "tool_context_threshold_chars": self.tool_context_threshold_chars,
             "lockdown": self.lockdown,
             "heal_tool_calls": self.heal_tool_calls,
         }

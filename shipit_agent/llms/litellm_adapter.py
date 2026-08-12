@@ -4,6 +4,10 @@ import json
 from typing import Any, Callable
 
 from shipit_agent.llms.base import LLMResponse
+from shipit_agent.llms.prompt_cache import (
+    PromptCacheStrategy,
+    litellm_prompt_cache_policy,
+)
 from shipit_agent.models import Message, ToolCall
 
 
@@ -32,6 +36,39 @@ def _normalize_content(content: Any) -> Any:
         else:
             normalized.append(block)
     return normalized
+
+
+def _parse_streamed_arguments(raw: str) -> dict[str, Any]:
+    """Parse tool arguments, tolerating only exact duplicated JSON frames.
+
+    Some provider stream normalizers replay the same complete argument object
+    at one call index. Concatenation then yields ``{...}{...}``. Recover only
+    when the entire string is valid JSON objects and every object is equal;
+    different frames remain raw so the runtime rejects rather than guesses.
+    """
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {"_raw": raw}
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    frames: list[Any] = []
+    cursor = 0
+    try:
+        while cursor < len(raw):
+            frame, end = decoder.raw_decode(raw, cursor)
+            frames.append(frame)
+            cursor = end
+            while cursor < len(raw) and raw[cursor].isspace():
+                cursor += 1
+    except json.JSONDecodeError:
+        return {"_raw": raw}
+    if frames and all(isinstance(frame, dict) for frame in frames):
+        first = frames[0]
+        if all(frame == first for frame in frames[1:]):
+            return first
+    return {"_raw": raw}
 
 
 def _serialize_message(message: Any) -> dict[str, Any]:
@@ -78,18 +115,6 @@ def _serialize_message(message: Any) -> dict[str, Any]:
     if message.role == "tool" and tool_call_id:
         payload["tool_call_id"] = tool_call_id
     return payload
-
-
-def _is_anthropic_model(model: str) -> bool:
-    """True for Anthropic-family models (direct, on Bedrock, or on Vertex).
-
-    Only these accept Anthropic ``cache_control`` breakpoints, which LiteLLM
-    forwards to the Messages API and translates to Bedrock ``cachePoint``
-    blocks for ``bedrock/anthropic.*`` models. Any other provider would reject
-    the unknown field, so caching is gated behind this predicate.
-    """
-    m = model.lower()
-    return "anthropic" in m or "claude" in m
 
 
 def _with_cache_control(block: dict[str, Any]) -> dict[str, Any]:
@@ -149,7 +174,15 @@ def _apply_prompt_caching(
 
 class LiteLLMChatLLM:
     def __init__(
-        self, model: str, *, prompt_caching: bool = True, **completion_kwargs: Any
+        self,
+        model: str,
+        *,
+        prompt_caching: bool = True,
+        prompt_cache_strategy: PromptCacheStrategy = "auto",
+        prompt_cache_key: str | None = None,
+        prompt_cache_retention: str | None = None,
+        max_output_tokens: int | None = 4096,
+        **completion_kwargs: Any,
     ) -> None:
         self.model = model
         # Forward Anthropic ``cache_control`` breakpoints through LiteLLM for
@@ -158,6 +191,18 @@ class LiteLLMChatLLM:
         # Extracted as an explicit kwarg so it is NOT forwarded into
         # ``litellm.completion`` (which would reject the unknown argument).
         self.prompt_caching = prompt_caching
+        self.prompt_cache_policy = litellm_prompt_cache_policy(
+            model, enabled=prompt_caching, strategy=prompt_cache_strategy
+        )
+        self.prompt_cache_strategy = prompt_cache_strategy
+        self.prompt_cache_key = prompt_cache_key
+        self.prompt_cache_retention = prompt_cache_retention
+        if (
+            max_output_tokens is not None
+            and "max_tokens" not in completion_kwargs
+            and "max_completion_tokens" not in completion_kwargs
+        ):
+            completion_kwargs["max_tokens"] = max_output_tokens
         self.completion_kwargs = completion_kwargs
 
     def complete(
@@ -168,8 +213,8 @@ class LiteLLMChatLLM:
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
-        text_delta_callback: Callable[[str], None] | None = None,
-        tool_input_callback: Callable[[str, str, str], None] | None = None,
+        text_delta_callback: Callable[[str], bool | None] | None = None,
+        tool_input_callback: Callable[[str, str, str], bool | None] | None = None,
     ) -> LLMResponse:
         """Run a chat completion.
 
@@ -188,7 +233,7 @@ class LiteLLMChatLLM:
         # Add prompt-caching breakpoints for Anthropic-family models. Guarded so
         # non-Anthropic providers never receive the unsupported field and
         # nothing crashes if message/tool shapes are unexpected.
-        if self.prompt_caching and _is_anthropic_model(self.model):
+        if self.prompt_cache_policy.explicit_breakpoints:
             try:
                 payload_messages, request_tools = _apply_prompt_caching(
                     payload_messages, request_tools
@@ -198,6 +243,10 @@ class LiteLLMChatLLM:
                 pass
 
         extra_kwargs = dict(self.completion_kwargs)
+        if self.prompt_cache_key and self.prompt_cache_policy.mode == "automatic":
+            extra_kwargs["prompt_cache_key"] = self.prompt_cache_key
+        if self.prompt_cache_retention and self.prompt_cache_policy.mode == "automatic":
+            extra_kwargs["prompt_cache_retention"] = self.prompt_cache_retention
         if response_format:
             extra_kwargs["response_format"] = response_format
 
@@ -272,8 +321,8 @@ def _stream_completion(
     payload_messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
     extra_kwargs: dict[str, Any],
-    text_delta_callback: Callable[[str], None] | None,
-    tool_input_callback: Callable[[str, str, str], None] | None = None,
+    text_delta_callback: Callable[[str], bool | None] | None,
+    tool_input_callback: Callable[[str, str, str], bool | None] | None = None,
 ) -> LLMResponse:
     """Drive a streaming litellm completion, accumulating text and tool calls.
 
@@ -308,6 +357,8 @@ def _stream_completion(
     # index -> partial {"id": str, "name": str, "arguments": str}
     tool_call_acc: dict[int, dict[str, str]] = {}
     usage: dict[str, int] = {}
+    stream_aborted = False
+    stream_abort_reason = ""
 
     try:
         for chunk in stream:
@@ -320,7 +371,14 @@ def _stream_completion(
                         content_parts.append(text)
                         try:
                             if text_delta_callback is not None:
-                                text_delta_callback(text)
+                                keep_streaming = text_delta_callback(text)
+                                if keep_streaming is False:
+                                    stream_aborted = True
+                                    stream_abort_reason = "pathological_output"
+                                    close = getattr(stream, "close", None)
+                                    if callable(close):
+                                        close()
+                                    break
                         except Exception:
                             # A misbehaving subscriber must not break the
                             # stream — we still need to drain the iterator
@@ -353,13 +411,25 @@ def _stream_completion(
                                     # fragments. Forward them so a renderer can
                                     # show the file being written.
                                     try:
-                                        tool_input_callback(
+                                        keep_streaming = tool_input_callback(
                                             entry["id"] or f"call_{idx}",
                                             entry["name"],
                                             fn_args,
                                         )
+                                        if keep_streaming is False:
+                                            stream_aborted = True
+                                            stream_abort_reason = (
+                                                "pathological_tool_input"
+                                            )
+                                            close = getattr(stream, "close", None)
+                                            if callable(close):
+                                                close()
+                                            break
                                     except Exception:
                                         pass
+
+                    if stream_aborted:
+                        break
 
             chunk_usage = getattr(chunk, "usage", None)
             if chunk_usage:
@@ -382,19 +452,22 @@ def _stream_completion(
         raise
 
     tool_calls = []
-    for idx in sorted(tool_call_acc.keys()):
+    for idx in (() if stream_aborted else sorted(tool_call_acc.keys())):
         entry = tool_call_acc[idx]
         raw_args = entry["arguments"] or "{}"
-        try:
-            arguments = json.loads(raw_args)
-        except json.JSONDecodeError:
-            arguments = {"_raw": raw_args}
+        arguments = _parse_streamed_arguments(raw_args)
         tool_calls.append(ToolCall(name=entry["name"], arguments=arguments))
 
     return LLMResponse(
         content="".join(content_parts),
         tool_calls=tool_calls,
-        metadata={"model": model, "provider": "litellm", "streamed": True},
+        metadata={
+            "model": model,
+            "provider": "litellm",
+            "streamed": True,
+            "stream_aborted": stream_aborted,
+            "stream_abort_reason": stream_abort_reason,
+        },
         reasoning_content="\n".join(reasoning_parts) if reasoning_parts else None,
         usage=usage,
     )
@@ -416,15 +489,18 @@ def _extract_cache_usage(usage_obj: Any) -> dict[str, int]:
     """
     out: dict[str, int] = {}
     try:
+        read_reported = hasattr(usage_obj, "cache_read_input_tokens")
+        write_reported = hasattr(usage_obj, "cache_creation_input_tokens")
         cache_read = getattr(usage_obj, "cache_read_input_tokens", 0) or 0
         cache_creation = getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
-        if not cache_read:
+        if not read_reported:
             details = getattr(usage_obj, "prompt_tokens_details", None)
             if details is not None:
+                read_reported = hasattr(details, "cached_tokens")
                 cache_read = getattr(details, "cached_tokens", 0) or 0
-        if cache_read:
+        if read_reported:
             out["cache_read_input_tokens"] = int(cache_read)
-        if cache_creation:
+        if write_reported:
             out["cache_creation_input_tokens"] = int(cache_creation)
     except Exception:
         return {}

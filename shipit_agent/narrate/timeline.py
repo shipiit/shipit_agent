@@ -192,13 +192,19 @@ class TimelineBuilder:
             summary = str(payload.get("summary") or event.message or "").strip()
             if not summary:
                 return out
+            phase = str(payload.get("phase") or "").strip().lower()
+            if kind == "agent_observation":
+                phase = "observation"
+            elif phase not in ("decision", "observation"):
+                phase = "decision"
             # The runtime generated this one, so it is preferred over the
             # decision this builder would otherwise infer from prose.
             self._prose = []
             out += self._close_group()
             return out + [
                 {
-                    "type": kind,
+                    "type": "agent_decision",
+                    "phase": phase,
                     "content": summary,
                     "next_action": str(payload.get("next_action") or ""),
                     "iteration": payload.get("iteration"),
@@ -459,7 +465,9 @@ def render_markdown(
             lines += ["---", ""]
         elif kind == "artifact_created":
             lines += [f"📎 **{step['title']}** — {step['kind']} · `{step['path']}`", ""]
-        elif kind == "agent_observation":
+        elif kind == "agent_observation" or (
+            kind == "agent_decision" and step.get("phase") == "observation"
+        ):
             section += 1
             lines += [
                 f"### {section}. Observation",

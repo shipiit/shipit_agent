@@ -27,9 +27,11 @@ class CountingLLM:
     def __init__(self, script) -> None:
         self.script = list(script)
         self.calls = 0
+        self.system_prompts: list[str] = []
 
     def complete(self, *, messages, tools=None, system_prompt=None,
                  metadata=None, text_delta_callback=None):
+        self.system_prompts.append(system_prompt or "")
         step = self.script[self.calls] if self.calls < len(self.script) else ("", [])
         self.calls += 1
         return LLMResponse(
@@ -85,6 +87,29 @@ def _main_calls_without_narration() -> int:
 
 
 class TestNarrationIsFree:
+    def test_progress_events_do_not_rewrite_the_primary_prompt(self) -> None:
+        llm = CountingLLM(SCRIPT)
+        agent = Agent(
+            llm=llm,
+            prompt="BASE SYSTEM PROMPT",
+            tools=[tool("read_file")],
+            progress_summaries=True,
+            auto_use_skills=False,
+            max_iterations=4,
+        )
+        agent.run("look")
+        assert llm.system_prompts
+        assert llm.system_prompts[0].startswith("BASE SYSTEM PROMPT")
+        assert "Before a tool-call batch" not in llm.system_prompts[0]
+        assert "## How to work" not in llm.system_prompts[0]
+
+    def test_progress_toggle_preserves_identical_primary_prompts(self) -> None:
+        enabled, enabled_llm = build(narrate=True)
+        disabled, disabled_llm = build(narrate=False)
+        enabled.run("look")
+        disabled.run("look")
+        assert enabled_llm.system_prompts == disabled_llm.system_prompts
+
     def test_it_costs_no_extra_model_call(self) -> None:
         quiet_agent, quiet = build(narrate=False)
         quiet_agent.run("look")
@@ -122,19 +147,51 @@ class TestNarrationIsFree:
         the user pays for."""
         agent, _ = build(narrate=True)
         result = agent.run("look")
-        decisions = [e for e in result.events if e.type == "agent_decision"]
+        decisions = [
+            e for e in result.events
+            if e.type == "agent_decision" and e.payload.get("phase") == "decision"
+        ]
         assert decisions, "narration produced no decision event"
         assert "Looking now." in " ".join(
             str(e.payload.get("summary", "")) for e in decisions
         )
         assert decisions[0].message == decisions[0].payload["summary"]
 
+    def test_substantive_same_call_update_is_not_reduced_to_a_tool_label(self) -> None:
+        update = (
+            "The local policy retries four transient server conditions, but I "
+            "still need the upstream implementation before comparing behavior. "
+            "I’m reading the relevant source next so I can separate confirmed "
+            "differences from assumptions and turn them into concrete tests."
+        )
+        llm = CountingLLM([
+            (update, [("read_file", {"path": "retry_policy.py"})]),
+            ("Done.", []),
+        ])
+        agent = Agent(
+            llm=llm,
+            tools=[tool("read_file")],
+            progress_summaries=True,
+            auto_use_skills=False,
+            max_iterations=4,
+        )
+        result = agent.run("Compare retry behavior")
+        decision = next(
+            e for e in result.events
+            if e.type == "agent_decision" and e.payload.get("phase") == "decision"
+        )
+        assert decision.payload["summary"] == update
+        assert decision.payload["summary_source"] == "model_text"
+
     def test_silent_model_gets_only_a_factual_tool_action(self) -> None:
         llm = CountingLLM([("", [("read_file", {"path": "app.py"})]), ("done", [])])
         agent = Agent(llm=llm, tools=[tool("read_file")], progress_summaries=True,
                       auto_use_skills=False, max_iterations=4)
         result = agent.run("look")
-        decisions = [e for e in result.events if e.type == "agent_decision"]
+        decisions = [
+            e for e in result.events
+            if e.type == "agent_decision" and e.payload.get("phase") == "decision"
+        ]
         assert any(
             e.payload.get("summary") == "Reading app.py."
             and e.payload.get("generated_by_model") is False
@@ -150,27 +207,28 @@ class TestNarrationIsFree:
 
 
 class TestWhatItSays:
-    def _summaries(self, events, kind):
+    def _summaries(self, events, phase):
         return " ".join(
-            str(e.payload.get("summary", "")) for e in events if e.type == kind
+            str(e.payload.get("summary", ""))
+            for e in events
+            if e.type == "agent_decision" and e.payload.get("phase") == phase
         )
 
     def test_a_failed_tool_is_named_as_failed(self) -> None:
         """The failure is the part a watcher is waiting for."""
         agent, _ = build(narrate=True, tools=[tool("read_file", fail=True)])
         result = agent.run("look")
-        assert "failed" in self._summaries(result.events, "agent_observation")
+        assert "failed" in self._summaries(result.events, "observation")
 
     def test_a_successful_tool_is_not(self) -> None:
         agent, _ = build(narrate=True)
         result = agent.run("look")
-        assert "failed" not in self._summaries(result.events, "agent_observation")
+        assert "failed" not in self._summaries(result.events, "observation")
 
-    def test_an_observation_names_what_it_acted_on(self) -> None:
-        """"Read." is not worth emitting; "Read app.py" is."""
+    def test_generic_completion_does_not_duplicate_the_tool_card(self) -> None:
         agent, _ = build(narrate=True)
         result = agent.run("look")
-        assert "Read app.py" in self._summaries(result.events, "agent_observation")
+        assert not self._summaries(result.events, "observation")
 
     def test_a_tool_may_describe_its_own_result(self) -> None:
         """The detail comes from the tool, which knows what its numbers
@@ -189,12 +247,12 @@ class TestWhatItSays:
 
         agent, _ = build(narrate=True, tools=[Counting()])
         result = agent.run("look")
-        assert "6,746 matches" in self._summaries(result.events, "agent_observation")
+        assert "6,746 matches" in self._summaries(result.events, "observation")
 
     def test_a_silent_tool_gets_no_invented_detail(self) -> None:
         agent, _ = build(narrate=True)
         result = agent.run("look")
-        line = self._summaries(result.events, "agent_observation")
+        line = self._summaries(result.events, "observation")
         assert "—" not in line, f"invented a detail: {line}"
 
     def test_a_silent_final_turn_gets_no_invented_decision(self) -> None:
@@ -202,22 +260,38 @@ class TestWhatItSays:
         agent = Agent(llm=llm, tools=[tool("read_file")], progress_summaries=True,
                       auto_use_skills=False, max_iterations=4)
         result = agent.run("look")
-        assert self._summaries(result.events, "agent_decision") == "Reading app.py."
+        assert self._summaries(result.events, "decision") == "Reading app.py."
 
     def test_final_answer_is_not_duplicated_as_a_decision(self) -> None:
         agent, _ = build(narrate=True)
         result = agent.run("look")
-        summaries = self._summaries(result.events, "agent_decision")
+        summaries = self._summaries(result.events, "decision")
         assert "Looking now." in summaries
         assert "Done." not in summaries
 
     def test_observations_are_not_attributed_to_the_model(self) -> None:
-        agent, _ = build(narrate=True)
+        agent, _ = build(narrate=True, tools=[tool("read_file", fail=True)])
         result = agent.run("look")
-        observations = [e for e in result.events if e.type == "agent_observation"]
+        observations = [
+            e for e in result.events
+            if e.type == "agent_decision" and e.payload.get("phase") == "observation"
+        ]
         assert observations
         assert all(e.payload["generated_by_model"] is False for e in observations)
         assert all(e.message == e.payload["summary"] for e in observations)
+
+    def test_runtime_emits_one_progress_event_type(self) -> None:
+        agent, _ = build(
+            narrate=True,
+            tools=[tool("read_file", fail=True)],
+        )
+        result = agent.run("look")
+        progress = [e for e in result.events if e.type == "agent_decision"]
+        assert {e.payload.get("phase") for e in progress} == {
+            "decision",
+            "observation",
+        }
+        assert not [e for e in result.events if e.type == "agent_observation"]
 
 
 class TestTheClauseJoiner:
@@ -276,7 +350,7 @@ class TestTheModelsTextIsChecked:
         result = agent.run("look")
         summaries = " ".join(
             str(e.payload.get("summary", "")) for e in result.events
-            if e.type == "agent_decision"
+            if e.type == "agent_decision" and e.payload.get("phase") == "decision"
         )
         assert "ERROR in thought process" not in summaries
         assert "Reading app.py" in summaries

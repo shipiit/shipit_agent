@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from shipit_agent import Agent, FunctionTool
-from shipit_agent.llms.base import LLMResponse
+from shipit_agent.llms.base import LLMResponse, ToolCall
 from shipit_agent.tool_healing import heal_tool_calls
 
 ALLOWED = {"web_search", "read_file"}
@@ -37,6 +37,146 @@ class TestFormats:
                 '"arguments": "{\\"query\\": \\"y\\"}"}}</tool_call>')
         _, calls = heal_tool_calls(text, ALLOWED)
         assert calls[0].arguments == {"query": "y"}
+
+    def test_gemma_relaxed_call_format(self) -> None:
+        schemas = {
+            "read_file": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            }
+        }
+        cleaned, calls = heal_tool_calls(
+            "I'll inspect it.\n```call:read_file{path:calculator.py}```",
+            {"read_file"},
+            schemas=schemas,
+        )
+        assert calls[0].name == "read_file"
+        assert calls[0].arguments == {"path": "calculator.py"}
+        assert cleaned == "I'll inspect it."
+
+    def test_relaxed_call_still_obeys_declared_schema(self) -> None:
+        schemas = {
+            "read_file": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            }
+        }
+        text = "```call:read_file{unknown:calculator.py}```"
+        assert heal_tool_calls(text, {"read_file"}, schemas=schemas) == (text, [])
+
+    def test_gemma_at_call_format(self) -> None:
+        schemas = {
+            "bash": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+            }
+        }
+        cleaned, calls = heal_tool_calls(
+            "I will inspect.\n@bash(command='ls -R')",
+            {"bash"},
+            schemas=schemas,
+        )
+        assert calls[0].arguments == {"command": "ls -R"}
+        assert cleaned == "I will inspect."
+
+    def test_backticked_declared_python_call(self) -> None:
+        schemas = {
+            "edit_file": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "old_text": {"type": "string"},
+                    "new_text": {"type": "string"},
+                },
+                "required": ["path", "old_text", "new_text"],
+            }
+        }
+        text = (
+            ">Final tool call:\n"
+            "`edit_file(path='a.py', old_text='x', new_text='y')`"
+        )
+        _, calls = heal_tool_calls(text, {"edit_file"}, schemas=schemas)
+        assert calls[0].arguments == {
+            "path": "a.py",
+            "old_text": "x",
+            "new_text": "y",
+        }
+
+    def test_bare_declared_python_call_from_gemma_rejection(self) -> None:
+        schemas = {
+            "read_file": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            }
+        }
+        text = (
+            "Unparseable tool-call body from Gemma: "
+            'read_file(path="test_calculator.py")\n</code>'
+        )
+        cleaned, calls = heal_tool_calls(text, {"read_file"}, schemas=schemas)
+        assert calls == [
+            ToolCall(name="read_file", arguments={"path": "test_calculator.py"})
+        ]
+        assert cleaned == "Unparseable tool-call body from Gemma: \n</code>"
+
+    def test_bare_call_requires_declared_name_and_schema(self) -> None:
+        schemas = {
+            "read_file": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            }
+        }
+        unknown = 'delete_file(path="test_calculator.py")'
+        wrong_schema = 'read_file(command="rm -rf .")'
+        assert heal_tool_calls(unknown, {"read_file"}, schemas=schemas) == (
+            unknown,
+            [],
+        )
+        assert heal_tool_calls(wrong_schema, {"read_file"}, schemas=schemas) == (
+            wrong_schema,
+            [],
+        )
+
+    def test_repeated_identical_bare_call_executes_once(self) -> None:
+        schemas = {
+            "read_file": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            }
+        }
+        text = "\n".join(['read_file(path="app.py")'] * 3)
+        cleaned, calls = heal_tool_calls(text, {"read_file"}, schemas=schemas)
+        assert len(calls) == 1
+        assert calls[0].arguments == {"path": "app.py"}
+        assert cleaned == ""
+
+    def test_markdown_tool_table_format(self) -> None:
+        schemas = {
+            "edit_file": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "old_text": {"type": "string"},
+                    "new_text": {"type": "string"},
+                },
+                "required": ["path", "old_text", "new_text"],
+            }
+        }
+        line = (
+            "| `edit_file` | `path='calculator.py'`, "
+            "`old_text='return total * count'`, "
+            "`new_text='return total / count'` |"
+        )
+        cleaned, calls = heal_tool_calls(line, {"edit_file"}, schemas=schemas)
+        assert cleaned == ""
+        assert calls[0].arguments["path"] == "calculator.py"
+        assert calls[0].arguments["new_text"] == "return total / count"
 
 
 class TestInvariants:
@@ -153,6 +293,30 @@ class TestNudgeOnStall:
         assert any(e.payload.get("nudge") for e in result.events
                    if e.type == "tool_call_healed")
 
+    def test_multiline_plan_ending_in_next_action_is_nudged(self) -> None:
+        class PlanningThenCalling(self.StallingLLM):
+            def complete(self, *, messages, tools=None, **kw):
+                if self.turn == 0:
+                    self.turn += 1
+                    return LLMResponse(
+                        content=(
+                            "I will inspect the project.\n\n"
+                            "Plan:\n1. Find files\n2. Read code\n\n"
+                            "First, listing the files."
+                        )
+                    )
+                return super().complete(messages=messages, tools=tools, **kw)
+
+        llm = PlanningThenCalling()
+        result = Agent(
+            llm=llm,
+            tools=[FunctionTool.from_callable(self._add, name="add")],
+            auto_use_skills=False,
+            max_iterations=5,
+        ).run("2+3?")
+
+        assert any(e.payload.get("nudge") for e in result.events)
+
     def test_normal_short_answer_not_nudged(self) -> None:
         class Direct:
             def complete(self, **_kw):
@@ -178,6 +342,144 @@ class TestNudgeOnStall:
         nudges = [e for e in result.events
                   if e.type == "tool_call_healed" and e.payload.get("nudge")]
         assert len(nudges) == 1                     # capped, no dead loop
+
+    def test_pathological_repetition_is_compacted_and_recovered(self) -> None:
+        class RepeatingThenCalling:
+            def __init__(self) -> None:
+                self.turn = 0
+                self.max_assistant_chars = 0
+
+            def complete(self, *, messages, **_kw):
+                self.turn += 1
+                self.max_assistant_chars = max(
+                    [self.max_assistant_chars]
+                    + [
+                        len(str(getattr(m, "content", "")))
+                        for m in messages
+                        if getattr(m, "role", None) == "assistant"
+                    ]
+                )
+                if self.turn == 1:
+                    repeated = "<thought\n>I will call the add tool.\n" * 500
+                    return LLMResponse(content=repeated)
+                if self.turn == 2:
+                    from shipit_agent.llms.base import ToolCall
+
+                    return LLMResponse(
+                        tool_calls=[ToolCall(name="add", arguments={"a": 2, "b": 3})]
+                    )
+                return LLMResponse(content="The sum is 5.")
+
+        llm = RepeatingThenCalling()
+        result = Agent(
+            llm=llm,
+            tools=[FunctionTool.from_callable(self._add, name="add")],
+            auto_use_skills=False,
+            max_iterations=5,
+        ).run("2+3?")
+
+        assert result.output == "The sum is 5."
+        assert llm.max_assistant_chars < 500
+        compacted = [e for e in result.events if e.type == "model_output_compacted"]
+        assert compacted and compacted[0].payload["removed_lines"] > 900
+
+    def test_pathological_structured_argument_is_compacted_before_execution(self) -> None:
+        received: list[str] = []
+
+        def submit(text: str) -> str:
+            received.append(text)
+            return "accepted"
+
+        class RepeatingArgument:
+            def __init__(self) -> None:
+                self.turn = 0
+
+            def complete(self, *, messages, **_kwargs):
+                self.turn += 1
+                if self.turn == 1:
+                    return LLMResponse(
+                        tool_calls=[
+                            ToolCall(
+                                name="submit",
+                                arguments={
+                                    "text": (
+                                        "Calling the tool. " * 500
+                                        + "{}</markup>" * 500
+                                    )
+                                },
+                            )
+                        ]
+                    )
+                return LLMResponse(content="Submitted.")
+
+        result = Agent(
+            llm=RepeatingArgument(),
+            tools=[FunctionTool.from_callable(submit, name="submit")],
+            auto_use_skills=False,
+            max_iterations=3,
+        ).run("Submit the request")
+
+        assert len(received) == 1
+        assert len(received[0]) < 150
+        compacted = [e for e in result.events if e.type == "model_output_compacted"]
+        assert compacted[0].payload["removed_argument_fragments"] > 0
+
+    def test_explicitly_requested_tool_gets_targeted_bounded_recovery(self) -> None:
+        calls: list[str] = []
+
+        def read_source(path: str) -> str:
+            calls.append("read_source")
+            return "buggy source"
+
+        def apply_patch(path: str, patch: str) -> str:
+            calls.append("apply_patch")
+            return "patched"
+
+        class StopsBeforeMutation:
+            def __init__(self) -> None:
+                self.turn = 0
+
+            def complete(self, *, messages, **_kwargs):
+                self.turn += 1
+                if self.turn == 1:
+                    return LLMResponse(
+                        tool_calls=[
+                            ToolCall(name="read_source", arguments={"path": "a.py"})
+                        ]
+                    )
+                if self.turn == 2:
+                    return LLMResponse(content="The source needs a patch.")
+                if self.turn == 3:
+                    assert "`apply_patch`" in messages[-1].content
+                    return LLMResponse(
+                        tool_calls=[
+                            ToolCall(
+                                name="apply_patch",
+                                arguments={"path": "a.py", "patch": "fixed"},
+                            )
+                        ]
+                    )
+                return LLMResponse(content="Patched successfully.")
+
+        result = Agent(
+            llm=StopsBeforeMutation(),
+            tools=[
+                FunctionTool.from_callable(read_source, name="read_source"),
+                FunctionTool.from_callable(apply_patch, name="apply_patch"),
+            ],
+            auto_use_skills=False,
+            max_iterations=5,
+        ).run("Use read_source, then apply_patch to fix a.py")
+
+        assert calls == ["read_source", "apply_patch"]
+        assert result.output == "Patched successfully."
+        targeted = [
+            event
+            for event in result.events
+            if event.type == "tool_call_healed"
+            and event.payload.get("missing_tools") == ["apply_patch"]
+        ]
+        assert len(targeted) == 1
 
 
 class TestChunkOverlapBudget:

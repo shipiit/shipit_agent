@@ -548,14 +548,17 @@ from shipit_agent.llms import AnthropicChatLLM
 llm = AnthropicChatLLM("claude-opus-4-1", prompt_caching=True)   # default on for Claude
 ```
 
-`cache_control` breakpoints are placed on tools + system prompt; responses surface
-`cache_read_input_tokens` / `cache_creation_input_tokens`, which flow into `CostTracker`. Caching
-spans **Anthropic, Bedrock, Vertex** (`cache_control`) **and OpenAI** (automatic) — cache reads bill
-at ~10% of input.
+Provider-aware adapters cache the stable tools + system prefix without sending
+incompatible fields. Anthropic, Bedrock Claude, and Gemini/Vertex use explicit
+markers; OpenAI-style providers use automatic caching. Responses surface
+`cache_read_input_tokens` / `cache_creation_input_tokens` and a truthful
+`prompt_cache` status, which flow into `CostTracker`. See
+[Context management](docs/guides/context-management.md#provider-aware-cache-configuration).
 
-For a large, long-running coding agent, enable the optimized preset. It keeps
-the full tool catalogue available behind progressive discovery and turns on
-model-aware checkpoint compaction:
+Large tool and MCP catalogs use progressive discovery automatically, including
+plain `Agent(tools=[...], mcps=[...])` construction. The optimized project
+preset additionally turns on model-aware checkpoint compaction and durable
+state:
 
 ```python
 agent = Agent.for_project(

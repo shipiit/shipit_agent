@@ -112,6 +112,13 @@ class AnthropicChatLLM:
         # serves them faster. Always safe on this native adapter (it only ever
         # talks to Anthropic), so it defaults on.
         self.prompt_caching = prompt_caching
+        self.prompt_cache_supported = True
+        self.prompt_cache_enabled = prompt_caching
+        self.prompt_cache_mode = "explicit" if prompt_caching else "disabled"
+        self.prompt_cache_provider = "anthropic"
+        self.prompt_cache_reason = (
+            "native_cache_control" if prompt_caching else "disabled_by_caller"
+        )
         self.client_kwargs = client_kwargs
 
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
@@ -500,9 +507,9 @@ class AnthropicChatLLM:
                 cache_creation = (
                     getattr(response.usage, "cache_creation_input_tokens", 0) or 0
                 )
-                if cache_read:
+                if hasattr(response.usage, "cache_read_input_tokens"):
                     usage["cache_read_input_tokens"] = cache_read
-                if cache_creation:
+                if hasattr(response.usage, "cache_creation_input_tokens"):
                     usage["cache_creation_input_tokens"] = cache_creation
             except Exception:
                 pass

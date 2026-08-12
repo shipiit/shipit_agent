@@ -39,6 +39,7 @@ class Tool(Protocol):
     name: str
     description: str
     prompt_instructions: str
+    recoverable_exceptions: tuple[type[Exception], ...]
 
     def schema(self) -> dict[str, Any]: ...
 

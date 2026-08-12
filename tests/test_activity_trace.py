@@ -80,6 +80,48 @@ class TestEventTiming:
         assert "message=''" in repr(event)
         assert "'chunk': 'Retry eligibility depends on status.'" in repr(event)
 
+    def test_nested_usage_repr_preserves_real_token_counts(self) -> None:
+        event = AgentEvent(
+            type="usage_tick",
+            message="Usage updated",
+            payload={
+                "usage": {
+                    "prompt_tokens": 1234,
+                    "completion_tokens": 56,
+                    "cache_hit": False,
+                }
+            },
+        )
+
+        rendered = repr(event)
+        assert "'prompt_tokens': 1234" in rendered
+        assert "'completion_tokens': 56" in rendered
+        assert "'cache_hit': False" in rendered
+        assert "<int>" not in rendered
+
+    def test_nested_containers_preserve_values_in_event_repr(self) -> None:
+        event = AgentEvent(
+            type="tool_completed",
+            message="Tool completed",
+            payload={
+                "tools": [{"name": "bash", "arguments": {"command": "pwd"}}],
+                "metadata": {
+                    "exit_code": 0,
+                    "duration_seconds": 0.125,
+                    "details": {"cached": True},
+                },
+            },
+        )
+
+        rendered = repr(event)
+        assert "'name': 'bash'" in rendered
+        assert "'command': 'pwd'" in rendered
+        assert "'exit_code': 0" in rendered
+        assert "'duration_seconds': 0.125" in rendered
+        assert "'cached': True" in rendered
+        assert "<dict>" not in rendered
+        assert "<float>" not in rendered
+
     def test_stream_events_print_complete_tool_output_and_telemetry(self) -> None:
         completed = next(
             event for event in _run_agent().events if event.type == "tool_completed"
@@ -153,23 +195,23 @@ class TestFormatEventLine:
         # non-user-facing events return None
         assert format_event_line(AgentEvent(type="run_started", message="")) is None
 
-    def test_renders_decisions_and_observations(self) -> None:
+    def test_renders_both_decision_phases_with_one_event_type(self) -> None:
         decision = AgentEvent(
             type="agent_decision",
             message="I will inspect the retry implementation.",
-            payload={"generated_by_model": True},
+            payload={"phase": "decision", "generated_by_model": True},
         )
         observation = AgentEvent(
-            type="agent_observation",
+            type="agent_decision",
             message="Read retry.py — 81 lines.",
-            payload={"generated_by_model": False},
+            payload={"phase": "observation", "generated_by_model": False},
         )
 
         assert format_event_line(decision) == (
             "agent_decision     I will inspect the retry implementation."
         )
         assert format_event_line(observation) == (
-            "agent_observation  Read retry.py — 81 lines."
+            "agent_decision     Read retry.py — 81 lines."
         )
 
     def test_renders_selected_skills_and_injected_tools(self) -> None:

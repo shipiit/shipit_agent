@@ -34,11 +34,7 @@ class ShipitLLM:
             ),
             "",
         )
-        if system_prompt:
-            output = f"{system_prompt.strip()}\n\n{last_user_message}".strip()
-        else:
-            output = last_user_message
-        return LLMResponse(content=output)
+        return LLMResponse(content=last_user_message)
 
 
 SimpleEchoLLM = ShipitLLM

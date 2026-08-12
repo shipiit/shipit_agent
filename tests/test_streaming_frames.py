@@ -351,9 +351,13 @@ class TestAgentSurfaces:
 
     def test_narrate_yields_settled_transcript_rows(self) -> None:
         rows = list(self._agent().narrate("go"))
-        assert [type(r).__name__ for r in rows] == ["WorkRow", "ProseRow"]
-        assert rows[0].group.label == "Read auth.py"
-        assert rows[1].text == "Login has no MFA."
+        assert [type(r).__name__ for r in rows] == [
+            "DecisionRow",
+            "WorkRow",
+            "ProseRow",
+        ]
+        assert rows[1].group.label == "Read auth.py"
+        assert rows[2].text == "Login has no MFA."
 
     def test_narrate_flushes_the_tail(self) -> None:
         # A run ending on prose must still yield it.

@@ -150,11 +150,11 @@ class TestSignatures:
             parameters={"owner": {}, "repo": {}, "title": {}, "body": {}},
             required=("owner", "repo"),
         )
-        assert method.signature() == "create_issue(owner, repo, *, title=None, body=None)"
+        assert method.signature() == "create_issue(*, owner, repo, title=None, body=None)"
 
     def test_signature_with_no_optionals(self) -> None:
         method = BindingMethod("get", "", {"id": {}}, ("id",))
-        assert method.signature() == "get(id)"
+        assert method.signature() == "get(*, id)"
 
     def test_signature_with_no_parameters(self) -> None:
         assert BindingMethod("ping", "", {}, ()).signature() == "ping()"

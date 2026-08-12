@@ -14,6 +14,7 @@ def construct_tool_registry(
     include_builtins: bool = False,
     llm=None,
     mcps: list[MCPServer] | None = None,
+    defer_mcps: bool = False,
     workspace_root: str = ".shipit_workspace",
     web_search_provider: str = "duckduckgo",
     web_search_api_key: str | None = None,
@@ -31,7 +32,11 @@ def construct_tool_registry(
             ),
             *resolved_tools,
         ]
-    return ToolRegistry.build(tools=resolved_tools, mcps=mcps)
+    return ToolRegistry.build(
+        tools=resolved_tools,
+        mcps=mcps,
+        defer_mcps=defer_mcps,
+    )
 
 
 def build_tool_schemas(registry: ToolRegistry) -> list[dict[str, Any]]:

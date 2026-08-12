@@ -193,6 +193,24 @@ class ToolRunner:
             if output_callback is not None:
                 output_callback(ToolOutputChunk(result.output, dict(result.metadata)))
             return result
+        except Exception as exc:
+            recoverable = getattr(tool, "recoverable_exceptions", ())
+            try:
+                declared_recoverable = bool(recoverable) and isinstance(
+                    exc, recoverable
+                )
+            except TypeError:
+                declared_recoverable = False
+            if not declared_recoverable:
+                raise
+            result = ToolResult(
+                name=tool_call.name,
+                output=f"Invalid arguments for tool '{tool_call.name}': {exc}",
+                metadata={"error": "invalid_arguments", "detail": str(exc)},
+            )
+            if output_callback is not None:
+                output_callback(ToolOutputChunk(result.output, dict(result.metadata)))
+            return result
         return self._collect_output(tool_call.name, output, output_callback)
 
     def run_many(

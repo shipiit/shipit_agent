@@ -26,17 +26,28 @@ for event in agent.stream("Find today's Bitcoin price in USD."):
 | `step_started` | Each iteration of the tool loop, right before calling the LLM. | `iteration`, `tool_count` |
 | `reasoning_started` | 🧠 LLM response contained a thinking/reasoning block. | `iteration` |
 | `reasoning_completed` | Immediately after `reasoning_started`, carrying the full reasoning text. | `iteration`, `content` |
-| `agent_decision` | Concise public intent in the model's own response text. Silent models do not get fabricated decisions. | `summary`, `next_action`, `tools`, `generated_by_model` |
+| `agent_decision` | Unified progress summary. `phase="decision"` describes intent before work; `phase="observation"` summarizes verified results afterward. | `phase`, `summary`, `next_action`, `tools`, `generated_by_model` |
 | `tool_called` | Model decided to call a tool. Fires **before** execution. | `tool`, `call_id`, `iteration`, `arguments` |
 | `tool_output_started` | A tool output stream opened. It can repeat for retries. | `tool`, `call_id`, `attempt`, `buffered` |
 | `tool_output_delta` | One incremental, provisional output chunk. | `tool`, `call_id`, `chunk`, `chunk_metadata`, `sequence`, `attempt` |
 | `tool_completed` | Tool finished; this is the canonical complete result plus model-context telemetry. | `tool`, `call_id`, `iteration`, `output`, `output_chars`, `model_output_chars`, `model_output_reduced`, `metadata` |
-| `agent_observation` | Concise factual summary composed from the tool contract, arguments, and tool-provided metadata. It is never represented as model reasoning. | `summary`, `next_action`, `generated_by_model` |
 | `tool_retry` | Transient tool failure, retry scheduled by `RetryPolicy`. | `iteration`, `attempt`, `error` |
 | `tool_failed` | Non-retryable tool error, **or** model hallucinated an unregistered tool name (synthetic error result still appended for pairing balance). | `iteration`, `error` |
 | `llm_retry` | Transient LLM provider error, retry scheduled. | `attempt`, `error` |
 | `interactive_request` | A tool returned `metadata.interactive=True` (e.g. `ask_user`, human review). UI can pause and collect input. | `kind`, `payload` |
 | `run_completed` | Final event. Fires once the loop exits or hits the iteration cap. | `output`, `content`, `format` |
+
+New runs use `agent_decision` for both phases, so stream consumers only need
+one progress-event handler. Readers may still encounter `agent_observation` in
+traces persisted by older SHIPIT Agent versions.
+
+`progress_summaries=True` is an observability switch and does not change the
+primary model's prompt. When the model naturally returns useful text beside a
+structured tool call, SHIPIT uses that text; otherwise it composes a factual
+action label from the call. Pass `decision_llm=` only when richer narration is
+worth an explicit additional completion per progress phase. Keeping event
+formatting out of the primary prompt prevents smaller models from narrating an
+action instead of executing it.
 
 ## Event structure
 

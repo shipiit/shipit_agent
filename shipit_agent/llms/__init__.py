@@ -31,6 +31,7 @@ from .litellm_adapter import (
     VertexAIChatLLM,
 )
 from .openai_adapter import BedrockGemmaChatLLM, OpenAIChatLLM
+from .prompt_cache import PromptCachePolicy, PromptCacheStrategy
 from .simple import ShipitLLM, SimpleEchoLLM
 
 __all__ = [
@@ -53,6 +54,8 @@ __all__ = [
     "LiteLLMProxyChatLLM",
     "OllamaChatLLM",
     "OpenAIChatLLM",
+    "PromptCachePolicy",
+    "PromptCacheStrategy",
     "pdf_document",
     "ShipitLLM",
     "SimpleEchoLLM",

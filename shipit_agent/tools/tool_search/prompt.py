@@ -13,6 +13,7 @@ Search the current toolset to find the right tool for a task. Useful when many t
 **Rules:**
 - Search by **task intent and capability**, not only exact tool names
 - Review the returned tool descriptions before choosing — pick the most specific tool available
+- For a hidden tool, request `detail="schema"`, then invoke it with `call_tool`
 - If no tool matches, fall back to `bash` or `run_code` as general-purpose options
 - Do not search repeatedly for the same capability within one run
 """.strip()

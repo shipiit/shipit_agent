@@ -21,8 +21,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from shipit_agent.llms.litellm_adapter import LiteLLMChatLLM
+from shipit_agent.llms.litellm_adapter import (
+    LiteLLMChatLLM,
+    _parse_streamed_arguments,
+)
 from shipit_agent.models import Message
+from shipit_agent.reasoning_markup import VisibleTextStreamFilter
 
 
 # ----------------------------------------------------------------------
@@ -97,6 +101,26 @@ def test_complete_without_callback_runs_non_streaming(fake_litellm):
     # Verify stream=True was NOT passed
     call_kwargs = fake_litellm.completion.call_args.kwargs
     assert "stream" not in call_kwargs or call_kwargs.get("stream") is not True
+    assert call_kwargs["max_tokens"] == 4096
+
+
+def test_completion_budget_is_configurable(fake_litellm):
+    fake_litellm.completion.return_value = _make_nonstream_response("ok")
+
+    llm = LiteLLMChatLLM(model="test-model", max_output_tokens=800)
+    llm.complete(messages=[Message(role="user", content="hi")])
+
+    assert fake_litellm.completion.call_args.kwargs["max_tokens"] == 800
+
+
+def test_identical_replayed_argument_frames_are_deduplicated() -> None:
+    raw = '{"command":"pytest -q"}{"command":"pytest -q"}'
+    assert _parse_streamed_arguments(raw) == {"command": "pytest -q"}
+
+
+def test_different_concatenated_frames_are_not_merged() -> None:
+    raw = '{"command":"pytest"}{"command":"rm -rf /"}'
+    assert _parse_streamed_arguments(raw) == {"_raw": raw}
 
 
 # ======================================================================
@@ -130,6 +154,54 @@ def test_complete_with_callback_streams_text_chunks(fake_litellm):
     assert call_kwargs.get("stream") is True
 
 
+def test_text_callback_can_cancel_pathological_visible_output(fake_litellm):
+    chunks = [_make_text_chunk("repeat\n") for _ in range(20)]
+    fake_litellm.completion.return_value = iter(chunks)
+
+    seen = 0
+
+    def stop_after_five(_text: str):
+        nonlocal seen
+        seen += 1
+        return False if seen == 5 else None
+
+    out = LiteLLMChatLLM(model="test-model").complete(
+        messages=[Message(role="user", content="work")],
+        text_delta_callback=stop_after_five,
+    )
+
+    assert seen == 5
+    assert out.metadata["stream_aborted"] is True
+    assert out.metadata["stream_abort_reason"] == "pathological_output"
+
+
+def test_reasoning_markup_filter_handles_tags_split_across_chunks() -> None:
+    stream_filter = VisibleTextStreamFilter()
+    visible: list[str] = []
+    for chunk in (
+        "I will inspect it. <th",
+        "ought\n>private scratch",
+        " work</thought>Final answer.",
+    ):
+        visible.extend(stream_filter.feed(chunk))
+    visible.extend(stream_filter.finish())
+
+    rendered = "".join(visible)
+    assert rendered == "I will inspect it. Final answer."
+    assert "private scratch" not in rendered
+    assert stream_filter.filtered_chars > 0
+
+
+def test_reasoning_markup_filter_supports_adapter_declared_tags() -> None:
+    stream_filter = VisibleTextStreamFilter(("scratchpad",))
+    visible: list[str] = []
+    for chunk in ("Answer <scr", "atchpad>private</scratch", "pad> text"):
+        visible.extend(stream_filter.feed(chunk))
+    visible.extend(stream_filter.finish())
+
+    assert "".join(visible) == "Answer  text"
+
+
 # ======================================================================
 # 3. Tool-call deltas accumulate correctly across chunks
 # ======================================================================
@@ -158,6 +230,65 @@ def test_streaming_accumulates_tool_call_deltas(fake_litellm):
     assert len(out.tool_calls) == 1
     assert out.tool_calls[0].name == "search_echos"
     assert out.tool_calls[0].arguments == {"query": "lockbit"}
+
+
+def test_streaming_tool_input_callback_can_abort_pathological_generation(
+    fake_litellm,
+):
+    chunks = [
+        _make_tool_chunk(0, tc_id="call_bad", fn_name="submit"),
+        _make_tool_chunk(0, fn_args='{"text":"' + "repeat. " * 500),
+        _make_usage_chunk(prompt=10, completion=500),
+    ]
+    fake_litellm.completion.return_value = iter(chunks)
+
+    llm = LiteLLMChatLLM(model="test-model")
+    out = llm.complete(
+        messages=[Message(role="user", content="submit")],
+        tool_input_callback=lambda *_args: False,
+    )
+
+    assert out.tool_calls == []
+    assert out.metadata["stream_aborted"] is True
+    assert out.metadata["stream_abort_reason"] == "pathological_tool_input"
+
+
+def test_runtime_aborts_repetitive_tool_input_and_recovers(fake_litellm):
+    from shipit_agent import Agent, FunctionTool
+
+    calls: list[str] = []
+
+    def submit(text: str) -> str:
+        calls.append(text)
+        return "ok"
+
+    fake_litellm.completion.side_effect = [
+        iter(
+            [
+                _make_tool_chunk(0, tc_id="call_bad", fn_name="submit"),
+                _make_tool_chunk(
+                    0, fn_args='{"text":"' + "repeat this sentence. " * 500
+                ),
+            ]
+        ),
+        iter([_make_text_chunk("Stopped safely.")]),
+    ]
+
+    result = Agent(
+        llm=LiteLLMChatLLM(model="test-model"),
+        tools=[FunctionTool.from_callable(submit, name="submit")],
+        auto_use_skills=False,
+        max_iterations=2,
+        pathological_stream_min_chars=512,
+    ).run("Submit one concise value")
+
+    assert calls == []
+    assert result.output == "Stopped safely."
+    assert any(
+        event.type == "tool_call_healed"
+        and event.payload.get("reason") == "pathological_tool_input"
+        for event in result.events
+    )
 
 
 # ======================================================================

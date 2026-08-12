@@ -64,7 +64,11 @@ class Narrator:
 
 
 def _decisions(result) -> list[str]:
-    return [e.message for e in result.events if e.type == "agent_decision"]
+    return [
+        e.message
+        for e in result.events
+        if e.type == "agent_decision" and e.payload.get("phase") == "decision"
+    ]
 
 
 def _run(llm, narrator=None, **kw) -> tuple:

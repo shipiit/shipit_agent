@@ -251,6 +251,7 @@ CONTRACTS: dict[str, ToolContract] = {
     "verify_output": OBSERVE,
     "build_prompt": OBSERVE,
     "tool_search": OBSERVE,
+    "call_tool": OBSERVE,
     "describe_binding": OBSERVE,
     # Listing and requesting connections changes nothing itself.
     "connections": OBSERVE,

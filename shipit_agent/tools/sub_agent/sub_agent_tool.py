@@ -241,11 +241,14 @@ class SubAgentTool:
                             ),
                         },
                     },
-                    # `task` is required even though a collect call does not
-                    # use it. An all-optional schema tells a weaker model that
-                    # nothing is needed, and it sends `{}` — observed live with
-                    # Gemma 4, which called the tool with no arguments at all.
-                    "required": ["task"],
+                    # A call starts a task or collects existing work. Keeping
+                    # that relationship in the schema lets the generic
+                    # argument gate reject `{}` without rejecting
+                    # `{"collect": "all"}`.
+                    "anyOf": [
+                        {"required": ["task"]},
+                        {"required": ["collect"]},
+                    ],
                 },
             },
         }

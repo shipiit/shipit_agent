@@ -45,18 +45,16 @@ __all__ = [
 CORE_TOOLS: frozenset[str] = frozenset({
     # the working copy
     "read_file", "write_file", "edit_file", "glob_files", "grep_files",
-    "workspace_files", "notebook_edit",
     # the shell and the sandbox
-    "bash", "run_code", "execute_code",
+    "bash", "execute_code",
     # discovery
-    "describe_binding", "tool_search",
+    "describe_binding", "tool_search", "call_tool",
     # the open web is not a connected resource
     "web_search", "open_url",
     # talking to the human
-    "ask_user", "ask_user_async", "human_review", "give_up",
+    "ask_user", "give_up",
     # the agent's own scaffolding
-    "plan_task", "todo", "decompose_problem", "synthesize_evidence",
-    "decision_matrix", "verify_output", "memory",
+    "todo",
 })
 
 

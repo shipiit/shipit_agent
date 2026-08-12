@@ -137,7 +137,7 @@ class TestToolCatalogue:
                 + len(agent.llm.seen_system[0])
             )
 
-        plain = measure()
+        plain = measure(tool_context_mode="full")
         coded = measure(code_mode=True)
         assert coded < plain * 0.6, f"code mode {coded} vs {plain}"
 
@@ -145,7 +145,12 @@ class TestToolCatalogue:
         from shipit_agent.builtins import get_builtin_tools
 
         tools = get_builtin_tools(llm=None, project_root=".")
-        plain = Agent(llm=ScriptedLLM([("d", [])]), tools=tools, auto_use_skills=False)
+        plain = Agent(
+            llm=ScriptedLLM([("d", [])]),
+            tools=tools,
+            auto_use_skills=False,
+            tool_context_mode="full",
+        )
         plain.run("hi")
         coded = Agent(llm=ScriptedLLM([("d", [])]), tools=tools, code_mode=True,
                       auto_use_skills=False)
@@ -171,6 +176,65 @@ class TestToolCatalogue:
         agent.run("hi")
         assert "warehouse" in agent.llm.seen_tools[0]
         assert "execute_code" not in agent.llm.seen_tools[0]
+
+    def test_large_plain_agent_uses_progressive_discovery_automatically(self) -> None:
+        tools = [resource(f"service_{index}", ["query"]) for index in range(13)]
+        agent = build_agent([("done", [])], tools)
+
+        result = agent.run("hello")
+
+        advertised = set(agent.llm.seen_tools[0])
+        assert "service_0" not in advertised
+        assert {"tool_search", "call_tool"} <= advertised
+        assert "execute_code" not in advertised
+        assert result.metadata["effective_code_mode"] is False
+        assert result.metadata["progressive_tool_context"] is True
+        assert result.metadata["hidden_tool_count"] == 13
+
+    def test_full_mode_keeps_large_catalog_eager(self) -> None:
+        tools = [resource(f"service_{index}", ["query"]) for index in range(13)]
+        agent = build_agent(
+            [("done", [])], tools, tool_context_mode="full"
+        )
+
+        result = agent.run("hello")
+
+        assert "service_0" in agent.llm.seen_tools[0]
+        assert result.metadata["progressive_tool_context"] is False
+
+    def test_large_schemas_trigger_lazy_mode_even_with_few_tools(self) -> None:
+        tools = [resource("warehouse", [f"operation_{i}" for i in range(300)])]
+        agent = build_agent(
+            [("done", [])], tools, tool_context_threshold_chars=1_000
+        )
+
+        result = agent.run("hello")
+
+        assert result.metadata["progressive_tool_context"] is True
+        assert "warehouse" not in agent.llm.seen_tools[0]
+
+    def test_mcp_or_connector_can_be_called_through_stable_gateway(self) -> None:
+        calls: list = []
+        agent = build_agent(
+            [
+                (
+                    "",
+                    [("call_tool", {
+                        "name": "warehouse",
+                        "arguments": {"action": "query", "sql": "SELECT 1"},
+                    })],
+                ),
+                ("Found the rows.", []),
+            ],
+            [resource("warehouse", ["query"], result=WAREHOUSE, record=calls)],
+            code_mode=True,
+        )
+
+        result = agent.run("Query the warehouse")
+
+        assert calls == [("warehouse", {"action": "query", "sql": "SELECT 1"})]
+        assert result.output == "Found the rows."
+        assert any(event.payload.get("tool") == "warehouse" for event in result.events)
 
 
 class TestSystemPrompt:

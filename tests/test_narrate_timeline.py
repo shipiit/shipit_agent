@@ -66,6 +66,21 @@ class TestShape:
         assert decision["content"] == "No existing record. Creating one."
         assert decision["next_action"] == "call_tool"
 
+    def test_observation_phase_keeps_the_unified_event_type(self) -> None:
+        events = [
+            event(
+                "agent_decision",
+                phase="observation",
+                summary="Read retry.py — 81 lines.",
+                next_action="evaluate_results",
+            ),
+            event("run_completed", output="Done.", usage={}),
+        ]
+        steps = timeline(events)
+        progress = next(s for s in steps if s["type"] == "agent_decision")
+        assert progress["phase"] == "observation"
+        assert "### 1. Observation" in render_markdown(events)
+
     def test_calls_carry_their_group(self) -> None:
         steps = timeline(RUN)
         started = [s for s in steps if s["type"] == "tool_call_started"]

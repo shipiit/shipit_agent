@@ -61,9 +61,11 @@ def format_event_line(event: AgentEvent) -> str | None:
     if event.type == "agent_decision":
         summary = _clip(event.display_message, _MAX_OUTPUT_CHARS)
         return f"agent_decision     {summary}" if summary else None
+    # Read compatibility for traces persisted before observations became an
+    # agent_decision phase. New runtime events never use this type.
     if event.type == "agent_observation":
         summary = _clip(event.display_message, _MAX_OUTPUT_CHARS)
-        return f"agent_observation  {summary}" if summary else None
+        return f"agent_decision     {summary}" if summary else None
     if event.type == "tool_called":
         return f"⚙ {p.get('tool', '?')}({_format_args(p.get('arguments'))}) …"
     if event.type == "tool_completed":
@@ -153,6 +155,8 @@ class StreamRenderer:
             return self._c("cyan", f"◈ {line}") if line else None
         if event.type == "agent_decision":
             summary = _clip(event.display_message, _MAX_OUTPUT_CHARS)
+            if p.get("phase") == "observation":
+                return self._c("dim", f"  └ {summary}") if summary else None
             return self._c("cyan", f"◆ {summary}") if summary else None
         if event.type == "agent_observation":
             summary = _clip(event.display_message, _MAX_OUTPUT_CHARS)

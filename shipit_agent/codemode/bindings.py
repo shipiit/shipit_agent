@@ -76,13 +76,14 @@ class BindingMethod:
     required: tuple[str, ...] = ()
 
     def signature(self) -> str:
-        """``create_issue(owner, repo, title, *, body=None, labels=None)``."""
+        """Render the keyword-only signature exposed by the sandbox proxy."""
         required = [p for p in self.parameters if p in self.required]
         optional = [p for p in self.parameters if p not in self.required]
-        parts = list(required)
-        if optional:
-            parts.append("*")
-            parts.extend(f"{name}=None" for name in optional)
+        # _Method.__call__ accepts **kwargs only. Advertising positional
+        # parameters made models generate code that the bridge rejects.
+        parts = ["*"] if self.parameters else []
+        parts.extend(required)
+        parts.extend(f"{name}=None" for name in optional)
         return f"{self.name}({', '.join(parts)})"
 
     def describe(self) -> str:

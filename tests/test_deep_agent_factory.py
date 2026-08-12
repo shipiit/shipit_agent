@@ -165,6 +165,8 @@ def test_deep_agent_first_class_runtime_controls_propagate() -> None:
         permissions=permissions,
         guardrails=guardrails,
         code_mode=True,
+        tool_context_mode="lazy",
+        tool_context_threshold_chars=9_000,
         heal_tool_calls=False,
         auto_project_skills=False,
     )
@@ -177,6 +179,8 @@ def test_deep_agent_first_class_runtime_controls_propagate() -> None:
     assert agent.agent.permissions is permissions
     assert agent.agent.guardrails is guardrails
     assert agent.agent.code_mode is True
+    assert agent.agent.tool_context_mode == "lazy"
+    assert agent.agent.tool_context_threshold_chars == 9_000
     assert agent.agent.heal_tool_calls is False
     assert agent.agent.auto_project_skills is False
 

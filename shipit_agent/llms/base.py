@@ -92,6 +92,24 @@ def accepts_text_delta_callback(complete_fn: Any) -> bool:
     return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
+def prompt_cache_info(llm: Any) -> dict[str, Any]:
+    """Describe cache capability without guessing from zero token counters."""
+    delegate = getattr(llm, "_mantle_delegate", None)
+    if delegate is not None:
+        llm = delegate
+    policy = getattr(llm, "prompt_cache_policy", None)
+    if policy is not None and hasattr(policy, "as_dict"):
+        return policy.as_dict()
+    return {
+        "provider": str(getattr(llm, "prompt_cache_provider", "unknown")),
+        "supported": getattr(llm, "prompt_cache_supported", None),
+        "enabled": getattr(llm, "prompt_cache_enabled", None),
+        "mode": str(getattr(llm, "prompt_cache_mode", "provider_managed")),
+        "model": str(getattr(llm, "model", "") or ""),
+        "reason": str(getattr(llm, "prompt_cache_reason", "capability_not_declared")),
+    }
+
+
 @dataclass(slots=True)
 class LLMResponse:
     content: str = ""
@@ -109,8 +127,11 @@ class LLM(Protocol):
         tools: list[dict[str, Any]] | None = None,
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
-        text_delta_callback: Callable[[str], None] | None = None,
+        # Return False to ask a streaming adapter to cancel a pathological
+        # generation. Adapters that cannot cancel may ignore the return value.
+        text_delta_callback: Callable[[str], bool | None] | None = None,
         # (tool_call_id, tool_name, raw_json_delta). Optional: adapters that
         # cannot surface partial tool arguments simply don't accept it.
-        tool_input_callback: Callable[[str, str, str], None] | None = None,
+        # Return ``False`` to stop a pathological provider stream early.
+        tool_input_callback: Callable[[str, str, str], bool | None] | None = None,
     ) -> LLMResponse: ...

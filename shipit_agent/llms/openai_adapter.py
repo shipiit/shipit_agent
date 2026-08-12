@@ -35,10 +35,23 @@ class OpenAIChatLLM:
         tool_choice: str | dict[str, Any] | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        prompt_cache_key: str | None = None,
+        prompt_cache_retention: str | None = None,
         **client_kwargs: Any,
     ) -> None:
         self.model = model
         self.api_key = api_key
+        base_url = str(client_kwargs.get("base_url") or "")
+        native_openai = not base_url or "api.openai.com" in base_url
+        self.prompt_cache_supported = True if native_openai else None
+        self.prompt_cache_enabled = True if native_openai else None
+        self.prompt_cache_mode = "automatic" if native_openai else "provider_managed"
+        self.prompt_cache_provider = "openai" if native_openai else "openai-compatible"
+        self.prompt_cache_reason = (
+            "provider_automatic" if native_openai else "capability_not_declared"
+        )
+        self.prompt_cache_key = prompt_cache_key
+        self.prompt_cache_retention = prompt_cache_retention
         # "low" | "medium" | "high" — only applied for reasoning-capable models
         self.reasoning_effort = reasoning_effort or (
             "medium" if _is_reasoning_model(model) else None
@@ -92,6 +105,10 @@ class OpenAIChatLLM:
             kwargs["temperature"] = self.temperature
         if response_format:
             kwargs["response_format"] = response_format
+        if self.prompt_cache_key:
+            kwargs["prompt_cache_key"] = self.prompt_cache_key
+        if self.prompt_cache_retention:
+            kwargs["prompt_cache_retention"] = self.prompt_cache_retention
 
         if text_delta_callback is not None or tool_input_callback is not None:
             return self._complete_streaming(
@@ -142,7 +159,7 @@ class OpenAIChatLLM:
             try:
                 details = getattr(response.usage, "prompt_tokens_details", None)
                 cached = getattr(details, "cached_tokens", None) if details else None
-                if cached:
+                if details is not None and hasattr(details, "cached_tokens"):
                     usage["cache_read_input_tokens"] = int(cached)
                 out_details = getattr(
                     response.usage, "completion_tokens_details", None
@@ -231,6 +248,7 @@ class OpenAIChatLLM:
         reasoning_parts: list[str] = []
         calls: dict[int, dict[str, Any]] = {}  # index → {name, arguments}
         usage: dict[str, int] = {}
+        stream_aborted = False
 
         for chunk in stream:
             if getattr(chunk, "usage", None):
@@ -239,6 +257,13 @@ class OpenAIChatLLM:
                     "completion_tokens": chunk.usage.completion_tokens or 0,
                     "total_tokens": chunk.usage.total_tokens or 0,
                 }
+                try:
+                    details = getattr(chunk.usage, "prompt_tokens_details", None)
+                    cached = getattr(details, "cached_tokens", 0) if details else 0
+                    if details is not None and hasattr(details, "cached_tokens"):
+                        usage["cache_read_input_tokens"] = int(cached)
+                except Exception:
+                    pass
             if not getattr(chunk, "choices", None):
                 continue
             delta = chunk.choices[0].delta
@@ -247,7 +272,12 @@ class OpenAIChatLLM:
             text = getattr(delta, "content", None)
             if text:
                 content_parts.append(text)
-                on_delta(text)
+                if on_delta(text) is False:
+                    stream_aborted = True
+                    close = getattr(stream, "close", None)
+                    if callable(close):
+                        close()
+                    break
             reasoning = getattr(delta, "reasoning_content", None)
             if reasoning:
                 reasoning_parts.append(str(reasoning))
@@ -274,7 +304,7 @@ class OpenAIChatLLM:
                                 pass
 
         tool_calls = []
-        for idx in sorted(calls):
+        for idx in (() if stream_aborted else sorted(calls)):
             raw = calls[idx]["arguments"] or "{}"
             try:
                 arguments = json.loads(raw)
@@ -285,7 +315,15 @@ class OpenAIChatLLM:
         return LLMResponse(
             content="".join(content_parts),
             tool_calls=tool_calls,
-            metadata={"model": self.model, "provider": "openai", "streamed": True},
+            metadata={
+                "model": self.model,
+                "provider": "openai",
+                "streamed": True,
+                "stream_aborted": stream_aborted,
+                "stream_abort_reason": (
+                    "pathological_output" if stream_aborted else ""
+                ),
+            },
             reasoning_content="".join(reasoning_parts) or None,
             usage=usage,
         )
@@ -340,3 +378,8 @@ class BedrockGemmaChatLLM(OpenAIChatLLM):
             "base_url", base_url or _bedrock_mantle_base_url(resolved_region)
         )
         super().__init__(model=model, api_key=resolved_key, **client_kwargs)
+        self.prompt_cache_supported = False
+        self.prompt_cache_enabled = False
+        self.prompt_cache_mode = "unsupported"
+        self.prompt_cache_provider = "bedrock-mantle"
+        self.prompt_cache_reason = "selected_model_path_does_not_support_caching"

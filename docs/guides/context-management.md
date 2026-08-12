@@ -15,15 +15,83 @@ agent = Agent.with_builtins(llm=OpenAIChatLLM(model="gpt-4o-mini"))
 for event in agent.stream("Research quantum computing"):
     if event.type == "run_completed":
         usage = event.payload.get("usage", {})
+        cache = event.payload.get("prompt_cache", {})
         print(f"Prompt tokens:     {usage.get('prompt_tokens', 0)}")
         print(f"Completion tokens: {usage.get('completion_tokens', 0)}")
         print(f"Total tokens:      {usage.get('total_tokens', 0)}")
+        print(f"Cache mode:        {cache.get('mode')}")
+        print(f"Cache supported:   {cache.get('supported')}")
+        print(f"Cache hit:         {cache.get('hit')}")
 ```
 
 Usage is accumulated across all iterations of the agent loop and reported in
 the `run_completed` event. The totals also include
 `cache_read_input_tokens` and `cache_creation_input_tokens`, so cached-prefix
 savings remain visible after a multi-step run.
+
+The `prompt_cache` object removes ambiguity from zero counters:
+
+- `supported=false, mode="unsupported"` means the selected model cannot cache
+  this request path. This is currently the case for Gemma 4 on
+  `bedrock-mantle`.
+- `supported=true, hit=false` means the provider returned cache accounting but
+  this run did not read a cached prefix. Check minimum prefix size, prefix
+  stability, and TTL.
+- `hit=true` means `read_tokens` were served from cache.
+- `hit=null, usage_reported=false` means the provider did not return enough
+  information to prove either a hit or a miss.
+- `supported=null, mode="provider_managed"` means the generic adapter cannot
+  guarantee capability; the provider's usage response remains authoritative.
+
+Native Anthropic and Anthropic-family models through LiteLLM use explicit
+ephemeral cache breakpoints by default. OpenAI uses automatic prompt caching
+and SHIPIT reads `prompt_tokens_details.cached_tokens` in both streaming and
+non-streaming responses. Amazon Bedrock caching is model-specific; unsupported
+models are not sent speculative cache fields.
+
+## Provider-aware cache configuration
+
+SHIPIT does not send one provider's cache fields to every model. Each adapter
+resolves a cache policy and exposes it in `usage_tick` and `run_completed`:
+
+```python
+from shipit_agent.llms import AnthropicChatLLM, LiteLLMChatLLM, OpenAIChatLLM
+
+claude = AnthropicChatLLM("claude-sonnet-4", prompt_caching=True)
+
+openai = OpenAIChatLLM(
+    "gpt-5",
+    prompt_cache_key="shipit-repo-agent-v1",
+    prompt_cache_retention="24h",
+)
+
+gemini = LiteLLMChatLLM("gemini/gemini-2.5-flash")
+bedrock_claude = LiteLLMChatLLM(
+    "bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+)
+```
+
+LiteLLM translates explicit `cache_control` blocks to Bedrock `cachePoint`
+blocks and Gemini cached content on supported routes. OpenAI, Azure OpenAI,
+DeepSeek, and xAI use automatic caching and do not receive explicit markers.
+
+For a newly supported provider/model, opt in without changing SHIPIT's model
+classifier:
+
+```python
+llm = LiteLLMChatLLM(
+    "bedrock/your-new-cache-capable-model",
+    prompt_cache_strategy="explicit",
+)
+```
+
+Use that override only after verifying the selected model supports caching.
+`prompt_cache_strategy` accepts `"auto"` (default), `"automatic"`,
+`"explicit"`, or `"disabled"`. `prompt_caching=False` disables SHIPIT cache
+directives. Provider minimum prefix sizes still apply and providers may skip
+caching below their thresholds. See the
+[LiteLLM prompt-caching guide](https://docs.litellm.ai/docs/completion/prompt_caching)
+and [Amazon Bedrock prompt-caching guide](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
 
 ## Optimized long-running setup
 
@@ -143,7 +211,11 @@ print(f"Total cost: ${costs['total_usd']:.4f}")
 
 | Provider | `usage` populated | Fields |
 |---|---|---|
-| OpenAI | Yes | `prompt_tokens`, `completion_tokens`, `total_tokens` |
-| Anthropic | Yes | `prompt_tokens`, `completion_tokens`, `total_tokens` |
-| LiteLLM (Bedrock, Gemini, etc.) | Yes | `prompt_tokens`, `completion_tokens`, `total_tokens` |
+| OpenAI | Yes | Automatic caching; cached reads reported when the API returns `cached_tokens` |
+| Anthropic | Yes | Explicit breakpoints enabled by default; reads and writes reported |
+| LiteLLM Anthropic / Bedrock Claude | Yes | Explicit markers translated to native cache controls |
+| LiteLLM Gemini / Vertex Gemini | Yes | Explicit markers translated to Google cached content |
+| LiteLLM OpenAI / Azure / DeepSeek / xAI | Yes | Automatic/provider-managed caching |
+| Bedrock Mantle Gemma 4 | Yes | Prompt caching unsupported; status is explicit in `prompt_cache` |
+| Other LiteLLM providers | Yes | Provider-managed; capability and usage depend on the selected model |
 | SimpleEchoLLM (dev/test) | No | Empty dict |

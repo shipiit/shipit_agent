@@ -3,6 +3,7 @@ from .ask_user import AskUserTool
 from .ask_user_async import AskUserAsyncTool
 from .artifact_builder import ArtifactBuilderTool
 from .bash import BashTool
+from .call_tool import CallToolTool
 from .base import Tool, ToolContext, ToolOutput, ToolOutputChunk, ToolRunOutput
 from .formatting import clip_text
 from .code_execution import CodeExecutionTool
@@ -68,6 +69,7 @@ __all__ = [
     "AskUserAsyncTool",
     "ArtifactBuilderTool",
     "BashTool",
+    "CallToolTool",
     "BraveSearchProvider",
     "build_search_provider",
     "ClaudeMemoryTool",

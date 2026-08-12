@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any, AsyncIterator, Callable
 from uuid import uuid4
 
@@ -71,6 +72,11 @@ class AsyncAgentRuntime(RuntimeCore):
         context_window_tokens: int = 0,
         max_tool_output_chars: int = 0,
         max_tool_output_group_chars: int = 0,
+        repeated_tool_failure_limit: int = 2,
+        transport_circuit_breaker: bool = True,
+        reasoning_markup_tags: tuple[str, ...] = ("thought", "think"),
+        pathological_stream_min_chars: int = 2048,
+        pathological_stream_max_ratio: float = 0.25,
         tool_output_dir: str | None = None,
         replan_interval: int = 0,
         permissions: PermissionEngine | None = None,
@@ -117,6 +123,11 @@ class AsyncAgentRuntime(RuntimeCore):
             context_window_tokens=context_window_tokens,
             max_tool_output_chars=max_tool_output_chars,
             max_tool_output_group_chars=max_tool_output_group_chars,
+            repeated_tool_failure_limit=repeated_tool_failure_limit,
+            transport_circuit_breaker=transport_circuit_breaker,
+            reasoning_markup_tags=reasoning_markup_tags,
+            pathological_stream_min_chars=pathological_stream_min_chars,
+            pathological_stream_max_ratio=pathological_stream_max_ratio,
             tool_output_dir=tool_output_dir,
             reminder=reminder,
             evict_prior_tool_outputs=evict_prior_tool_outputs,
@@ -287,6 +298,43 @@ class AsyncAgentRuntime(RuntimeCore):
             )
             return None, msg
 
+        argument_error = self.check_arguments(tool, tool_call)
+        repeated_failure = self.block_repeated_failure(
+            state,
+            tool_call=tool_call,
+            tool_call_record=tool_call_record,
+            iteration=iteration,
+        )
+        if repeated_failure is not None:
+            return None, repeated_failure
+        unreachable = self.block_unreachable_tool(
+            state,
+            tool_call=tool_call,
+            tool_call_record=tool_call_record,
+            iteration=iteration,
+        )
+        if unreachable is not None:
+            return None, unreachable
+        if argument_error:
+            self.record_tool_failure(state, tool_call)
+            self.emit(
+                state,
+                "tool_arguments_rejected",
+                f"Tool call missing arguments: {tool_call.name}",
+                tool=tool_call.name,
+                arguments=dict(tool_call.arguments or {}),
+                iteration=iteration,
+            )
+            return None, Message(
+                role="tool",
+                name=tool_call.name,
+                content=argument_error,
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "error": "missing_required_arguments",
+                },
+            )
+
         # ── Permission gate: blocking hooks + rule-based permission engine ──
         decision = self.authorize(tool_call.name, tool_call.arguments, tool)
         if (
@@ -435,6 +483,8 @@ class AsyncAgentRuntime(RuntimeCore):
         if self.hooks:
             tool_result = self.hooks.run_after_tool(tool_call.name, tool_result)
 
+        self.record_tool_outcome(state, tool_call, tool_result)
+
         # Guardrails: neutralize indirect injection and redact secrets BEFORE
         # the model reads the result.
         tool_result.output, redacted_secret = self.sanitize_tool_output(
@@ -526,6 +576,16 @@ class AsyncAgentRuntime(RuntimeCore):
         # Build the capability control plane before the system prompt so the
         # model sees the same connection/MCP metadata that tools can search.
         shared_state: dict[str, Any] = self.build_shared_state(registry, state)
+        shared_state["explicit_mcp_servers"] = sorted(
+            str(mcp.name)
+            for mcp in self.mcps
+            if str(getattr(mcp, "name", "")).strip()
+            and re.search(
+                rf"(?<![\w-]){re.escape(str(mcp.name))}(?![\w-])",
+                user_prompt,
+                re.IGNORECASE,
+            )
+        )
         tool_prompt = build_tools_prompt(
             registry.values(), connections=self.connections.all()
         )
@@ -622,6 +682,7 @@ class AsyncAgentRuntime(RuntimeCore):
                 tools=step_schemas,
                 base_prompt=base_prompt,
             )
+            self.sanitize_response(state, response, iteration)
             self.track_usage(state, response, iteration)
 
             # Small models often emit the tool call as text; promote it.
@@ -646,6 +707,79 @@ class AsyncAgentRuntime(RuntimeCore):
                 )
 
             if not response.tool_calls:
+                stream_abort_nudge = self.stream_abort_nudge(
+                    response, last=iteration >= self.max_iterations
+                )
+                if stream_abort_nudge is not None:
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=stream_abort_nudge,
+                            metadata={"runtime_nudge": True},
+                        )
+                    )
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Nudged after pathological tool-input stream",
+                        nudge=True,
+                        reason="pathological_tool_input",
+                        iteration=iteration,
+                    )
+                    continue
+                requested_nudge = self.requested_tool_nudge(
+                    user_prompt,
+                    registry,
+                    state,
+                    last=iteration >= self.max_iterations,
+                )
+                if requested_nudge is not None:
+                    state.messages.append(
+                        Message(role="assistant", content=response.content)
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=requested_nudge,
+                            metadata={"runtime_nudge": True},
+                        )
+                    )
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Nudged: explicitly requested tool has not completed",
+                        nudge=True,
+                        missing_tools=self.missing_explicitly_requested_tools(
+                            user_prompt, registry, state
+                        ),
+                        iteration=iteration,
+                    )
+                    continue
+                discovery_nudge = self.discovery_only_nudge(
+                    state,
+                    user_prompt=user_prompt,
+                    last=iteration >= self.max_iterations,
+                )
+                if discovery_nudge is not None:
+                    state.messages.append(
+                        Message(role="assistant", content=response.content)
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=discovery_nudge,
+                            metadata={"runtime_nudge": True},
+                        )
+                    )
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Nudged: discovery found a tool but no capability was executed",
+                        nudge=True,
+                        reason="discovery_only",
+                        iteration=iteration,
+                    )
+                    continue
                 # Nudge-on-stall: the model narrated an action and called
                 # nothing. One tightly-gated re-prompt recovers the turn.
                 if self.should_nudge(
@@ -657,7 +791,13 @@ class AsyncAgentRuntime(RuntimeCore):
                     state.messages.append(
                         Message(role="assistant", content=response.content)
                     )
-                    state.messages.append(Message(role="user", content=self.NUDGE_TEXT))
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=self.NUDGE_TEXT,
+                            metadata={"runtime_nudge": True},
+                        )
+                    )
                     self.emit(
                         state,
                         "tool_call_healed",
@@ -811,10 +951,27 @@ class AsyncAgentRuntime(RuntimeCore):
             )
 
         self.session_store.save(
-            SessionRecord(session_id=self.session_id, messages=list(state.messages))
+            SessionRecord(
+                session_id=self.session_id,
+                messages=[
+                    message
+                    for message in state.messages
+                    if not message.metadata.get("runtime_nudge")
+                ],
+            )
         )
         self.surface_give_up(state.tool_results)
         response.content = self.sanitize_output(state, response.content)
+
+        unmet = self.unmet_requirements(user_prompt, registry, state)
+        self.metadata["unmet_requirements"] = unmet
+        if unmet:
+            self.emit(
+                state,
+                "requirements_unmet",
+                "Explicitly requested capabilities were not completed",
+                requirements=unmet,
+            )
 
         self.emit(
             state,

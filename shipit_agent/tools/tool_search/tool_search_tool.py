@@ -45,6 +45,7 @@ class ToolSearchTool:
         max_limit: int = 10,
         default_limit: int = 5,
         token_bonus: float = 0.12,
+        mcp_discovery_threshold: float = 0.30,
     ) -> None:
         self.name = name
         self.description = description
@@ -57,6 +58,7 @@ class ToolSearchTool:
         self.max_limit = max_limit
         self.default_limit = default_limit
         self.token_bonus = token_bonus
+        self.mcp_discovery_threshold = mcp_discovery_threshold
 
     def schema(self) -> dict:
         return {
@@ -78,6 +80,14 @@ class ToolSearchTool:
                                 f"(1-{self.max_limit}, default {self.default_limit})."
                             ),
                         },
+                        "detail": {
+                            "type": "string",
+                            "enum": ["name", "description", "schema"],
+                            "description": (
+                                "Result detail level. Use 'schema' immediately "
+                                "before calling a hidden tool."
+                            ),
+                        },
                     },
                     "required": ["query"],
                 },
@@ -96,7 +106,7 @@ class ToolSearchTool:
         if not query_text:
             return ToolOutput(
                 text="Error: `query` is required. Describe what you are trying to do.",
-                metadata={"error": "empty_query", "matches": []},
+                metadata={"error": "empty_query", "matches": [], "discovery_only": True},
             )
 
         # Clamp limit to [1, max_limit].
@@ -105,16 +115,78 @@ class ToolSearchTool:
         except (TypeError, ValueError):
             limit = self.default_limit
         limit = max(1, min(limit, self.max_limit))
-
-        tools = context.state.get("available_tools", []) or []
-        if not tools:
-            return ToolOutput(
-                text="No tools are currently registered on this agent.",
-                metadata={"query": query_text, "matches": []},
-            )
+        detail = str(kwargs.get("detail") or "description").strip().lower()
+        if detail not in {"name", "description", "schema"}:
+            detail = "description"
 
         query_lower = query_text.lower()
         query_tokens = [t for t in query_lower.split() if t]
+        initial_tools = context.state.get("available_tools", []) or []
+        core_names = {"tool_search", "call_tool", "execute_code", "describe_binding"}
+        local_scores = [
+            self._score(
+                query_lower,
+                query_tokens,
+                " ".join(
+                    str(tool.get(key, "") or "")
+                    for key in ("name", "description", "prompt_instructions", "category")
+                ).lower(),
+            )
+            for tool in initial_tools
+            if str(tool.get("name", "")) not in core_names
+        ]
+        deferred_servers = [
+            str(name).lower()
+            for name in context.state.get("deferred_mcp_servers", [])
+            if str(name).strip()
+        ]
+        explicit_servers = [
+            str(name).lower()
+            for name in context.state.get("explicit_mcp_servers", [])
+            if str(name).strip()
+        ]
+        request_context = (
+            f"{query_lower}\n"
+            f"{str(getattr(context, 'prompt', '') or '').lower()}"
+        )
+        requested_servers = {
+            name
+            for name in (*deferred_servers, *explicit_servers)
+            if name in request_context
+        }
+        explicitly_requested_mcp = bool(requested_servers)
+        best_local_score = max(local_scores, default=0.0)
+
+        discovery = context.state.get("discover_deferred_tools")
+        discovery_result: dict[str, Any] = {}
+        if callable(discovery) and (
+            explicitly_requested_mcp
+            or best_local_score < self.mcp_discovery_threshold
+        ):
+            discovery_result = dict(discovery(request_context) or {})
+
+        tools = context.state.get("available_tools", []) or []
+        # Discovery gateways are control-plane tools, never search results.
+        # Returning `call_tool` from `tool_search` led weak models to invoke
+        # `call_tool(name="call_tool")` instead of the hidden capability.
+        tools = [
+            tool
+            for tool in tools
+            if str(tool.get("name", "")) not in core_names
+        ]
+        if requested_servers:
+            server_tools = [
+                tool
+                for tool in tools
+                if str(tool.get("server", "")).lower() in requested_servers
+            ]
+            if server_tools:
+                tools = server_tools
+        if not tools:
+            return ToolOutput(
+                text="No tools are currently registered on this agent.",
+                metadata={"query": query_text, "matches": [], "discovery_only": True},
+            )
 
         scored: list[dict[str, Any]] = []
         for tool in tools:
@@ -125,6 +197,7 @@ class ToolSearchTool:
             connection_id = str(tool.get("connection_id", "") or "")
             connection_state = str(tool.get("connection_state", "") or "")
             server = str(tool.get("server", "") or "")
+            schema = tool.get("schema") if isinstance(tool.get("schema"), dict) else {}
             read_only = tool.get("read_only")
             access_terms = (
                 "read only"
@@ -157,10 +230,24 @@ class ToolSearchTool:
                     "connection_state": connection_state,
                     "server": server,
                     "score": score,
+                    "schema": schema,
                 }
             )
 
         scored.sort(key=lambda item: item["score"], reverse=True)
+        # Newly discovered capabilities are hidden behind `call_tool`; names
+        # and descriptions are insufficient to invoke them safely. Upgrade
+        # the default description response to a bounded schema response. An
+        # explicit `detail="name"` remains a catalog-only request.
+        detail_upgraded = False
+        if detail == "description" and (
+            int(discovery_result.get("discovered", 0))
+            or explicitly_requested_mcp
+        ):
+            detail = "schema"
+            detail_upgraded = True
+        if detail == "schema":
+            limit = min(limit, 3)
         matches = scored[:limit]
 
         # Drop matches with zero-ish scores — they're noise.
@@ -168,7 +255,7 @@ class ToolSearchTool:
         if not meaningful:
             return ToolOutput(
                 text=f"No tools matched '{query_text}'. Try rephrasing or broadening the query.",
-                metadata={"query": query_text, "matches": matches},
+                metadata={"query": query_text, "matches": matches, "discovery_only": True},
             )
 
         lines = [f"Best tools for '{query_text}' (ranked by relevance):"]
@@ -185,10 +272,19 @@ class ToolSearchTool:
                 state = match["connection_state"] or "unknown"
                 details.append(f"{match['connection_id']}: {state}")
             detail_text = f"; {', '.join(details)}" if details else ""
+            if detail == "name":
+                lines.append(f"{idx}. {match['name']}")
+                continue
             lines.append(
                 f"{idx}. {match['name']} (score={match['score']}{detail_text}) — {desc}"
             )
-            if match["prompt_instructions"]:
+            if detail == "schema" and match["schema"]:
+                import json
+
+                lines.append(
+                    "   schema: " + json.dumps(match["schema"], sort_keys=True)
+                )
+            elif match["prompt_instructions"]:
                 lines.append(f"   ↳ when to use: {match['prompt_instructions']}")
 
         return ToolOutput(
@@ -196,7 +292,19 @@ class ToolSearchTool:
             metadata={
                 "query": query_text,
                 "limit": limit,
+                "detail": detail,
+                "detail_upgraded": detail_upgraded,
                 "total_candidates": len(tools),
-                "matches": meaningful,
+                "discovered": int(discovery_result.get("discovered", 0)),
+                "discovery_failures": list(discovery_result.get("failures", [])),
+                "matches": [
+                    (
+                        match
+                        if detail == "schema"
+                        else {key: value for key, value in match.items() if key != "schema"}
+                    )
+                    for match in meaningful
+                ],
+                "discovery_only": True,
             },
         )

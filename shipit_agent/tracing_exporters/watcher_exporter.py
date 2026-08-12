@@ -140,10 +140,9 @@ class WatcherExporter:
                 stack.close()
 
         elif event.type == "agent_decision":
-            # The narration the runtime already produced, as a decision
-            # node — so the graph shows why, not only what.
+            phase = str(payload.get("phase") or "decision")
             watcher.decision(
-                "agent.decision",
+                f"agent.{phase}",
                 chosen=str(payload.get("next_action") or "continue"),
                 options=[],
                 rationale=str(payload.get("summary") or ""),

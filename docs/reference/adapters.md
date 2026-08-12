@@ -79,6 +79,8 @@ llm = OpenAIChatLLM(
     api_key=None,                  # falls back to OPENAI_API_KEY env var
     reasoning_effort=None,         # auto-set to "medium" for o-series + gpt-5 + DeepSeek R1
     tool_choice=None,              # "auto" | "required" | "none" | dict
+    prompt_cache_key=None,         # stable routing hint for repeated prefixes
+    prompt_cache_retention=None,   # "in_memory" or "24h"
 )
 ```
 
@@ -223,9 +225,26 @@ from shipit_agent.llms import LiteLLMChatLLM
 llm = LiteLLMChatLLM(
     model="bedrock/openai.gpt-oss-120b-1:0",
     api_key="…",
+    max_output_tokens=4096,          # default; bound runaway generations
+    prompt_caching=True,             # provider-aware caching
+    prompt_cache_strategy="auto",    # auto | automatic | explicit | disabled
+    prompt_cache_key=None,           # automatic providers only
+    prompt_cache_retention=None,     # automatic providers only
     custom_llm_provider=None,        # leave None unless your model needs it
 )
 ```
+
+`max_output_tokens` defaults to `4096` and is forwarded as LiteLLM's portable
+`max_tokens` request parameter. Set a different positive value for models that
+need longer final generations, or `None` to leave the provider unbounded. An
+explicit `max_tokens` or `max_completion_tokens` keyword takes precedence.
+
+In `auto` mode, Anthropic/Bedrock Claude and Gemini/Vertex Gemini receive
+explicit cache markers that LiteLLM translates for the target API. OpenAI,
+Azure, DeepSeek, and xAI use automatic caching. Unknown providers remain
+`provider_managed`; use `prompt_cache_strategy="explicit"` only after checking
+the selected model supports it. Cache capability, usage reporting, reads, and
+writes are exposed in the runtime's `prompt_cache` event payload.
 
 ### LiteLLM proxy server
 

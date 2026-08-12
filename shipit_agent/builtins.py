@@ -10,6 +10,13 @@ These are used by:
 - ``DeepAgent.with_builtins()`` — same, plus deep-agent extras
 - ``_effective_tools()`` — to resolve skill-linked tools at runtime
 
+Two bundled profiles are also exposed:
+
+- ``"smart"`` — a reasoning-first modern agent default; keeps the coding,
+  research, browser, and delegation tools attached, while leaving connector-
+  heavy capabilities to explicit opt-in or skill injection
+- ``"full"`` — the entire built-in catalogue
+
 Tool categories:
 
     Web & browsing:     web_search, open_url, playwright_browse
@@ -39,6 +46,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from shipit_agent.codemode import CORE_TOOLS
 from shipit_agent.llms.base import LLM
 from shipit_agent.tools.connections import ConnectionsTool
 from shipit_agent.tools.describe_binding import DescribeBindingTool
@@ -54,6 +62,7 @@ from shipit_agent.tools import (
     DocumentBuilderTool,
     DownloadFileTool,
     BashTool,
+    CallToolTool,
     CodeExecutionTool,
     ConfluenceTool,
     CustomAPITool,
@@ -99,6 +108,21 @@ from shipit_agent.tools import (
     SlackTool,
     ThoughtDecompositionTool,
     ZendeskTool,
+)
+
+
+SMART_TOOL_NAMES: frozenset[str] = CORE_TOOLS | frozenset(
+    {
+        "playwright_browse",
+        "deep_research",
+        "download_file",
+        "pdf",
+        "vision",
+        "sql",
+        "git_ops",
+        "connections",
+        "sub_agent",
+    }
 )
 
 
@@ -167,6 +191,8 @@ def get_builtin_tool_map(
         PromptTool(),
         VerifierTool(),
         ToolSearchTool(),
+        # Stable gateway for one hidden tool after progressive discovery.
+        CallToolTool(),
         # Progressive discovery: learn one binding's API instead of carrying
         # every integration's schema in the prompt (see shipit_agent.codemode).
         DescribeBindingTool(),
@@ -231,4 +257,42 @@ def get_builtin_tools(
             web_search_api_key=web_search_api_key,
             web_search_config=web_search_config,
         ).values()
+    )
+
+
+def get_builtin_tools_for_profile(
+    profile: str,
+    *,
+    llm: LLM | None = None,
+    project_root: str = "/tmp",
+    workspace_root: str = ".shipit_workspace",
+    web_search_provider: str = "duckduckgo",
+    web_search_api_key: str | None = None,
+    web_search_config: dict[str, Any] | None = None,
+) -> list[Tool]:
+    """Return built-ins for a named profile.
+
+    ``smart`` keeps the default agent prompt lean while preserving the core
+    coding, reasoning, scraping, and delegation surface. ``full`` returns the
+    complete catalogue.
+    """
+    tool_map = get_builtin_tool_map(
+        llm=llm,
+        project_root=project_root,
+        workspace_root=workspace_root,
+        web_search_provider=web_search_provider,
+        web_search_api_key=web_search_api_key,
+        web_search_config=web_search_config,
+    )
+    normalized = profile.strip().lower()
+    if normalized == "full":
+        return list(tool_map.values())
+    if normalized == "smart":
+        return [
+            tool
+            for name, tool in tool_map.items()
+            if name in SMART_TOOL_NAMES
+        ]
+    raise ValueError(
+        f"Unknown builtin tool profile '{profile}'. Expected 'smart' or 'full'."
     )

@@ -398,9 +398,12 @@ class TestSchemaIsUnambiguous:
     `task`". A schema that marks nothing required says nothing is needed.
     """
 
-    def test_task_is_required(self) -> None:
+    def test_task_or_collect_is_required(self) -> None:
         schema = SubAgentTool(llm=ScriptedLLM([])).schema()
-        assert schema["function"]["parameters"]["required"] == ["task"]
+        assert schema["function"]["parameters"]["anyOf"] == [
+            {"required": ["task"]},
+            {"required": ["collect"]},
+        ]
 
     def test_collect_still_works_with_a_task_present(self) -> None:
         tool = SubAgentTool(llm=ScriptedLLM([("answer", [])]))

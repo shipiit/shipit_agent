@@ -167,7 +167,6 @@ class TestARepeatedCall:
 
     def test_a_small_repeat_is_left_alone(self) -> None:
         """Below the threshold, explaining the omission costs more."""
-        _result, llm = run(turns=2, tools=dump_tool(["tiny"]))
-        joined = llm.context_chars
-        assert joined  # ran at all
-        assert all(n < 5_000 for n in joined)
+        result, _llm = run(turns=2, tools=dump_tool(["tiny"]))
+        tool_messages = [m.content for m in result.messages if m.role == "tool"]
+        assert tool_messages == ["tiny", "tiny"]

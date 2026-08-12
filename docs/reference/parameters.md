@@ -55,16 +55,26 @@ agent = Agent(
 | `parallel_tool_execution` | `bool` | `False` | Run independent tool calls in parallel. | Latency-sensitive runs with multiple parallel calls. |
 | `max_tool_concurrency` | `int \| None` | `None` | Bound concurrently executing local tools per model turn. | Protect APIs, databases, CPU, and file descriptors while retaining parallelism. |
 | `hooks` | `AgentHooks \| None` | `None` | Pre/post-LLM and tool middleware. | Custom logging, redaction, instrumentation. |
-| `context_window_tokens` | `int` | `0` | Auto-compact messages above this token count (0 = off). | Long runs against models with finite context. |
+| `context_window_tokens` | `int` | `0` | Explicit compaction threshold. With `auto_compact=True`, `0` derives the threshold from the selected model instead of disabling compaction. | Override provider/model limits manually. |
+| `auto_compact` | `bool` | `True` | Derive a safe compaction threshold from known model limits when no explicit threshold is supplied. | Leave enabled for long-running plain agents; disable only when the provider owns compaction. |
 | `max_tool_output_chars` | `int` | `16000` | Cap only the model-visible copy of each tool result; `0` disables the cap. | MCP, search, logs, and large-file tools that can return large payloads. |
 | `max_tool_output_group_chars` | `int` | `48000` | Share one model-context budget across parallel tool results. | Prevent a large parallel batch from multiplying context cost. |
+| `repeated_tool_failure_limit` | `int` | `2` | Block a third identical failed tool call and return corrective feedback to the model. | Keep enabled to prevent weak models consuming the iteration budget on one bad call. |
+| `transport_circuit_breaker` | `bool` | `True` | After a connection-level failure, block that tool for the rest of the run even when the model changes its arguments. A successful call is sticky and prevents a concurrent late failure from opening the circuit. | Leave enabled for remote tools and MCPs. Disable only when the tool intentionally changes endpoints between calls. |
+| `reasoning_markup_tags` | `tuple[str, ...]` | `("thought", "think")` | Provider fallback tags to route from visible text into `reasoning_content` when a model does not expose a structured reasoning channel. | Override for a model-specific protocol or set `()` to disable markup filtering. Structured provider reasoning remains preferred. |
+| `pathological_stream_min_chars` | `int` | `2048` | Earliest streamed tool-input size at which recurrence-based compression is checked; `0` disables early abort. | Lower for costly weak models, raise for workloads that intentionally generate repetitive large files. |
+| `pathological_stream_max_ratio` | `float` | `0.25` | Abort when generic compaction reduces streamed tool input below this fraction of its original size. | Tune the sensitivity without provider/tool-specific phrases. |
+| `tool_context_mode` | `str` | `"auto"` | Keep small toolsets eager, but automatically hide large catalogs behind `tool_search` + `call_tool`; remote MCP handshake and `tools/list` are also deferred until a relevant search. | Leave at `"auto"` for production. Use `"full"` only to expose and initialize everything eagerly. |
+| `tool_context_threshold_chars` | `int` | `12000` | Serialized schema budget used by automatic progressive discovery (roughly 3k tokens). | Lower it for very cost-sensitive agents; raise it for small-context-free local models. |
+| `code_mode` | `bool` | `False` | Add programmatic `execute_code` orchestration on top of progressive discovery. | Opt in only for models that reliably write orchestration code; lazy tool/MCP loading does not require it. |
+| `heal_tool_calls` | `bool` | `True` | Promote schema-valid calls emitted through common text fallback protocols and recover bounded model stalls. | Keep enabled for mixed/open-weight model fleets. Every promoted call must name a registered tool and satisfy its schema. |
 | `persist_large_tool_outputs` | `bool` | `False` | Save complete capped results under `.shipit/tool-results/` and include the recovery path in the model extract. | Preserve full-data access without resending it every turn; enabled by optimized mode. |
 | `replan_interval` | `int` | `0` | Re-run the planner every N iterations (0 = off). | Long-horizon tasks where the plan should evolve. |
 | `rag` | `RAG \| None` | `None` | Auto-wires RAG tools + system prompt + source tracker. | Grounded answers with citations. |
 
 **Class methods:**
 
-- `Agent.with_builtins(llm=..., optimized=False, **kwargs)` — wires the full builtin tool catalogue. With `optimized=True`, it also enables progressive code-mode discovery, model-aware context compaction, bounded parallel execution, factual progress events, recoverable large-result spill, and an eight-iteration default; explicit overrides still win.
+- `Agent.with_builtins(llm=..., optimized=False, **kwargs)` — wires the full builtin tool catalogue. Progressive discovery is automatic for any large plain `Agent`, built-in agent, or MCP-backed agent. With `optimized=True`, it additionally enables model-aware context compaction, bounded parallel execution, factual progress events, recoverable large-result spill, and an eight-iteration default; explicit overrides still win.
 - `Agent.for_project(llm=..., project_root=..., optimized=True)` — the optimized setup plus project settings, instructions, permissions, and slash commands.
 
 ---

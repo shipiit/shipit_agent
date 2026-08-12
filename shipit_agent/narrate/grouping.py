@@ -505,6 +505,11 @@ class WorkRunAccumulator:
             summary = str(payload.get("summary") or event.message or "").strip()
             if not summary:
                 return
+            phase = str(payload.get("phase") or "").strip().lower()
+            if kind == "agent_observation":
+                phase = "observation"
+            elif phase not in ("decision", "observation"):
+                phase = "decision"
             # A decision explains the work that follows, so it closes the run
             # before it; an observation explains the work that just happened,
             # so it closes that one. Both flush, for opposite reasons.
@@ -513,7 +518,7 @@ class WorkRunAccumulator:
             self._rows.append(
                 DecisionRow(
                     text=summary,
-                    kind="decision" if kind == "agent_decision" else "observation",
+                    kind=phase,
                     next_action=str(payload.get("next_action") or ""),
                     iteration=payload.get("iteration"),
                 )

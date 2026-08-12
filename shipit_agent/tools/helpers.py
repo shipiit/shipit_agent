@@ -54,7 +54,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "vision",
     },
     "data": {"sql"},
-    "memory & discovery": {"memory", "tool_search"},
+    "memory & discovery": {"memory", "tool_search", "call_tool"},
     "delegation": {"sub_agent"},
 }
 
@@ -105,6 +105,7 @@ def describe_tool_capability(
         "connection_id": connection_id,
         "connection_state": str(state or ""),
         "server": server,
+        "schema": tool.schema(),
     }
 
 
@@ -166,6 +167,7 @@ def build_tools_prompt(
     tools: list[Tool],
     *,
     connections: Iterable[Any] = (),
+    compact: bool = False,
 ) -> str:
     if not tools:
         return ""
@@ -204,6 +206,8 @@ def build_tools_prompt(
             # What stays is what the schema has no room for: which family the
             # tool belongs to, whether it only reads, and where it comes from.
             lines.append(f"- {tool.name} [{', '.join(tags)}]")
+            if compact:
+                continue
             prompt = getattr(tool, "prompt", "").strip()
             prompt_instructions = getattr(tool, "prompt_instructions", "").strip()
             if prompt:

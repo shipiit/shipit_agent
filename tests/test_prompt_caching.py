@@ -10,9 +10,8 @@ These tests verify:
 1. AnthropicChatLLM places cache_control on the last tool + the system block
    when ``prompt_caching=True`` (the default), and omits it when False.
 2. AnthropicChatLLM parses ``cache_*_input_tokens`` usage into LLMResponse.usage.
-3. LiteLLMChatLLM forwards cache_control on the system message + last tool for
-   Anthropic-family models, never mutates the caller's tool list, and omits
-   cache_control for non-Anthropic models or when ``prompt_caching=False``.
+3. LiteLLMChatLLM forwards cache_control for provider families LiteLLM can
+   translate, never mutates caller inputs, and supports explicit overrides.
 4. LiteLLMChatLLM parses cache usage tokens into LLMResponse.usage.
 
 The Anthropic adapter is exercised through ``_build_request_kwargs`` (no SDK
@@ -234,6 +233,54 @@ class TestLiteLLMCacheRequest:
         assert system_msg["content"] == "You are helpful."
         assert all("cache_control" not in t for t in sent["tools"])
 
+    def test_gemini_uses_translated_explicit_breakpoints(self, fake_litellm) -> None:
+        fake_litellm.completion.return_value = _make_nonstream_response()
+        llm = LiteLLMChatLLM(model="gemini/gemini-2.5-flash")
+
+        llm.complete(
+            messages=[Message(role="system", content="Stable prefix")],
+            tools=TOOLS,
+        )
+
+        sent = fake_litellm.completion.call_args.kwargs
+        assert sent["messages"][0]["content"][-1]["cache_control"] == {
+            "type": "ephemeral"
+        }
+        assert sent["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+
+    def test_explicit_override_supports_new_provider_without_code_change(
+        self, fake_litellm
+    ) -> None:
+        fake_litellm.completion.return_value = _make_nonstream_response()
+        llm = LiteLLMChatLLM(
+            model="bedrock/amazon.future-cache-model-v1:0",
+            prompt_cache_strategy="explicit",
+        )
+
+        llm.complete(messages=[Message(role="system", content="Stable prefix")])
+
+        sent = fake_litellm.completion.call_args.kwargs
+        assert sent["messages"][0]["content"][-1]["cache_control"] == {
+            "type": "ephemeral"
+        }
+
+    def test_openai_cache_controls_are_forwarded_without_breakpoints(
+        self, fake_litellm
+    ) -> None:
+        fake_litellm.completion.return_value = _make_nonstream_response()
+        llm = LiteLLMChatLLM(
+            model="openai/gpt-5",
+            prompt_cache_key="repo-agent-v1",
+            prompt_cache_retention="24h",
+        )
+
+        llm.complete(messages=[Message(role="system", content="Stable prefix")])
+
+        sent = fake_litellm.completion.call_args.kwargs
+        assert sent["prompt_cache_key"] == "repo-agent-v1"
+        assert sent["prompt_cache_retention"] == "24h"
+        assert sent["messages"][0]["content"] == "Stable prefix"
+
     def test_disabled_has_no_cache_control(self, fake_litellm) -> None:
         fake_litellm.completion.return_value = _make_nonstream_response()
 
@@ -350,6 +397,48 @@ class TestOpenAICacheUsage:
         # The automatic-cache portion is surfaced under the shared key.
         assert out.usage["cache_read_input_tokens"] == 160
 
+    def test_openai_forwards_cache_routing_controls(self, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+        response = _ns(
+            choices=[_ns(message=_ns(content="ok", tool_calls=[]))], usage=None
+        )
+
+        class _Completions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                return response
+
+        class _OpenAI:
+            def __init__(self, **_kwargs):
+                self.chat = _ns(completions=_Completions())
+
+        fake_openai = types.ModuleType("openai")
+        fake_openai.OpenAI = _OpenAI
+        monkeypatch.setitem(sys.modules, "openai", fake_openai)
+
+        OpenAIChatLLM(
+            model="gpt-5",
+            prompt_cache_key="repo-agent-v1",
+            prompt_cache_retention="24h",
+        ).complete(messages=[Message(role="user", content="hi")])
+
+        assert captured["prompt_cache_key"] == "repo-agent-v1"
+        assert captured["prompt_cache_retention"] == "24h"
+
+    def test_custom_openai_endpoint_is_not_claimed_as_supported(self) -> None:
+        from shipit_agent.llms.base import prompt_cache_info
+
+        info = prompt_cache_info(
+            OpenAIChatLLM(
+                model="custom-model",
+                api_key="test",
+                base_url="https://models.example.test/v1",
+            )
+        )
+
+        assert info["supported"] is None
+        assert info["mode"] == "provider_managed"
+
 
 def test_runtime_accumulates_cache_usage_in_run_totals() -> None:
     class CachedLLM:
@@ -373,4 +462,47 @@ def test_runtime_accumulates_cache_usage_in_run_totals() -> None:
 
     assert usage["cache_read_input_tokens"] == 80
     assert usage["cache_creation_input_tokens"] == 10
+    cache = completed.payload["prompt_cache"]
+    assert cache["hit"] is True
+    assert cache["read_tokens"] == 80
+    assert cache["mode"] == "provider_managed"
     assert len([event for event in state.events if event.type == "usage_tick"]) == 1
+
+
+def test_cache_capability_distinguishes_gemma_from_supported_adapters() -> None:
+    from shipit_agent.llms.base import prompt_cache_info
+    from shipit_agent.llms.openai_adapter import BedrockGemmaChatLLM
+
+    anthropic = prompt_cache_info(AnthropicChatLLM(model="claude-sonnet-4"))
+    gemma = prompt_cache_info(
+        BedrockGemmaChatLLM(model="google.gemma-4-31b", api_key="test")
+    )
+
+    assert anthropic == {
+        "provider": "anthropic",
+        "supported": True,
+        "enabled": True,
+        "mode": "explicit",
+        "model": "claude-sonnet-4",
+        "reason": "native_cache_control",
+    }
+    assert gemma["supported"] is False
+    assert gemma["enabled"] is False
+    assert gemma["mode"] == "unsupported"
+
+
+def test_runtime_does_not_invent_cache_miss_without_provider_usage() -> None:
+    class UnreportedLLM:
+        model = "unknown"
+
+        def complete(self, **_kwargs):
+            return LLMResponse(
+                content="done",
+                usage={"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12},
+            )
+
+    state, _ = AgentRuntime(llm=UnreportedLLM(), prompt="p").run("go")
+    completed = next(event for event in state.events if event.type == "run_completed")
+
+    assert completed.payload["prompt_cache"]["hit"] is None
+    assert completed.payload["prompt_cache"]["usage_reported"] is False

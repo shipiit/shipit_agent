@@ -16,15 +16,18 @@ EventType = Literal[
     "tool_called",
     "tool_completed",
     "tool_failed",
+    "tool_circuit_blocked",
     "tool_denied",
     "action_queued",
     "connection_requested",
     # A file a tool left behind — a page, a workbook, a document.
     "artifact_created",
-    # Model-generated progress narration (Agent(progress_summaries=True)).
+    # Unified current progress event. agent_observation remains accepted only
+    # so persisted traces from older versions can still be loaded.
     "agent_decision",
     "agent_observation",
     "progress_summary_failed",
+    "requirements_unmet",
     # One iteration's tool calls, so a UI can draw them as one expandable box.
     "tool_group_started",
     "tool_group_completed",
@@ -39,6 +42,8 @@ EventType = Literal[
     "usage_tick",
     "interactive_request",
     "mcp_attached",
+    "mcp_discovery_started",
+    "mcp_discovery_completed",
     "skills_selected",
     "llm_retry",
     "tool_retry",
@@ -126,6 +131,54 @@ class AgentEvent:
             "payload": dict(self.payload),
             "timestamp": self.timestamp,
         }
+
+    def __repr__(self) -> str:
+        """Keep notebook/log inspection bounded while preserving full data."""
+        remaining_nodes = [200]
+        active_containers: set[int] = set()
+
+        def preview(value: Any) -> Any:
+            # Scalar telemetry must remain exact at every nesting depth. Only
+            # potentially unbounded strings and containers need previews.
+            if value is None or isinstance(value, (bool, int, float)):
+                return value
+            if isinstance(value, str):
+                if len(value) <= 240:
+                    return value
+                return f"{value[:200]}... [{len(value):,} chars]"
+            remaining_nodes[0] -= 1
+            if remaining_nodes[0] < 0:
+                return "... preview node limit reached"
+            if isinstance(value, dict):
+                identity = id(value)
+                if identity in active_containers:
+                    return "... recursive mapping"
+                active_containers.add(identity)
+                items = list(value.items())
+                result = {
+                    key: preview(item) for key, item in items[:12]
+                }
+                if len(items) > 12:
+                    result["..."] = f"{len(items) - 12} more fields"
+                active_containers.remove(identity)
+                return result
+            if isinstance(value, (list, tuple)):
+                identity = id(value)
+                if identity in active_containers:
+                    return "... recursive sequence"
+                active_containers.add(identity)
+                result = [preview(item) for item in value[:8]]
+                if len(value) > 8:
+                    result.append(f"... {len(value) - 8} more items")
+                active_containers.remove(identity)
+                return result
+            rendered = repr(value)
+            return rendered if len(rendered) <= 240 else rendered[:200] + "..."
+
+        return (
+            f"AgentEvent(type={self.type!r}, message={self.message!r}, "
+            f"payload={preview(self.payload)!r}, timestamp={self.timestamp!r})"
+        )
 
 
 @dataclass(slots=True)

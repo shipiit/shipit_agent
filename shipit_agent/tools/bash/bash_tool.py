@@ -55,6 +55,10 @@ class BashTool:
         self.description = description
         self.prompt = prompt or BASH_PROMPT
         self.prompt_instructions = "Use this for bounded shell inspection, test runs, and local developer workflows."
+        # Validation errors are correctable model input mistakes. Direct
+        # callers still receive ValueError; ToolRunner converts only this
+        # explicitly declared exception into a tool result.
+        self.recoverable_exceptions = (ValueError,)
         self.default_timeout = default_timeout
         self.max_timeout = max_timeout
         self.allowed_command_prefixes = list(
@@ -268,11 +272,24 @@ class BashTool:
         if ">" in normalized or "<" in normalized:
             raise ValueError("File redirection ('>', '>>', '<') is not allowed")
 
-        for segment in re.split(r"\s*(?:&&|\|\||;|\|)\s*", normalized):
-            stripped = segment.strip()
-            if not stripped:
+        try:
+            lexer = shlex.shlex(normalized, posix=True, punctuation_chars=";&|")
+            lexer.whitespace_split = True
+            tokens = list(lexer)
+        except ValueError as exc:
+            raise ValueError(f"Invalid shell syntax: {exc}") from exc
+
+        command_starts: list[str] = []
+        expect_command = True
+        for token in tokens:
+            if token and all(char in ";&|" for char in token):
+                expect_command = True
                 continue
-            first = shlex.split(stripped)[0]
+            if expect_command:
+                command_starts.append(token)
+                expect_command = False
+
+        for first in command_starts:
             if not any(
                 first == prefix or first.startswith(f"{prefix}/")
                 for prefix in self.allowed_command_prefixes

@@ -124,6 +124,67 @@ def test_tool_search_uses_family_connection_and_mcp_metadata() -> None:
     assert "MCP: observability" in mcp_result.text
 
 
+def test_tool_search_can_return_one_hidden_tool_schema() -> None:
+    tool = ToolSearchTool()
+    schema = {
+        "type": "function",
+        "function": {
+            "name": "query_logs",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        },
+    }
+    context = type(
+        "Ctx",
+        (),
+        {
+            "state": {
+                "available_tools": [
+                    {
+                        "name": "query_logs",
+                        "description": "Query application logs",
+                        "prompt_instructions": "",
+                        "schema": schema,
+                    }
+                ]
+            }
+        },
+    )()
+
+    result = tool.run(
+        context=context, query="query logs", limit=1, detail="schema"
+    )
+
+    assert '"required": ["query"]' in result.text
+    assert result.metadata["detail"] == "schema"
+
+
+def test_tool_search_never_returns_its_control_plane_tools() -> None:
+    tool = ToolSearchTool()
+    context = type(
+        "Ctx",
+        (),
+        {
+            "prompt": "Find a remote research capability",
+            "state": {
+                "available_tools": [
+                    {"name": "tool_search", "description": "Search tools"},
+                    {"name": "call_tool", "description": "Call hidden tools"},
+                    {"name": "remote_research", "description": "Research repositories"},
+                ]
+            },
+        },
+    )()
+
+    result = tool.run(context=context, query="remote research", detail="schema")
+
+    names = [match["name"] for match in result.metadata["matches"]]
+    assert names == ["remote_research"]
+
+
 def test_thought_decomposition_tool_returns_structure() -> None:
     tool = ThoughtDecompositionTool()
     result = tool.run(

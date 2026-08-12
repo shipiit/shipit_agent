@@ -52,6 +52,7 @@ With skills::
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -124,14 +125,14 @@ class Agent:
 
     # ── core ──────────────────────────────────────────────────────────
     llm: Any
-    # Accepted for compatibility and no longer used for progress narration,
-    # which costs no model call at all now. Kept so existing callers keep
-    # working rather than raising on an unexpected keyword.
+    # Optional secondary narrator for models that cannot emit prose together
+    # with tool calls. Never selected implicitly, because it adds completions.
     decision_llm: Any = None
-    # Emit public ``agent_decision`` / ``agent_observation`` progress events.
-    # Decisions use only prose the primary model already produced; observations
-    # use factual tool metadata. No summarizer call and no invented reasoning.
-    progress_summaries: bool = False
+    # Emit public ``agent_decision`` progress events. The payload phase
+    # distinguishes intent before work from observations after work.
+    # The primary model is instructed to narrate in the same tool-call response;
+    # observations use factual tool metadata. No extra call is made by default.
+    progress_summaries: bool = True
     #: Short standing instruction placed at the very END of the context on
     #: every step. Use it for the one or two requirements that must hold
     #: every time; a model attends far more reliably to the tokens closest
@@ -179,7 +180,11 @@ class Agent:
     # None means no cap; otherwise bound concurrent local tool calls per turn.
     max_tool_concurrency: int | None = None
     hooks: Any = None
-    context_window_tokens: int = 0  # 0 = no compaction
+    context_window_tokens: int = 0
+    # Plain Agent(...) runs compact automatically from the selected model's
+    # known input budget. Set this False (with context_window_tokens=0) only
+    # when the provider owns context management itself.
+    auto_compact: bool = True
     # Bound only the model-visible copy; AgentResult keeps complete tool
     # output. Capped by default: a message list is cumulative, so one
     # 138,000-character tool result is not paid once — it is re-sent on
@@ -191,6 +196,18 @@ class Agent:
     # Parallel calls share this model-context budget. Complete outputs remain
     # available in AgentResult and live tool events.
     max_tool_output_group_chars: int = 48_000
+    # Stop an identical failing call before it consumes the whole loop.
+    repeated_tool_failure_limit: int = 2
+    # Stop paying connection timeouts for a tool after a transport-level
+    # failure proves it unreachable for the current run.
+    transport_circuit_breaker: bool = True
+    # Provider fallback tags to move from visible output into the reasoning
+    # channel. Set an empty tuple to disable or declare adapter-specific tags.
+    reasoning_markup_tags: tuple[str, ...] = ("thought", "think")
+    # Abort highly repetitive streamed tool arguments before they consume the
+    # provider's entire completion allowance. Set min chars to 0 to disable.
+    pathological_stream_min_chars: int = 2048
+    pathological_stream_max_ratio: float = 0.25
     # Optimized agents spill complete large results under .shipit so the model
     # can fetch omitted sections without paying for the whole body every turn.
     persist_large_tool_outputs: bool = False
@@ -234,6 +251,13 @@ class Agent:
     # block by ~79% and lets one call compose several resources. Bindings are
     # gated exactly as the equivalent tool calls. See shipit_agent.codemode.
     code_mode: bool = False
+    # When set to ``"auto"``, large tool/MCP surfaces are exposed lazily even
+    # for plain ``Agent(tools=[...], mcps=[...])`` construction. This keeps
+    # simple questions from paying prompt cost for every attached connector.
+    tool_context_mode: str = "auto"
+    # Approximate serialized-schema budget before auto mode switches to lazy
+    # discovery. 12k characters is roughly 3k model tokens.
+    tool_context_threshold_chars: int = 12_000
 
     # ── lockdown (exfiltration guard) ─────────────────────────────────
     # Once a tool reports it returned sensitive data, the run may only make
@@ -254,9 +278,9 @@ class Agent:
     delegation: Any = None
 
     # ── self-healing tool calls ───────────────────────────────────────
-    # Promote tool calls that small models emit as TEXT (<tool_call> tags,
-    # fenced JSON, bare call-shaped JSON) into structured calls. Response-
-    # side only; only declared tool names qualify. See tool_healing.py.
+    # Promote tool calls that small models emit through common text fallback
+    # protocols into structured calls. Response-side only; registered names
+    # and generated schemas gate every promoted call. See tool_healing.py.
     heal_tool_calls: bool = True
 
     # ── project / file tools ──────────────────────────────────────────
@@ -764,15 +788,10 @@ class Agent:
             getattr(tool, "name", f"tool_{index}"): tool
             for index, tool in enumerate(self.tools)
         }
-        if self.code_mode:
-            # Code mode supplies its own two tools: without describe_binding
-            # the agent can see `env` in its prompt but cannot learn any
-            # binding's API, and without execute_code it cannot call one.
-            from shipit_agent.tools.describe_binding import DescribeBindingTool
-            from shipit_agent.tools.execute_code import ExecuteCodeTool
-
-            effective.setdefault("execute_code", ExecuteCodeTool())
-            effective.setdefault("describe_binding", DescribeBindingTool())
+        if self._runtime_code_mode(list(effective.values())):
+            self._install_progressive_tools(
+                effective, programmatic=self.code_mode
+            )
 
         # An agent told to delegate needs something to delegate *to* — but
         # only for a task worth delegating. `delegation=` used to inject
@@ -810,6 +829,13 @@ class Agent:
             tool = builtin_tool_map.get(tool_name)
             if tool is not None:
                 effective[tool_name] = tool
+        # Skill bundles can be the part that pushes a small explicit agent
+        # over the lazy-exposure threshold, so install the gateways after the
+        # final effective catalog is known as well.
+        if self._runtime_code_mode(list(effective.values())):
+            self._install_progressive_tools(
+                effective, programmatic=self.code_mode
+            )
         tools_list = list(effective.values())
         # If a verifier is configured, wrap every tool so the verifier sees
         # each proposed call before it executes. The wrapper is transparent
@@ -817,6 +843,75 @@ class Agent:
         if self.verifier is not None and hasattr(self.verifier, "wrap_tools"):
             tools_list = self.verifier.wrap_tools(tools_list)
         return tools_list
+
+    @staticmethod
+    def _install_progressive_tools(
+        effective: dict[str, Any], *, programmatic: bool = False
+    ) -> None:
+        """Add lazy discovery gateways, with code orchestration only by opt-in."""
+        from shipit_agent.tools.call_tool import CallToolTool
+        from shipit_agent.tools.tool_search import ToolSearchTool
+
+        effective.setdefault("tool_search", ToolSearchTool())
+        effective.setdefault("call_tool", CallToolTool())
+        if programmatic:
+            from shipit_agent.tools.describe_binding import DescribeBindingTool
+            from shipit_agent.tools.execute_code import ExecuteCodeTool
+
+            effective.setdefault("execute_code", ExecuteCodeTool())
+            effective.setdefault("describe_binding", DescribeBindingTool())
+
+    def _effective_context_window_tokens(self) -> int:
+        """Resolve explicit, automatic, and disabled compaction settings."""
+        if self.context_window_tokens > 0:
+            return self.context_window_tokens
+        if not self.auto_compact:
+            return 0
+
+        from shipit_agent.compaction import get_model_limits
+
+        return get_model_limits(getattr(self.llm, "model", None)).input_budget
+
+    def _runtime_code_mode(self, tools: list[Any] | None = None) -> bool:
+        """Return whether this run should use lazy tool exposure.
+
+        ``code_mode=True`` always wins. ``tool_context_mode="full"`` disables
+        the automatic heuristic. In ``auto`` mode we switch on when the agent
+        carries a broad surface area, because every attached tool/schema/MCP
+        would otherwise be replayed into the prompt on every step.
+        """
+        if self.code_mode:
+            return True
+        mode = str(self.tool_context_mode or "auto").strip().lower()
+        if mode in {"off", "false", "full", "eager"}:
+            return False
+        if mode not in {"auto", "smart", "lazy"}:
+            raise ValueError(
+                "tool_context_mode must be 'auto'/'lazy' or 'full'/'eager'."
+            )
+        runtime_tools = tools if tools is not None else list(self.tools)
+        named_tools = {
+            str(getattr(tool, "name", "")).strip()
+            for tool in runtime_tools
+            if getattr(tool, "name", None)
+        }
+        try:
+            schema_chars = len(
+                json.dumps(
+                    [tool.schema() for tool in runtime_tools],
+                    sort_keys=True,
+                    default=str,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            # A malformed custom schema should fail in normal registry
+            # construction; it must not disable the safer exposure mode.
+            schema_chars = self.tool_context_threshold_chars + 1
+        return (
+            bool(self.mcps)
+            or len(named_tools) > 12
+            or schema_chars > max(0, int(self.tool_context_threshold_chars))
+        )
 
     def _skill_tool_names(self, selected_skills: list[Skill]) -> list[str]:
         """Return tool names that were *added* by skills (not already on the agent).
@@ -987,6 +1082,7 @@ class Agent:
         effective_tools = self._effective_tools(
             user_prompt, selected_skills=selected_skills
         )
+        runtime_code_mode = self._runtime_code_mode(effective_tools)
         skill_ids, skill_tool_names, skill_details = self._runtime_skill_metadata(
             selected_skills
         )
@@ -1007,6 +1103,9 @@ class Agent:
                 "used_skills": skill_ids,
                 "used_skill_tools": skill_tool_names,
                 "selected_skills": skill_details,
+                "tool_context_mode": self.tool_context_mode,
+                "effective_code_mode": self.code_mode,
+                "progressive_tool_context": runtime_code_mode,
             },
             history_messages=list(self.history),
             memory_store=self.memory_store,
@@ -1021,9 +1120,14 @@ class Agent:
             parallel_tool_execution=self.parallel_tool_execution,
             max_tool_concurrency=self.max_tool_concurrency,
             hooks=self.hooks,
-            context_window_tokens=self.context_window_tokens,
+            context_window_tokens=self._effective_context_window_tokens(),
             max_tool_output_chars=self.max_tool_output_chars,
             max_tool_output_group_chars=self.max_tool_output_group_chars,
+            repeated_tool_failure_limit=self.repeated_tool_failure_limit,
+            transport_circuit_breaker=self.transport_circuit_breaker,
+            reasoning_markup_tags=self.reasoning_markup_tags,
+            pathological_stream_min_chars=self.pathological_stream_min_chars,
+            pathological_stream_max_ratio=self.pathological_stream_max_ratio,
             tool_output_dir=(
                 str(Path(self.project_root) / ".shipit" / "tool-results")
                 if self.persist_large_tool_outputs
@@ -1034,7 +1138,7 @@ class Agent:
             guardrails=self.guardrails,
             heal_tool_calls=self.heal_tool_calls,
             approvals=self.approvals,
-            code_mode=self.code_mode,
+            code_mode=runtime_code_mode,
             lockdown=self.lockdown,
         )
         state, response = runtime.run(effective_user_prompt)
@@ -1079,11 +1183,27 @@ class Agent:
 
         # Attach skill metadata so callers can see what was used.
         result_metadata = dict(response.metadata)
-        for key in ("gave_up", "give_up_reason", "give_up_needs"):
+        for key in (
+            "gave_up",
+            "give_up_reason",
+            "give_up_needs",
+            "unmet_requirements",
+            "registered_tool_count",
+            "exposed_tool_count",
+            "hidden_tool_count",
+            "registered_tool_schema_chars",
+            "exposed_tool_schema_chars",
+            "deferred_mcp_count",
+            "discovered_mcp_tool_count",
+            "explicit_mcp_servers",
+        ):
             if key in runtime.metadata:
                 result_metadata[key] = runtime.metadata[key]
         result_metadata["used_skills"] = skill_ids
         result_metadata["used_skill_tools"] = skill_tool_names
+        result_metadata["tool_context_mode"] = self.tool_context_mode
+        result_metadata["effective_code_mode"] = self.code_mode
+        result_metadata["progressive_tool_context"] = runtime_code_mode
 
         return AgentResult(
             output=response.content,
@@ -1201,6 +1321,7 @@ class Agent:
         effective_tools = self._effective_tools(
             user_prompt, selected_skills=selected_skills
         )
+        runtime_code_mode = self._runtime_code_mode(effective_tools)
         skill_ids, skill_tool_names, skill_details = self._runtime_skill_metadata(
             selected_skills
         )
@@ -1221,6 +1342,9 @@ class Agent:
                 "used_skills": skill_ids,
                 "used_skill_tools": skill_tool_names,
                 "selected_skills": skill_details,
+                "tool_context_mode": self.tool_context_mode,
+                "effective_code_mode": self.code_mode,
+                "progressive_tool_context": runtime_code_mode,
             },
             history_messages=list(self.history),
             memory_store=self.memory_store,
@@ -1235,9 +1359,14 @@ class Agent:
             parallel_tool_execution=self.parallel_tool_execution,
             max_tool_concurrency=self.max_tool_concurrency,
             hooks=self.hooks,
-            context_window_tokens=self.context_window_tokens,
+            context_window_tokens=self._effective_context_window_tokens(),
             max_tool_output_chars=self.max_tool_output_chars,
             max_tool_output_group_chars=self.max_tool_output_group_chars,
+            repeated_tool_failure_limit=self.repeated_tool_failure_limit,
+            transport_circuit_breaker=self.transport_circuit_breaker,
+            reasoning_markup_tags=self.reasoning_markup_tags,
+            pathological_stream_min_chars=self.pathological_stream_min_chars,
+            pathological_stream_max_ratio=self.pathological_stream_max_ratio,
             tool_output_dir=(
                 str(Path(self.project_root) / ".shipit" / "tool-results")
                 if self.persist_large_tool_outputs
@@ -1248,7 +1377,7 @@ class Agent:
             guardrails=self.guardrails,
             heal_tool_calls=self.heal_tool_calls,
             approvals=self.approvals,
-            code_mode=self.code_mode,
+            code_mode=runtime_code_mode,
             lockdown=self.lockdown,
         )
         for event in runtime.stream(user_prompt):

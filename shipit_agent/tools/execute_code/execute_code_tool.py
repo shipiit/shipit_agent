@@ -66,6 +66,8 @@ calls passing data through your context.
 
 Write plain Python. `env` is already defined — do not import or construct it.
 Call `describe_binding` first for any binding you have not used yet.
+Pass every binding argument by keyword exactly as described; env methods do
+not accept positional arguments.
 
 Print what you want to see; stdout is returned to you. Keep it to a few hundred
 lines and avoid unbounded loops: there is a call ceiling and a time budget.

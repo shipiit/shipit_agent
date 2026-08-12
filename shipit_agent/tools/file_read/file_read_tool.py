@@ -75,8 +75,26 @@ class FileReadTool:
         content = path.read_text(encoding="utf-8", errors="replace")
         had_replacement = "�" in content
         lines = content.splitlines()
-        start_line = max(1, int(kwargs.get("start_line", 1)))
-        max_lines = max(1, int(kwargs.get("max_lines", min(len(lines) or 1, 250))))
+        ranges = {
+            "start_line": kwargs.get("start_line", 1),
+            "max_lines": kwargs.get("max_lines", min(len(lines) or 1, 250)),
+        }
+        try:
+            start_line = max(1, int(ranges["start_line"]))
+            max_lines = max(1, int(ranges["max_lines"]))
+        except (TypeError, ValueError):
+            invalid = next(
+                name
+                for name, value in ranges.items()
+                if not _is_integer_compatible(value)
+            )
+            return ToolOutput(
+                text=(
+                    f"Invalid '{invalid}' value {ranges[invalid]!r}; expected an integer. "
+                    "Correct the argument and call read_file again."
+                ),
+                metadata={"error": "invalid_argument", "argument": invalid},
+            )
         start_index = start_line - 1
         sliced = lines[start_index : start_index + max_lines]
         numbered = "\n".join(
@@ -114,3 +132,11 @@ class FileReadTool:
                 "utf8_replacement": had_replacement,
             },
         )
+
+
+def _is_integer_compatible(value: object) -> bool:
+    try:
+        int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return True

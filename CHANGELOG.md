@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [1.7.0] — 2026-08-12
+
 The theme is the working set: schemas for the tools a step can actually use,
 cache hits for everything the step repeats, and recovery that waits out the
 window instead of burning through it.

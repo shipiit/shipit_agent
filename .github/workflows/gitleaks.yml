@@ -1,6 +1,6 @@
 name: Secret scan
 
-# Uses gitleaks/gitleaks-action@v2 with the GITLEAKS_LICENSE secret
+# Uses gitleaks/gitleaks-action@v3 with the GITLEAKS_LICENSE secret
 # (stored in repo settings). Uploads findings to the GitHub Security tab.
 
 on:
@@ -25,12 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0   # full history — scans every commit, not just the diff
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

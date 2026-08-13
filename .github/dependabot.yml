@@ -1,0 +1,47 @@
+# Dependency updates.
+#
+# The security scan reports every `actions/checkout@v4` as a mutable ref, and
+# it is right: a tag is a pointer its owner can move, so `@v4` is a promise
+# about intent rather than about bytes. The fix is a full commit SHA — but a
+# pinned SHA with nobody updating it is worse than a tag, because it silently
+# stops receiving security fixes. So the updater comes first, and pinning is
+# safe to do afterwards.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # One pull request for all of them. Six separate bumps a week is how
+    # dependency updates start getting merged without being read.
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Security fixes on their own, so they are not queued behind a major
+    # version bump somebody is reasonably cautious about merging.
+    groups:
+      python-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependencies
+    # This package ships with no required runtime dependencies, and adding one
+    # is a breaking change for anyone installing it. Only the dev extras are
+    # in scope here.
+    open-pull-requests-limit: 5

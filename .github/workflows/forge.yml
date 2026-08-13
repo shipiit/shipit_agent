@@ -150,6 +150,12 @@ jobs:
       # fails quietly and the gate simply does not exist.
       checks: write
       statuses: read
+      # Not `security-events: read` — that was tried and does not help.
+      # GITHUB_TOKEN cannot read Dependabot alerts at any permission level;
+      # the call 403s regardless. Reading them needs a GitHub App installed on
+      # the repository with the "Dependabot alerts: read" permission, supplied
+      # as FORGE_APP_ID and FORGE_PRIVATE_KEY below. Until then Forge reviews
+      # without them, which is the right failure — just a quieter review.
       actions: write # read failed-job logs for the CI auto-fix
     needs: gate
     if: needs.gate.outputs.allowed == 'true'

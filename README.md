@@ -695,6 +695,39 @@ ruff check .
 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full guide.
 
+### Review
+
+Every pull request is read by [ShipIT Forge](https://github.com/shipiit/forge)
+before a human gets to it. Two workflows, both gated:
+
+- `.github/workflows/forge.yml` — reviews the diff and runs three deterministic
+  scans over the whole tree: committed credentials, infrastructure (workflow
+  permissions, Dockerfiles, unpinned actions), and source code. The scans make
+  no model call and cost nothing. They publish a check run, so a finding can be
+  made a required status check rather than a comment somebody scrolls past.
+- `.github/workflows/forge-issues.yml` — reads the code behind a new issue and
+  replies with root cause, the fix, and the test that would have caught it. It
+  writes no code unless somebody comments `/fix`.
+
+Both decline forks and non-collaborators in a separate `gate` job, so a declined
+run says why in the log instead of looking like a broken `if:`. Write access is
+checked against the API rather than read off `author_association`, which reports
+`MEMBER` only when organization membership is public.
+
+Five repository secrets configure them — named for the project rather than for
+one vendor, so changing provider is a settings change and not a workflow edit:
+
+| Secret | Required | Value |
+| --- | --- | --- |
+| `SHIPIT_PROVIDER` | always | `vertex`, `anthropic`, `openai`, `gemini`, … |
+| `SHIPIT_MODEL` | always | the model id, e.g. `gemini-2.5-flash` |
+| `SHIPIT_CREDENTIALS` | always | the API key, or the whole service-account JSON for Vertex |
+| `SHIPIT_PROJECT` | Vertex only | GCP project id |
+| `SHIPIT_LOCATION` | Vertex only | region, e.g. `us-central1` |
+
+Nothing is defaulted in the workflow files. A model hardcoded there is one
+somebody changes in the settings page and then wonders why the run ignored them.
+
 ---
 
 <p align="center">

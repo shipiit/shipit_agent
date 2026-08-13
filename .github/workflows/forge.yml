@@ -150,6 +150,11 @@ jobs:
       # fails quietly and the gate simply does not exist.
       checks: write
       statuses: read
+      # The review asks for open Dependabot alerts, so it can weigh a finding
+      # against what is already known rather than reporting it twice. Without
+      # this the call 403s; Forge carries on without them, which is the right
+      # failure but a quieter review.
+      security-events: read
       actions: write # read failed-job logs for the CI auto-fix
     needs: gate
     if: needs.gate.outputs.allowed == 'true'

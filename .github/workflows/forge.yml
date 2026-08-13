@@ -1,0 +1,228 @@
+# ShipIT Forge — auto-review every pull request on this repo.
+#
+# Scoped to PRs: it reviews new PRs and new commits, and answers /review,
+# /security and @shipit-forge comments on a PR. It never approves or merges.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# CONFIGURATION — Settings → Secrets and variables → Actions
+#
+# A .env file does NOT work here. Actions never reads a file from the repository
+# for credentials, and .env is gitignored precisely so it cannot be committed.
+# .env is for running the agent on your own machine (`forge run`, `forge fix`);
+# CI reads repository secrets instead.
+#
+# Add these two (Vertex, which is what this repo uses):
+#
+# All four are required Secrets. Nothing is defaulted in this file: a model or
+# a region hardcoded here is one somebody changes in the settings page and then
+# wonders why the run ignored them.
+#
+#   VERTEX_SA_JSON   the full service-account JSON, pasted whole
+#   VERTEX_PROJECT   your GCP project id
+#   VERTEX_LOCATION  region, e.g. us-central1
+#   VERTEX_MODEL     e.g. gemini-2.5-pro, or gemini-2.5-flash for cheaper runs
+#
+# Security scanning needs no credential at all. The secret and code scans are
+# deterministic — no model call, no cost — and run on every pull request even
+# if the review itself is switched off.
+#
+# Optional, and worth adding — without them every review is posted by
+# "github-actions[bot]" rather than by your app:
+#
+#   FORGE_APP_ID       the GitHub App's numeric id (Settings → Developer settings)
+#   FORGE_PRIVATE_KEY  that app's private key, the whole PEM including headers
+#
+# Using a different provider? Add its key as a secret and swap the two marked
+# lines below:
+#
+#   anthropic  ANTHROPIC_API_KEY  provider: anthropic
+#                                 anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+#   openai     OPENAI_API_KEY     provider: openai
+#                                 openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+#   gemini     GEMINI_API_KEY     provider: gemini
+#                                 gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# WHY THE `if:` BELOW IS NOT OPTIONAL — this repository is public
+#
+# GitHub protects secrets from `pull_request` events on forks: a fork PR gets
+# no secrets, so a stranger's PR cannot read them. That protection does NOT
+# extend to `issue_comment`. Comment events run the workflow from the default
+# branch WITH secrets, whoever wrote the comment.
+#
+# On a public repository that means any person on the internet could comment
+# "/review" and start a run that spends your model credits — and, on a fix or
+# mention, clones a branch and runs its tests with GITHUB_TOKEN (contents:
+# write) in the environment. That is the "pwn request" pattern, and it ends in
+# a push to your repository.
+#
+# So every job below is gated on author_association: only the owner, an
+# organization member, or a collaborator can set the agent off, and only
+# same-repository pull requests are reviewed. Removing that gate on a public
+# repository hands your token and your credits to anyone with a keyboard.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: ShipIT Forge (PR review)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created]
+
+# Nothing at the workflow level. Every job declares what it needs, so the
+# gate — which decides whether an untrusted actor gets a run at all — cannot
+# write anything, and a job added later starts from no permissions rather
+# than inheriting write on the repository.
+#
+# Forge flagged this on its own pull request, and it was right: workflow-wide
+# `checks: write` on every pull_request event is a broader grant than the one
+# job that publishes a check run needs.
+permissions: {}
+
+concurrency:
+  group: forge-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  # The gate is its own job so it can say why it declined. As a one-line `if:`
+  # on the work itself, a skipped run is indistinguishable from a broken
+  # expression, and there is nothing in the log to tell them apart.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.event.sender.login }}
+          ASSOC: ${{ github.event.comment.author_association }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+          IS_PR_COMMENT: ${{ github.event.issue.pull_request != null }}
+        run: |
+          allowed=false
+          if [ "$EVENT" = "pull_request" ]; then
+            # A fork PR gets no secrets anyway; declining quietly here keeps
+            # every drive-by pull request from failing loudly.
+            [ "$HEAD_REPO" = "$THIS_REPO" ] && allowed=true
+            detail="head=$HEAD_REPO"
+          else
+            # Ask what this account may actually do. author_association reports
+            # MEMBER only when organization membership is PUBLIC — with private
+            # membership an owner arrives as CONTRIBUTOR, which is not a
+            # permission at all: one merged pull request earns it forever.
+            perm=$(gh api "repos/$THIS_REPO/collaborators/$ACTOR/permission" --jq .permission 2>/dev/null || echo "unknown")
+            case "$perm" in admin|maintain|write) allowed=true ;; esac
+            if [ "$perm" = "unknown" ]; then
+              case "$ASSOC" in OWNER|MEMBER|COLLABORATOR) allowed=true ;; esac
+            fi
+            # issue_comment fires for plain issues too; those are the other workflow.
+            [ "$EVENT" = "issue_comment" ] && [ "$IS_PR_COMMENT" != "true" ] && allowed=false
+            detail="permission=$perm association=$ASSOC on_pull_request=$IS_PR_COMMENT"
+          fi
+
+          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+          echo "::notice::event=$EVENT actor=$ACTOR $detail -> allowed=$allowed"
+          if [ "$allowed" != "true" ]; then
+            echo "::notice::Declined. Same-repository pull requests, or a comment from someone with write access."
+          fi
+
+  review:
+    permissions:
+      contents: write # clone, and push a fix branch
+      pull-requests: write # post the review and its inline comments
+      issues: write # comment on the issue a fix closes
+      # The scan publishes a check run, and a check run is what turns a
+      # finding into a merge gate once you mark it required. With read it
+      # fails quietly and the gate simply does not exist.
+      checks: write
+      statuses: read
+      actions: write # read failed-job logs for the CI auto-fix
+    needs: gate
+    if: needs.gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Say what is missing, in one line, before spending three minutes getting
+      # an authentication error from inside the container.
+      - name: Check credentials are configured
+        env:
+          SA_JSON: ${{ secrets.VERTEX_SA_JSON }}
+          PROJECT: ${{ secrets.VERTEX_PROJECT }}
+          LOCATION: ${{ secrets.VERTEX_LOCATION }}
+          MODEL: ${{ secrets.VERTEX_MODEL }}
+        run: |
+          missing=""
+          [ -z "$SA_JSON" ]  && missing="$missing VERTEX_SA_JSON"
+          [ -z "$PROJECT" ]  && missing="$missing VERTEX_PROJECT"
+          [ -z "$LOCATION" ] && missing="$missing VERTEX_LOCATION"
+          [ -z "$MODEL" ]    && missing="$missing VERTEX_MODEL"
+          if [ -n "$missing" ]; then
+            echo "::error::ShipIT Forge is not configured. Missing:$missing"
+            echo "::error::Add them under Settings → Secrets and variables → Actions. Actions does not read a .env file."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: shipiit/forge@v2
+        with:
+          provider: vertex # ← swap for another provider
+          vertex-credentials-json: ${{ secrets.VERTEX_SA_JSON }} # ← swap for that provider's key
+          github-token: ${{ github.token }}
+          # Optional. With these, comments and reviews come from your GitHub
+          # App — "ShipIT Forge" — instead of github-actions[bot], which is
+          # what the identity on a review should say. Without them it still
+          # works, just under the runner's own bot.
+          app-id: ${{ secrets.FORGE_APP_ID }}
+          private-key: ${{ secrets.FORGE_PRIVATE_KEY }}
+          skill: code-review
+          # What this repository cares about, said once here rather than
+          # rediscovered on every pull request.
+          prompt: >-
+            This is SHIPIT Agent, a Python runtime for tool-using AI agents:
+            Python 3.11+, published on PyPI as shipit-agent, tests under
+            tests/ run with pytest.
+
+            Weigh these above style. (1) A tool call must never take the
+            process down: a tool that raises, hangs or loops has to be
+            contained by the runtime, because an agent that dies mid-run
+            leaves the caller with nothing. (2) The permission layer decides
+            what an agent may do — a path that reaches a side effect without
+            passing it is a hole, not a shortcut. (3) Provider adapters must
+            stay interchangeable: anything that only works on one provider
+            belongs behind the adapter, not in the loop. (4) Context passed
+            through contextvars must survive threads, tasks and generators.
+            (5) A new required runtime dependency is a breaking change for a
+            zero-dependency-by-default package — say so.
+
+            Assume 3.11 syntax is fine and do not suggest backports.
+          max-turns: '30'
+          max-nits: '5'
+          # Both scans are on by default; they are written out here so it is
+          # visible in the workflow that they run, and obvious where to turn
+          # one off. They cost no model call, so they run on every pull
+          # request regardless of the review cadence below.
+          secret-scan: '1'
+          code-scan: '1'
+        env:
+          LLM_PROVIDER: vertex
+          VERTEX_PROJECT: ${{ secrets.VERTEX_PROJECT }}
+          VERTEX_LOCATION: ${{ secrets.VERTEX_LOCATION }}
+          VERTEX_MODEL: ${{ secrets.VERTEX_MODEL }}
+          # Cost controls. The cap is enforced inside the loop — it stops
+          # before the turn that would cross it, rather than reporting an
+          # overspend afterwards — and caching is what makes a long review
+          # affordable, so it stays on.
+          FORGE_SPEND_CAP_RUN: '0.50'
+          FORGE_MAX_RUNS_PER_HOUR: '10'
+          FORGE_PROMPT_CACHE: '1'
+          FORGE_AUTO_REVIEW: always
+          GITHUB_TOKEN: ${{ github.token }}

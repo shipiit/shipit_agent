@@ -1,0 +1,168 @@
+# ShipIT Forge — research every issue and post the diagnosis.
+#
+# On a new issue it runs the committed `issue-analysis` skill: it reads the
+# code, finds the root cause, and comments with the fix, the risks, the tests
+# to add, and every other place the same pattern appears. It does not change
+# code here — say `/fix` on the issue for that.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# CONFIGURATION — Settings → Secrets and variables → Actions
+#
+# The same two values the PR workflow uses. A .env file is not read by Actions;
+# .env is for running the agent on your own machine.
+#
+# All four are required Secrets. Nothing is defaulted in this file: a model or
+# a region hardcoded here is one somebody changes in the settings page and then
+# wonders why the run ignored them.
+#
+#   VERTEX_SA_JSON   the full service-account JSON, pasted whole
+#   VERTEX_PROJECT   your GCP project id
+#   VERTEX_LOCATION  region, e.g. us-central1
+#   VERTEX_MODEL     e.g. gemini-2.5-pro, or gemini-2.5-flash for cheaper runs
+#
+# Optional, and worth adding — without them every review is posted by
+# "github-actions[bot]" rather than by your app:
+#
+#   FORGE_APP_ID       the GitHub App's numeric id (Settings → Developer settings)
+#   FORGE_PRIVATE_KEY  that app's private key, the whole PEM including headers
+#
+# WHY THE `if:` BELOW MATTERS — this repository is public
+#
+# Anyone on the internet can open an issue or comment on one. Issue events run
+# with access to secrets, so without a gate a stranger could open issues in a
+# loop and spend your model budget, or say `/fix` and have the agent push a
+# branch with GITHUB_TOKEN. Every job is therefore gated on author_association:
+# owner, organization member, or collaborator only.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: ShipIT Forge (issue analysis)
+
+on:
+  issues:
+    types: [opened, reopened, labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: forge-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  # The gate is its own job so it can say why it declined. As a one-line `if:`
+  # on the work itself, a skipped run is indistinguishable from a broken
+  # expression — which is exactly what happened: a MEMBER's issue was skipped
+  # and there was nothing anywhere saying which clause was false.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.event.sender.login }}
+          ASSOC_ISSUE: ${{ github.event.issue.author_association }}
+          ASSOC_COMMENT: ${{ github.event.comment.author_association }}
+          IS_PR: ${{ github.event.issue.pull_request != null }}
+          REPO: ${{ github.repository }}
+        run: |
+          assoc="$ASSOC_ISSUE"
+          [ "$EVENT" = "issue_comment" ] && assoc="$ASSOC_COMMENT"
+
+          # Ask what this account may actually do, rather than trusting
+          # author_association. That field reports MEMBER only when somebody's
+          # organization membership is PUBLIC — with private membership an
+          # owner comes through as CONTRIBUTOR, and CONTRIBUTOR is not a
+          # permission: anyone with one merged pull request keeps it forever.
+          perm=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq .permission 2>/dev/null || echo "unknown")
+
+          allowed=false
+          case "$perm" in admin|maintain|write) allowed=true ;; esac
+          # Fall back to the association only when the API could not answer, so
+          # a token without the scope fails closed rather than open.
+          if [ "$perm" = "unknown" ]; then
+            case "$assoc" in OWNER|MEMBER|COLLABORATOR) allowed=true ;; esac
+          fi
+          # Comments on pull requests belong to the PR workflow.
+          [ "$IS_PR" = "true" ] && allowed=false
+
+          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+          echo "::notice::event=$EVENT actor=$ACTOR permission=$perm association=$assoc on_pull_request=$IS_PR -> allowed=$allowed"
+          if [ "$allowed" != "true" ]; then
+            echo "::notice::Declined. Needs write access to this repository."
+          fi
+
+  analyze:
+    needs: gate
+    if: needs.gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Say what is missing in one line, rather than an authentication error
+      # from inside the container three minutes later.
+      - name: Check credentials are configured
+        env:
+          SA_JSON: ${{ secrets.VERTEX_SA_JSON }}
+          PROJECT: ${{ secrets.VERTEX_PROJECT }}
+          LOCATION: ${{ secrets.VERTEX_LOCATION }}
+          MODEL: ${{ secrets.VERTEX_MODEL }}
+        run: |
+          missing=""
+          [ -z "$SA_JSON" ]  && missing="$missing VERTEX_SA_JSON"
+          [ -z "$PROJECT" ]  && missing="$missing VERTEX_PROJECT"
+          [ -z "$LOCATION" ] && missing="$missing VERTEX_LOCATION"
+          [ -z "$MODEL" ]    && missing="$missing VERTEX_MODEL"
+          if [ -n "$missing" ]; then
+            echo "::error::ShipIT Forge is not configured. Missing:$missing"
+            echo "::error::Add them under Settings → Secrets and variables → Actions. Actions does not read a .env file."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: shipiit/forge@v2
+        with:
+          provider: vertex
+          vertex-credentials-json: ${{ secrets.VERTEX_SA_JSON }}
+          github-token: ${{ github.token }}
+          # Optional. With these, comments and reviews come from your GitHub
+          # App — "ShipIT Forge" — instead of github-actions[bot], which is
+          # what the identity on a review should say. Without them it still
+          # works, just under the runner's own bot.
+          app-id: ${{ secrets.FORGE_APP_ID }}
+          private-key: ${{ secrets.FORGE_PRIVATE_KEY }}
+          skill: fix-issue
+          prompt: >-
+            This is SHIPIT Agent, a Python runtime for tool-using AI agents.
+            Python 3.11+, tests under tests/ with pytest.
+
+            Research the issue in the code before proposing anything: name the
+            file and the function, quote the lines that cause it, and say what
+            the correct behaviour is and why. Then say what to change, what it
+            risks, which test would have caught it, and every other place the
+            same pattern appears — a fix applied to one of four call sites is
+            three bugs left behind.
+
+            Do not change code from this workflow; the write-up is the
+            deliverable. Someone says /fix when they want the code written.
+          max-turns: '30'
+        env:
+          LLM_PROVIDER: vertex
+          VERTEX_PROJECT: ${{ secrets.VERTEX_PROJECT }}
+          VERTEX_LOCATION: ${{ secrets.VERTEX_LOCATION }}
+          VERTEX_MODEL: ${{ secrets.VERTEX_MODEL }}
+          # Analyse and explain. Opening a PR unasked on every issue is noise;
+          # `/fix` in a comment is the deliberate act that writes code.
+          FORGE_SPEND_CAP_RUN: '0.75'
+          FORGE_MAX_RUNS_PER_HOUR: '10'
+          FORGE_PROMPT_CACHE: '1'
+          FORGE_AUTO_FIX: 'off'
+          GITHUB_TOKEN: ${{ github.token }}

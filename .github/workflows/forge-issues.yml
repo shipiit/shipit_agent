@@ -11,14 +11,21 @@
 # The same two values the PR workflow uses. A .env file is not read by Actions;
 # .env is for running the agent on your own machine.
 #
-# All four are required Secrets. Nothing is defaulted in this file: a model or
-# a region hardcoded here is one somebody changes in the settings page and then
-# wonders why the run ignored them.
+# Four required Secrets. Named for this project rather than for one vendor, so
+# swapping provider is a settings change and not a workflow edit:
 #
-#   VERTEX_SA_JSON   the full service-account JSON, pasted whole
-#   VERTEX_PROJECT   your GCP project id
-#   VERTEX_LOCATION  region, e.g. us-central1
-#   VERTEX_MODEL     e.g. gemini-2.5-pro, or gemini-2.5-flash for cheaper runs
+#   SHIPIT_PROVIDER     vertex | anthropic | openai | gemini | bedrock | groq |
+#                       together | ollama | openai-compatible
+#   SHIPIT_MODEL        the model id for that provider, e.g. gemini-2.5-flash
+#   SHIPIT_CREDENTIALS  the key, or the whole service-account JSON for Vertex
+#
+# Vertex also needs, because the API is addressed by project and region:
+#
+#   SHIPIT_PROJECT      GCP project id
+#   SHIPIT_LOCATION     region, e.g. us-central1
+#
+# Nothing is defaulted here. A model hardcoded in this file is one somebody
+# changes in the settings page and then wonders why the run ignored them.
 #
 # Optional, and worth adding — without them every review is posted by
 # "github-actions[bot]" rather than by your app:
@@ -110,16 +117,21 @@ jobs:
       # from inside the container three minutes later.
       - name: Check credentials are configured
         env:
-          SA_JSON: ${{ secrets.VERTEX_SA_JSON }}
-          PROJECT: ${{ secrets.VERTEX_PROJECT }}
-          LOCATION: ${{ secrets.VERTEX_LOCATION }}
-          MODEL: ${{ secrets.VERTEX_MODEL }}
+          PROVIDER: ${{ secrets.SHIPIT_PROVIDER }}
+          MODEL: ${{ secrets.SHIPIT_MODEL }}
+          CREDENTIALS: ${{ secrets.SHIPIT_CREDENTIALS }}
+          PROJECT: ${{ secrets.SHIPIT_PROJECT }}
+          LOCATION: ${{ secrets.SHIPIT_LOCATION }}
         run: |
           missing=""
-          [ -z "$SA_JSON" ]  && missing="$missing VERTEX_SA_JSON"
-          [ -z "$PROJECT" ]  && missing="$missing VERTEX_PROJECT"
-          [ -z "$LOCATION" ] && missing="$missing VERTEX_LOCATION"
-          [ -z "$MODEL" ]    && missing="$missing VERTEX_MODEL"
+          [ -z "$PROVIDER" ]    && missing="$missing SHIPIT_PROVIDER"
+          [ -z "$MODEL" ]       && missing="$missing SHIPIT_MODEL"
+          [ -z "$CREDENTIALS" ] && missing="$missing SHIPIT_CREDENTIALS"
+          # Vertex is addressed by project and region; the others are not.
+          if [ "$PROVIDER" = "vertex" ]; then
+            [ -z "$PROJECT" ]  && missing="$missing SHIPIT_PROJECT"
+            [ -z "$LOCATION" ] && missing="$missing SHIPIT_LOCATION"
+          fi
           if [ -n "$missing" ]; then
             echo "::error::ShipIT Forge is not configured. Missing:$missing"
             echo "::error::Add them under Settings → Secrets and variables → Actions. Actions does not read a .env file."
@@ -130,8 +142,13 @@ jobs:
 
       - uses: shipiit/forge@v2
         with:
-          provider: vertex
-          vertex-credentials-json: ${{ secrets.VERTEX_SA_JSON }}
+          provider: ${{ secrets.SHIPIT_PROVIDER }}
+          model: ${{ secrets.SHIPIT_MODEL }}
+          # One credential secret, offered to whichever provider is selected.
+          vertex-credentials-json: ${{ secrets.SHIPIT_CREDENTIALS }}
+          anthropic-api-key: ${{ secrets.SHIPIT_CREDENTIALS }}
+          openai-api-key: ${{ secrets.SHIPIT_CREDENTIALS }}
+          gemini-api-key: ${{ secrets.SHIPIT_CREDENTIALS }}
           github-token: ${{ github.token }}
           # Optional. With these, comments and reviews come from your GitHub
           # App — "ShipIT Forge" — instead of github-actions[bot], which is
@@ -155,10 +172,10 @@ jobs:
             deliverable. Someone says /fix when they want the code written.
           max-turns: '30'
         env:
-          LLM_PROVIDER: vertex
-          VERTEX_PROJECT: ${{ secrets.VERTEX_PROJECT }}
-          VERTEX_LOCATION: ${{ secrets.VERTEX_LOCATION }}
-          VERTEX_MODEL: ${{ secrets.VERTEX_MODEL }}
+          # Vertex is addressed by project and region, which have no action
+          # input. Ignored by every other provider.
+          VERTEX_PROJECT: ${{ secrets.SHIPIT_PROJECT }}
+          VERTEX_LOCATION: ${{ secrets.SHIPIT_LOCATION }}
           # Analyse and explain. Opening a PR unasked on every issue is noise;
           # `/fix` in a comment is the deliberate act that writes code.
           FORGE_SPEND_CAP_RUN: '0.75'

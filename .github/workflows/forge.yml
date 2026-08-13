@@ -13,14 +13,21 @@
 #
 # Add these two (Vertex, which is what this repo uses):
 #
-# All four are required Secrets. Nothing is defaulted in this file: a model or
-# a region hardcoded here is one somebody changes in the settings page and then
-# wonders why the run ignored them.
+# Four required Secrets. Named for this project rather than for one vendor, so
+# swapping provider is a settings change and not a workflow edit:
 #
-#   VERTEX_SA_JSON   the full service-account JSON, pasted whole
-#   VERTEX_PROJECT   your GCP project id
-#   VERTEX_LOCATION  region, e.g. us-central1
-#   VERTEX_MODEL     e.g. gemini-2.5-pro, or gemini-2.5-flash for cheaper runs
+#   SHIPIT_PROVIDER     vertex | anthropic | openai | gemini | bedrock | groq |
+#                       together | ollama | openai-compatible
+#   SHIPIT_MODEL        the model id for that provider, e.g. gemini-2.5-flash
+#   SHIPIT_CREDENTIALS  the key, or the whole service-account JSON for Vertex
+#
+# Vertex also needs, because the API is addressed by project and region:
+#
+#   SHIPIT_PROJECT      GCP project id
+#   SHIPIT_LOCATION     region, e.g. us-central1
+#
+# Nothing is defaulted here. A model hardcoded in this file is one somebody
+# changes in the settings page and then wonders why the run ignored them.
 #
 # Security scanning needs no credential at all. The secret and code scans are
 # deterministic — no model call, no cost — and run on every pull request even
@@ -35,12 +42,6 @@
 # Using a different provider? Add its key as a secret and swap the two marked
 # lines below:
 #
-#   anthropic  ANTHROPIC_API_KEY  provider: anthropic
-#                                 anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-#   openai     OPENAI_API_KEY     provider: openai
-#                                 openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-#   gemini     GEMINI_API_KEY     provider: gemini
-#                                 gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # WHY THE `if:` BELOW IS NOT OPTIONAL — this repository is public
@@ -154,16 +155,21 @@ jobs:
       # an authentication error from inside the container.
       - name: Check credentials are configured
         env:
-          SA_JSON: ${{ secrets.VERTEX_SA_JSON }}
-          PROJECT: ${{ secrets.VERTEX_PROJECT }}
-          LOCATION: ${{ secrets.VERTEX_LOCATION }}
-          MODEL: ${{ secrets.VERTEX_MODEL }}
+          PROVIDER: ${{ secrets.SHIPIT_PROVIDER }}
+          MODEL: ${{ secrets.SHIPIT_MODEL }}
+          CREDENTIALS: ${{ secrets.SHIPIT_CREDENTIALS }}
+          PROJECT: ${{ secrets.SHIPIT_PROJECT }}
+          LOCATION: ${{ secrets.SHIPIT_LOCATION }}
         run: |
           missing=""
-          [ -z "$SA_JSON" ]  && missing="$missing VERTEX_SA_JSON"
-          [ -z "$PROJECT" ]  && missing="$missing VERTEX_PROJECT"
-          [ -z "$LOCATION" ] && missing="$missing VERTEX_LOCATION"
-          [ -z "$MODEL" ]    && missing="$missing VERTEX_MODEL"
+          [ -z "$PROVIDER" ]    && missing="$missing SHIPIT_PROVIDER"
+          [ -z "$MODEL" ]       && missing="$missing SHIPIT_MODEL"
+          [ -z "$CREDENTIALS" ] && missing="$missing SHIPIT_CREDENTIALS"
+          # Vertex is addressed by project and region; the others are not.
+          if [ "$PROVIDER" = "vertex" ]; then
+            [ -z "$PROJECT" ]  && missing="$missing SHIPIT_PROJECT"
+            [ -z "$LOCATION" ] && missing="$missing SHIPIT_LOCATION"
+          fi
           if [ -n "$missing" ]; then
             echo "::error::ShipIT Forge is not configured. Missing:$missing"
             echo "::error::Add them under Settings → Secrets and variables → Actions. Actions does not read a .env file."
@@ -174,8 +180,15 @@ jobs:
 
       - uses: shipiit/forge@v2
         with:
-          provider: vertex # ← swap for another provider
-          vertex-credentials-json: ${{ secrets.VERTEX_SA_JSON }} # ← swap for that provider's key
+          provider: ${{ secrets.SHIPIT_PROVIDER }}
+          model: ${{ secrets.SHIPIT_MODEL }}
+          # One credential secret, offered to whichever provider is selected.
+          # The unused ones are ignored, so switching provider never means
+          # editing this file.
+          vertex-credentials-json: ${{ secrets.SHIPIT_CREDENTIALS }}
+          anthropic-api-key: ${{ secrets.SHIPIT_CREDENTIALS }}
+          openai-api-key: ${{ secrets.SHIPIT_CREDENTIALS }}
+          gemini-api-key: ${{ secrets.SHIPIT_CREDENTIALS }}
           github-token: ${{ github.token }}
           # Optional. With these, comments and reviews come from your GitHub
           # App — "ShipIT Forge" — instead of github-actions[bot], which is
@@ -213,10 +226,10 @@ jobs:
           secret-scan: '1'
           code-scan: '1'
         env:
-          LLM_PROVIDER: vertex
-          VERTEX_PROJECT: ${{ secrets.VERTEX_PROJECT }}
-          VERTEX_LOCATION: ${{ secrets.VERTEX_LOCATION }}
-          VERTEX_MODEL: ${{ secrets.VERTEX_MODEL }}
+          # Vertex is addressed by project and region, which have no action
+          # input. Ignored by every other provider.
+          VERTEX_PROJECT: ${{ secrets.SHIPIT_PROJECT }}
+          VERTEX_LOCATION: ${{ secrets.SHIPIT_LOCATION }}
           # Cost controls. The cap is enforced inside the loop — it stops
           # before the turn that would cross it, rather than reporting an
           # overspend afterwards — and caching is what makes a long review

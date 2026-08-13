@@ -123,14 +123,19 @@ jobs:
           PROJECT: ${{ secrets.SHIPIT_PROJECT }}
           LOCATION: ${{ secrets.SHIPIT_LOCATION }}
         run: |
+          # Actions runs this as `bash -e`, so an `[ -z X ] && y=z` one-liner
+          # exits the step the moment the secret IS set — the happy path.
+          # Written long, because a config check that fails when the config is
+          # correct is worse than no check.
           missing=""
-          [ -z "$PROVIDER" ]    && missing="$missing SHIPIT_PROVIDER"
-          [ -z "$MODEL" ]       && missing="$missing SHIPIT_MODEL"
-          [ -z "$CREDENTIALS" ] && missing="$missing SHIPIT_CREDENTIALS"
-          # Vertex is addressed by project and region; the others are not.
+          for name in PROVIDER MODEL CREDENTIALS; do
+            eval "value=\$$name"
+            if [ -z "$value" ]; then missing="$missing SHIPIT_$name"; fi
+          done
+          # Vertex is addressed by project and region; no other provider is.
           if [ "$PROVIDER" = "vertex" ]; then
-            [ -z "$PROJECT" ]  && missing="$missing SHIPIT_PROJECT"
-            [ -z "$LOCATION" ] && missing="$missing SHIPIT_LOCATION"
+            if [ -z "$PROJECT" ];  then missing="$missing SHIPIT_PROJECT"; fi
+            if [ -z "$LOCATION" ]; then missing="$missing SHIPIT_LOCATION"; fi
           fi
           if [ -n "$missing" ]; then
             echo "::error::ShipIT Forge is not configured. Missing:$missing"

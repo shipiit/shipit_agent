@@ -24,6 +24,11 @@
 #   SHIPIT_PROJECT      GCP project id
 #   SHIPIT_LOCATION     region, e.g. us-central1
 #
+# And an OpenAI-compatible endpoint — Hetzner inference, vLLM, LiteLLM, LM
+# Studio, anything serving /v1/chat/completions — needs where to send it:
+#
+#   SHIPIT_BASE_URL     the /v1 root, e.g. https://<host>/v1
+#
 # Nothing is defaulted here. A model hardcoded in this file is one somebody
 # changes in the settings page and then wonders why the run ignored them.
 #
@@ -122,6 +127,7 @@ jobs:
           CREDENTIALS: ${{ secrets.SHIPIT_CREDENTIALS }}
           PROJECT: ${{ secrets.SHIPIT_PROJECT }}
           LOCATION: ${{ secrets.SHIPIT_LOCATION }}
+          BASE_URL: ${{ secrets.SHIPIT_BASE_URL }}
         run: |
           # Actions runs this as `bash -e`, so an `[ -z X ] && y=z` one-liner
           # exits the step the moment the secret IS set — the happy path.
@@ -136,6 +142,11 @@ jobs:
           if [ "$PROVIDER" = "vertex" ]; then
             if [ -z "$PROJECT" ];  then missing="$missing SHIPIT_PROJECT"; fi
             if [ -z "$LOCATION" ]; then missing="$missing SHIPIT_LOCATION"; fi
+          fi
+          # An OpenAI-compatible endpoint has no well-known host, so there is
+          # nothing sensible to default the base URL to.
+          if [ "$PROVIDER" = "openai-compatible" ] && [ -z "$BASE_URL" ]; then
+            missing="$missing SHIPIT_BASE_URL"
           fi
           if [ -n "$missing" ]; then
             echo "::error::ShipIT Forge is not configured. Missing:$missing"
@@ -177,10 +188,22 @@ jobs:
             deliverable. Someone says /fix when they want the code written.
           max-turns: '30'
         env:
-          # Vertex is addressed by project and region, which have no action
-          # input. Ignored by every other provider.
+          # Providers whose settings have no action input. Each is read only
+          # by the provider it belongs to, so all of them can be present and
+          # only the selected one takes effect — which is what makes switching
+          # provider a change to SHIPIT_PROVIDER and nothing else.
+          #
+          # Vertex is addressed by project and region:
           VERTEX_PROJECT: ${{ secrets.SHIPIT_PROJECT }}
           VERTEX_LOCATION: ${{ secrets.SHIPIT_LOCATION }}
+          # Any OpenAI-compatible endpoint — Hetzner inference, vLLM, LiteLLM,
+          # a self-hosted Qwen — is a base URL, a key and a model id:
+          OPENAI_COMPATIBLE_BASE_URL: ${{ secrets.SHIPIT_BASE_URL }}
+          OPENAI_COMPATIBLE_API_KEY: ${{ secrets.SHIPIT_CREDENTIALS }}
+          OPENAI_COMPATIBLE_MODEL: ${{ secrets.SHIPIT_MODEL }}
+          # Hosted gateways that read their key from the environment:
+          GROQ_API_KEY: ${{ secrets.SHIPIT_CREDENTIALS }}
+          TOGETHER_API_KEY: ${{ secrets.SHIPIT_CREDENTIALS }}
           # Analyse and explain. Opening a PR unasked on every issue is noise;
           # `/fix` in a comment is the deliberate act that writes code.
           FORGE_SPEND_CAP_RUN: '0.75'

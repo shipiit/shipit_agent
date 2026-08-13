@@ -114,6 +114,18 @@ jobs:
           IS_PR_COMMENT: ${{ github.event.issue.pull_request != null }}
         run: |
           allowed=false
+          # A Dependabot pull request runs with a restricted token and cannot
+          # see Actions secrets — GitHub keeps those in a separate Dependabot
+          # store on purpose, so that a dependency update cannot exfiltrate
+          # them. Every secret arrives empty, and without this the run fails
+          # its configuration check and puts a red cross on a pull request
+          # nobody can fix. Declined by name, with the reason in the log.
+          if [ "$ACTOR" = "dependabot[bot]" ]; then
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Declined: Dependabot pull requests have no access to Actions secrets."
+            echo "::notice::Duplicate the SHIPIT_* secrets under Settings → Secrets → Dependabot to review these too."
+            exit 0
+          fi
           if [ "$EVENT" = "pull_request" ]; then
             # A fork PR gets no secrets anyway; declining quietly here keeps
             # every drive-by pull request from failing loudly.

@@ -9,6 +9,32 @@ from shipit_agent.tools import Tool
 
 logger = logging.getLogger(__name__)
 
+#: Cap on concurrent MCP discovery handshakes.
+_MCP_DISCOVER_MAX_WORKERS = 16
+
+
+def _discover_mcp_parallel(
+    mcps: list[MCPServer],
+) -> list[tuple[MCPServer, list]]:
+    """Discover every server's tools concurrently, returned in input order.
+
+    Parallelises only the slow part (each server's connect handshake); the
+    caller registers the results serially. A server that fails to connect
+    re-raises exactly as the old serial path did — ``future.result()`` surfaces
+    it when its turn comes, so error behaviour is unchanged, only faster.
+    """
+    if not mcps:
+        return []
+    if len(mcps) == 1:
+        return [(mcps[0], list(discover_mcp_tools(mcps[0])))]
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    workers = min(_MCP_DISCOVER_MAX_WORKERS, len(mcps))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mcp-discover") as pool:
+        futures = [pool.submit(discover_mcp_tools, mcp) for mcp in mcps]
+        return [(mcp, list(future.result())) for mcp, future in zip(mcps, futures)]
+
 
 @dataclass(slots=True)
 class ToolRegistry:
@@ -24,8 +50,12 @@ class ToolRegistry:
         registry = cls()
         for tool in tools or []:
             registry.register(tool)
-        for mcp in mcps or []:
-            for tool in discover_mcp_tools(mcp):
+        # Discover all MCP servers concurrently — each connect is a network
+        # handshake (stdio spawn / HTTP round-trip), so 20 servers done serially
+        # is 20× the latency of doing them at once. Registration below stays
+        # ordered and single-threaded, so collision handling is unchanged.
+        for mcp, discovered in _discover_mcp_parallel(mcps or []):
+            for tool in discovered:
                 # Keep server provenance on local MCPTool instances too.
                 # Remote tools already provide this, but hand-built servers
                 # otherwise became indistinguishable from custom tools.

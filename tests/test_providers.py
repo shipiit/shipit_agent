@@ -143,7 +143,7 @@ def test_bedrock_uses_explicit_region():
 
 
 def test_bedrock_falls_back_to_boto3_region(monkeypatch):
-    import boto3
+    boto3 = pytest.importorskip("boto3")
 
     class FakeSession:
         region_name = "ap-south-1"
@@ -155,7 +155,7 @@ def test_bedrock_falls_back_to_boto3_region(monkeypatch):
 
 
 def test_bedrock_errors_when_no_region_anywhere(monkeypatch):
-    import boto3
+    boto3 = pytest.importorskip("boto3")
 
     class FakeSession:
         region_name = None
@@ -295,7 +295,7 @@ def test_parse_accepts_a_single_alias_string():
 
 
 def test_bedrock_boto3_failure_is_swallowed_then_errors(monkeypatch):
-    import boto3
+    boto3 = pytest.importorskip("boto3")
 
     def _raise():
         raise RuntimeError("no AWS config")

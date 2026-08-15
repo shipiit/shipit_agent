@@ -152,6 +152,8 @@ include = ["shipit_agent*"]
 "shipit_agent.connectors.catalog" = ["*/manifest.yaml"]
 # Ship the provider profiles + their optional builders (one dir per provider).
 "shipit_agent.providers.catalog" = ["*/profile.yaml", "*/provider.py"]
+# Ship the bundled plugin packs (one plugin.yaml + plugin.py per catalog dir).
+"shipit_agent.plugins.catalog" = ["*/plugin.yaml", "*/plugin.py"]
 
 [project.urls]
 Homepage = "https://github.com/shipiit/shipit_agent"

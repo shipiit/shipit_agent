@@ -1,0 +1,13 @@
+profile_version: 1
+name: litellm
+display_name: LiteLLM (any model)
+description: Any of 100+ providers/models routed through LiteLLM or a LiteLLM proxy.
+icon: "🔀"
+aliases: [litellm_proxy, proxy]
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: ""
+model_keys: [model, SHIPIT_LITELLM_MODEL]
+model_env: [SHIPIT_LITELLM_MODEL]
+require_env: []
+capabilities: {vision: false, prompt_cache: false}
+env_help: Set SHIPIT_LITELLM_MODEL (e.g. "openrouter/anthropic/claude-3.5-sonnet").

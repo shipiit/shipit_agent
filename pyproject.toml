@@ -143,6 +143,10 @@ package-dir = {"" = "."}
 where = ["."]
 include = ["shipit_agent*"]
 
+[tool.setuptools.package-data]
+# Ship the provider profiles + their optional builders (one dir per provider).
+"shipit_agent.providers.catalog" = ["*/profile.yaml", "*/provider.py"]
+
 [project.urls]
 Homepage = "https://github.com/shipiit/shipit_agent"
 Repository = "https://github.com/shipiit/shipit_agent"

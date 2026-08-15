@@ -1,0 +1,13 @@
+profile_version: 1
+name: gemini
+display_name: Google Gemini
+description: Gemini 1.5 / 2.x models via the Google AI API.
+icon: "✨"
+adapter: shipit_agent.llms.litellm_adapter:GeminiChatLLM
+default_model: gemini/gemini-1.5-pro
+model_keys: [model, SHIPIT_GEMINI_MODEL]
+model_env: [SHIPIT_GEMINI_MODEL]
+require_env: [GEMINI_API_KEY, GOOGLE_API_KEY]
+capabilities: {vision: true, prompt_cache: true}
+signup_url: https://aistudio.google.com/apikey
+env_help: Set GEMINI_API_KEY (or GOOGLE_API_KEY).

@@ -1,0 +1,13 @@
+profile_version: 1
+name: groq
+display_name: Groq
+description: Very fast open models (Llama, Mixtral) on Groq LPUs.
+icon: "⚡"
+adapter: shipit_agent.llms.litellm_adapter:GroqChatLLM
+default_model: groq/llama-3.3-70b-versatile
+model_keys: [model, SHIPIT_GROQ_MODEL]
+model_env: [SHIPIT_GROQ_MODEL]
+require_env: [GROQ_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://console.groq.com/keys
+env_help: Set GROQ_API_KEY.

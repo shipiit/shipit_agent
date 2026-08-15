@@ -73,10 +73,12 @@ def test_example_build_llm_from_env_falls_back_to_bedrock_when_anthropic_sdk_mis
     def broken_anthropic(*args, **kwargs):
         raise RuntimeError("Install `anthropic` to use AnthropicChatLLM.")
 
-    from shipit_agent.llms import factory as factory_module
+    # Patch each adapter at its source module — the provider catalog late-imports
+    # them there, so the seam is honoured whichever build path runs.
+    from shipit_agent.llms import anthropic_adapter, litellm_adapter
 
-    monkeypatch.setattr(factory_module, "AnthropicChatLLM", broken_anthropic)
-    monkeypatch.setattr(factory_module, "BedrockChatLLM", FakeBedrock)
+    monkeypatch.setattr(anthropic_adapter, "AnthropicChatLLM", broken_anthropic)
+    monkeypatch.setattr(litellm_adapter, "BedrockChatLLM", FakeBedrock)
 
     llm = module.build_llm_from_env()
     assert isinstance(llm, FakeBedrock)
@@ -92,9 +94,9 @@ def test_example_build_llm_from_env_keeps_explicit_anthropic_errors(
     def broken_anthropic(*args, **kwargs):
         raise RuntimeError("Install `anthropic` to use AnthropicChatLLM.")
 
-    from shipit_agent.llms import factory as factory_module
+    from shipit_agent.llms import anthropic_adapter
 
-    monkeypatch.setattr(factory_module, "AnthropicChatLLM", broken_anthropic)
+    monkeypatch.setattr(anthropic_adapter, "AnthropicChatLLM", broken_anthropic)
 
     try:
         module.build_llm_from_env("anthropic")

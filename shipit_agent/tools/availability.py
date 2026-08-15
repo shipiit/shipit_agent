@@ -34,7 +34,15 @@ logger = logging.getLogger(__name__)
 #: long enough that a per-turn re-assembly doesn't re-probe the filesystem.
 _CACHE_TTL_SECONDS = 30.0
 
-_probe_cache: dict[str, tuple[float, bool]] = {}
+#: Transient-failure grace. A probe that fails within this window of its last
+#: success is treated as a flake (a Docker daemon momentarily busy, a probe
+#: timeout) — the last-good result is served and the failure is NOT cached, so
+#: the next call re-probes. Without this, one blip strips a whole toolset
+#: mid-session. A failure past the window is honoured.
+_FAILURE_GRACE_SECONDS = 60.0
+
+#: key -> (checked_at, value, last_success_at | None)
+_probe_cache: dict[str, tuple[float, bool, float | None]] = {}
 
 
 def _now() -> float:
@@ -42,17 +50,26 @@ def _now() -> float:
 
 
 def _cached_probe(key: str, probe: Any) -> bool:
-    hit = _probe_cache.get(key)
     now = _now()
+    hit = _probe_cache.get(key)
     if hit is not None and now - hit[0] < _CACHE_TTL_SECONDS:
         return hit[1]
+    last_success = hit[2] if hit is not None else None
     try:
         value = bool(probe())
     except Exception as exc:  # noqa: BLE001 — a failing probe means "unavailable"
         logger.debug("availability probe %s raised: %s", key, exc)
         value = False
-    _probe_cache[key] = (now, value)
-    return value
+    if value:
+        _probe_cache[key] = (now, True, now)
+        return True
+    # A fresh failure — but suppress it if the last success was recent enough
+    # (a transient flake). Serve last-good; do NOT cache, so we re-probe soon.
+    if last_success is not None and now - last_success < _FAILURE_GRACE_SECONDS:
+        logger.debug("availability probe %s failed within grace; serving last-good", key)
+        return True
+    _probe_cache[key] = (now, False, last_success)
+    return False
 
 
 def _as_list(value: Any) -> list[str]:

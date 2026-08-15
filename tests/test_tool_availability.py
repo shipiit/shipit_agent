@@ -101,6 +101,36 @@ def test_multiple_requirements_all_must_pass(monkeypatch):
 # ── caching ────────────────────────────────────────────────────────────────
 
 
+def test_transient_failure_is_suppressed_within_grace(monkeypatch):
+    # A probe that fails soon after a success is a flake — serve last-good and
+    # keep re-probing; only a failure past the grace window strips the tool.
+    clock = {"t": 0.0}
+    monkeypatch.setattr(availability, "_now", lambda: clock["t"])
+    result = {"ok": True}
+    tool = FakeTool("flaky", check_fn=lambda: result["ok"])
+
+    assert is_available(tool)[0] is True          # t=0: succeeds, cached good
+
+    clock["t"] = 35.0                              # past 30s TTL → re-probe
+    result["ok"] = False                           # ...and it now fails
+    assert is_available(tool)[0] is True           # but within 60s grace → last-good
+
+    clock["t"] = 100.0                             # past the grace window
+    assert is_available(tool)[0] is False          # honoured: tool is stripped
+
+
+def test_recovery_after_grace_is_picked_up(monkeypatch):
+    clock = {"t": 0.0}
+    monkeypatch.setattr(availability, "_now", lambda: clock["t"])
+    result = {"ok": False}
+    tool = FakeTool("recovers", check_fn=lambda: result["ok"])
+
+    assert is_available(tool)[0] is False          # starts unavailable
+    clock["t"] = 40.0
+    result["ok"] = True
+    assert is_available(tool)[0] is True            # comes back once the dep appears
+
+
 def test_command_probe_is_cached(monkeypatch):
     calls = []
 

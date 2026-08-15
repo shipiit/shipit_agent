@@ -7,7 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+The theme is a first-class, extensible platform: connections, providers, and
+tools each become a clean drop-in directory — one unit per folder — so adding
+one is a data edit, not a code change.
+
+### Added
+
+- **Connector catalog — connections as data** (`shipit_agent/connectors/`).
+  Every integration is an MCP server described by one declarative
+  `catalog/<name>/manifest.yaml`; the registry scans, validates, and
+  **skips-invalid-with-a-diagnostic** (a typo never breaks the catalog).
+  Ships **28 connectors** across developer, communication, productivity, data,
+  business, and automation — GitHub, GitLab, Linear, Jira, Confluence, Sentry,
+  Slack, Discord, Intercom, Notion, Asana, ClickUp, Todoist, Google Drive,
+  Postgres, SQLite, Brave Search, Fetch, Google Maps, Airtable, Stripe, PayPal,
+  Square, Filesystem, Playwright, Puppeteer, Memory, Cloudflare. `connect(name)`
+  turns a manifest into a live MCP server, choosing the hosted (HTTP/SSE) or
+  stdio transport and wiring the per-user bearer token.
+- **Self-refreshing per-user OAuth** (`connectors/oauth_manager.py`).
+  `OAuthCredentialManager` resolves the right user's token at call time and
+  refreshes it transparently near expiry, recovers from a live 401 with one
+  refresh, dedupes concurrent refreshes, and reports
+  `connected`/`expired`/`disconnected` per connection for a dashboard.
+  **38 provider presets** carry the authorize/token/refresh endpoints, so a
+  connector's OAuth is one `register_preset(...)`. `TokenStore` is a small
+  pluggable protocol with in-memory and `0600` file-backed implementations.
+- **Provider catalog — every model, one profile-per-dir**
+  (`shipit_agent/providers/`). Each provider is a `catalog/<name>/profile.yaml`
+  (display name, auth env, adapter class, default model, capabilities) plus an
+  optional `provider.py` for imperative setup. Ten ship: **openai, anthropic,
+  bedrock, gemini, vertex, litellm, groq, together, ollama, shipit/echo**.
+  `build_llm_from_settings` now resolves through the catalog first and falls
+  back to the inline chain when PyYAML is absent — behaviour is identical, and
+  a new provider is a dropped-in directory rather than a code edit. Profiles
+  carry `fallback_models` for a coming failover layer.
+
+### Changed
+
+- **`build_llm_from_settings` is catalog-backed** but keeps its exact
+  signature, `SUPPORTED_PROVIDERS`, the `bedrock` default, every `SHIPIT_*_MODEL`
+  default, and all aliases (`vertex_ai`/`vertexai`, `echo`, `proxy`). Verified
+  against a captured baseline: every provider returns the same adapter class and
+  default model as before.
+- **`s3://` image URLs** are recognised for Bedrock; base64 stays the default
+  for every other provider, and images are ordered before text for Gemma.
+
+### Validated live
+
+- End-to-end agent runs (tools + `deferred_tools` + MCP) against **Bedrock
+  (gpt-oss-120b), Vertex AI (Gemini 2.5 Flash & Pro), and LiteLLM→Bedrock** —
+  reasoning events streaming, prompt caching active, and `deferred_tools`
+  cutting turn-1 prompt tokens by **60–70%** with 61 tools held.
 
 ---
 

@@ -143,6 +143,10 @@ package-dir = {"" = "."}
 where = ["."]
 include = ["shipit_agent*"]
 
+[tool.setuptools.package-data]
+# Ship the bundled plugin packs (one plugin.yaml + plugin.py per catalog dir).
+"shipit_agent.plugins.catalog" = ["*/plugin.yaml", "*/plugin.py"]
+
 [project.urls]
 Homepage = "https://github.com/shipiit/shipit_agent"
 Repository = "https://github.com/shipiit/shipit_agent"

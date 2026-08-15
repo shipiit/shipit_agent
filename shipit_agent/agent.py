@@ -190,6 +190,10 @@ class Agent:
     # None means no cap; otherwise bound concurrent local tool calls per turn.
     max_tool_concurrency: int | None = None
     hooks: Any = None
+    # Drop-in plugin packs: Plugin objects or catalog names. Each contributes
+    # tools and lifecycle hooks, folded in at construction (see
+    # shipit_agent.plugins). Left empty by default — zero cost when unused.
+    plugins: list[Any] = field(default_factory=list)
     context_window_tokens: int = 0  # 0 = no compaction
     # Bound only the model-visible copy; AgentResult keeps complete tool
     # output. Capped by default: a message list is cumulative, so one
@@ -364,6 +368,16 @@ class Agent:
         2. If no ``skill_registry`` is provided, build one from ``skill_source``.
         3. Resolve string skill ids in ``self.skills`` into ``Skill`` objects.
         """
+        # Fold in any plugins first, so their tools and hooks are present
+        # before the rest of construction (RAG, skills) runs. Cheap no-op when
+        # the list is empty.
+        if self.plugins:
+            from shipit_agent.plugins import merge_plugins
+
+            self.tools, self.hooks = merge_plugins(
+                self.plugins, tools=self.tools, hooks=self.hooks
+            )
+
         if self.rag is not None:
             # Auto-wire RAG tools and augment the prompt once per Agent.
             existing_names = {getattr(t, "name", None) for t in self.tools}

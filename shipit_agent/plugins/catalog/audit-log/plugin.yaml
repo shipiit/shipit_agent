@@ -1,0 +1,8 @@
+plugin_version: 1
+name: audit-log
+description: Append a one-line record of every tool call to an audit log.
+version: 1.0.0
+author: shipit
+kind: standalone
+icon: "📋"
+hooks: [after_tool]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import re
 from html import unescape
 
@@ -8,7 +9,16 @@ from shipit_agent.tools._playwright import run_playwright_sync
 from .prompt import PLAYWRIGHT_BROWSER_PROMPT
 
 
+def _playwright_installed() -> bool:
+    return importlib.util.find_spec("playwright") is not None
+
+
 class PlaywrightBrowserTool:
+    #: Availability gate: this tool is dead weight without the ``playwright``
+    #: package. Declaring it lets the agent hide the tool (and its schema) when
+    #: Playwright isn't installed — see ``shipit_agent.tools.availability``.
+    check_fn = staticmethod(_playwright_installed)
+
     def __init__(
         self,
         *,

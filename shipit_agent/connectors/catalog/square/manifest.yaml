@@ -1,0 +1,16 @@
+# square — shipit connector manifest
+manifest_version: 1
+name: square
+description: Square payments, catalog and customers.
+category: business
+icon: ⬛
+transport:
+  type: http
+  url: https://mcp.squareup.com/sse
+auth:
+  type: oauth
+  provider: square
+suggest:
+  keywords:
+  - square
+  - payment

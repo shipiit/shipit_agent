@@ -1,0 +1,17 @@
+# postgres — shipit connector manifest
+manifest_version: 1
+name: postgres
+description: Query PostgreSQL (read-only). Pass the connection URL as an arg.
+category: data
+icon: 🐘
+transport:
+  type: stdio
+  command: npx -y @modelcontextprotocol/server-postgres
+  accepts_args: true
+auth:
+  type: none
+suggest:
+  keywords:
+  - postgres
+  - sql
+  - db

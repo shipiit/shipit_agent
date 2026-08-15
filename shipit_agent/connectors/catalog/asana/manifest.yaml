@@ -1,0 +1,18 @@
+# asana — shipit connector manifest
+manifest_version: 1
+name: asana
+description: Asana tasks, projects and portfolios.
+category: productivity
+icon: 🔴
+transport:
+  type: http
+  url: https://mcp.asana.com/sse
+auth:
+  type: oauth
+  provider: asana
+  scopes:
+  - default
+suggest:
+  keywords:
+  - asana
+  - task

@@ -1,0 +1,16 @@
+# playwright — shipit connector manifest
+manifest_version: 1
+name: playwright
+description: 'Drive a browser: navigate, click, type, screenshot.'
+category: automation
+icon: 🎭
+transport:
+  type: stdio
+  command: npx -y @playwright/mcp@latest
+auth:
+  type: none
+suggest:
+  keywords:
+  - browser
+  - playwright
+  - web

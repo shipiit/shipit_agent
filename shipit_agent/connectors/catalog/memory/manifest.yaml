@@ -1,0 +1,15 @@
+# memory — shipit connector manifest
+manifest_version: 1
+name: memory
+description: Persistent knowledge-graph memory across runs.
+category: automation
+icon: 🧠
+transport:
+  type: stdio
+  command: npx -y @modelcontextprotocol/server-memory
+auth:
+  type: none
+suggest:
+  keywords:
+  - memory
+  - graph

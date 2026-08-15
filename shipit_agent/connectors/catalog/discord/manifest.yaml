@@ -1,0 +1,19 @@
+# discord — shipit connector manifest
+manifest_version: 1
+name: discord
+description: Post, read and manage Discord channels and threads.
+category: communication
+icon: 🎮
+transport:
+  type: stdio
+  command: npx -y mcp-discord
+auth:
+  type: api_key
+  env:
+  - name: DISCORD_TOKEN
+    secret: true
+    required: true
+suggest:
+  keywords:
+  - discord
+  - guild

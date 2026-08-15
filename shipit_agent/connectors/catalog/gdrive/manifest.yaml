@@ -1,0 +1,20 @@
+# gdrive — shipit connector manifest
+manifest_version: 1
+name: gdrive
+description: Search and read Google Drive files.
+category: productivity
+icon: 📁
+transport:
+  type: stdio
+  command: npx -y @modelcontextprotocol/server-gdrive
+auth:
+  type: api_key
+  env:
+  - name: GDRIVE_CREDENTIALS_PATH
+    secret: true
+    required: true
+suggest:
+  keywords:
+  - drive
+  - google
+  - file

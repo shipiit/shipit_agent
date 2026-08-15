@@ -150,6 +150,8 @@ include = ["shipit_agent*"]
 [tool.setuptools.package-data]
 # Ship the connector manifests (one manifest.yaml per catalog/<name>/ dir).
 "shipit_agent.connectors.catalog" = ["*/manifest.yaml"]
+# Ship the provider profiles + their optional builders (one dir per provider).
+"shipit_agent.providers.catalog" = ["*/profile.yaml", "*/provider.py"]
 
 [project.urls]
 Homepage = "https://github.com/shipiit/shipit_agent"

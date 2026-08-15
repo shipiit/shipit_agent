@@ -1,0 +1,13 @@
+profile_version: 1
+name: vertex
+display_name: Google Vertex AI
+description: Gemini and partner models via Google Cloud Vertex AI.
+icon: "☁️"
+aliases: [vertex_ai, vertexai]
+adapter: shipit_agent.llms.litellm_adapter:VertexAIChatLLM
+default_model: vertex_ai/gemini-1.5-pro
+model_keys: [model, SHIPIT_VERTEX_MODEL]
+model_env: [SHIPIT_VERTEX_MODEL]
+require_env: []
+capabilities: {vision: true, prompt_cache: false}
+env_help: Set GOOGLE_APPLICATION_CREDENTIALS + VERTEXAI_PROJECT + VERTEXAI_LOCATION.

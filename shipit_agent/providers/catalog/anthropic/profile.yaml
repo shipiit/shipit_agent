@@ -1,0 +1,13 @@
+profile_version: 1
+name: anthropic
+display_name: Anthropic Claude
+description: Claude models via the native Anthropic API (falls back to Bedrock).
+icon: "🟤"
+adapter: shipit_agent.llms.anthropic_adapter:AnthropicChatLLM
+default_model: claude-3-5-sonnet-latest
+model_keys: [model, SHIPIT_ANTHROPIC_MODEL]
+model_env: [SHIPIT_ANTHROPIC_MODEL]
+require_env: [ANTHROPIC_API_KEY]
+capabilities: {vision: true, prompt_cache: true}
+signup_url: https://console.anthropic.com/settings/keys
+env_help: Set ANTHROPIC_API_KEY.

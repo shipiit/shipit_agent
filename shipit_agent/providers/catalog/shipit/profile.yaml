@@ -1,0 +1,8 @@
+profile_version: 1
+name: shipit
+display_name: shipit (built-in)
+description: The built-in deterministic LLM (and echo) for demos and tests.
+icon: "🚢"
+aliases: [echo]
+require_env: []
+env_help: No key needed — a deterministic built-in model.

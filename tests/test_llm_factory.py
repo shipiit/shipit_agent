@@ -8,13 +8,16 @@ from shipit_agent.models import Message
 
 
 def test_build_llm_from_settings_supports_bedrock(monkeypatch) -> None:
-    from shipit_agent.llms import factory as factory_module
+    # Patch the adapter at its source module: the provider catalog builds each
+    # adapter with a late import from there, so this seam works whether the
+    # request is served by the catalog or the inline fallback.
+    from shipit_agent.llms import litellm_adapter
 
     class FakeBedrock:
         def __init__(self, model):
             self.model = model
 
-    monkeypatch.setattr(factory_module, "BedrockChatLLM", FakeBedrock)
+    monkeypatch.setattr(litellm_adapter, "BedrockChatLLM", FakeBedrock)
 
     llm = build_llm_from_settings(
         {
@@ -28,14 +31,14 @@ def test_build_llm_from_settings_supports_bedrock(monkeypatch) -> None:
 
 
 def test_build_llm_from_settings_supports_openai(monkeypatch) -> None:
-    from shipit_agent.llms import factory as factory_module
+    from shipit_agent.llms import openai_adapter
 
     class FakeOpenAI:
         def __init__(self, model, tool_choice=None):
             self.model = model
             self.tool_choice = tool_choice
 
-    monkeypatch.setattr(factory_module, "OpenAIChatLLM", FakeOpenAI)
+    monkeypatch.setattr(openai_adapter, "OpenAIChatLLM", FakeOpenAI)
 
     llm = build_llm_from_settings(
         {
@@ -53,8 +56,6 @@ def test_build_llm_from_settings_supports_openai(monkeypatch) -> None:
 def test_build_llm_from_settings_falls_back_to_bedrock_when_anthropic_sdk_missing(
     monkeypatch,
 ) -> None:
-    from shipit_agent.llms import factory as factory_module
-
     class FakeBedrock:
         def __init__(self, model):
             self.model = model
@@ -62,8 +63,10 @@ def test_build_llm_from_settings_falls_back_to_bedrock_when_anthropic_sdk_missin
     def broken_anthropic(*args, **kwargs):
         raise RuntimeError("Install `anthropic` to use AnthropicChatLLM.")
 
-    monkeypatch.setattr(factory_module, "AnthropicChatLLM", broken_anthropic)
-    monkeypatch.setattr(factory_module, "BedrockChatLLM", FakeBedrock)
+    from shipit_agent.llms import anthropic_adapter, litellm_adapter
+
+    monkeypatch.setattr(anthropic_adapter, "AnthropicChatLLM", broken_anthropic)
+    monkeypatch.setattr(litellm_adapter, "BedrockChatLLM", FakeBedrock)
 
     llm = build_llm_from_settings(
         {
@@ -76,12 +79,12 @@ def test_build_llm_from_settings_falls_back_to_bedrock_when_anthropic_sdk_missin
 
 
 def test_build_llm_from_settings_keeps_explicit_anthropic_error(monkeypatch) -> None:
-    from shipit_agent.llms import factory as factory_module
+    from shipit_agent.llms import anthropic_adapter
 
     def broken_anthropic(*args, **kwargs):
         raise RuntimeError("Install `anthropic` to use AnthropicChatLLM.")
 
-    monkeypatch.setattr(factory_module, "AnthropicChatLLM", broken_anthropic)
+    monkeypatch.setattr(anthropic_adapter, "AnthropicChatLLM", broken_anthropic)
 
     try:
         build_llm_from_settings(

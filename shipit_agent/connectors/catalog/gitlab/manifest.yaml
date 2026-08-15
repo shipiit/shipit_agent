@@ -1,0 +1,19 @@
+# gitlab — shipit connector manifest
+manifest_version: 1
+name: gitlab
+description: GitLab projects, issues and merge requests.
+category: developer
+icon: 🦊
+transport:
+  type: stdio
+  command: npx -y @modelcontextprotocol/server-gitlab
+auth:
+  type: api_key
+  env:
+  - name: GITLAB_PERSONAL_ACCESS_TOKEN
+    secret: true
+    required: true
+suggest:
+  keywords:
+  - gitlab
+  - mr

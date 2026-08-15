@@ -1,0 +1,12 @@
+profile_version: 1
+name: ollama
+display_name: Ollama (local)
+description: Locally-served open models via Ollama — no API key.
+icon: "🦙"
+adapter: shipit_agent.llms.litellm_adapter:OllamaChatLLM
+default_model: ollama/llama3.1
+model_keys: [model, SHIPIT_OLLAMA_MODEL]
+model_env: [SHIPIT_OLLAMA_MODEL]
+require_env: []
+capabilities: {vision: false, prompt_cache: false}
+env_help: Run a local Ollama server (no key needed).

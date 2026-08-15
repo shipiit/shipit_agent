@@ -1,0 +1,13 @@
+profile_version: 1
+name: together
+display_name: Together AI
+description: Open models (Llama, Qwen, DeepSeek) on Together's inference cloud.
+icon: "🤝"
+adapter: shipit_agent.llms.litellm_adapter:TogetherChatLLM
+default_model: together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo
+model_keys: [model, SHIPIT_TOGETHER_MODEL]
+model_env: [SHIPIT_TOGETHER_MODEL]
+require_env: [TOGETHERAI_API_KEY, TOGETHER_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://api.together.ai/settings/api-keys
+env_help: Set TOGETHER_API_KEY (or TOGETHERAI_API_KEY).

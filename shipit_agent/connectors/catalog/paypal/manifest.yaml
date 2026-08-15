@@ -1,0 +1,16 @@
+# paypal — shipit connector manifest
+manifest_version: 1
+name: paypal
+description: PayPal orders, invoices and transactions.
+category: business
+icon: 🅿️
+transport:
+  type: http
+  url: https://mcp.paypal.com/sse
+auth:
+  type: oauth
+  provider: paypal
+suggest:
+  keywords:
+  - paypal
+  - payment

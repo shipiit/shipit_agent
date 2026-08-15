@@ -1,0 +1,8 @@
+plugin_version: 1
+name: word-count
+description: Adds a word_count tool that counts words in a piece of text.
+version: 1.0.0
+author: shipit
+kind: standalone
+icon: "🔢"
+provides_tools: [word_count]

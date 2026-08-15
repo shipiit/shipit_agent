@@ -1,0 +1,21 @@
+# confluence — shipit connector manifest
+manifest_version: 1
+name: confluence
+description: Confluence pages and spaces (same grant as Jira).
+category: developer
+icon: 📘
+transport:
+  type: http
+  url: https://mcp.atlassian.com/v1/sse
+auth:
+  type: oauth
+  provider: atlassian
+  scopes:
+  - read:confluence-content.all
+  - write:confluence-content
+  - offline_access
+suggest:
+  keywords:
+  - confluence
+  - wiki
+  - atlassian

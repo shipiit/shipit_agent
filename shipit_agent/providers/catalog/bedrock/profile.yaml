@@ -1,0 +1,12 @@
+profile_version: 1
+name: bedrock
+display_name: Amazon Bedrock
+description: Foundation models (Claude, Llama, GPT-OSS, Gemma) via AWS Bedrock.
+icon: "🟧"
+adapter: shipit_agent.llms.litellm_adapter:BedrockChatLLM
+default_model: bedrock/openai.gpt-oss-120b-1:0
+model_keys: [model, SHIPIT_BEDROCK_MODEL]
+model_env: [SHIPIT_BEDROCK_MODEL]
+require_env: []
+capabilities: {vision: true, prompt_cache: true}
+env_help: Set AWS_REGION_NAME (or AWS_DEFAULT_REGION), or configure an AWS_PROFILE.

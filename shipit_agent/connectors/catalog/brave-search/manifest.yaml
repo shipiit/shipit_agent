@@ -1,0 +1,19 @@
+# brave-search — shipit connector manifest
+manifest_version: 1
+name: brave-search
+description: Web search via the Brave Search API.
+category: data
+icon: 🔎
+transport:
+  type: stdio
+  command: npx -y @modelcontextprotocol/server-brave-search
+auth:
+  type: api_key
+  env:
+  - name: BRAVE_API_KEY
+    secret: true
+    required: true
+suggest:
+  keywords:
+  - search
+  - web

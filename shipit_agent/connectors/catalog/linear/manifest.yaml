@@ -1,0 +1,21 @@
+# linear — shipit connector manifest
+manifest_version: 1
+name: linear
+description: Linear issues, cycles, projects and comments.
+category: developer
+icon: 📐
+transport:
+  type: http
+  url: https://mcp.linear.app/sse
+auth:
+  type: oauth
+  provider: linear
+  scopes:
+  - read
+  - write
+  - issues:create
+suggest:
+  keywords:
+  - linear
+  - issue
+  - ticket

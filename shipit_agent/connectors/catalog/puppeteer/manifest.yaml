@@ -1,0 +1,15 @@
+# puppeteer — shipit connector manifest
+manifest_version: 1
+name: puppeteer
+description: 'Headless browser: navigate, screenshot, interact.'
+category: automation
+icon: 🤖
+transport:
+  type: stdio
+  command: npx -y @modelcontextprotocol/server-puppeteer
+auth:
+  type: none
+suggest:
+  keywords:
+  - browser
+  - puppeteer

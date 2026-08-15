@@ -172,6 +172,12 @@ from .mcp import (
     RemoteMCPServer,
     discover_mcp_tools,
 )
+from .connectors import (
+    Connector,
+    connect,
+    connector_categories,
+    list_connectors,
+)
 from .mcp_catalog import (
     MCP_CATALOG,
     MCPCatalogEntry,
@@ -563,7 +569,11 @@ __all__ = [
     "MCPTool",
     "MCP_CATALOG",
     "MCPCatalogEntry",
+    "Connector",
+    "connect",
     "connect_mcp",
+    "connector_categories",
+    "list_connectors",
     "list_mcp_catalog",
     "PersistentMCPSession",
     "PersistentMCPSubprocessTransport",

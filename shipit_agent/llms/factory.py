@@ -107,6 +107,32 @@ def _apply_settings_to_env(settings: dict[str, Any]) -> None:
             os.environ[name] = str(value)
 
 
+def _build_from_catalog(
+    selected: str, config: dict[str, Any], explicit_provider: bool
+):
+    """Build via the declarative provider catalog, or ``None`` to fall back.
+
+    Returns ``None`` when the catalog is unavailable (no PyYAML) or doesn't know
+    ``selected`` — the caller then uses the inline chain. A genuine build error
+    (missing key, missing region) propagates, exactly as the inline chain would.
+    """
+    try:
+        from ..providers import build_provider, get_profile
+    except Exception:
+        return None
+    try:
+        profile = get_profile(selected)
+    except Exception:
+        return None
+    if profile is None:
+        return None
+    # The anthropic profile uses this to decide whether a missing `anthropic`
+    # package may silently fall back to Bedrock (only when not explicit).
+    return build_provider(
+        selected, config={**config, "_explicit_provider": explicit_provider}
+    )
+
+
 def build_llm_from_settings(
     settings: dict[str, Any] | None = None,
     *,
@@ -129,6 +155,14 @@ def build_llm_from_settings(
         .strip()
         .lower()
     )
+
+    # Declarative catalog first: a provider is a dropped-in profile directory
+    # (providers/catalog/<name>/), so adding one needs no edit here. The inline
+    # chain below is the zero-dependency fallback for when the catalog can't
+    # load (PyYAML lives in the [connectors] extra) or doesn't know a provider.
+    catalog_llm = _build_from_catalog(selected, config, explicit_provider)
+    if catalog_llm is not None:
+        return catalog_llm
 
     if selected in {"shipit", "echo"}:
         return ShipitLLM() if selected == "shipit" else SimpleEchoLLM()

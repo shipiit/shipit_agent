@@ -53,6 +53,14 @@ class Backend:
     def scroll(self, x: int, y: int, dx: int, dy: int) -> None:
         raise BackendError("scroll not implemented")
 
+    def list_apps(self) -> list[str]:
+        """Names of the currently running foreground applications."""
+        raise BackendError("list_apps not implemented")
+
+    def focus_app(self, name: str) -> None:
+        """Bring an application to the front so keystrokes/clicks land in it."""
+        raise BackendError("focus_app not implemented")
+
 
 # ─────────────────────── macOS ───────────────────────
 
@@ -138,6 +146,19 @@ class MacBackend(Backend):
             for _ in range(abs(dy)):
                 self.key("pageup")
         # Horizontal scroll is rare; ignore silently.
+
+    def list_apps(self) -> list[str]:
+        out = _run([
+            "osascript", "-e",
+            'tell application "System Events" to get name of every process '
+            "whose background only is false",
+        ])
+        return [n.strip() for n in out.split(",") if n.strip()]
+
+    def focus_app(self, name: str) -> None:
+        # `activate` is the reliable way to raise an app; System Events
+        # `set frontmost` needs the exact process name and Accessibility perms.
+        _run(["osascript", "-e", f'tell application {_apple_quote(name)} to activate'])
 
 
 # ─────────────────────── Linux ───────────────────────
@@ -236,9 +257,14 @@ def resolve_backend() -> Backend:
     raise BackendError(f"unsupported platform: {sys.platform}")
 
 
-def _run(cmd: list[str], *, timeout: float = 15.0) -> None:
+def _run(cmd: list[str], *, timeout: float = 15.0) -> str:
+    """Run a command, raising :class:`BackendError` on any failure.
+
+    Returns decoded stdout (stripped) so callers that need output — e.g.
+    ``list_apps`` reading ``osascript`` — can use it; action callers ignore it.
+    """
     try:
-        subprocess.run(cmd, check=True, timeout=timeout, capture_output=True)
+        proc = subprocess.run(cmd, check=True, timeout=timeout, capture_output=True)
     except FileNotFoundError as err:
         raise BackendError(f"{cmd[0]} not found: {err}") from err
     except subprocess.CalledProcessError as err:
@@ -247,6 +273,7 @@ def _run(cmd: list[str], *, timeout: float = 15.0) -> None:
         ) from err
     except subprocess.TimeoutExpired as err:
         raise BackendError(f"{cmd[0]} timed out after {timeout}s") from err
+    return proc.stdout.decode("utf-8", "ignore").strip()
 
 
 def _apple_quote(s: str) -> str:

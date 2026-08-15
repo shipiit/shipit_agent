@@ -656,7 +656,13 @@ class AgentRuntime(RuntimeCore):
                 iteration=iteration,
             )
             content = (
-                f"Tool '{tool_call.name}' was NOT run — {reason}"
+                # A denial is FINAL — say so, or the model reads "not run" as a
+                # transient failure and retries the same call, re-prompting the
+                # human on every loop. Tell it to stop (reference-K.2 style).
+                f"Tool '{tool_call.name}' was DENIED by a human and was NOT run "
+                f"— {reason}. This decision is final: do NOT retry it, rephrase "
+                "it, or pursue the same goal another way. Silence is not consent. "
+                "Stop and tell the user the action was declined."
                 if decision.denied
                 else f"Tool '{tool_call.name}' requires human approval — {reason}"
             )

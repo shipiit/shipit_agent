@@ -76,8 +76,18 @@ def load_catalog() -> None:
         _scan_dir(_BUNDLED_DIR, source="bundled")
         for root in _user_dirs():
             _scan_dir(root, source="user")
-        _load_entry_points()
+        # Entry-point plugins execute code from any installed package, so they
+        # are OPT-IN: a stray `pip install` can't inject a plugin unless the
+        # deployer explicitly turns this on (set SHIPIT_PLUGIN_ENTRY_POINTS=1).
+        if _entry_points_enabled():
+            _load_entry_points()
         _loaded = True
+
+
+def _entry_points_enabled() -> bool:
+    return os.getenv("SHIPIT_PLUGIN_ENTRY_POINTS", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
 
 
 def _scan_dir(root: Path, *, source: str) -> None:

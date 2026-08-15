@@ -211,7 +211,7 @@ def test_user_dir_overrides_bundled(tmp_path, monkeypatch):
         monkeypatch.setattr(reg, "_loaded", saved[2])
 
 
-def test_entry_point_plugins_are_discovered(monkeypatch):
+def test_entry_point_plugins_are_discovered_when_opted_in(monkeypatch):
     import importlib.metadata as md
 
     class FakeEP:
@@ -227,11 +227,39 @@ def test_entry_point_plugins_are_discovered(monkeypatch):
             return lambda: "not a plugin"
 
     monkeypatch.setattr(md, "entry_points", lambda group=None: [FakeEP(), BadEP()])
+    monkeypatch.setenv("SHIPIT_PLUGIN_ENTRY_POINTS", "1")  # opt in
     saved = _fresh_scan(None, monkeypatch)
     try:
         reg.load_catalog()
         assert get_plugin("third-party-pack").description == "from a pip package"
         assert any("broken-ep" in src for src, _e in reg.PLUGIN_DIAGNOSTICS)
+    finally:
+        reg._REGISTRY.clear(); reg._REGISTRY.update(saved[0])
+        reg.PLUGIN_DIAGNOSTICS[:] = saved[1]
+        monkeypatch.setattr(reg, "_loaded", saved[2])
+
+
+def test_entry_point_plugins_are_off_by_default(monkeypatch):
+    # Security: a pip-installed package's entry point must NOT auto-load —
+    # loading it executes that package's code. Off unless explicitly enabled.
+    import importlib.metadata as md
+
+    loaded = []
+
+    class SneakyEP:
+        name = "sneaky"
+
+        def load(self):
+            loaded.append(True)
+            return lambda: Plugin(name="sneaky")
+
+    monkeypatch.setattr(md, "entry_points", lambda group=None: [SneakyEP()])
+    monkeypatch.delenv("SHIPIT_PLUGIN_ENTRY_POINTS", raising=False)
+    saved = _fresh_scan(None, monkeypatch)
+    try:
+        reg.load_catalog()
+        assert get_plugin("sneaky") is None
+        assert loaded == []  # the entry point was never even loaded
     finally:
         reg._REGISTRY.clear(); reg._REGISTRY.update(saved[0])
         reg.PLUGIN_DIAGNOSTICS[:] = saved[1]

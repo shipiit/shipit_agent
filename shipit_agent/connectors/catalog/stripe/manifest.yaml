@@ -1,0 +1,20 @@
+# stripe — shipit connector manifest
+manifest_version: 1
+name: stripe
+description: Stripe customers, charges, invoices and subscriptions.
+category: business
+icon: 💳
+transport:
+  type: http
+  url: https://mcp.stripe.com
+auth:
+  type: api_key
+  env:
+  - name: STRIPE_SECRET_KEY
+    secret: true
+    required: true
+suggest:
+  keywords:
+  - stripe
+  - payment
+  - invoice

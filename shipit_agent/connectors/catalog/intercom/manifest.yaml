@@ -1,0 +1,16 @@
+# intercom — shipit connector manifest
+manifest_version: 1
+name: intercom
+description: Intercom conversations, contacts and help articles.
+category: communication
+icon: 🟦
+transport:
+  type: http
+  url: https://mcp.intercom.com/sse
+auth:
+  type: oauth
+  provider: intercom
+suggest:
+  keywords:
+  - intercom
+  - support

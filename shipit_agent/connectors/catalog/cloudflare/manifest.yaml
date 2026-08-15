@@ -1,0 +1,16 @@
+# cloudflare — shipit connector manifest
+manifest_version: 1
+name: cloudflare
+description: Cloudflare Workers, KV, R2, D1 and observability.
+category: automation
+icon: ☁️
+transport:
+  type: http
+  url: https://observability.mcp.cloudflare.com/sse
+auth:
+  type: oauth
+suggest:
+  keywords:
+  - cloudflare
+  - workers
+  - kv

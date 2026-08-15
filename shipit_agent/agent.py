@@ -190,6 +190,16 @@ class Agent:
     # None means no cap; otherwise bound concurrent local tool calls per turn.
     max_tool_concurrency: int | None = None
     hooks: Any = None
+    # Drop-in plugin packs: Plugin objects or catalog names. Each contributes
+    # tools and lifecycle hooks, folded in at construction (see
+    # shipit_agent.plugins). Left empty by default — zero cost when unused.
+    plugins: list[Any] = field(default_factory=list)
+    #: Hide tools whose declared dependency is missing (a CLI binary not on
+    #: PATH, an unset env var, a failing ``check_fn``) so their schema never
+    #: costs tokens and the model never wastes a turn calling something that
+    #: cannot run. Only tools that *declare* requirements can be gated, so this
+    #: is safe to leave on: a tool with no declaration is always kept.
+    gate_unavailable_tools: bool = True
     context_window_tokens: int = 0  # 0 = no compaction
     # Bound only the model-visible copy; AgentResult keeps complete tool
     # output. Capped by default: a message list is cumulative, so one
@@ -364,6 +374,16 @@ class Agent:
         2. If no ``skill_registry`` is provided, build one from ``skill_source``.
         3. Resolve string skill ids in ``self.skills`` into ``Skill`` objects.
         """
+        # Fold in any plugins first, so their tools and hooks are present
+        # before the rest of construction (RAG, skills) runs. Cheap no-op when
+        # the list is empty.
+        if self.plugins:
+            from shipit_agent.plugins import merge_plugins
+
+            self.tools, self.hooks = merge_plugins(
+                self.plugins, tools=self.tools, hooks=self.hooks
+            )
+
         if self.rag is not None:
             # Auto-wire RAG tools and augment the prompt once per Agent.
             existing_names = {getattr(t, "name", None) for t in self.tools}
@@ -403,6 +423,23 @@ class Agent:
 
         # Resolve string skill ids → Skill objects (deduplicates by id).
         self.skills = self._resolve_skill_refs(self.skills)
+
+        # Hide tools whose declared dependency is missing — done last, so RAG
+        # and skill tools are gated too. Only tools that opted in (declared a
+        # requires_command / requires_env / check_fn) can be dropped, so this
+        # never removes a plain tool. Skipped tools are recorded for a UI/log.
+        if self.gate_unavailable_tools and self.tools:
+            from shipit_agent.tools.availability import filter_available
+
+            kept, skipped = filter_available(self.tools)
+            if skipped:
+                self.tools = kept
+                self.metadata.setdefault("gated_tools", skipped)
+                logger.info(
+                    "gated %d unavailable tool(s): %s",
+                    len(skipped),
+                    ", ".join(f"{n} ({r})" for n, r in skipped),
+                )
 
     # ──────────────────────────────────────────────────────────────────
     # Factory
@@ -996,15 +1033,19 @@ class Agent:
         if blocks is None:
             blocks = [{"type": "text", "text": prompt_text}]
         base_block_count = len(blocks)
+        # Images FIRST, ahead of the prose. Several vision models — Gemma 4 on
+        # Bedrock among them — read an image best when it precedes the text that
+        # asks about it, so prepend rather than append.
+        if images:
+            from shipit_agent.multimodal.builder import image_block_from
+
+            image_blocks = [image_block_from(image) for image in images]
+            blocks = image_blocks + blocks
         if files:
             from shipit_agent.multimodal.builder import file_blocks_from
 
             for file in files:
                 blocks.extend(file_blocks_from(file))
-        if images:
-            from shipit_agent.multimodal.builder import image_block_from
-
-            blocks.extend(image_block_from(image) for image in images)
         nothing_attached = len(blocks) == base_block_count and all(
             isinstance(b, dict) and b.get("type") == "text" for b in blocks
         )

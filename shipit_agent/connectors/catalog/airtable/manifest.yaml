@@ -1,0 +1,20 @@
+# airtable — shipit connector manifest
+manifest_version: 1
+name: airtable
+description: Airtable bases, tables and records.
+category: data
+icon: 📊
+transport:
+  type: stdio
+  command: npx -y airtable-mcp-server
+auth:
+  type: api_key
+  env:
+  - name: AIRTABLE_API_KEY
+    secret: true
+    required: true
+suggest:
+  keywords:
+  - airtable
+  - base
+  - record

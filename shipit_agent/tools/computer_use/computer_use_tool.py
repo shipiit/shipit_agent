@@ -30,6 +30,8 @@ _ACTIONS = frozenset(
         "type",
         "key",
         "wait",
+        "list_apps",
+        "focus_app",
     }
 )
 
@@ -86,6 +88,11 @@ class ComputerUseTool:
                         "dx": {"type": "integer", "default": 0},
                         "dy": {"type": "integer", "default": 0},
                         "text": {"type": "string"},
+                        "app": {
+                            "type": "string",
+                            "description": "Application name for action=focus_app "
+                            '(e.g. "Safari"). Use list_apps to see running apps.',
+                        },
                         "keys": {
                             "type": "string",
                             "description": 'Chord like "cmd+shift+4".',
@@ -199,6 +206,23 @@ class ComputerUseTool:
             seconds = float(kwargs.get("seconds", 1.0))
             time.sleep(max(0.0, min(60.0, seconds)))
             return self._ok(backend, action, {"seconds": seconds})
+
+        if action == "list_apps":
+            apps = backend.list_apps()
+            return ToolOutput(
+                text="Running apps:\n" + "\n".join(f"  - {a}" for a in apps),
+                metadata={"ok": True, "action": action, "apps": apps},
+            )
+
+        if action == "focus_app":
+            name = str(kwargs.get("text") or kwargs.get("app") or "").strip()
+            if not name:
+                return ToolOutput(
+                    text="Error: 'text' (the app name) is required for action=focus_app.",
+                    metadata={"ok": False},
+                )
+            backend.focus_app(name)
+            return self._ok(backend, action, {"app": name})
 
         return ToolOutput(
             text=f"Error: unroutable action {action!r}.", metadata={"ok": False}

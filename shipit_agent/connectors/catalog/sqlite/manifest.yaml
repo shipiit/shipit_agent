@@ -1,0 +1,16 @@
+# sqlite — shipit connector manifest
+manifest_version: 1
+name: sqlite
+description: Query a SQLite database file passed as an arg.
+category: data
+icon: 🗄️
+transport:
+  type: stdio
+  command: uvx mcp-server-sqlite --db-path
+  accepts_args: true
+auth:
+  type: none
+suggest:
+  keywords:
+  - sqlite
+  - db

@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Plugin system — extend the agent without editing it**
+  (`shipit_agent/plugins/`). A plugin is a clean `catalog/<name>/` directory: a
+  declarative `plugin.yaml` plus a `plugin.py` exporting `register(reg)`, where
+  `reg` is a small `PluginRegistrar` the plugin uses to contribute **tools** and
+  **lifecycle hooks**. Discovery draws from three sources in increasing
+  precedence — **bundled**, a **user directory** (`$SHIPIT_PLUGINS_DIR` or
+  `$SHIPIT_HOME/plugins`), and **pip entry points** (`shipit_agent.plugins`) —
+  so a user always overrides a bundled plugin of the same name, and each source
+  **skips-invalid-with-a-diagnostic**. Hook points map one-to-one onto the
+  agent's `AgentHooks` surface (`before_llm`, `after_llm`, `before_tool`,
+  `after_tool`, `user_prompt`), so a plugin hook is a real wired callback.
+  `Agent(plugins=[...])` folds each plugin's tools and hooks in at construction
+  — a no-op when empty. Ships two examples: `audit-log` and `word-count`.
 
 ---
 

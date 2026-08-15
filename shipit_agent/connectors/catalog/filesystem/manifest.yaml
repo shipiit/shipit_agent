@@ -1,0 +1,16 @@
+# filesystem — shipit connector manifest
+manifest_version: 1
+name: filesystem
+description: Read/write files under the directories you pass as args.
+category: automation
+icon: 📂
+transport:
+  type: stdio
+  command: npx -y @modelcontextprotocol/server-filesystem
+  accepts_args: true
+auth:
+  type: none
+suggest:
+  keywords:
+  - file
+  - filesystem

@@ -1,0 +1,21 @@
+# sentry — shipit connector manifest
+manifest_version: 1
+name: sentry
+description: Sentry issues, events and stack traces.
+category: developer
+icon: 🐛
+transport:
+  type: http
+  url: https://mcp.sentry.dev/mcp
+auth:
+  type: oauth
+  provider: sentry
+  scopes:
+  - org:read
+  - project:read
+  - event:read
+suggest:
+  keywords:
+  - sentry
+  - error
+  - trace

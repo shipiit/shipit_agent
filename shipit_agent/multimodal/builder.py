@@ -108,16 +108,18 @@ _IMAGE_MIME_BY_SUFFIX = {
 def image_block_from(source: str) -> dict[str, Any]:
     """An Anthropic-shape image block from whatever a caller has in hand.
 
-    Accepts, in order of detection: an ``http(s)`` URL (URL-source block —
-    adapters translate per provider), a local file path (read and base64d,
-    so it works on every provider), or a raw base64 string (assumed PNG
-    unless it carries a ``data:`` prefix naming the type).
+    Accepts, in order of detection: an ``http(s)`` or ``s3://`` URL
+    (URL-source block — adapters translate per provider, and providers such as
+    Bedrock Mantle fetch ``s3://`` themselves, so a large image need not be
+    base64d into every request), a local file path (read and base64d, so it
+    works on every provider), or a raw base64 string (assumed PNG unless it
+    carries a ``data:`` prefix naming the type).
     """
     import base64
     from pathlib import Path
 
     text = str(source).strip()
-    if text.startswith(("http://", "https://")):
+    if text.startswith(("http://", "https://", "s3://")):
         return {"type": "image", "source": {"type": "url", "url": text}}
     if text.startswith("data:"):
         header, _, data = text.partition(",")

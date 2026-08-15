@@ -1,0 +1,17 @@
+# notion — shipit connector manifest
+manifest_version: 1
+name: notion
+description: Search, read and write Notion pages and databases.
+category: productivity
+icon: 📝
+transport:
+  type: http
+  url: https://mcp.notion.com/mcp
+auth:
+  type: oauth
+  provider: notion
+suggest:
+  keywords:
+  - notion
+  - page
+  - doc

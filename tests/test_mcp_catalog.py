@@ -29,20 +29,28 @@ class TestConnect:
             connect_mcp("nope")
 
     def test_missing_env_var_is_caught_up_front(self, monkeypatch) -> None:
-        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-        with pytest.raises(ValueError, match="GITHUB_TOKEN"):
+        # gitlab is a stdio connector needing a PAT — a missing var is a clear
+        # up-front error, not a subprocess failure later.
+        monkeypatch.delenv("GITLAB_PERSONAL_ACCESS_TOKEN", raising=False)
+        with pytest.raises(ValueError, match="GITLAB_PERSONAL_ACCESS_TOKEN"):
+            connect_mcp("gitlab")
+
+    def test_hosted_oauth_requires_a_token(self) -> None:
+        # github is now a hosted OAuth connector — it must refuse to run
+        # without the user's token rather than call unauthenticated.
+        with pytest.raises(ValueError, match="OAuth"):
             connect_mcp("github")
 
     def test_env_kwarg_satisfies_requirement(self, monkeypatch) -> None:
-        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.delenv("GITLAB_PERSONAL_ACCESS_TOKEN", raising=False)
         # npx may not exist in CI — accept either success or the launcher error
         try:
-            server = connect_mcp("github", env={"GITHUB_TOKEN": "x"})
+            server = connect_mcp("gitlab", env={"GITLAB_PERSONAL_ACCESS_TOKEN": "x"})
         except RuntimeError as err:
             assert "PATH" in str(err)
         else:
             assert isinstance(server, RemoteMCPServer)
-            assert server.metadata["catalog"] == "github"
+            assert server.metadata["catalog"] == "gitlab"
 
     def test_args_are_appended(self) -> None:
         try:

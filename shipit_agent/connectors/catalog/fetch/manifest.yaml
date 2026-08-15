@@ -1,0 +1,16 @@
+# fetch — shipit connector manifest
+manifest_version: 1
+name: fetch
+description: Fetch a URL and return page content as markdown.
+category: data
+icon: 🌐
+transport:
+  type: stdio
+  command: uvx mcp-server-fetch
+auth:
+  type: none
+suggest:
+  keywords:
+  - fetch
+  - url
+  - scrape

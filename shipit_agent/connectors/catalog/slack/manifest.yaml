@@ -1,0 +1,23 @@
+# slack — shipit connector manifest
+manifest_version: 1
+name: slack
+description: Post and read Slack messages, channels and search.
+category: communication
+icon: 💬
+transport:
+  type: stdio
+  command: npx -y @modelcontextprotocol/server-slack
+auth:
+  type: api_key
+  env:
+  - name: SLACK_BOT_TOKEN
+    secret: true
+    required: true
+  - name: SLACK_TEAM_ID
+    secret: true
+    required: true
+suggest:
+  keywords:
+  - slack
+  - channel
+  - message

@@ -1,0 +1,23 @@
+# github — shipit connector manifest
+manifest_version: 1
+name: github
+description: Repos, issues, PRs, code search and reviews on GitHub.
+category: developer
+icon: 🐙
+transport:
+  type: http
+  url: https://api.githubcopilot.com/mcp/
+auth:
+  type: oauth
+  provider: github
+  scopes:
+  - repo
+  - read:org
+  - read:user
+suggest:
+  keywords:
+  - linear
+  - github
+  - pr
+  - issue
+  - repo

@@ -1,0 +1,22 @@
+# jira — shipit connector manifest
+manifest_version: 1
+name: jira
+description: Jira issues, JQL search, transitions and sprints.
+category: developer
+icon: 🟦
+transport:
+  type: http
+  url: https://mcp.atlassian.com/v1/sse
+auth:
+  type: oauth
+  provider: atlassian
+  scopes:
+  - read:jira-work
+  - write:jira-work
+  - offline_access
+suggest:
+  keywords:
+  - jira
+  - atlassian
+  - ticket
+  - sprint

@@ -1,0 +1,18 @@
+# todoist — shipit connector manifest
+manifest_version: 1
+name: todoist
+description: Todoist tasks, projects and labels.
+category: productivity
+icon: 🟥
+transport:
+  type: http
+  url: https://ai.todoist.net/mcp
+auth:
+  type: oauth
+  provider: todoist
+  scopes:
+  - data:read_write
+suggest:
+  keywords:
+  - todoist
+  - task

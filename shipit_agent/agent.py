@@ -996,15 +996,19 @@ class Agent:
         if blocks is None:
             blocks = [{"type": "text", "text": prompt_text}]
         base_block_count = len(blocks)
+        # Images FIRST, ahead of the prose. Several vision models — Gemma 4 on
+        # Bedrock among them — read an image best when it precedes the text that
+        # asks about it, so prepend rather than append.
+        if images:
+            from shipit_agent.multimodal.builder import image_block_from
+
+            image_blocks = [image_block_from(image) for image in images]
+            blocks = image_blocks + blocks
         if files:
             from shipit_agent.multimodal.builder import file_blocks_from
 
             for file in files:
                 blocks.extend(file_blocks_from(file))
-        if images:
-            from shipit_agent.multimodal.builder import image_block_from
-
-            blocks.extend(image_block_from(image) for image in images)
         nothing_attached = len(blocks) == base_block_count and all(
             isinstance(b, dict) and b.get("type") == "text" for b in blocks
         )

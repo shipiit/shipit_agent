@@ -1,0 +1,16 @@
+# clickup — shipit connector manifest
+manifest_version: 1
+name: clickup
+description: ClickUp tasks, lists, docs and spaces.
+category: productivity
+icon: ✅
+transport:
+  type: http
+  url: https://mcp.clickup.com/sse
+auth:
+  type: oauth
+  provider: clickup
+suggest:
+  keywords:
+  - clickup
+  - task

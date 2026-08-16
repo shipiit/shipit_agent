@@ -18,7 +18,7 @@ import os
 from typing import Any, Protocol, runtime_checkable
 
 #: Legacy-preference order, filtered by ``is_available()`` at resolve time.
-_PREFERENCE = ("openai", "fal", "openrouter")
+_PREFERENCE = ("openai", "litellm", "fal", "openrouter")
 
 
 @runtime_checkable
@@ -118,5 +118,45 @@ class OpenAIImageProvider:
             return resp.read()
 
 
-# Register the built-in backend at import.
+class LiteLLMImageProvider:
+    """Route image generation through LiteLLM — any provider it supports.
+
+    The universal backend: point ``SHIPIT_IMAGE_MODEL`` at a LiteLLM image model
+    (``vertex_ai/imagegeneration@006``, ``gemini/imagen-3.0-generate-002``,
+    ``dall-e-3``, ``bedrock/...``) and it routes there with that provider's
+    credentials. Opt-in — available only when ``SHIPIT_IMAGE_MODEL`` is set, so
+    it never shadows a keyed native backend.
+    """
+
+    name = "litellm"
+
+    def is_available(self) -> bool:
+        if not os.getenv("SHIPIT_IMAGE_MODEL"):
+            return False
+        try:
+            import litellm  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
+    def generate(self, prompt: str, *, size: str = "1024x1024", **opts: Any) -> bytes:
+        import litellm
+
+        model = str(opts.get("model") or os.getenv("SHIPIT_IMAGE_MODEL"))
+        result = litellm.image_generation(model=model, prompt=prompt, n=1)
+        item = result.data[0]
+        b64 = item.get("b64_json") if isinstance(item, dict) else getattr(item, "b64_json", None)
+        if b64:
+            return base64.b64decode(b64)
+        url = item.get("url") if isinstance(item, dict) else getattr(item, "url", None)
+        if not url:
+            raise RuntimeError("litellm image backend returned neither b64_json nor a url")
+        import urllib.request
+
+        with urllib.request.urlopen(url, timeout=60) as resp:  # nosec B310
+            return resp.read()
+
+
+# Register the built-in backends at import.
 register_image_provider(OpenAIImageProvider())
+register_image_provider(LiteLLMImageProvider())

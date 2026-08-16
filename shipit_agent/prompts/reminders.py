@@ -63,6 +63,55 @@ GROUNDING_REMINDER = (
 )
 
 
+#: When the model keeps restating the same plan across steps instead of acting.
+#: The observed failure (a benchmark): the model announced *"I will check the
+#: required evidence and classify the urgency…"* four separate times, each a
+#: model call, before doing the work — 3× the tokens of a terser loop for the
+#: same answer. This fires only when a near-identical narration has already been
+#: seen this turn, so a first, honest "here's my plan" is never discouraged.
+REANNOUNCE_DAMPER = (
+    "You have already stated this plan earlier this turn. Do not restate your "
+    "intent again — issue the next tool call now, or give your final answer. "
+    "Repeating the plan does not advance the task and costs a step."
+)
+
+
+def _normalize_narration(text: str) -> str:
+    return " ".join(str(text).lower().split())
+
+
+def is_reannouncing(
+    messages: list, *, threshold: float = 0.85, window: int = 3, min_len: int = 15
+) -> bool:
+    """Has the model just restated a plan it already narrated this turn?
+
+    Reads the assistant's own text messages (its narration) — no tool payloads,
+    no names. True when the most recent narration is near-identical to one of the
+    couple before it (normalized similarity ≥ ``threshold``). A short blurb
+    ("ok", "done") is ignored (``min_len``) so only real plan-restatement counts.
+    Stateless: it inspects the message list the step already carries.
+    """
+    import difflib
+
+    narrations = [
+        c.strip()
+        for m in messages
+        if getattr(m, "role", "") == "assistant"
+        and isinstance((c := getattr(m, "content", "")), str)
+        and c.strip()
+    ]
+    if len(narrations) < 2:
+        return False
+    recent = narrations[-window:]
+    last = _normalize_narration(recent[-1])
+    if len(last) < min_len:
+        return False
+    for prior in recent[:-1]:
+        if difflib.SequenceMatcher(None, last, _normalize_narration(prior)).ratio() >= threshold:
+            return True
+    return False
+
+
 def build_reminder(
     *,
     ran_tools: bool,

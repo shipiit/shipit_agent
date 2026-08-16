@@ -5,6 +5,24 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Re-announcement damping — the model stops restating the same plan**
+  (`runtime_core.py` `step_request`, `prompts/reminders.py`). The last piece of
+  the dithering story: a weak model kept announcing *"I will check the evidence
+  and classify the urgency…"* across steps instead of acting, each restatement
+  another model call (one benchmark: 3× the tokens for the same answer). When a
+  step's narration is near-identical to one the model already gave this turn,
+  a terse *"you already stated this plan — issue the next tool call or answer,
+  don't restate"* line is appended to the end-of-context reminder. Reads only the
+  assistant's own narration (no tool payloads), fires **only after** repetition
+  is observed (a first honest plan is never discouraged), and never on the last
+  step (which already forces the answer). Both loops, via the shared
+  `step_request`. With duplicate-call suppression (1.9.0) and blind-call repair
+  (1.9.0), this closes the three diagnosed causes of the ADK-vs-shipit token gap.
+
 ## [1.9.0] — 2026-08-16
 
 Media generation, a leaner loop, agent rules, and the groundwork for

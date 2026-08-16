@@ -5,6 +5,45 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] — 2026-08-16
+
+Human-in-the-loop, made first-class.
+
+### Added
+
+- **`@requires_confirmation` — first-class tool confirmation**
+  (`shipit_agent/tools/confirmation.py`). A tool declares for itself that it
+  needs a human "yes", with one decorator, wired into the existing permission
+  gate and approval queue:
+
+  ```python
+  @requires_confirmation("Deletes files permanently.", impact="irreversible")
+  class DeleteTool: ...
+
+  @requires_confirmation("Large transfer needs sign-off.",
+                         when=lambda a: a["amount"] >= 10_000)
+  def wire_transfer(amount, to): ...
+  ```
+
+  It goes past a plain yes/no: a **`when(arguments)` predicate** makes it
+  conditional (a cheap call runs free, only the dangerous one pauses); **impact
+  levels** (`default` / `destructive` / `irreversible`) let a UI colour the
+  approval card; it is a **per-tool floor** — `PermissionEngine.check` asks even
+  under a bypass/allow mode, and only a hard deny outranks it; and because the
+  answer flows through the existing approval machinery, a human can
+  **approve-with-edit**. A broken predicate fails safe (asks, never skips).
+
+### Fixed
+
+- **A denied tool is final — the model no longer retries it.** After a human
+  declined a tool, the result said only "was NOT run", which the model read as a
+  transient failure and retried — re-prompting the human on every loop. The
+  denied result now states the decision is final ("do NOT retry, rephrase, or
+  pursue the goal another way; silence is not consent"), so the run stops after
+  one denial. Applied to both the sync and async runtimes.
+
+---
+
 ## [1.8.0] — 2026-08-15
 
 The theme is a first-class, extensible platform: connections, providers,

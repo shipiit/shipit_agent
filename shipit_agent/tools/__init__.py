@@ -6,6 +6,12 @@ from .bash import BashJobTool, BashTool
 from .base import Tool, ToolContext, ToolOutput, ToolOutputChunk, ToolRunOutput
 from .formatting import clip_text
 from .code_execution import CodeExecutionTool
+from .confirmation import (
+    ToolConfirmation,
+    confirmation_spec,
+    needs_confirmation,
+    requires_confirmation,
+)
 from .confluence import ConfluenceTool
 from .custom_api import CustomAPITool
 from .dashboard_render import DashboardRenderTool

@@ -160,6 +160,24 @@ class PermissionEngine:
                 reason=f"'{tool_name}' is on the deny list.",
             )
 
+        # 1b. A tool decorated with @requires_confirmation is a per-tool floor:
+        # it asks for a human "yes" even under bypass/allow, because the tool
+        # itself demands it. Only a hard deny (above) outranks it. The spec may
+        # be conditional (a `when` predicate over the arguments), so a cheap
+        # call runs free and only the dangerous one pauses.
+        if tool is not None:
+            from shipit_agent.tools.confirmation import confirmation_spec
+
+            spec = confirmation_spec(tool)
+            if spec is not None and spec.applies(arguments):
+                asked = self._consult_callback(tool_name, arguments)
+                if asked is not None:
+                    return asked
+                return PermissionResult(
+                    PermissionDecision.ASK,
+                    reason=spec.reason(tool_name),
+                )
+
         # 2. Mode logic.
         if self.mode == "bypass":
             return PermissionResult(PermissionDecision.ALLOW, reason="bypass mode")

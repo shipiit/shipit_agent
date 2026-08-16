@@ -5,9 +5,29 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.1] — 2026-08-16
+## [Unreleased]
 
-Human-in-the-loop, made first-class.
+The loop stops dithering — no more re-running a read it already ran.
+
+### Fixed
+
+- **Duplicate read-only calls are suppressed, not re-executed**
+  (`runtime.py`, `async_runtime.py`). A weak model (e.g. gemini-flash) re-issues
+  a lookup it already ran, burning a step and tokens on a result it already has
+  — one benchmark spent **10 tool calls where 3 sufficed** (3× the tokens, ~5×
+  the latency of a terser loop). The runtime now skips an **exact repeat of a
+  READ-ONLY call** already run this turn: it does not re-execute, and returns a
+  terse note pointing the model at the result already in context. Scoped to
+  read-only by contract, so a deliberate re-run of a mutating tool (a poll, a
+  retry) is never suppressed, and a call with **different arguments** always
+  runs. The prior behaviour only *shrank* a repeated result's text; the tool
+  still ran — this removes the re-execution (and its latency and extra model
+  call) entirely. Applied identically to both the sync and async loops.
+
+  *Status:* the gate is unit-verified through the real agent loop (sync and
+  async); the end-to-end re-measurement of the 10-call workload on the live
+  model is still pending. The "10 vs 3" figure above is the original observed
+  problem, not a post-fix benchmark.
 
 ### Added
 

@@ -55,6 +55,11 @@ class RuntimeState:
     #: which is what lets the decision prompt stay a few hundred characters
     #: instead of carrying the conversation.
     last_observation: str = ""
+    #: ``(tool, arguments_key)`` of every READ-ONLY call already executed this
+    #: run. A weak model re-issues a read it already ran; the duplicate gate
+    #: uses this to skip the re-execution (not just shrink the output) and point
+    #: the model at the result it already has. Per-run, like seen_tool_outputs.
+    executed_readonly_calls: set = field(default_factory=set)
 
 
 # Keys in the runtime's shared_state that hold shared *service* objects (not
@@ -563,6 +568,9 @@ class AgentRuntime(RuntimeCore):
         Returns (None, error_message) for hallucinated tools and for calls
         blocked by the permission engine / a hook.
         """
+        # Defined up front so the recording line below can never NameError on an
+        # early-return path that skipped the duplicate gate.
+        signature: tuple[str, str] | None = None
         tool = registry.get(tool_call.name)
         if tool is None:
             error_output = (
@@ -611,6 +619,40 @@ class AgentRuntime(RuntimeCore):
                 metadata={
                     "tool_call_id": tool_call_record["id"],
                     "error": "missing_required_arguments",
+                },
+            )
+
+        # ── Duplicate-call gate ─────────────────────────────────────────────
+        # A weak model re-issues a read it already ran this turn — the
+        # dithering that made one benchmark run 10 tool calls where 3 sufficed
+        # (3× the tokens, 5× the latency). For a READ-ONLY tool whose exact
+        # (name, arguments) already executed this run, skip the re-execution
+        # entirely and point the model at the result it already has. Scoped to
+        # read-only so a deliberate re-run of a mutating tool (a poll, a retry)
+        # is never suppressed; the first identical read still runs in full.
+        signature = self.readonly_call_signature(tool, tool_call)
+        if signature is not None and signature in state.executed_readonly_calls:
+            self.emit(
+                state,
+                "tool_skipped_duplicate",
+                f"Skipped repeat call: {tool_call.name}",
+                tool=tool_call.name,
+                iteration=iteration,
+            )
+            note = (
+                f"[Already ran: {tool_call.name} was called with these exact "
+                f"arguments earlier in this turn. Its result is already above "
+                f"in this conversation — reuse it. This call was NOT run again. "
+                f"Do not repeat it; answer from the result you have, or call "
+                f"{tool_call.name} with different arguments.]"
+            )
+            return None, Message(
+                role="tool",
+                name=tool_call.name,
+                content=note,
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "duplicate_suppressed": True,
                 },
             )
 
@@ -815,6 +857,10 @@ class AgentRuntime(RuntimeCore):
                 "tool_call_id": tool_call_record["id"],
             },
         )
+        # Record a successful read-only call so an identical repeat this run is
+        # skipped by the duplicate gate above instead of re-executed.
+        if signature is not None:
+            state.executed_readonly_calls.add(signature)
         self.emit(
             state,
             "tool_completed",

@@ -278,6 +278,9 @@ class AsyncAgentRuntime(RuntimeCore):
         iteration: int,
         model_output_limit: int | None = None,
     ) -> tuple[ToolResult | None, Message]:
+        # Defined up front so the recording line below can never NameError on an
+        # early-return path that skipped the duplicate gate.
+        signature: tuple[str, str] | None = None
         tool = registry.get(tool_call.name)
         if tool is None:
             error_output = (
@@ -323,6 +326,35 @@ class AsyncAgentRuntime(RuntimeCore):
                 metadata={
                     "tool_call_id": tool_call_record["id"],
                     "error": "missing_required_arguments",
+                },
+            )
+
+        # ── Duplicate-call gate (see the sync runtime for the rationale) ────
+        # Skip an exact repeat of a READ-ONLY call already run this turn — the
+        # dithering fix. Mutating tools are never suppressed.
+        signature = self.readonly_call_signature(tool, tool_call)
+        if signature is not None and signature in state.executed_readonly_calls:
+            self.emit(
+                state,
+                "tool_skipped_duplicate",
+                f"Skipped repeat call: {tool_call.name}",
+                tool=tool_call.name,
+                iteration=iteration,
+            )
+            note = (
+                f"[Already ran: {tool_call.name} was called with these exact "
+                f"arguments earlier in this turn. Its result is already above "
+                f"in this conversation — reuse it. This call was NOT run again. "
+                f"Do not repeat it; answer from the result you have, or call "
+                f"{tool_call.name} with different arguments.]"
+            )
+            return None, Message(
+                role="tool",
+                name=tool_call.name,
+                content=note,
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "duplicate_suppressed": True,
                 },
             )
 
@@ -513,6 +545,10 @@ class AsyncAgentRuntime(RuntimeCore):
                 "tool_call_id": tool_call_record["id"],
             },
         )
+        # Record a successful read-only call so an identical repeat this run is
+        # skipped by the duplicate gate above instead of re-executed.
+        if signature is not None:
+            state.executed_readonly_calls.add(signature)
         self.emit(
             state,
             "tool_completed",

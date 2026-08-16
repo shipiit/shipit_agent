@@ -414,6 +414,25 @@ class RuntimeCore:
             flags.append(bool(contract_for(name, tool).read_only))
         return flags
 
+    @staticmethod
+    def readonly_call_signature(
+        tool: Any, tool_call: Any
+    ) -> tuple[str, str] | None:
+        """A dedup key for a READ-ONLY call, or None if the tool may mutate.
+
+        Returns ``(name, arguments_key)`` only for a tool whose contract is
+        read-only — the one case where skipping an exact repeat is always safe
+        (no side effect, the result is already in context). Anything that
+        writes, sends, or mutates returns None and is never suppressed. Shared
+        by both loops so the duplicate-call gate behaves identically.
+        """
+        from shipit_agent.tools.contracts import contract_for
+
+        name = str(getattr(tool_call, "name", "") or "")
+        if not contract_for(name, tool).read_only:
+            return None
+        return (name, _arguments_key(getattr(tool_call, "arguments", None)))
+
     # ── vision: tool results that carry an image ─────────────────────────
 
     #: How many image messages a request keeps. Screenshots age fast — the

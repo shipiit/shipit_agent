@@ -5,6 +5,18 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.4] — 2026-08-16
+
+### Added
+
+- **Text-to-speech: bring-your-own-key.** `TextToSpeechTool(provider_keys={...})`
+  lets a host pass an org's own OpenAI/Gemini/ElevenLabs key **at synthesis time**
+  — the backend uses it directly and never reads the shared process env, so a
+  multi-tenant server keeps `os.environ` clean per tenant. The tool's
+  availability gate now also counts a host-supplied key (so a keyed provider is
+  offered even when nothing is in the env), and each backend prefers an explicit
+  `api_key` over its env var. Edge stays free with no key.
+
 ## [1.9.3] — 2026-08-16
 
 The agent can't declare a coding task done on failing tests.

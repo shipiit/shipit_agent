@@ -39,15 +39,13 @@ class TextToSpeechTool:
     )
     prompt_instructions = TEXT_TO_SPEECH_PROMPT
 
-    #: Availability gate — hidden when no backend can run.
-    check_fn = staticmethod(_tts_backends_available)
-
     def __init__(
         self,
         *,
         output_dir: str | Path | None = None,
         default_provider: str | None = None,
         default_voice: str | None = None,
+        provider_keys: dict[str, str] | None = None,
     ) -> None:
         self.output_dir = (
             Path(output_dir).expanduser()
@@ -62,6 +60,16 @@ class TextToSpeechTool:
 
         self.default_provider = default_provider or os.getenv("SHIPIT_TTS_PROVIDER") or None
         self.default_voice = default_voice or os.getenv("SHIPIT_TTS_VOICE") or None
+        # An org's own provider keys, passed in by the host — used at synthesis
+        # time so a tenant's key powers its voice WITHOUT ever touching the
+        # global process env (which a shared server keeps clean per-tenant).
+        self.provider_keys = {k: v for k, v in (provider_keys or {}).items() if v}
+
+    #: Availability gate — hidden when no backend can run. A method (not the
+    #: module staticmethod) so it also counts a host-supplied provider key that
+    #: is deliberately absent from ``os.environ``.
+    def check_fn(self) -> bool:
+        return bool(available_providers()) or bool(self.provider_keys)
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -108,7 +116,11 @@ class TextToSpeechTool:
 
         try:
             audio, ext = provider.synthesize(
-                text, voice=kwargs.get("voice") or self.default_voice
+                text,
+                voice=kwargs.get("voice") or self.default_voice,
+                # The org's own key for this backend, if the host supplied one —
+                # never read from the shared process env.
+                api_key=self.provider_keys.get(provider.name),
             )
         except Exception as err:  # noqa: BLE001 — surface any backend failure cleanly
             return ToolOutput(

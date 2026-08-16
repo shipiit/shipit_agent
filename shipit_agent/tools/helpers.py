@@ -54,6 +54,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "download_file",
         "pdf",
         "render_dashboard",
+        "text_to_speech",
         "vision",
     },
     "data": {"sql"},

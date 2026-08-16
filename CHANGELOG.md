@@ -5,6 +5,35 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The agent can speak.
+
+### Added
+
+- **`text_to_speech` — the agent turns text into an audio file**
+  (`shipit_agent/tools/text_to_speech/`). Same small, pluggable pattern the
+  provider and connector catalogs use: a backend registry where each backend
+  declares a cheap `is_available()`, and the tool is **availability-gated** —
+  hidden from the schema unless a backend can actually run, so an agent is
+  never offered speech it can't deliver.
+
+  ```python
+  from shipit_agent.tools import TextToSpeechTool
+  # returns a saved path + a `MEDIA:<path>` tag a chat surface plays back
+  ```
+
+  Three backends ship: **Edge** (Microsoft neural voices — *free, no key*,
+  `pip install 'shipit-agent[tts]'`), **OpenAI** (`gpt-4o-mini-tts`,
+  `OPENAI_API_KEY`), and **ElevenLabs** (`ELEVENLABS_API_KEY`). Selection is
+  free-first: an explicit `provider=` wins, else the one available backend,
+  else a preference walk filtered by availability. Register your own with
+  `register_tts_provider(...)` — the same shape a plugin uses.
+
+- **Notebook** — `notebooks/text_to_speech/` runs the tool directly (with
+  inline audio playback), lists voices, and drives a real agent that decides
+  to speak. Edge is free, so it runs end-to-end with no keys.
+
 ## [1.8.1] — 2026-08-16
 
 Human-in-the-loop, made first-class.

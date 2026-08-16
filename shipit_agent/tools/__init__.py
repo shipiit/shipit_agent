@@ -51,6 +51,7 @@ from .slack import SlackTool
 from .sql import SQLTool
 from .stripe import StripeTool
 from .sub_agent import SubAgentTool
+from .text_to_speech import TextToSpeechTool
 from .thought_decomposition import ThoughtDecompositionTool
 from .todo import TodoTool
 from .tool_search import ToolSearchTool
@@ -125,6 +126,7 @@ __all__ = [
     "StripeTool",
     "SubAgentTool",
     "TavilySearchProvider",
+    "TextToSpeechTool",
     "ThoughtDecompositionTool",
     "TodoTool",
     "Tool",

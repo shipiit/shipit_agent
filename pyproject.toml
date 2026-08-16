@@ -55,6 +55,11 @@ connectors = ["pyyaml>=6.0"]
 playwright = ["playwright>=1.45.0"]
 pdf = ["pypdf>=4.0"]
 
+# --- Media generation --------------------------------------------------------
+# text_to_speech backends. Edge is free and needs no key; the tool is hidden
+# unless at least one backend is installed/keyed (OpenAI, ElevenLabs use keys).
+tts = ["edge-tts>=6.1.0"]
+
 # --- SQL tool ----------------------------------------------------------------
 # No database drivers — install what you need (psycopg2-binary, pymysql,
 # snowflake-sqlalchemy, google-cloud-bigquery + sqlalchemy-bigquery, etc).

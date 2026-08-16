@@ -200,6 +200,8 @@ VERBS: dict[str, VerbSpec] = {
                                "image", args=("prompt",)),
     "text_to_speech": VerbSpec("Spoke", "Speaking", CREATE, "audio",
                                args=("text",)),
+    "video_generate": VerbSpec("Generated", "Generating", IMAGE, "video",
+                               args=("prompt",)),
 
     # ── reasoning helpers ────────────────────────────────────────────────
     "plan_task": VerbSpec("Planned", "Planning", THINK, "plan",

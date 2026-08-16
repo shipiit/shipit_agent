@@ -57,6 +57,7 @@ from .thought_decomposition import ThoughtDecompositionTool
 from .todo import TodoTool
 from .tool_search import ToolSearchTool
 from .verifier import VerifierTool
+from .video_generate import VideoGenerateTool
 from .vision import VisionTool
 from .webhook_payload import WebhookPayloadTool
 from .workspace_files import WorkspaceFilesTool
@@ -138,6 +139,7 @@ __all__ = [
     "ToolRunOutput",
     "clip_text",
     "VerifierTool",
+    "VideoGenerateTool",
     "VisionTool",
     "WebSearchTool",
     "WebhookPayloadTool",

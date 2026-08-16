@@ -94,6 +94,7 @@ from shipit_agent.tools import (
     SubAgentTool,
     TextToSpeechTool,
     TodoTool,
+    VideoGenerateTool,
     Tool,
     ImageGenerateTool,
     ToolSearchTool,
@@ -196,6 +197,7 @@ def get_builtin_tool_map(
         # ── media generation (gated: hidden unless a backend is available) ──
         ImageGenerateTool(output_dir=f"{workspace_root}/images"),
         TextToSpeechTool(output_dir=f"{workspace_root}/audio"),
+        VideoGenerateTool(output_dir=f"{workspace_root}/videos"),
         # ── data & databases ──────────────────────────────────────
         SQLTool(),
         # ── connectors (SaaS integrations) ────────────────────────

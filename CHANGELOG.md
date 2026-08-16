@@ -5,9 +5,28 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.1] — 2026-08-16
+## [Unreleased]
 
-Human-in-the-loop, made first-class.
+The groundwork for evidence-gated coding: a verification ledger.
+
+### Added
+
+- **Verification ledger** (`shipit_agent/verify/`). The spine of an autonomous
+  coding agent that doesn't ship broken code: an edit marks the workspace
+  **dirty**; only a matching test/build that **exits 0** marks it **clean**. A
+  tiny SQLite ledger (`VerificationLedger`) records edits and verify runs per
+  `(session, root)` and answers `passed` / `unverified` / `not_applicable`;
+  `detect_verify_commands()` sniffs a project's test command once (pytest / npm
+  test / make test / a run-tests script); and `gate.py` supplies the pure
+  decisions the loop needs — `is_verifiable_path` (a README edit never demands a
+  test), `classify_command` (does a shell run count as verification evidence?),
+  and `build_verify_nudge` (the "you edited code but have no passing tests — run
+  X, read the failure, fix it" message). 23 tests.
+
+  This ships the **library**, standalone and fully tested. Wiring it into the
+  loop — mark on edit, record on a verify run, and a verify-on-stop guard that
+  refuses to finish edited-but-unverified code — is the immediate follow-up
+  (it's a core-loop change, so it lands as its own reviewed PR).
 
 ### Added
 

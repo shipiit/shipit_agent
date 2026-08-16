@@ -5,88 +5,62 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.9.0] — 2026-08-16
 
-Attaching many MCP connectors stops costing what it used to.
-
-### Added
-
-- **MCP schema cache + lazy register** (`shipit_agent/mcp_schema_cache.py`,
-  opt-in via `connect(..., cache=True)`). Connecting to a stdio MCP server
-  spawns a subprocess, handshakes, and calls `tools/list` — paid up front for
-  every attached connector even if the model never touches it. With `cache=True`
-  the resolved tool schema is persisted to disk (keyed by a fingerprint of the
-  server's config) and, on a later run, the tools are **rebuilt from that cache
-  without spawning the process**; the subprocess launches only when a tool is
-  actually called. An unused server then costs nothing, turn after turn.
-
-  Correctness details that matter: the first `tools/call` triggers the
-  `initialize` handshake via a new `ensure_ready` seam (and re-handshakes after
-  a transport respawn); a failed handshake surfaces as a tool result and closes
-  the half-spawned process instead of crashing the run; the cache is bypassed
-  when a callable `tool_filter` is set (it can't be fingerprinted); env values
-  feed the fingerprint only as a hash and are never written to disk; writes are
-  atomic; and a missing / stale (TTL, default 24 h) / corrupt cache silently
-  falls back to a live discovery. Off by default — it moves connect-time errors
-  to first-call time, so a caller opts in.
-
-The loop stops dithering — no more re-running a read it already ran.
-
-### Fixed
-
-- **Duplicate read-only calls are suppressed, not re-executed**
-  (`runtime.py`, `async_runtime.py`). A weak model (e.g. gemini-flash) re-issues
-  a lookup it already ran, burning a step and tokens on a result it already has
-  — one benchmark spent **10 tool calls where 3 sufficed** (3× the tokens, ~5×
-  the latency of a terser loop). The runtime now skips an **exact repeat of a
-  READ-ONLY call** already run this turn: it does not re-execute, and returns a
-  terse note pointing the model at the result already in context. Scoped to
-  read-only by contract, so a deliberate re-run of a mutating tool (a poll, a
-  retry) is never suppressed, and a call with **different arguments** always
-  runs. The prior behaviour only *shrank* a repeated result's text; the tool
-  still ran — this removes the re-execution (and its latency and extra model
-  call) entirely. Applied identically to both the sync and async loops.
-
-  *Status:* the gate is unit-verified through the real agent loop (sync and
-  async); the end-to-end re-measurement of the 10-call workload on the live
-  model is still pending. The "10 vs 3" figure above is the original observed
-  problem, not a post-fix benchmark.
-
-Blind tool calls repair themselves.
-
-### Fixed
-
-- **A rejected call gets the tool's full signature back** (`runtime_core.py`).
-  With `deferred_tools` on, a model never sees a tool's schema, so a weak model
-  (gemini-flash) guesses argument names — `items` for `provided_items` — and the
-  guess bounces at the argument gate. The gate now appends the compact callable
-  **signature** (`classify_specialty(provided_items: array, evidence_keys?:
-  object)`) to the rejection, so the retry is correct instead of another guess.
-  It's the same one-line signature the deferred-tool index prints — exactly the
-  contract the model would have seen had the schema not been withheld. Turns a
-  dead bounce into a self-correcting one, which is where a weak model on
-  deferred tools otherwise burns its iterations.
-
-The groundwork for evidence-gated coding: a verification ledger.
+Media generation, a leaner loop, agent rules, and the groundwork for
+evidence-gated coding. Nine features, each its own tested change.
 
 ### Added
 
-- **Verification ledger** (`shipit_agent/verify/`). The spine of an autonomous
-  coding agent that doesn't ship broken code: an edit marks the workspace
-  **dirty**; only a matching test/build that **exits 0** marks it **clean**. A
-  tiny SQLite ledger (`VerificationLedger`) records edits and verify runs per
-  `(session, root)` and answers `passed` / `unverified` / `not_applicable`;
-  `detect_verify_commands()` sniffs a project's test command once (pytest / npm
-  test / make test / a run-tests script); and `gate.py` supplies the pure
-  decisions the loop needs — `is_verifiable_path` (a README edit never demands a
-  test), `classify_command` (does a shell run count as verification evidence?),
-  and `build_verify_nudge` (the "you edited code but have no passing tests — run
-  X, read the failure, fix it" message). 23 tests.
+- **Media generation — the agent can make images, speak, and film.** Three new
+  tools on one pluggable, availability-gated registry pattern (each backend
+  declares a cheap `is_available()`; a tool is hidden unless a backend can run):
+  - **`image_generate`** — OpenAI (`gpt-image-1`/`dall-e-3`) + LiteLLM long-tail;
+    returned inline through the vision bridge. Extra: `[openai]`/`[litellm]`.
+  - **`text_to_speech`** — Edge (free, no key) / OpenAI / ElevenLabs; returns a
+    saved path + a `MEDIA:<path>` tag. Extra: `[tts]`.
+  - **`video_generate`** — Fal / Replicate; blocks (submit→poll→download) and
+    returns an MP4 path + `MEDIA:` tag. Extra: `[video]`.
+  - **Model validation** on image + video: a permissive denylist rejects a
+    clearly-wrong chat/text model (`gpt-4o`, `claude-*`) before the API call,
+    while any plausible generation model (incl. new ones) passes.
 
-  This ships the **library**, standalone and fully tested. Wiring it into the
-  loop — mark on edit, record on a verify run, and a verify-on-stop guard that
-  refuses to finish edited-but-unverified code — is the immediate follow-up
-  (it's a core-loop change, so it lands as its own reviewed PR).
+- **Advanced file reading** (`shipit_agent/tools/file_extract/`). `read_file`
+  now extracts office/web documents to clean Markdown — DOCX, XLSX (one table
+  per sheet), PPTX (one section per slide), HTML, CSV/TSV, PDF — instead of
+  returning binary soup. Availability-gated per format; `[files]` extra.
+
+- **Agent rules** (`shipit_agent/rules/`). Durable policy at the agent *and*
+  tool level — `Agent(rules=[...])`, `.shipit/rules/*.md`, and a tool's own
+  `rules` attribute — scoped by path (`paths=["tests/**"]`) or tool
+  (`tools=["bash"]`), priority-ordered. The house-style layer that complements
+  skills' capability.
+
+- **MCP schema cache + lazy register** (`connect(..., cache=True)`). A warm
+  start rebuilds a connector's tools from an on-disk cache **without spawning
+  the process**; the subprocess launches only when a tool is first called, so an
+  unused connector costs nothing. Config-fingerprinted, atomic writes, TTL, and
+  a first-call `ensure_ready` handshake seam.
+
+- **Verification ledger** (`shipit_agent/verify/`) — the groundwork for
+  evidence-gated coding. A tiny SQLite ledger where an edit marks the workspace
+  dirty and only a matching test/build (exit 0) marks it clean
+  (`passed`/`unverified`/`not_applicable`), `detect_verify_commands()` project
+  sniffing, and the gate helpers. Ships the standalone library; the verify-on-
+  stop loop guard follows as its own PR.
+
+### Fixed
+
+- **The loop stops dithering — duplicate read-only calls are suppressed, not
+  re-executed** (`runtime.py`, `async_runtime.py`). A weak model that re-issues
+  a read it already ran this turn now gets a terse "reuse the result" note
+  instead of a re-run (one benchmark: 10 tool calls where 3 sufficed). Scoped to
+  read-only by contract; different arguments always run; both loops.
+
+- **Blind-call repair — a rejected call gets the tool's full signature back**
+  (`runtime_core.py`). Under `deferred_tools`, a model that never saw a tool's
+  schema and guessed a wrong argument name now gets the compact callable
+  signature in the rejection, turning a dead bounce into a self-correcting retry.
 
 ## [1.8.1] — 2026-08-16
 

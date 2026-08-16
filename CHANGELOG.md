@@ -5,6 +5,63 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — 2026-08-16
+
+Media generation, a leaner loop, agent rules, and the groundwork for
+evidence-gated coding. Nine features, each its own tested change.
+
+### Added
+
+- **Media generation — the agent can make images, speak, and film.** Three new
+  tools on one pluggable, availability-gated registry pattern (each backend
+  declares a cheap `is_available()`; a tool is hidden unless a backend can run):
+  - **`image_generate`** — OpenAI (`gpt-image-1`/`dall-e-3`) + LiteLLM long-tail;
+    returned inline through the vision bridge. Extra: `[openai]`/`[litellm]`.
+  - **`text_to_speech`** — Edge (free, no key) / OpenAI / ElevenLabs; returns a
+    saved path + a `MEDIA:<path>` tag. Extra: `[tts]`.
+  - **`video_generate`** — Fal / Replicate; blocks (submit→poll→download) and
+    returns an MP4 path + `MEDIA:` tag. Extra: `[video]`.
+  - **Model validation** on image + video: a permissive denylist rejects a
+    clearly-wrong chat/text model (`gpt-4o`, `claude-*`) before the API call,
+    while any plausible generation model (incl. new ones) passes.
+
+- **Advanced file reading** (`shipit_agent/tools/file_extract/`). `read_file`
+  now extracts office/web documents to clean Markdown — DOCX, XLSX (one table
+  per sheet), PPTX (one section per slide), HTML, CSV/TSV, PDF — instead of
+  returning binary soup. Availability-gated per format; `[files]` extra.
+
+- **Agent rules** (`shipit_agent/rules/`). Durable policy at the agent *and*
+  tool level — `Agent(rules=[...])`, `.shipit/rules/*.md`, and a tool's own
+  `rules` attribute — scoped by path (`paths=["tests/**"]`) or tool
+  (`tools=["bash"]`), priority-ordered. The house-style layer that complements
+  skills' capability.
+
+- **MCP schema cache + lazy register** (`connect(..., cache=True)`). A warm
+  start rebuilds a connector's tools from an on-disk cache **without spawning
+  the process**; the subprocess launches only when a tool is first called, so an
+  unused connector costs nothing. Config-fingerprinted, atomic writes, TTL, and
+  a first-call `ensure_ready` handshake seam.
+
+- **Verification ledger** (`shipit_agent/verify/`) — the groundwork for
+  evidence-gated coding. A tiny SQLite ledger where an edit marks the workspace
+  dirty and only a matching test/build (exit 0) marks it clean
+  (`passed`/`unverified`/`not_applicable`), `detect_verify_commands()` project
+  sniffing, and the gate helpers. Ships the standalone library; the verify-on-
+  stop loop guard follows as its own PR.
+
+### Fixed
+
+- **The loop stops dithering — duplicate read-only calls are suppressed, not
+  re-executed** (`runtime.py`, `async_runtime.py`). A weak model that re-issues
+  a read it already ran this turn now gets a terse "reuse the result" note
+  instead of a re-run (one benchmark: 10 tool calls where 3 sufficed). Scoped to
+  read-only by contract; different arguments always run; both loops.
+
+- **Blind-call repair — a rejected call gets the tool's full signature back**
+  (`runtime_core.py`). Under `deferred_tools`, a model that never saw a tool's
+  schema and guessed a wrong argument name now gets the compact callable
+  signature in the rejection, turning a dead bounce into a self-correcting retry.
+
 ## [1.8.1] — 2026-08-16
 
 Human-in-the-loop, made first-class.

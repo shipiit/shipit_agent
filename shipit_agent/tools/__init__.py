@@ -13,6 +13,7 @@ from .confirmation import (
     requires_confirmation,
 )
 from .confluence import ConfluenceTool
+from .image_generate import ImageGenerateTool
 from .custom_api import CustomAPITool
 from .dashboard_render import DashboardRenderTool
 from .decision_matrix import DecisionMatrixTool
@@ -51,10 +52,12 @@ from .slack import SlackTool
 from .sql import SQLTool
 from .stripe import StripeTool
 from .sub_agent import SubAgentTool
+from .text_to_speech import TextToSpeechTool
 from .thought_decomposition import ThoughtDecompositionTool
 from .todo import TodoTool
 from .tool_search import ToolSearchTool
 from .verifier import VerifierTool
+from .video_generate import VideoGenerateTool
 from .vision import VisionTool
 from .webhook_payload import WebhookPayloadTool
 from .workspace_files import WorkspaceFilesTool
@@ -125,6 +128,7 @@ __all__ = [
     "StripeTool",
     "SubAgentTool",
     "TavilySearchProvider",
+    "TextToSpeechTool",
     "ThoughtDecompositionTool",
     "TodoTool",
     "Tool",
@@ -135,6 +139,7 @@ __all__ = [
     "ToolRunOutput",
     "clip_text",
     "VerifierTool",
+    "VideoGenerateTool",
     "VisionTool",
     "WebSearchTool",
     "WebhookPayloadTool",

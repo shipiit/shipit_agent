@@ -330,13 +330,36 @@ class RuntimeCore:
         if not absent:
             return None
         names = ", ".join(f"'{name}'" for name in absent)
+        # Blind-call repair: a model running with deferred_tools never saw this
+        # tool's schema, so it guesses argument names (``items`` for
+        # ``provided_items``) and the guess bounces here. Handing back the full
+        # signature — every parameter, its type, which are required — turns a
+        # dead retry into a correct one. Weak models (gemini-flash) especially
+        # cannot recover from a name-only bounce without it.
+        signature = self._signature_hint(tool)
+        signature_clause = f" Signature: {signature}." if signature else ""
         return (
-            f"Error: {getattr(tool, 'name', 'tool')} was called with no "
+            f"Error: {getattr(tool, 'name', 'tool')} was called with no usable "
             f"arguments. It was not run. Call it again and pass {names} — a "
-            f"value taken from the user's question, not an empty string. "
-            f"With nothing to go on this tool returns everything it has, "
-            f"which is not what was asked for."
+            f"value taken from the user's question, not an empty string."
+            f"{signature_clause} With nothing to go on this tool returns "
+            f"everything it has, which is not what was asked for."
         )
+
+    @staticmethod
+    def _signature_hint(tool: Any) -> str:
+        """A one-line callable signature for ``tool``, or ``""`` if unavailable.
+
+        The compact form (``name(required: type, optional?: type)``) is the same
+        one the deferred-tool index prints, so a blind call gets exactly the
+        contract it would have seen had the schema not been withheld.
+        """
+        from shipit_agent.deferral.core import signature_line
+
+        try:
+            return signature_line(tool.schema())
+        except Exception:  # noqa: BLE001 — a hint that can't render is just absent
+            return ""
 
     # ── what one step sends ──────────────────────────────────────────────
 
@@ -413,6 +436,25 @@ class RuntimeCore:
             tool = registry.get(name) if registry is not None else None
             flags.append(bool(contract_for(name, tool).read_only))
         return flags
+
+    @staticmethod
+    def readonly_call_signature(
+        tool: Any, tool_call: Any
+    ) -> tuple[str, str] | None:
+        """A dedup key for a READ-ONLY call, or None if the tool may mutate.
+
+        Returns ``(name, arguments_key)`` only for a tool whose contract is
+        read-only — the one case where skipping an exact repeat is always safe
+        (no side effect, the result is already in context). Anything that
+        writes, sends, or mutates returns None and is never suppressed. Shared
+        by both loops so the duplicate-call gate behaves identically.
+        """
+        from shipit_agent.tools.contracts import contract_for
+
+        name = str(getattr(tool_call, "name", "") or "")
+        if not contract_for(name, tool).read_only:
+            return None
+        return (name, _arguments_key(getattr(tool_call, "arguments", None)))
 
     # ── vision: tool results that carry an image ─────────────────────────
 

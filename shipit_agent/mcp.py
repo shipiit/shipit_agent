@@ -120,6 +120,11 @@ class MCPRemoteTool:
     tool_meta_resolver: Callable[
         [ToolContext, str, dict[str, Any]], dict[str, Any] | None
     ] | None = None
+    #: Called once before the first `tools/call` to guarantee the server's
+    #: `initialize` handshake has run — the seam that lets a tool be registered
+    #: from a schema cache without spawning the process, and that re-handshakes
+    #: after a transport respawn. Idempotent; ``None`` means "already ready".
+    ensure_ready: Callable[[], None] | None = None
     prompt: str = "Use this MCP tool when the remote server provides the best capability for the task."
     prompt_instructions: str = (
         "Remote MCP capability discovered dynamically from the attached server."
@@ -150,6 +155,11 @@ class MCPRemoteTool:
             if call_metadata:
                 call_params["_meta"] = dict(call_metadata)
         try:
+            # For a cache-registered (lazy) server this is where the process
+            # actually spawns and handshakes; kept inside the try so a dead
+            # server surfaces as a tool result, not a crashed run.
+            if self.ensure_ready is not None:
+                self.ensure_ready()
             result = self.transport.request(
                 "tools/call",
                 call_params,
@@ -586,9 +596,25 @@ class RemoteMCPServer(MCPServer):
     server_info: dict[str, Any] = field(default_factory=dict)
     #: The server's own usage guidance from the `initialize` handshake.
     instructions: str = ""
+    #: Opt-in warm start: persist the tool schema to disk and, on a later run,
+    #: rebuild the tools from that cache without spawning the process until a
+    #: tool is actually called. Off by default — it moves connect-time errors to
+    #: first-call time, so a caller asks for it explicitly.
+    #:
+    #: Trade-off worth knowing: within one ``cache_ttl`` window a tool removed
+    #: server-side stays offered from the cache; calling it returns a normal MCP
+    #: error (handled, not a crash), and the next cold discovery after the TTL
+    #: drops it. Shorten ``cache_ttl`` if a server's toolset changes often.
+    cache: bool = False
+    #: Warm-start freshness window (seconds). A cache older than this is a miss.
+    cache_ttl: float = 24 * 60 * 60
     _discovered: bool = False
     _initialized: bool = False
     _handshook_generation: int = 0
+    #: True when tools were built from the cache and the process has not been
+    #: spawned yet — the flag that keeps every-turn re-discovery from eagerly
+    #: initializing before the first real tool call.
+    _lazy_pending: bool = False
 
     def initialize(self) -> None:
         if self.transport is None:
@@ -733,8 +759,87 @@ class RemoteMCPServer(MCPServer):
             metadata={"server": self.name},
         )
 
+    def _ensure_ready(self) -> None:
+        """Run the handshake before the first cached tool call; clean up on fail.
+
+        Passed to every :class:`MCPRemoteTool` as its ``ensure_ready``. On a
+        cache-warm server this is where the process finally spawns. If it fails
+        we close the transport (matching the live-discovery path) so a
+        half-spawned subprocess never leaks, then re-raise for ``run`` to surface.
+        """
+        try:
+            self.initialize()
+        except Exception:
+            self.close()
+            raise
+        self._lazy_pending = False
+
+    def _cache_fingerprint(self) -> str:
+        # Computed *before* initialize() so protocol negotiation can't shift the
+        # key between the load (cold) and save (post-handshake) within a run.
+        from shipit_agent import mcp_schema_cache
+
+        return mcp_schema_cache.fingerprint(
+            name=self.name,
+            identity=mcp_schema_cache.transport_identity(self.transport),
+            protocol_version=self.protocol_version,
+            allowed=self.allowed_tools,
+            blocked=self.blocked_tools,
+            include_server_in_tool_names=self.include_server_in_tool_names,
+            env=getattr(self.transport, "env", None),
+        )
+
+    def _descriptor(self, item: dict[str, Any], exposed_name: str, remote_name: str) -> dict[str, Any]:
+        """A resolved, JSON-serialisable tool descriptor — the cache unit."""
+        return {
+            "name": exposed_name,
+            "remote_name": remote_name,
+            "description": str(item.get("description", "")),
+            "input_schema": dict(
+                item.get("inputSchema")
+                or {"type": "object", "properties": {}, "required": []}
+            ),
+            "output_schema": dict(item.get("outputSchema") or {}),
+            "title": str(item.get("title", "")),
+            "annotations": dict(item.get("annotations") or {}),
+            "execution": dict(item.get("execution") or {}),
+        }
+
+    def _tool_from_descriptor(self, descriptor: dict[str, Any]) -> MCPRemoteTool:
+        """Build a live tool from a descriptor — the one place both the live and
+        the cache paths construct an :class:`MCPRemoteTool`, so they can't drift."""
+        return MCPRemoteTool(
+            server_name=self.name,
+            transport=self.transport,
+            name=str(descriptor["name"]),
+            remote_name=str(descriptor.get("remote_name", "")),
+            description=str(descriptor.get("description", "")),
+            input_schema=dict(
+                descriptor.get("input_schema")
+                or {"type": "object", "properties": {}, "required": []}
+            ),
+            output_schema=dict(descriptor.get("output_schema") or {}),
+            title=str(descriptor.get("title", "")),
+            annotations=dict(descriptor.get("annotations") or {}),
+            metadata={
+                "server": self.name,
+                "remote_name": str(descriptor.get("remote_name", "")),
+                "title": str(descriptor.get("title", "")),
+                "annotations": dict(descriptor.get("annotations") or {}),
+                "execution": dict(descriptor.get("execution") or {}),
+            },
+            tool_meta_resolver=self.tool_meta_resolver,
+            ensure_ready=self._ensure_ready,
+        )
+
     def discover_tools(self) -> list[MCPTool | MCPRemoteTool]:
         if self._discovered:
+            if self._lazy_pending:
+                # Built from cache, process not yet spawned. Every-turn
+                # re-discovery must NOT initialize here — that would defeat the
+                # laziness. Return the cached tools with zero transport traffic;
+                # the first tool call spawns and handshakes via ensure_ready.
+                return list(self.tools)
             # A prior agent turn may have closed the transport. Persistent
             # transports can reopen themselves, but the new MCP session must
             # complete the protocol handshake before cached tools are reused.
@@ -742,10 +847,27 @@ class RemoteMCPServer(MCPServer):
             return list(self.tools)
         if self.transport is None:
             raise MCPError("RemoteMCPServer requires a transport.")
+
+        # Warm start: rebuild from the on-disk schema cache without spawning.
+        # Skipped when a callable tool_filter is set — it can't be fingerprinted,
+        # so a cached schema could include tools the filter would now exclude.
+        fingerprint: str | None = None
+        if self.cache and self.tool_filter is None:
+            from shipit_agent import mcp_schema_cache
+
+            fingerprint = self._cache_fingerprint()
+            cached = mcp_schema_cache.load(self.name, fingerprint, ttl=self.cache_ttl)
+            if cached is not None:
+                self.tools = [self._tool_from_descriptor(d) for d in cached]
+                self._discovered = True
+                self._lazy_pending = True
+                return list(self.tools)
+
+        # Cold path: live discovery (spawn + handshake + tools/list).
         try:
             self.initialize()
             result = self.transport.request("tools/list", {})
-            resolved_tools: list[MCPTool | MCPRemoteTool] = []
+            descriptors: list[dict[str, Any]] = []
             exposed_names: set[str] = set()
             for item in result.get("tools", []):
                 if not self._tool_allowed(item):
@@ -765,30 +887,10 @@ class RemoteMCPServer(MCPServer):
                         f"{exposed_name[: _MAX_TOOL_NAME_LENGTH - 9]}_{digest}"
                     )
                 exposed_names.add(exposed_name)
-                resolved_tools.append(
-                    MCPRemoteTool(
-                        server_name=self.name,
-                        transport=self.transport,
-                        name=exposed_name,
-                        remote_name=remote_name,
-                        description=str(item.get("description", "")),
-                        input_schema=dict(
-                            item.get("inputSchema")
-                            or {"type": "object", "properties": {}, "required": []}
-                        ),
-                        output_schema=dict(item.get("outputSchema") or {}),
-                        title=str(item.get("title", "")),
-                        annotations=dict(item.get("annotations") or {}),
-                        metadata={
-                            "server": self.name,
-                            "remote_name": remote_name,
-                            "title": str(item.get("title", "")),
-                            "annotations": dict(item.get("annotations") or {}),
-                            "execution": dict(item.get("execution") or {}),
-                        },
-                        tool_meta_resolver=self.tool_meta_resolver,
-                    )
-                )
+                descriptors.append(self._descriptor(item, exposed_name, remote_name))
+            resolved_tools: list[MCPTool | MCPRemoteTool] = [
+                self._tool_from_descriptor(descriptor) for descriptor in descriptors
+            ]
         except Exception:
             # Discovery opened the connection/subprocess; if it fails we must
             # close the transport so we don't leak a live process or socket.
@@ -796,6 +898,13 @@ class RemoteMCPServer(MCPServer):
             raise
         self.tools = resolved_tools
         self._discovered = True
+        self._lazy_pending = False
+        # Persist for the next warm start (best-effort; never raises). Uses the
+        # pre-initialize fingerprint so it matches what a future load computes.
+        if fingerprint is not None:
+            from shipit_agent import mcp_schema_cache
+
+            mcp_schema_cache.save(self.name, fingerprint, descriptors)
         return list(self.tools)
 
     def close(self) -> None:
@@ -804,6 +913,13 @@ class RemoteMCPServer(MCPServer):
         # Closing ends the MCP protocol session even when the transport object
         # is reusable. Keep discovered schemas, but handshake again next turn.
         self._initialized = False
+        # `close_mcps()` runs at the end of EVERY turn. For a cache-registered
+        # server, return to the lazy state so the next turn re-registers its
+        # tools from memory without respawning — an unused server then costs
+        # nothing, turn after turn, which is the entire point of the cache.
+        # (A plain server stays eager, exactly as before.)
+        if self.cache and self._discovered:
+            self._lazy_pending = True
 
 
 def discover_mcp_tools(server: MCPServer) -> list[MCPTool | MCPRemoteTool]:

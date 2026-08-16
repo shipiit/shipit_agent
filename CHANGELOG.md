@@ -5,6 +5,26 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+read_file reads documents now, not just text.
+
+### Added
+
+- **Advanced file reading** (`shipit_agent/tools/file_extract/`). `read_file`
+  used to hand back U+FFFD soup for a `.docx`/`.xlsx`/`.pptx`/`.html`. Now it
+  routes office/web documents through a small **extractor registry** and returns
+  **clean Markdown** — headings, tables, and slide breaks preserved — so one
+  tool reads code, data, and documents alike (images and PDFs still come back as
+  viewable media). Built-in extractors: **CSV/TSV** (stdlib, always on), **DOCX**
+  (python-docx), **XLSX** (openpyxl → one table per sheet), **PPTX**
+  (python-pptx → one section per slide), **HTML** (markdownify, with a stdlib
+  text fallback), **PDF** (pypdf). Each is availability-gated: a format lights up
+  only when its parser is installed and otherwise degrades to the plain-text
+  path. A supported file that fails to parse surfaces a readable error, never
+  binary soup. Install the set with `pip install 'shipit-agent[files]'`; new
+  formats drop in via `register_extractor(...)`.
+
 ## [1.8.1] — 2026-08-16
 
 Human-in-the-loop, made first-class.

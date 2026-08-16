@@ -55,6 +55,17 @@ connectors = ["pyyaml>=6.0"]
 playwright = ["playwright>=1.45.0"]
 pdf = ["pypdf>=4.0"]
 
+# --- Advanced file reading ---------------------------------------------------
+# read_file extracts office/web documents to Markdown. CSV/TSV need nothing;
+# each other format lights up only when its parser is installed.
+files = [
+  "python-docx>=1.1.0",
+  "openpyxl>=3.1.0",
+  "python-pptx>=0.6.23",
+  "markdownify>=0.11.6",
+  "pypdf>=4.0",
+]
+
 # --- SQL tool ----------------------------------------------------------------
 # No database drivers — install what you need (psycopg2-binary, pymysql,
 # snowflake-sqlalchemy, google-cloud-bigquery + sqlalchemy-bigquery, etc).

@@ -388,7 +388,11 @@ class RuntimeCore:
         closest to generation. It is appended to the returned copy, never to
         the caller's list, so it is rebuilt each step and cannot stack.
         """
-        from shipit_agent.prompts.reminders import build_reminder
+        from shipit_agent.prompts.reminders import (
+            REANNOUNCE_DAMPER,
+            build_reminder,
+            is_reannouncing,
+        )
 
         max_iterations = int(getattr(self, "max_iterations", 0) or 0)
         last_step = iteration == max_iterations and max_iterations > 1
@@ -409,6 +413,13 @@ class RuntimeCore:
                 out_of_steps=last_step,
                 custom=self.reminder,
             )
+            # Re-announcement damping: if the model keeps restating the same plan
+            # across steps instead of acting, append a terse "act, don't restate"
+            # line. Only with tools and not on the last step (which already tells
+            # it to answer), and only once repetition is actually observed — a
+            # first honest "here's my plan" is never discouraged.
+            if not last_step and is_reannouncing(messages):
+                reminder = f"{reminder}\n\n{REANNOUNCE_DAMPER}" if reminder else REANNOUNCE_DAMPER
         else:
             reminder = (self.reminder or "").strip() or None
         if reminder:

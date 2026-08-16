@@ -216,6 +216,9 @@ CONTRACTS: dict[str, ToolContract] = {
     # ── documents & deliverables ─────────────────────────────────────────
     "build_document": _act(ARTIFACT_WRITE, revert=True, auto=True),
     "build_artifact": _act(ARTIFACT_WRITE, revert=True, auto=True),
+    # No revert: it creates a brand-new PNG, it never overwrites existing work,
+    # so there is nothing to restore (unlike build_artifact editing a doc).
+    "image_generate": _act(ARTIFACT_WRITE, auto=True),
     "render_dashboard": _act(ARTIFACT_WRITE, revert=True, auto=True),
     "pdf": OBSERVE,
     "vision": OBSERVE,

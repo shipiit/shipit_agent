@@ -5,6 +5,23 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Image generation — the agent can make images, not just read them**
+  (`shipit_agent/tools/image_generate/`). A new `image_generate` builtin turns a
+  prompt into a real image via a pluggable backend registry (OpenAI `gpt-image-1`
+  / `dall-e-3` built in; fal / openrouter / others register in), saves the
+  full-resolution PNG to a run cache, and returns it through the **same vision
+  bridge** `computer_use` screenshots use (`metadata["image_base64"]`) — so a
+  vision model sees the result next turn and a UI renders it inline. Backend
+  selection is explicit → single-available → preference walk, each gated by a
+  cheap `is_available()`. The tool declares a `check_fn`, so with no backend key
+  set it is stripped from the toolset and never offered.
+
+---
+
 ## [1.8.1] — 2026-08-16
 
 Human-in-the-loop, made first-class.

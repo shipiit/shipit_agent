@@ -52,6 +52,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "build_prompt",
         "deep_research",
         "download_file",
+        "image_generate",
         "pdf",
         "render_dashboard",
         "vision",

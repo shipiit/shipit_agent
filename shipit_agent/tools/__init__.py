@@ -13,6 +13,7 @@ from .confirmation import (
     requires_confirmation,
 )
 from .confluence import ConfluenceTool
+from .image_generate import ImageGenerateTool
 from .custom_api import CustomAPITool
 from .dashboard_render import DashboardRenderTool
 from .decision_matrix import DecisionMatrixTool

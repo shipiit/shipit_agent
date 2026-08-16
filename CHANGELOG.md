@@ -5,6 +5,23 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Verify-on-stop — evidence-gated coding** (opt-in `Agent(verify_before_stop=True)`).
+  Wires the shipped verification ledger into the loop so the agent **cannot finish
+  a turn that edited code without fresh passing tests**. As tools run, a
+  `VerifyGate` records edits (a non-read-only tool that touched a verifiable file
+  — a README/LICENSE edit never counts, and a *failed* edit never counts) and
+  verify runs (a shell command matching the project's detected test command,
+  by real exit code). When the model tries to finish, an edited-but-unverified
+  turn is sent back with a "run the tests, read the failure, fix it" nudge
+  (bounded, emits `verify_required`); once a matching command exits 0, it
+  finishes. If it runs out of steps first, `verify_skipped` is emitted rather
+  than a silent unverified "done". Off by default; **sync loop** (which the
+  streaming path runs on) — async parity is a follow-up.
+
 ## [1.9.2] — 2026-08-16
 
 More deliverables and more voices.

@@ -26,7 +26,11 @@ from shipit_agent.permissions import (
 )
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
-from shipit_agent.runtime_core import RuntimeCore, evict_prior_tool_outputs
+from shipit_agent.runtime_core import (
+    RuntimeCore,
+    _declared_paths,
+    evict_prior_tool_outputs,
+)
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -60,6 +64,10 @@ class RuntimeState:
     #: uses this to skip the re-execution (not just shrink the output) and point
     #: the model at the result it already has. Per-run, like seen_tool_outputs.
     executed_readonly_calls: set = field(default_factory=set)
+    #: The verify-on-stop gate for this run (a :class:`VerifyGate`), or None when
+    #: ``verify_before_stop`` is off. Tracks edits + verify runs and decides
+    #: whether a turn that changed code may finish without passing tests.
+    verify_gate: Any = None
 
 
 # Keys in the runtime's shared_state that hold shared *service* objects (not
@@ -268,6 +276,7 @@ class AgentRuntime(RuntimeCore):
         code_mode: bool = False,
         deferred_tools: Any = False,
         lockdown: Any = None,
+        verify_before_stop: bool = False,
         #: A provider ``response_format`` dict (from ``output_schema``). Applied
         #: only on tool-less completions — the final answer / synthesis turn —
         #: where JSON-mode is safe; a mid-loop step still needs to call tools.
@@ -319,6 +328,7 @@ class AgentRuntime(RuntimeCore):
             tool_output_dir=tool_output_dir,
             reminder=reminder,
             evict_prior_tool_outputs=evict_prior_tool_outputs,
+            verify_before_stop=verify_before_stop,
         )
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
@@ -861,6 +871,20 @@ class AgentRuntime(RuntimeCore):
         # skipped by the duplicate gate above instead of re-executed.
         if signature is not None:
             state.executed_readonly_calls.add(signature)
+        # Feed the verify-on-stop gate: an edit (a non-read-only tool that
+        # touched a verifiable path) dirties the workspace; a verify command's
+        # exit code records pass/fail. `signature is not None` == read-only.
+        if state.verify_gate is not None:
+            md = dict(tool_result.metadata or {})
+            arguments = getattr(tool_call, "arguments", None) or {}
+            state.verify_gate.note_tool(
+                read_only=signature is not None,
+                paths=[str(p) for p in _declared_paths(md)],
+                command=str(md.get("command") or arguments.get("command") or ""),
+                exit_code=md.get("exit_code"),
+                output=tool_result.output if isinstance(tool_result.output, str) else "",
+                ok=md.get("ok"),
+            )
         self.emit(
             state,
             "tool_completed",
@@ -1441,6 +1465,26 @@ detail you were not given and do not say what you will do next."""
         state = RuntimeState()
         shared_state: dict[str, Any] = {}
 
+        # Verify-on-stop gate for this run (opt-in). The ledger lives under the
+        # project's .shipit dir when there's a workspace, else in memory.
+        if self.verify_before_stop:
+            from pathlib import Path
+
+            from shipit_agent.verify import VerifyGate
+
+            root = VerifyGate.project_root_from_output_dir(self.tool_output_dir)
+            db = (
+                str(Path(root) / ".shipit" / "verify.db")
+                if root not in ("", ".")
+                else ":memory:"
+            )
+            try:
+                state.verify_gate = VerifyGate(
+                    session_id=self.session_id, root=root, db_path=db
+                )
+            except Exception:  # noqa: BLE001 — a broken gate must never break a run
+                state.verify_gate = None
+
         # ── Guardrails: input gate — blocked prompts never reach the LLM ──
         if self.guardrails is not None:
             decision = self.guardrails.check_input(user_prompt)
@@ -1799,6 +1843,39 @@ detail you were not given and do not say what you will do next."""
                         iteration=iteration,
                     )
                     continue
+
+                # Verify-on-stop: the model is about to finish, but if this turn
+                # edited code and there's no fresh passing test evidence, send it
+                # back to run the tests instead of letting it claim "done".
+                if state.verify_gate is not None:
+                    if iteration < self.max_iterations:
+                        verify_nudge = state.verify_gate.stop_nudge()
+                        if verify_nudge:
+                            if response.content:
+                                state.messages.append(
+                                    Message(role="assistant", content=response.content)
+                                )
+                                appended_response_id = id(response)
+                            state.messages.append(
+                                Message(role="user", content=verify_nudge)
+                            )
+                            self.emit(
+                                state,
+                                "verify_required",
+                                "Edited code without passing verification — running tests",
+                                iteration=iteration,
+                            )
+                            continue
+                    elif state.verify_gate.would_nudge():
+                        # No steps left to run the tests, but the turn edited code
+                        # with no passing evidence — surface it rather than let a
+                        # silent unverified "done" through (the ledger's whole point).
+                        self.emit(
+                            state,
+                            "verify_skipped",
+                            "Edited code but ran out of steps before verification passed",
+                            iteration=iteration,
+                        )
 
                 break
 

@@ -278,6 +278,10 @@ class RuntimeCore:
         )
         self.tool_output_dir = str(options.get("tool_output_dir") or "")
         self.reminder = options.get("reminder") or None
+        # Verify-on-stop: refuse to finish a turn that edited code without fresh
+        # passing tests (evidence-gated coding). Off by default — it changes the
+        # loop's stop behaviour, so a caller opts in.
+        self.verify_before_stop = bool(options.get("verify_before_stop", False))
         self.evict_prior_tool_outputs = bool(
             options.get("evict_prior_tool_outputs", True)
         )

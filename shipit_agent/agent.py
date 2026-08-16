@@ -272,6 +272,10 @@ class Agent:
     # default and detects nothing; pass a LockdownPolicy to add detection,
     # or False to disable. See shipit_agent.lockdown.
     lockdown: Any = None
+    # Evidence-gated coding: refuse to finish a turn that edited code without
+    # fresh passing tests (the verification ledger + verify-on-stop guard). Off
+    # by default — it changes the loop's stop behaviour, so a caller opts in.
+    verify_before_stop: bool = False
 
     # ── automatic delegation ──────────────────────────────────────────
     # Reach for sub-agents without being asked: guarantee a `sub_agent` tool
@@ -1209,6 +1213,7 @@ class Agent:
             code_mode=self.code_mode,
             deferred_tools=self.deferred_tools,
             lockdown=self.lockdown,
+            verify_before_stop=self.verify_before_stop,
             response_format=response_format,
         )
         state, response = runtime.run(
@@ -1444,6 +1449,7 @@ class Agent:
             code_mode=self.code_mode,
             deferred_tools=self.deferred_tools,
             lockdown=self.lockdown,
+            verify_before_stop=self.verify_before_stop,
         )
         user_content = self._user_content_blocks(user_prompt, images, files)
         for event in runtime.stream(user_prompt, user_content=user_content):

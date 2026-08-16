@@ -5,6 +5,18 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Text-to-speech: a Gemini backend + a pinnable default provider.** The `tts`
+  registry now includes **Gemini** (`gemini-2.5-flash-preview-tts`, wraps the
+  API's raw PCM into a playable WAV) alongside Edge (free) / OpenAI / ElevenLabs,
+  and `TextToSpeechTool` takes a `default_provider` / `default_voice` (or reads
+  `SHIPIT_TTS_PROVIDER` / `SHIPIT_TTS_VOICE`). A multi-tenant host can now pin an
+  org's chosen voice provider while the model omits it — and with nothing set,
+  selection stays free-first (Edge). An explicit per-call `provider=` still wins.
+
 ## [1.9.1] — 2026-08-16
 
 Closes the ADK-vs-shipit token gap: the loop no longer restates its plan.

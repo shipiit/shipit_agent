@@ -11,6 +11,7 @@ register in). The tool is availability-gated: with no backend it's hidden.
 """
 
 from .providers import (
+    GeminiTTSProvider,
     EdgeTTSProvider,
     ElevenLabsTTSProvider,
     OpenAITTSProvider,
@@ -22,6 +23,7 @@ from .providers import (
 from .tts_tool import TextToSpeechTool
 
 __all__ = [
+    "GeminiTTSProvider",
     "TextToSpeechTool",
     "TTSProvider",
     "EdgeTTSProvider",

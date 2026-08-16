@@ -128,3 +128,50 @@ def test_tool_is_availability_gated(clean_registry):
     prov.register_tts_provider(FakeTTS("fake"))
     clear_cache()
     assert is_available(tool)[0] is True
+
+
+# ── configurable default provider + Gemini backend ────────────────────────────
+
+def test_gemini_backend_registered_by_default():
+    assert "gemini" in prov._REGISTRY
+
+
+def test_tool_default_provider_is_used(clean_registry, tmp_path):
+    prov.register_tts_provider(FakeTTS("edge"))
+    picked = prov.register_tts_provider(FakeTTS("openai"))
+    out = TextToSpeechTool(output_dir=tmp_path, default_provider="openai").run(
+        _ctx(), text="hi")
+    assert out.metadata["provider"] == "openai"      # pinned default, not free-first edge
+    assert picked.calls
+
+
+def test_per_call_provider_overrides_default(clean_registry, tmp_path):
+    prov.register_tts_provider(FakeTTS("edge"))
+    prov.register_tts_provider(FakeTTS("openai"))
+    out = TextToSpeechTool(output_dir=tmp_path, default_provider="openai").run(
+        _ctx(), text="hi", provider="edge")
+    assert out.metadata["provider"] == "edge"        # explicit call wins
+
+
+def test_default_provider_from_env(clean_registry, tmp_path, monkeypatch):
+    monkeypatch.setenv("SHIPIT_TTS_PROVIDER", "openai")
+    prov.register_tts_provider(FakeTTS("edge"))
+    prov.register_tts_provider(FakeTTS("openai"))
+    out = TextToSpeechTool(output_dir=tmp_path).run(_ctx(), text="hi")
+    assert out.metadata["provider"] == "openai"
+
+
+def test_default_voice_is_passed(clean_registry, tmp_path):
+    fake = prov.register_tts_provider(FakeTTS("edge"))
+    TextToSpeechTool(output_dir=tmp_path, default_voice="en-GB-RyanNeural").run(
+        _ctx(), text="hi")
+    assert fake.calls[0][1] == "en-GB-RyanNeural"
+
+
+def test_pcm_to_wav_is_a_valid_wav():
+    import wave, io
+    from shipit_agent.tools.text_to_speech.providers import _pcm_to_wav
+
+    wav = _pcm_to_wav(b"\x00\x01" * 100)
+    with wave.open(io.BytesIO(wav), "rb") as h:
+        assert h.getframerate() == 24_000 and h.getnchannels() == 1

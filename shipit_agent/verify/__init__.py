@@ -25,9 +25,11 @@ from .gate import (
     is_verifiable_path,
 )
 from .ledger import VerificationLedger, VerificationStatus
+from .runtime_gate import VerifyGate
 from .project_facts import detect_verify_commands
 
 __all__ = [
+    "VerifyGate",
     "VerificationLedger",
     "VerificationStatus",
     "any_verifiable",

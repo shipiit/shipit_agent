@@ -5,6 +5,29 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The agent can make a short video.
+
+### Added
+
+- **`video_generate` — text-to-video** (`shipit_agent/tools/video_generate/`).
+  The third media capability on the same registry pattern as `image_generate`
+  and `text_to_speech`: a backend registry where each backend declares a cheap
+  `is_available()`, and the tool is **availability-gated** — hidden unless a
+  backend is keyed. Two backends ship: **Fal** (`FAL_KEY`) and **Replicate**
+  (`REPLICATE_API_TOKEN`). Video generation is asynchronous at the API, so a
+  backend blocks internally (submit → poll → download); the tool stays a plain
+  synchronous call and returns the saved MP4 path plus a `MEDIA:<path>` tag.
+
+- **Model validation** — a supplied model (via `provider=`, `SHIPIT_VIDEO_MODEL`,
+  or `model=`) is checked before the API call. It's a **permissive denylist**,
+  not an allow-list: any plausible video model is allowed (the backend has the
+  final say, so new models never get blocked), but a name that is clearly a
+  chat / text / image / audio model (`gpt-4o`, `claude-*`, `dall-e-3`, …) is
+  rejected up front with an actionable error instead of failing opaquely inside
+  the provider. `SHIPIT_ALLOW_UNKNOWN_VIDEO_MODEL=1` turns the check off.
+
 ## [1.8.1] — 2026-08-16
 
 Human-in-the-loop, made first-class.

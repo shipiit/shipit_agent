@@ -93,6 +93,7 @@ from shipit_agent.tools import (
     StripeTool,
     SubAgentTool,
     TodoTool,
+    VideoGenerateTool,
     Tool,
     ToolSearchTool,
     VerifierTool,
@@ -191,6 +192,8 @@ def get_builtin_tool_map(
         # ── content extraction ────────────────────────────────────
         PDFTool(),
         VisionTool(llm=llm),
+        # ── media generation (gated: hidden unless a backend is available) ──
+        VideoGenerateTool(output_dir=f"{workspace_root}/videos"),
         # ── data & databases ──────────────────────────────────────
         SQLTool(),
         # ── connectors (SaaS integrations) ────────────────────────

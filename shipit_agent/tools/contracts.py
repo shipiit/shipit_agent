@@ -216,6 +216,7 @@ CONTRACTS: dict[str, ToolContract] = {
     # ── documents & deliverables ─────────────────────────────────────────
     "build_document": _act(ARTIFACT_WRITE, revert=True, auto=True),
     "build_artifact": _act(ARTIFACT_WRITE, revert=True, auto=True),
+    "video_generate": _act(ARTIFACT_WRITE, auto=True),
     "render_dashboard": _act(ARTIFACT_WRITE, revert=True, auto=True),
     "pdf": OBSERVE,
     "vision": OBSERVE,

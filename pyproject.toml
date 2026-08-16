@@ -55,6 +55,11 @@ connectors = ["pyyaml>=6.0"]
 playwright = ["playwright>=1.45.0"]
 pdf = ["pypdf>=4.0"]
 
+# --- Media generation --------------------------------------------------------
+# video_generate backends. Both are hosted + key-gated; the tool is hidden
+# unless FAL_KEY or REPLICATE_API_TOKEN is set.
+video = ["fal-client>=0.4.0", "replicate>=0.34.0"]
+
 # --- SQL tool ----------------------------------------------------------------
 # No database drivers — install what you need (psycopg2-binary, pymysql,
 # snowflake-sqlalchemy, google-cloud-bigquery + sqlalchemy-bigquery, etc).

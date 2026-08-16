@@ -42,12 +42,26 @@ class TextToSpeechTool:
     #: Availability gate — hidden when no backend can run.
     check_fn = staticmethod(_tts_backends_available)
 
-    def __init__(self, *, output_dir: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        output_dir: str | Path | None = None,
+        default_provider: str | None = None,
+        default_voice: str | None = None,
+    ) -> None:
         self.output_dir = (
             Path(output_dir).expanduser()
             if output_dir
             else Path.home() / ".shipit_agent" / "audio"
         )
+        # A host (e.g. a multi-tenant server) can pin the org's chosen backend
+        # and voice while the model omits them. Falls back to SHIPIT_TTS_PROVIDER
+        # so the choice can also come from the environment. When neither is set,
+        # selection stays free-first (Edge) — the model may still override per call.
+        import os
+
+        self.default_provider = default_provider or os.getenv("SHIPIT_TTS_PROVIDER") or None
+        self.default_voice = default_voice or os.getenv("SHIPIT_TTS_VOICE") or None
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -84,13 +98,18 @@ class TextToSpeechTool:
                 metadata={"ok": False},
             )
 
+        # Explicit per-call provider wins; else the host's pinned default; else
+        # free-first auto-selection.
+        chosen = kwargs.get("provider") or self.default_provider
         try:
-            provider = build_tts_provider(kwargs.get("provider"))
+            provider = build_tts_provider(chosen)
         except RuntimeError as err:
             return ToolOutput(text=f"Error: {err}", metadata={"ok": False})
 
         try:
-            audio, ext = provider.synthesize(text, voice=kwargs.get("voice"))
+            audio, ext = provider.synthesize(
+                text, voice=kwargs.get("voice") or self.default_voice
+            )
         except Exception as err:  # noqa: BLE001 — surface any backend failure cleanly
             return ToolOutput(
                 text=f"Error: {provider.name} could not synthesize speech: {err}",

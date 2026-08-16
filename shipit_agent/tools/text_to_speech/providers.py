@@ -16,7 +16,7 @@ import os
 from typing import Any, Protocol, runtime_checkable
 
 #: Free-first preference, filtered by ``is_available()`` at resolve time.
-_PREFERENCE = ("edge", "openai", "elevenlabs")
+_PREFERENCE = ("edge", "openai", "gemini", "elevenlabs")
 
 
 @runtime_checkable
@@ -143,6 +143,64 @@ class ElevenLabsTTSProvider:
         return b"".join(audio), "mp3"
 
 
+class GeminiTTSProvider:
+    """Google Gemini speech — ``gemini-2.5-flash-preview-tts``.
+
+    Uses the ``google-genai`` SDK. The API returns raw PCM (24 kHz, 16-bit,
+    mono), so we wrap it in a minimal WAV header — a self-contained, playable
+    file with no extra dependency. Gated on a Gemini/Google API key.
+    """
+
+    name = "gemini"
+    default_voice = "Kore"
+
+    def is_available(self) -> bool:
+        if not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+            return False
+        import importlib.util
+
+        return importlib.util.find_spec("google.genai") is not None
+
+    def synthesize(self, text: str, *, voice: str | None = None, **opts: Any) -> tuple[bytes, str]:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(
+            api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        )
+        response = client.models.generate_content(
+            model=str(opts.get("model") or "gemini-2.5-flash-preview-tts"),
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=voice or self.default_voice
+                        )
+                    )
+                ),
+            ),
+        )
+        pcm = response.candidates[0].content.parts[0].inline_data.data
+        return _pcm_to_wav(pcm), "wav"
+
+
+def _pcm_to_wav(pcm: bytes, *, rate: int = 24_000, channels: int = 1, width: int = 2) -> bytes:
+    """Wrap raw PCM in a WAV container (stdlib only) — a playable file."""
+    import io
+    import wave
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as handle:
+        handle.setnchannels(channels)
+        handle.setsampwidth(width)
+        handle.setframerate(rate)
+        handle.writeframes(pcm)
+    return buffer.getvalue()
+
+
 register_tts_provider(EdgeTTSProvider())
 register_tts_provider(OpenAITTSProvider())
 register_tts_provider(ElevenLabsTTSProvider())
+register_tts_provider(GeminiTTSProvider())

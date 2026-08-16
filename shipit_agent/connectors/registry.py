@@ -101,6 +101,7 @@ def connect(
     headers: dict[str, str] | None = None,
     url: str | None = None,
     command: list[str] | None = None,
+    cache: bool = False,
 ) -> RemoteMCPServer:
     """Turn a catalog connector into a live MCP server.
 
@@ -112,6 +113,12 @@ def connect(
     **stdio** connectors launch the official server locally on a persistent
     subprocess, validating required env vars and the launcher binary up front.
     ``command``/``url`` override the manifest entirely (a local build, a proxy).
+
+    ``cache=True`` opts into the warm-start schema cache: the server's tools are
+    persisted after the first discovery and, on later runs, rebuilt from disk
+    without spawning the process until a tool is actually called. Best for many
+    stdio connectors attached at once — it trades connect-time error reporting
+    for first-call error reporting, so it is off by default.
     """
     c = get_connector(name)
     if c is None and not (url or command):
@@ -133,7 +140,7 @@ def connect(
             endpoint, headers=headers, bearer_token=bearer
         )
         return RemoteMCPServer(
-            name=name, transport=transport, metadata=_meta(c, hosted=True)
+            name=name, transport=transport, metadata=_meta(c, hosted=True), cache=cache
         )
 
     # stdio
@@ -157,7 +164,9 @@ def connect(
             "(npx ships with Node.js; uvx with uv)."
         )
     transport = PersistentMCPSubprocessTransport(full, env=merged_env)
-    return RemoteMCPServer(name=name, transport=transport, metadata=_meta(c, hosted=False))
+    return RemoteMCPServer(
+        name=name, transport=transport, metadata=_meta(c, hosted=False), cache=cache
+    )
 
 
 def _meta(c: Connector | None, *, hosted: bool) -> dict[str, object]:

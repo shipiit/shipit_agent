@@ -5,6 +5,31 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Attaching many MCP connectors stops costing what it used to.
+
+### Added
+
+- **MCP schema cache + lazy register** (`shipit_agent/mcp_schema_cache.py`,
+  opt-in via `connect(..., cache=True)`). Connecting to a stdio MCP server
+  spawns a subprocess, handshakes, and calls `tools/list` — paid up front for
+  every attached connector even if the model never touches it. With `cache=True`
+  the resolved tool schema is persisted to disk (keyed by a fingerprint of the
+  server's config) and, on a later run, the tools are **rebuilt from that cache
+  without spawning the process**; the subprocess launches only when a tool is
+  actually called. An unused server then costs nothing, turn after turn.
+
+  Correctness details that matter: the first `tools/call` triggers the
+  `initialize` handshake via a new `ensure_ready` seam (and re-handshakes after
+  a transport respawn); a failed handshake surfaces as a tool result and closes
+  the half-spawned process instead of crashing the run; the cache is bypassed
+  when a callable `tool_filter` is set (it can't be fingerprinted); env values
+  feed the fingerprint only as a hash and are never written to disk; writes are
+  atomic; and a missing / stale (TTL, default 24 h) / corrupt cache silently
+  falls back to a live discovery. Off by default — it moves connect-time errors
+  to first-call time, so a caller opts in.
+
 ## [1.8.1] — 2026-08-16
 
 Human-in-the-loop, made first-class.

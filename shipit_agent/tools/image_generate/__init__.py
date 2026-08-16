@@ -17,6 +17,7 @@ from .providers import (
     available_providers,
     build_image_provider,
     register_image_provider,
+    validate_image_model,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "available_providers",
     "build_image_provider",
     "register_image_provider",
+    "validate_image_model",
 ]

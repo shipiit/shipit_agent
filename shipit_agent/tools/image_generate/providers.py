@@ -81,6 +81,56 @@ def _safe_available(provider: ImageProvider) -> bool:
         return False
 
 
+def _allow_unknown_model() -> bool:
+    """Escape hatch — turn model validation off for an edge case."""
+    return os.getenv("SHIPIT_ALLOW_UNKNOWN_IMAGE_MODEL", "").lower() in ("1", "true", "yes")
+
+
+#: Names that positively mark an *image-generation* model. If any appears the
+#: model is accepted outright — this is what keeps a legitimate image model whose
+#: name also looks chatty (``gemini-2.5-flash-image``) from being rejected.
+_IMAGE_MODEL_HINTS = (
+    "image", "imagen", "imagegeneration", "dall-e", "dalle", "flux", "sdxl",
+    "stable-diffusion", "diffusion", "stability", "recraft", "ideogram", "photon",
+)
+
+#: Names that mark a chat / text / audio / video model — never an image model
+#: (checked only when no positive image hint is present).
+_NON_IMAGE_HINTS = (
+    "gpt-3", "gpt-4", "gpt-5", "o1-", "o3-", "chat", "instruct", "claude",
+    "sonnet", "haiku", "opus", "llama", "mistral", "mixtral", "qwen", "deepseek",
+    "gemini-1.5", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-pro", "embed",
+    "whisper", "tts", "video", "sora", "veo",
+)
+
+
+def validate_image_model(backend: str, model: str, known: tuple[str, ...] = ()) -> None:
+    """Reject a model that is clearly not an image-generation model.
+
+    Permissive by design — any name carrying an image hint (or unknown to us) is
+    allowed and the backend has the final say, so new image models never get
+    blocked. Only a name that clearly marks a chat/text/audio/video model is
+    rejected up front, turning an opaque provider-side failure into an actionable
+    error. ``SHIPIT_ALLOW_UNKNOWN_IMAGE_MODEL`` turns the check off entirely.
+    """
+    if _allow_unknown_model():
+        return
+    if not model:
+        raise RuntimeError(f"No {backend} image model set (e.g. {', '.join(known) or 'an image model'}).")
+    lowered = model.lower()
+    if model in known or any(hint in lowered for hint in _IMAGE_MODEL_HINTS):
+        return
+    for hint in _NON_IMAGE_HINTS:
+        if hint in lowered:
+            raise RuntimeError(
+                f"{model!r} looks like a text/chat/audio/video model, not an "
+                f"image-generation model — it can't make images. Point "
+                "SHIPIT_IMAGE_MODEL at an image model (e.g. dall-e-3, "
+                "vertex_ai/imagegeneration@006), or set "
+                "SHIPIT_ALLOW_UNKNOWN_IMAGE_MODEL=1 if you're sure."
+            )
+
+
 # ── built-in backend: OpenAI ──────────────────────────────────────────────
 
 
@@ -95,10 +145,15 @@ class OpenAIImageProvider:
     def is_available(self) -> bool:
         return bool(os.getenv("OPENAI_API_KEY"))
 
+    #: The OpenAI image models — used to accept an explicit override cleanly.
+    known_models = ("gpt-image-1", "dall-e-3", "dall-e-2")
+
     def generate(self, prompt: str, *, size: str = "1024x1024", **opts: Any) -> bytes:
+        model = str(opts.get("model") or self.model)
+        validate_image_model(self.name, model, self.known_models)
+
         from openai import OpenAI  # imported lazily — optional dependency
 
-        model = str(opts.get("model") or self.model)
         client = OpenAI()
         # gpt-image-1 always returns b64_json; dall-e-3 needs it requested.
         kwargs: dict[str, Any] = {"model": model, "prompt": prompt, "size": size, "n": 1}
@@ -140,9 +195,11 @@ class LiteLLMImageProvider:
         return True
 
     def generate(self, prompt: str, *, size: str = "1024x1024", **opts: Any) -> bytes:
+        model = str(opts.get("model") or os.getenv("SHIPIT_IMAGE_MODEL"))
+        validate_image_model(self.name, model)
+
         import litellm
 
-        model = str(opts.get("model") or os.getenv("SHIPIT_IMAGE_MODEL"))
         result = litellm.image_generation(model=model, prompt=prompt, n=1)
         item = result.data[0]
         b64 = item.get("b64_json") if isinstance(item, dict) else getattr(item, "b64_json", None)

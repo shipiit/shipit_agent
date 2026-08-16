@@ -12,7 +12,7 @@ import base64
 import pytest
 
 from shipit_agent.tools.base import ToolContext
-from shipit_agent.tools.image_generate import ImageGenerateTool
+from shipit_agent.tools.image_generate import ImageGenerateTool, validate_image_model
 from shipit_agent.tools.image_generate import providers as prov
 
 # A 1x1 PNG — real bytes, tiny.
@@ -154,3 +154,43 @@ def test_tool_is_availability_gated(clean_registry):
     from shipit_agent.tools.availability import clear_cache
     clear_cache()
     assert is_available(tool)[0] is True
+
+
+# ── model validation (positive-hint-first, permissive denylist) ───────────────
+
+_KNOWN = ("gpt-image-1", "dall-e-3", "dall-e-2")
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "dall-e-3",
+        "gpt-image-1",
+        "vertex_ai/imagegeneration@006",
+        "gemini-2.5-flash-image",   # chatty name, but an image model — must pass
+        "black-forest-labs/flux-schnell",
+        "stability-ai/sdxl",
+        "some-brand-new-2027-image-model",  # unknown but image-hinted → allowed
+    ],
+)
+def test_image_models_are_allowed(model):
+    validate_image_model("litellm", model, _KNOWN)  # no raise
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["gpt-4o", "claude-opus-4-8", "gemini-2.0-flash", "llama-3.1-70b", "sora-2", "gpt-4o-mini-tts"],
+)
+def test_non_image_models_are_rejected(model):
+    with pytest.raises(RuntimeError, match="can't make images"):
+        validate_image_model("litellm", model, _KNOWN)
+
+
+def test_image_empty_model_is_rejected():
+    with pytest.raises(RuntimeError, match="No litellm image model"):
+        validate_image_model("litellm", "", _KNOWN)
+
+
+def test_image_escape_hatch(monkeypatch):
+    monkeypatch.setenv("SHIPIT_ALLOW_UNKNOWN_IMAGE_MODEL", "1")
+    validate_image_model("litellm", "gpt-4o", _KNOWN)  # bypassed → no raise

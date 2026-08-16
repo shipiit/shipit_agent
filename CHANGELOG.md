@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cheap `is_available()`. The tool declares a `check_fn`, so with no backend key
   set it is stripped from the toolset and never offered.
 
+- **Model validation** — a supplied image model (`model=` or `SHIPIT_IMAGE_MODEL`)
+  is checked before the API call, so a chat model never reaches the image
+  endpoint and fails opaquely. It's **positive-hint-first, then a permissive
+  denylist**: a name carrying an image hint (`imagen`, `dall-e`, `flux`, or even
+  a legit `gemini-2.5-flash-image`) always passes, an unknown name is allowed
+  (the backend decides), and only a clear chat/text/audio/video model
+  (`gpt-4o`, `claude-*`, `sora-2`, …) is rejected with an actionable error.
+  `SHIPIT_ALLOW_UNKNOWN_IMAGE_MODEL=1` turns it off.
+
 ---
 
 ## [1.8.1] — 2026-08-16

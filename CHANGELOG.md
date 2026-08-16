@@ -5,6 +5,19 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`present_file` — hand a finished file to the user as a deliverable.** After
+  the agent generates or saves a file (an image, a spoken clip, a rendered PDF, a
+  CSV), it *presents* it: the user gets a **downloadable, previewable card** the
+  way ChatGPT/Codex surface an artifact, instead of a path buried in prose. Plugs
+  into the runtime's existing artifact tracker (it declares the file's `path`),
+  previews images inline via the vision bridge, and emits the `MEDIA:<path>` tag a
+  send pipeline turns into an inline attachment. Sandbox-guarded (an optional
+  `root_dir`); a builtin, so local and hosted agents both get it.
+
 ## [1.9.1] — 2026-08-16
 
 Closes the ADK-vs-shipit token gap: the loop no longer restates its plan.

@@ -46,6 +46,7 @@ from .open_url import OpenURLTool
 from .pdf import PDFTool
 from .playwright_browser import PlaywrightBrowserTool
 from .planner import PlannerTool, PresentPlanTool
+from .present_file import PresentFileTool
 from .prompt import PromptTool
 from .salesforce import SalesforceTool
 from .slack import SlackTool
@@ -118,6 +119,7 @@ __all__ = [
     "PlaywrightBrowserTool",
     "PlaywrightSearchProvider",
     "PlannerTool",
+    "PresentFileTool",
     "PresentPlanTool",
     "PromptTool",
     "SalesforceTool",

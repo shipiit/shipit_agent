@@ -85,6 +85,7 @@ from shipit_agent.tools import (
     OpenURLTool,
     PDFTool,
     PlannerTool,
+    PresentFileTool,
     PresentPlanTool,
     PlaywrightBrowserTool,
     PromptTool,
@@ -194,6 +195,8 @@ def get_builtin_tool_map(
         # ── content extraction ────────────────────────────────────
         PDFTool(),
         VisionTool(llm=llm),
+        # ── deliverables ──────────────────────────────────────────
+        PresentFileTool(root_dir=workspace_root),
         # ── media generation (gated: hidden unless a backend is available) ──
         ImageGenerateTool(output_dir=f"{workspace_root}/images"),
         TextToSpeechTool(output_dir=f"{workspace_root}/audio"),

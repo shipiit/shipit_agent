@@ -5,9 +5,22 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.8.1] — 2026-08-16
+## [Unreleased]
 
-Human-in-the-loop, made first-class.
+Blind tool calls repair themselves.
+
+### Fixed
+
+- **A rejected call gets the tool's full signature back** (`runtime_core.py`).
+  With `deferred_tools` on, a model never sees a tool's schema, so a weak model
+  (gemini-flash) guesses argument names — `items` for `provided_items` — and the
+  guess bounces at the argument gate. The gate now appends the compact callable
+  **signature** (`classify_specialty(provided_items: array, evidence_keys?:
+  object)`) to the rejection, so the retry is correct instead of another guess.
+  It's the same one-line signature the deferred-tool index prints — exactly the
+  contract the model would have seen had the schema not been withheld. Turns a
+  dead bounce into a self-correcting one, which is where a weak model on
+  deferred tools otherwise burns its iterations.
 
 ### Added
 

@@ -25,6 +25,7 @@ class FakeTTS:
 
     def synthesize(self, text, *, voice=None, **opts):
         self.calls.append((text, voice))
+        self.last_api_key = opts.get("api_key")
         if self._fail:
             raise RuntimeError("tts exploded")
         return b"ID3fake-audio-bytes", "mp3"
@@ -175,3 +176,30 @@ def test_pcm_to_wav_is_a_valid_wav():
     wav = _pcm_to_wav(b"\x00\x01" * 100)
     with wave.open(io.BytesIO(wav), "rb") as h:
         assert h.getframerate() == 24_000 and h.getnchannels() == 1
+
+
+# ── bring-your-own-key bridge (host-supplied provider keys) ───────────────────
+
+def test_provider_key_is_passed_to_synthesize(clean_registry, tmp_path):
+    fake = prov.register_tts_provider(FakeTTS("openai"))
+    TextToSpeechTool(output_dir=tmp_path, default_provider="openai",
+                     provider_keys={"openai": "sk-org-123"}).run(_ctx(), text="hi")
+    assert fake.last_api_key == "sk-org-123"
+
+
+def test_tool_available_when_only_a_host_key_is_set(clean_registry, monkeypatch):
+    # No env keys, no available registry backends — but a host key makes the
+    # tool available (the cloud keeps org keys out of os.environ).
+    from shipit_agent.tools.availability import clear_cache, is_available
+
+    prov.register_tts_provider(FakeTTS("openai", available=False))
+    tool = TextToSpeechTool(provider_keys={"openai": "sk-x"})
+    clear_cache()
+    assert is_available(tool)[0] is True
+    clear_cache()
+    assert is_available(TextToSpeechTool())[0] is False   # no key → hidden
+
+
+def test_empty_provider_keys_are_dropped(clean_registry, tmp_path):
+    tool = TextToSpeechTool(provider_keys={"openai": "", "gemini": "g-key"})
+    assert tool.provider_keys == {"gemini": "g-key"}

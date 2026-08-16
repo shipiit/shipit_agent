@@ -113,7 +113,8 @@ class OpenAITTSProvider:
     def synthesize(self, text: str, *, voice: str | None = None, **opts: Any) -> tuple[bytes, str]:
         from openai import OpenAI
 
-        client = OpenAI()
+        key = opts.get("api_key") or os.getenv("OPENAI_API_KEY")
+        client = OpenAI(api_key=key) if key else OpenAI()
         result = client.audio.speech.create(
             model=str(opts.get("model") or "gpt-4o-mini-tts"),
             voice=voice or self.default_voice,
@@ -134,7 +135,8 @@ class ElevenLabsTTSProvider:
     def synthesize(self, text: str, *, voice: str | None = None, **opts: Any) -> tuple[bytes, str]:
         from elevenlabs.client import ElevenLabs
 
-        client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
+        key = opts.get("api_key") or os.getenv("ELEVENLABS_API_KEY")
+        client = ElevenLabs(api_key=key)
         audio = client.text_to_speech.convert(
             voice_id=voice or self.default_voice,
             model_id=str(opts.get("model") or "eleven_multilingual_v2"),
@@ -166,7 +168,8 @@ class GeminiTTSProvider:
         from google.genai import types
 
         client = genai.Client(
-            api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+            api_key=(opts.get("api_key") or os.getenv("GEMINI_API_KEY")
+                     or os.getenv("GOOGLE_API_KEY"))
         )
         response = client.models.generate_content(
             model=str(opts.get("model") or "gemini-2.5-flash-preview-tts"),

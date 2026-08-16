@@ -52,6 +52,21 @@ The loop stops dithering — no more re-running a read it already ran.
   model is still pending. The "10 vs 3" figure above is the original observed
   problem, not a post-fix benchmark.
 
+Blind tool calls repair themselves.
+
+### Fixed
+
+- **A rejected call gets the tool's full signature back** (`runtime_core.py`).
+  With `deferred_tools` on, a model never sees a tool's schema, so a weak model
+  (gemini-flash) guesses argument names — `items` for `provided_items` — and the
+  guess bounces at the argument gate. The gate now appends the compact callable
+  **signature** (`classify_specialty(provided_items: array, evidence_keys?:
+  object)`) to the rejection, so the retry is correct instead of another guess.
+  It's the same one-line signature the deferred-tool index prints — exactly the
+  contract the model would have seen had the schema not been withheld. Turns a
+  dead bounce into a self-correcting one, which is where a weak model on
+  deferred tools otherwise burns its iterations.
+
 ## [1.8.1] — 2026-08-16
 
 Human-in-the-loop, made first-class.

@@ -92,6 +92,7 @@ from shipit_agent.tools import (
     SQLTool,
     StripeTool,
     SubAgentTool,
+    TextToSpeechTool,
     TodoTool,
     Tool,
     ImageGenerateTool,
@@ -192,8 +193,9 @@ def get_builtin_tool_map(
         # ── content extraction ────────────────────────────────────
         PDFTool(),
         VisionTool(llm=llm),
-        # ── media generation (gated: hidden unless a backend key is set) ──
+        # ── media generation (gated: hidden unless a backend is available) ──
         ImageGenerateTool(output_dir=f"{workspace_root}/images"),
+        TextToSpeechTool(output_dir=f"{workspace_root}/audio"),
         # ── data & databases ──────────────────────────────────────
         SQLTool(),
         # ── connectors (SaaS integrations) ────────────────────────

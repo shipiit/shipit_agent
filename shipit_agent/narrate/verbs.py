@@ -198,6 +198,8 @@ VERBS: dict[str, VerbSpec] = {
                        args=("path", "url", "image"), read_only=True),
     "image_generate": VerbSpec("Generated", "Generating", IMAGE,
                                "image", args=("prompt",)),
+    "text_to_speech": VerbSpec("Spoke", "Speaking", CREATE, "audio",
+                               args=("text",)),
 
     # ── reasoning helpers ────────────────────────────────────────────────
     "plan_task": VerbSpec("Planned", "Planning", THINK, "plan",

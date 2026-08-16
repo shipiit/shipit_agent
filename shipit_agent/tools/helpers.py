@@ -55,6 +55,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "image_generate",
         "pdf",
         "render_dashboard",
+        "text_to_speech",
         "vision",
     },
     "data": {"sql"},

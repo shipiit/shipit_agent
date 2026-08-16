@@ -12,7 +12,11 @@ class FileReadTool:
         *,
         root_dir: str | Path = "/tmp",
         name: str = "read_file",
-        description: str = "Read a file from the local project with optional line ranges.",
+        description: str = (
+            "Read a file from the local project. Text files return line-numbered "
+            "content; Word/Excel/PowerPoint/HTML/CSV documents are extracted to "
+            "clean Markdown; images and PDFs return as viewable media."
+        ),
         # Read up to ~2000 lines by default; a small window
         # forces the model to page and risks edits against unseen regions.
         max_chars: int = 80_000,
@@ -127,6 +131,40 @@ class FileReadTool:
             },
         )
 
+    def _read_document(self, path: Path) -> ToolOutput | None:
+        """Extract an office/web document to Markdown, or None for plain text.
+
+        None means "no extractor owns this suffix" — the caller reads it as
+        text. A parsing failure of a *supported* file is surfaced as a readable
+        error (with a hint) rather than falling back to binary-soup decoding.
+        """
+        from shipit_agent.tools.file_extract import extract_file
+
+        try:
+            result = extract_file(path)
+        except Exception as err:  # noqa: BLE001 — a supported file that failed to parse
+            return ToolOutput(
+                text=(
+                    f"Could not extract {path.name}: {err}. The file may be "
+                    "corrupt, password-protected, or an unsupported variant."
+                ),
+                metadata={"path": str(path), "ok": False, "extract_error": str(err)},
+            )
+        if result is None:
+            return None
+        markdown, backend = result
+        if len(markdown) > self.max_chars:
+            markdown = markdown[: self.max_chars].rstrip() + "\n\n...[truncated]"
+        return ToolOutput(
+            text=markdown or "(no extractable content)",
+            metadata={
+                "path": str(path),
+                "ok": True,
+                "extracted_by": backend,
+                "format": path.suffix.lower().lstrip("."),
+            },
+        )
+
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         path = self._resolve(str(kwargs["path"]))
         if not path.exists():
@@ -137,6 +175,13 @@ class FileReadTool:
         media = self._read_media(path)
         if media is not None:
             return media
+
+        # Office/web documents (.docx/.xlsx/.pptx/.html/.csv/…) aren't UTF-8
+        # text — extract them to clean Markdown via the extractor registry when
+        # one is available, so the model reads content instead of binary soup.
+        extracted = self._read_document(path)
+        if extracted is not None:
+            return extracted
 
         # Decode lossily for display, but flag when invalid bytes were
         # replaced with U+FFFD so the caller knows the on-disk content is not

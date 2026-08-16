@@ -3,10 +3,14 @@ from __future__ import annotations
 FILE_READ_PROMPT = """
 
 ## read_file
-Read a file from the local project root. Returns line-numbered output.
+Read a file from the local project root. Returns line-numbered output for text,
+and **clean Markdown for documents** — a `.docx`, `.xlsx`, `.pptx`, `.html`, or
+`.csv` is extracted to readable text/tables automatically (images and PDFs come
+back as viewable media). One tool reads code, data, and documents alike.
 
 **When to use:**
 - Inspect source files, configs, logs, generated outputs, and local data files
+- Read a Word/Excel/PowerPoint/HTML/CSV document as Markdown — no separate step
 - Read the exact text before editing or patching a file — **required** before calling `edit_file`
 - Pull a targeted range of lines when you already know the relevant area
 - Verify file contents after a write or edit operation

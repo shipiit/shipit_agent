@@ -5,6 +5,28 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Rules — durable policy, at the agent and the tool level.
+
+### Added
+
+- **Agent rules** (`shipit_agent/rules/`). Skills add *capability*; rules add
+  *policy* — the AGENTS.md / house-style layer that rides in the system prompt
+  regardless of task. `Agent(rules=[...])` takes strings, dicts, or `Rule`
+  objects, and rules can be **scoped** so they only surface where relevant:
+  - **path-scoped** (`paths=["tests/**"]`) — applies when working on matching files,
+  - **tool-scoped** (`tools=["bash"]`) — applies only when that tool is active,
+  - **priority-ordered** — the most important guidance leads.
+
+  Three sources merge automatically: explicit `rules=`, discovered
+  `.shipit/rules/*.md` files (with YAML frontmatter for scope), and **tool-level
+  rules** — a tool that ships a `rules` attribute has them surface only when it's
+  attached (guidance that travels with the capability, e.g. a `bash` rule that
+  forbids `rm -rf`). AGENTS.md continues to load as flat project memory; the
+  rules layer adds the structured, scoped, prioritised layer on top. `self.rules`
+  is read live, so appending after construction takes effect.
+
 ## [1.8.1] — 2026-08-16
 
 Human-in-the-loop, made first-class.

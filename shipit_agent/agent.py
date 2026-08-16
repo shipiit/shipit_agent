@@ -306,6 +306,18 @@ class Agent:
     default_skill_ids: list[str] = field(default_factory=list)
     skill_match_limit: int = 3  # max auto-matched
 
+    # ── rules (see shipit_agent/rules/) ───────────────────────────────
+    # Durable behavioural policy (AGENTS.md house-style), scoped to paths/tools
+    # and ordered by priority — the complement to skills' capability. Strings,
+    # dicts, or Rule objects; discovered `.shipit/rules/*.md` are merged in when
+    # auto_project_rules is on. Tools that ship their own `rules` surface only
+    # when active.
+    rules: list[Any] = field(default_factory=list)
+    auto_project_rules: bool = True
+    #: Cached file-discovered rules (.shipit/rules/*.md) — the only part that
+    #: does I/O, so it's read once; `self.rules` stays live and re-read per call.
+    _project_rules: Any = field(default=None, repr=False, compare=False)
+
     # ── internal: handle to the in-flight runtime (for cancel()) ──────
     _active_runtime: Any = field(default=None, repr=False, compare=False)
     # The sub_agent built for `delegation=`, kept so its thread pool is
@@ -343,6 +355,7 @@ class Agent:
             "history": list(self.history),
             "skills": list(self.skills),
             "default_skill_ids": list(self.default_skill_ids),
+            "rules": list(self.rules),
         }
         defaults.update(changes)
         return replace(self, **defaults)
@@ -420,6 +433,20 @@ class Agent:
                 self.skill_registry = SkillRegistry()
             for skill in local_skills:
                 self.skill_registry.register(skill)
+
+        # Cache the file-discovered rules once (.shipit/rules/*.md — the only
+        # I/O). AGENTS.md is excluded: it is already folded in as flat project
+        # memory above; the rules layer adds the *structured* (scoped,
+        # prioritised, tool-level) rules on top. `self.rules` is read live per
+        # call, so appending to it after construction still takes effect.
+        if self._project_rules is None:
+            from shipit_agent.rules import load_project_rules
+
+            self._project_rules = (
+                load_project_rules(self.project_root, include_agents_md=False)
+                if self.auto_project_rules
+                else []
+            )
 
         # Resolve string skill ids → Skill objects (deduplicates by id).
         self.skills = self._resolve_skill_refs(self.skills)
@@ -763,7 +790,32 @@ class Agent:
             holder = type("PromptHolder", (), {"prompt": effective})()
             apply_skill(holder, skill)
             effective = holder.prompt
+        rules_block = self._rules_block()
+        if rules_block and rules_block not in effective:
+            effective = f"{effective}\n\n{rules_block}"
         return effective
+
+    def _rules_block(self) -> str:
+        """Render the rules that apply to this run (agent + file + tool-level).
+
+        Rebuilt each call from the live ``self.rules`` (so a post-construction
+        append takes effect) + the cached file rules + the attached tools' own
+        rules. Scope resolves against the attached tool names; paths aren't
+        known at prompt-build time, so path-scoped rules show (show-if-unsure,
+        see Rule.applies).
+        """
+        from shipit_agent.rules import RuleSet, collect_tool_rules
+
+        merged = RuleSet()
+        merged.extend(list(self.rules), source="agent")
+        merged.rules.extend(self._project_rules or [])
+        merged.rules.extend(collect_tool_rules(self.tools))
+        if not merged:
+            return ""
+        tool_names = frozenset(
+            str(getattr(tool, "name", "") or "") for tool in self.tools
+        )
+        return merged.render(tools=tool_names)
 
     def _delegation_policy(self) -> Any:
         from shipit_agent.delegation import coerce_delegation

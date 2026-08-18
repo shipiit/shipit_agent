@@ -104,6 +104,7 @@ from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
 from .activity import StreamRenderer, format_activity, format_event_line
 from .approvals import ActionState, ApprovalQueue, PendingAction
 from .compaction import CompactionCheckpoint, Compactor, get_model_limits
+from .token_calibration import TokenCalibrator
 from .connections import (
     AuthKind,
     Connection,
@@ -410,6 +411,7 @@ __all__ = [
     "sse",
     "LockdownState",
     "Compactor",
+    "TokenCalibrator",
     "StreamingToolInputParser",
     "get_model_limits",
     "NarratorRenderer",

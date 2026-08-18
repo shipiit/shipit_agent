@@ -23,7 +23,7 @@ import json
 import re
 
 import threading
-from typing import Any
+from typing import Any, Sequence
 
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import Message
@@ -272,6 +272,18 @@ class RuntimeCore:
         self.heal_tool_calls = bool(options.get("heal_tool_calls", True))
         self.code_mode = bool(options.get("code_mode", False))
         self.context_window_tokens = int(options.get("context_window_tokens", 0) or 0)
+        # The fixed prompt prefix (system prompt + tool schemas) is sent on
+        # every call but lives outside ``messages``. Counted toward the
+        # compaction trigger so it does not fire ~a-prefix's-worth late. 0 keeps
+        # the pre-existing messages-only behaviour.
+        self._fixed_prefix_tokens = int(options.get("fixed_prefix_tokens", 0) or 0)
+        # Learns the per-model gap between our chars/4 estimate and the
+        # provider's real ``prompt_tokens`` (fed at each completion) so the
+        # trigger uses a calibrated number. Always present; harmless until it
+        # has enough samples, and clamped so it can only ever compact earlier.
+        from shipit_agent.token_calibration import TokenCalibrator
+
+        self.token_calibrator = TokenCalibrator()
         self.max_tool_output_chars = int(options.get("max_tool_output_chars", 0) or 0)
         self.max_tool_output_group_chars = int(
             options.get("max_tool_output_group_chars", 0) or 0
@@ -969,6 +981,36 @@ class RuntimeCore:
             iteration=iteration,
         )
 
+    def calibrate_from_completion(
+        self, sent_messages: Sequence[Message], response: LLMResponse
+    ) -> None:
+        """Teach the token calibrator from one MAIN completion.
+
+        ``sent_messages`` is the exact view that was sent — the compacted
+        messages, not the full history — so the estimate matches what the
+        provider actually tokenised. The estimate uses the SAME formula the
+        compaction trigger does (messages + fixed prefix) so the learned factor
+        is applied to the number it was measured against. ``actual`` folds in
+        the prompt-cache counters, because on a cache hit ``prompt_tokens``
+        alone under-reports what was sent and would drag the factor the wrong
+        way. Call ONLY for real model steps — never the summary completion,
+        whose prompt is a different shape.
+        """
+        from shipit_agent.compaction import messages_tokens
+
+        usage = getattr(response, "usage", None) or {}
+        actual = (
+            int(usage.get("prompt_tokens", 0) or 0)
+            + int(usage.get("cache_read_input_tokens", 0) or 0)
+            + int(usage.get("cache_creation_input_tokens", 0) or 0)
+        )
+        if actual <= 0:
+            return
+        estimated = messages_tokens(sent_messages) + self._fixed_prefix_tokens
+        self.token_calibrator.observe(
+            getattr(self.llm, "model", None), estimated, actual
+        )
+
     # ── compaction ───────────────────────────────────────────────────────
 
     def compactor(self) -> Any:
@@ -979,6 +1021,8 @@ class RuntimeCore:
                 llm=self.llm,
                 model=getattr(self.llm, "model", None),
                 context_window_tokens=self.context_window_tokens,
+                fixed_prefix_tokens=self._fixed_prefix_tokens,
+                calibrator=self.token_calibrator,
             )
         return self._compactor_instance
 

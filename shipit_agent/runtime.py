@@ -1723,6 +1723,9 @@ detail you were not given and do not say what you will do next."""
                 base_prompt=base_prompt,
             )
             self.track_usage(state, response, iteration)
+            # Learn this model's real tokens-per-char from the view we just
+            # sent, so the compaction trigger is calibrated, not guessed.
+            self.calibrate_from_completion(compacted_messages, response)
 
             # Self-healing: small models often emit the tool call as TEXT.
             # Promote declared-tool calls out of the content (response-side

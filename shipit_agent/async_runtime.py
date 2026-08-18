@@ -759,6 +759,9 @@ class AsyncAgentRuntime(RuntimeCore):
                 base_prompt=base_prompt,
             )
             self.track_usage(state, response, iteration)
+            # Learn this model's real tokens-per-char from the view we just
+            # sent, so the compaction trigger is calibrated, not guessed.
+            self.calibrate_from_completion(step_messages, response)
 
             # Small models often emit the tool call as text; promote it.
             self.heal(state, response, registry, iteration)

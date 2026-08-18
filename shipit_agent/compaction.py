@@ -170,8 +170,14 @@ def estimate_tokens(text: Any) -> int:
     """Rough token count — ~4 characters per token for English prose.
 
     Deliberately an estimate: an exact count needs the provider's tokenizer,
-    which we cannot assume is installed. The 0.85 trigger leaves ample headroom
-    for the error, and under-counting only means compacting slightly late.
+    which we cannot assume is installed. This stays a PURE function; the known
+    error in it is corrected at the decision point, not here. Dense JSON tool
+    output runs ~2.5–3 chars/token, so ``chars/4`` under-counts a tool-heavy
+    run — which is the shape that most needs compacting. A
+    :class:`~shipit_agent.token_calibration.TokenCalibrator`, fed each
+    completion's real ``prompt_tokens``, learns that per-model ratio and the
+    ``Compactor`` scales this estimate by it, so under-counting no longer means
+    compacting late (which would overflow the provider, not merely run long).
 
     Block-shaped content (multimodal turns) is costed as its text parts
     plus a flat ~1,500 tokens per image — the right order of magnitude for
@@ -304,10 +310,24 @@ class Compactor:
         llm: Any = None,
         model: str | None = None,
         context_window_tokens: int = 0,
+        fixed_prefix_tokens: int = 0,
+        calibrator: Any = None,
         on_summary_failure: Callable[[Exception], None] | None = None,
     ) -> None:
         self.llm = llm
         self.model = model
+        # The system prompt + tool schemas are sent on EVERY call but live
+        # outside ``messages``, so a trigger that counts messages alone
+        # under-counts the real prompt by this whole prefix (~16k tokens on a
+        # tool-heavy agent) and compacts that far too late. Counted here so the
+        # decision is made against what the provider actually receives.
+        self.fixed_prefix_tokens = max(0, int(fixed_prefix_tokens or 0))
+        # Optional :class:`~shipit_agent.token_calibration.TokenCalibrator`.
+        # When present, the estimate is scaled by its learned per-model factor
+        # so ``chars/4`` drift (dense JSON tokenizes far below 4 chars/token) no
+        # longer makes the trigger fire late. Read-only here; the runtime feeds
+        # it real usage.
+        self.calibrator = calibrator
         # An explicit window overrides the model table — useful when a caller
         # knows better (a proxy with a smaller effective limit, say).
         #
@@ -329,8 +349,20 @@ class Compactor:
 
     # ── decision ─────────────────────────────────────────────────────────
 
+    def estimated_prompt_tokens(self, messages: Sequence[Message]) -> int:
+        """What the next call's prompt will really cost: prefix + messages,
+        scaled by the learned per-model correction. The single number the
+        trigger and the retention target both derive from, so they never
+        disagree."""
+        raw = messages_tokens(messages) + self.fixed_prefix_tokens
+        if self.calibrator is not None:
+            return self.calibrator.calibrated(self.model, raw)
+        return raw
+
     def needs_compaction(self, messages: Sequence[Message]) -> bool:
-        return should_compact(messages_tokens(messages), self.limits.input_budget)
+        return should_compact(
+            self.estimated_prompt_tokens(messages), self.limits.input_budget
+        )
 
     def latest(self) -> CompactionCheckpoint | None:
         return self.checkpoints[-1] if self.checkpoints else None
@@ -349,7 +381,16 @@ class Compactor:
         if not force and not self.needs_compaction(messages):
             return None
 
-        target = int(self.limits.input_budget * TARGET_RATIO)
+        # Retain messages such that the calibrated prefix+messages estimate
+        # lands near TARGET_RATIO of the budget. ``find_boundary`` sums the RAW
+        # estimate, so back the prefix and the calibration factor out of the
+        # target it is given, keeping that function pure while the decision
+        # stays in real (calibrated) tokens.
+        factor = (
+            self.calibrator.factor(self.model) if self.calibrator is not None else 1.0
+        )
+        gross = self.limits.input_budget * TARGET_RATIO
+        target = int(max(1, gross / max(factor, 1.0) - self.fixed_prefix_tokens))
         boundary = find_boundary(messages, target)
         if boundary <= 0:
             # No valid cut point that helps — better to send an oversized

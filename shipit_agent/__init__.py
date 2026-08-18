@@ -106,6 +106,7 @@ from .approvals import ActionState, ApprovalQueue, PendingAction
 from .compaction import CompactionCheckpoint, Compactor, get_model_limits
 from .token_calibration import TokenCalibrator
 from .mcp_resilience import CircuitBreaker, ResilientMCPTransport
+from .token_counting import count_message_tokens, count_tokens
 from .connections import (
     AuthKind,
     Connection,
@@ -415,6 +416,8 @@ __all__ = [
     "TokenCalibrator",
     "CircuitBreaker",
     "ResilientMCPTransport",
+    "count_tokens",
+    "count_message_tokens",
     "StreamingToolInputParser",
     "get_model_limits",
     "NarratorRenderer",

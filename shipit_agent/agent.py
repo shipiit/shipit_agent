@@ -201,6 +201,13 @@ class Agent:
     #: is safe to leave on: a tool with no declaration is always kept.
     gate_unavailable_tools: bool = True
     context_window_tokens: int = 0  # 0 = no compaction
+    #: The fixed prompt prefix (system prompt + tool schemas) is sent on every
+    #: call but lives outside ``messages``, so the compaction trigger under-counts
+    #: the real prompt by this whole prefix unless it is told. A host that knows
+    #: its prefix size can pass an estimate here to make compaction accurate from
+    #: the first turn; leaving it 0 lets the token calibrator learn the gap over a
+    #: few completions instead. Either way the calibrator corrects tokenizer drift.
+    fixed_prefix_tokens: int = 0
     # Bound only the model-visible copy; AgentResult keeps complete tool
     # output. Capped by default: a message list is cumulative, so one
     # 138,000-character tool result is not paid once — it is re-sent on
@@ -1198,6 +1205,7 @@ class Agent:
             max_tool_concurrency=self.max_tool_concurrency,
             hooks=self.hooks,
             context_window_tokens=self.context_window_tokens,
+            fixed_prefix_tokens=self.fixed_prefix_tokens,
             max_tool_output_chars=self.max_tool_output_chars,
             max_tool_output_group_chars=self.max_tool_output_group_chars,
             tool_output_dir=(
@@ -1434,6 +1442,7 @@ class Agent:
             max_tool_concurrency=self.max_tool_concurrency,
             hooks=self.hooks,
             context_window_tokens=self.context_window_tokens,
+            fixed_prefix_tokens=self.fixed_prefix_tokens,
             max_tool_output_chars=self.max_tool_output_chars,
             max_tool_output_group_chars=self.max_tool_output_group_chars,
             tool_output_dir=(

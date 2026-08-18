@@ -5,6 +5,46 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.6] — 2026-08-18
+
+One flaky MCP connector no longer taxes the whole agent.
+
+### Added
+
+- **MCP resilience — circuit breaker + bounded retry** (`ResilientMCPTransport`,
+  `CircuitBreaker`). An MCP connector is a live dependency; when one goes down,
+  gets slow, or starts rate-limiting, it was re-dialled on every step and each
+  attempt waited out the full transport timeout. Now a per-server breaker marks a
+  server *open* after a few consecutive failures and fails fast (no network wait)
+  until an exponentially-growing cooldown elapses; one success resets it. A
+  rate-limit (HTTP 429 / JSON-RPC `-32029`) trips it immediately with a long,
+  fixed cooldown — never hammer a server that asked us to slow down. The wrapper
+  is transparent (`request`/`close` + attribute passthrough) and wired into
+  `connectors.registry`, so every hosted (HTTP) and stdio connector is resilient
+  by default. Failures still surface as the readable tool result the model
+  already handles — this just stops the stall.
+
+## [1.9.5] — 2026-08-18
+
+Compaction fires at the *right* time, so long tool-heavy runs stay lean and stop overflowing the model.
+
+### Added
+
+- **Calibrated, prefix-aware context accounting** (`TokenCalibrator`). The
+  compaction trigger ran on two systematic under-counts: it ignored the fixed
+  prompt prefix (system prompt + tool schemas, ~16k tokens on a tool-heavy agent)
+  because those live outside `messages`, and it estimated tokens as `chars/4`,
+  which under-counts dense JSON tool output (~2.5–3 chars/token) — the shape that
+  most needs compacting. Together they fired the trigger late enough to overflow
+  the provider. Now a per-model EMA learns the gap between the estimate and the
+  provider's real `prompt_tokens` (prompt-cache counters included, so a cache hit
+  can't drag it down), and the `Compactor` counts the fixed prefix. The trigger
+  and the retention target derive from one calibrated estimate; `estimate_tokens`
+  stays a pure function. Clamped asymmetrically (floors at 1.0 — it can only ever
+  compact *earlier*), model-keyed, warm-up gated. Fed from the exact view sent at
+  each main completion, never the summary pass. Backwards compatible: no prefix +
+  no calibrator reproduces the old messages-only estimate.
+
 ## [1.9.4] — 2026-08-16
 
 ### Added

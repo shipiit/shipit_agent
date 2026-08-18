@@ -48,6 +48,17 @@
 
 ---
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=1_xFvZDC7xg">
+    <img src="https://img.youtube.com/vi/1_xFvZDC7xg/maxresdefault.jpg" alt="Watch: SHIPIT Agent — a clean, powerful Python runtime for tool-using AI agents" width="70%" />
+  </a>
+</p>
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=1_xFvZDC7xg"><strong>▶ Watch the intro</strong></a>
+</p>
+
+---
+
 ## What is SHIPIT Agent?
 
 SHIPIT Agent is a small, explicit runtime for building production agents in Python. You bring
@@ -93,6 +104,24 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
 - **🖥️ Computer use** — drive a real browser via screenshots + a vision model (works in Jupyter).
 - **📊 Production-ready** — sessions, memory consolidation, structured output with validation-retry,
   streaming events (+ SSE/WebSocket packets), tracing (file/OTel/LangSmith), and budgets.
+
+---
+
+## What's new in v1.9.6 — fewer tokens, steadier connectors
+
+- **Calibrated context accounting** (v1.9.5) — compaction now fires at the *right*
+  time. The trigger learns each model's real tokens-per-char from the provider's
+  reported usage (`TokenCalibrator`) and counts the fixed prompt prefix (system +
+  tool schemas), instead of a flat `chars/4` that under-counted dense tool output
+  by multiples. Result: long, tool-heavy runs stay lean and stop overflowing the
+  model. Clamped so it can only ever compact *earlier*, never later.
+- **MCP resilience** (v1.9.6) — a per-server **circuit breaker** + bounded retry
+  (`ResilientMCPTransport`). A connector that is down or rate-limiting (HTTP 429 /
+  JSON-RPC `-32029`) fails fast instead of waiting out the full timeout on every
+  step, so one flaky server can't tax the whole agent. A success resets it.
+
+Both are backwards compatible and covered by the test suite. See the
+[changelog](CHANGELOG.md).
 
 ---
 

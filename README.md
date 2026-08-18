@@ -54,7 +54,7 @@
   </a>
 </p>
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=1_xFvZDC7xg"><strong>▶ Watch the intro</strong></a>
+  <a href="https://www.youtube.com/watch?v=1_xFvZDC7xg"><strong>▶ **Shipt Agent UI**| Watch the intro </strong></a>
 </p>
 
 ---

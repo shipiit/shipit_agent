@@ -5,6 +5,22 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.7] — 2026-08-18
+
+Context accounting is real from the first turn, not an estimate.
+
+### Added
+
+- **Real per-model token counting** (`count_tokens`, `count_message_tokens`). Real
+  counts via LiteLLM's tokenizer (already a dependency), memoised, with a safe
+  fall-back to the `chars/4` estimate — never raises. For models LiteLLM only
+  approximates (some Bedrock ids), the `TokenCalibrator` still refines against the
+  provider's *actually reported* `prompt_tokens`, the true ground truth.
+- **`Agent(fixed_prefix_tokens=…)`** — forwarded through both runtimes to the
+  `Compactor`, so a host can pass a real system-prompt + tool-schema prefix count
+  and compaction is accurate from turn one; the calibrator seeds and refines the
+  rest. The accurate-from-turn-one path is: real count → calibrator refines.
+
 ## [1.9.6] — 2026-08-18
 
 One flaky MCP connector no longer taxes the whole agent.

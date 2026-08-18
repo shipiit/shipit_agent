@@ -20,10 +20,17 @@ from ..mcp import (
     PersistentMCPSubprocessTransport,
     RemoteMCPServer,
 )
+from ..mcp_resilience import ResilientMCPTransport
 from .base import Connector
 from .manifests import ManifestError, parse_manifest
 
 logger = logging.getLogger(__name__)
+
+
+def _resilient(transport: object, name: str) -> object:
+    """Wrap a live transport with the circuit breaker + bounded retry, so one
+    down or rate-limited connector fails fast instead of taxing every turn."""
+    return ResilientMCPTransport(transport, name=name)
 
 _REGISTRY: dict[str, Connector] = {}
 #: (path, error) for every manifest that failed to load — surfaced by a UI/CI.
@@ -136,8 +143,9 @@ def connect(
                 f"Run its OAuth flow (OAUTH_PRESETS['{c.oauth or name}']) and store "
                 "the token per user; refresh it when token_is_expired()."
             )
-        transport = MCPStreamableHTTPTransport(
-            endpoint, headers=headers, bearer_token=bearer
+        transport = _resilient(
+            MCPStreamableHTTPTransport(endpoint, headers=headers, bearer_token=bearer),
+            name,
         )
         return RemoteMCPServer(
             name=name, transport=transport, metadata=_meta(c, hosted=True), cache=cache
@@ -163,7 +171,9 @@ def connect(
             f"'{full[0]}' is not on PATH — install it to run '{name}' "
             "(npx ships with Node.js; uvx with uv)."
         )
-    transport = PersistentMCPSubprocessTransport(full, env=merged_env)
+    transport = _resilient(
+        PersistentMCPSubprocessTransport(full, env=merged_env), name
+    )
     return RemoteMCPServer(
         name=name, transport=transport, metadata=_meta(c, hosted=False), cache=cache
     )

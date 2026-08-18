@@ -105,6 +105,7 @@ from .activity import StreamRenderer, format_activity, format_event_line
 from .approvals import ActionState, ApprovalQueue, PendingAction
 from .compaction import CompactionCheckpoint, Compactor, get_model_limits
 from .token_calibration import TokenCalibrator
+from .mcp_resilience import CircuitBreaker, ResilientMCPTransport
 from .connections import (
     AuthKind,
     Connection,
@@ -412,6 +413,8 @@ __all__ = [
     "LockdownState",
     "Compactor",
     "TokenCalibrator",
+    "CircuitBreaker",
+    "ResilientMCPTransport",
     "StreamingToolInputParser",
     "get_model_limits",
     "NarratorRenderer",

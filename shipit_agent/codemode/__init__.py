@@ -42,21 +42,33 @@ __all__ = [
 # *through* a resource: editing the repo it is working in, searching it, and
 # its own reasoning scaffolding are direct. GitHub, Slack, Stripe and the rest
 # are resources, and cost nothing in the prompt until asked about.
+#: The tools whose schemas stay resident on every call under
+#: ``deferred_tools=True``. Everything else is name-only until ``tool_search``
+#: loads it, so this set is the token FLOOR of a deferred agent — 25 tools at
+#: ~307 tokens of schema each was the entire ~7,400-token first turn before the
+#: user said anything. It now holds one tool per capability, no synonyms:
+#: twelve of the old 25 were the same capability under different names, and a
+#: model choosing between ``bash`` / ``run_code`` / ``execute_code`` guesses
+#: right about a third of the time. Nothing is lost — every dropped name is
+#: still reachable through ``tool_search``.
 CORE_TOOLS: frozenset[str] = frozenset({
     # the working copy
     "read_file", "write_file", "edit_file", "glob_files", "grep_files",
-    "workspace_files", "notebook_edit",
-    # the shell and the sandbox
-    "bash", "run_code", "execute_code",
-    # discovery
-    "describe_binding", "tool_search",
-    # the open web is not a connected resource
-    "web_search", "open_url",
-    # talking to the human
-    "ask_user", "ask_user_async", "human_review", "give_up",
-    # the agent's own scaffolding
-    "plan_task", "todo", "decompose_problem", "synthesize_evidence",
-    "decision_matrix", "verify_output", "memory",
+    # the shell — one way to run code; the language is an argument
+    "bash",
+    # code mode's sandbox + resource introspection. This set is shared with
+    # code mode (runtime.py filters non-core tools into `env`), which cannot
+    # function without these two — so they stay resident even though a plain
+    # deferred agent rarely needs them.
+    "execute_code", "describe_binding",
+    # discovery — without this the deferred tail is unreachable
+    "tool_search",
+    # the open web — fetching a result is a mode of search, not a capability
+    "web_search",
+    # talking to the human — sync vs async is a runtime concern, not model-visible
+    "ask_user",
+    # the agent's own scaffolding — one structure tool, not four
+    "todo", "memory",
 })
 
 

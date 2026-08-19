@@ -81,6 +81,20 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
         "cache_read": 0.08,
         "cache_write": 1.00,
     },
+    # ── Google Gemma 4 on AWS Bedrock (bedrock-mantle) ────────────────
+    # Without these, the model doing all the work reported $0.00 — and zero
+    # reads as *free*, not *unknown*. Keys match after the resolver peels the
+    # `bedrock-mantle/` prefix. Verify rates against the Bedrock pricing page;
+    # the relative ordering matters most. (No prompt caching on Gemma.)
+    "google.gemma-4-31b": {
+        "input": 0.30, "output": 0.50, "cache_read": 0.075, "cache_write": 0.0,
+    },
+    "google.gemma-4-26b-a4b": {
+        "input": 0.12, "output": 0.20, "cache_read": 0.03, "cache_write": 0.0,
+    },
+    "google.gemma-4-e2b": {
+        "input": 0.05, "output": 0.10, "cache_read": 0.0125, "cache_write": 0.0,
+    },
 }
 
 # ---------------------------------------------------------------------------

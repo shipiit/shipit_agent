@@ -5,6 +5,44 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.9] — 2026-08-19
+
+Live-trace-driven fixes for Gemma 4 on Bedrock Mantle (and every model): fewer tokens, real cost, tools that actually work.
+
+### Changed
+
+- **`CORE_TOOLS` 25 → 13.** The deferred-tools resident set held twelve synonyms
+  of the same capability (`run_code`/`execute_code`/`bash`, four "write
+  structure" tools, `ask_user`/`ask_user_async`/`human_review`, …). A model
+  choosing between them guesses right about a third of the time. Trimmed to one
+  tool per capability; everything dropped stays reachable through `tool_search`.
+  The deferred first turn drops from ~7.4k to ~3.7k Gemma tokens. `execute_code`
+  and `describe_binding` are kept — code mode depends on them.
+- **Gemma 4 real context window** in `get_model_limits`: 256K (31B / 26B-A4B),
+  128K (E2B). Previously a low default made compaction fire at a fraction of the
+  model's capacity ("it forgets things").
+
+### Added
+
+- **Gemma pricing rows** (26b / 31b / e2b) so a run's cost is not silently
+  reported as `$0.00`. An unknown model still resolves to `None`, not a
+  zero-rate default — unknown and free are different answers.
+- **"Look before you ask"** in `DEFAULT_AGENT_PROMPT`: the agent searches for a
+  referenced file/document/error with the tools it has before asking the user to
+  provide it.
+
+### Fixed
+
+- **`$ref` / `$defs` inlining on tool schemas** (`llms/schema_prep.py`, wired
+  into the LiteLLM adapter). Pydantic / FastMCP MCP servers emit `$defs` +
+  `$ref` for nested argument models; OpenAI tolerates it but a strict
+  OpenAI-*compatible* validator like Bedrock Mantle often does not — simple
+  tools keep working, nested ones fail quietly, and the model reads as stupid
+  rather than blocked. Each tool's parameter schema is now inlined and
+  dialect-sanitized (cached, never-raising) before it goes on the wire. **Host
+  params** (`max_context_tokens`, `file_token_limit`, …) are stripped off the
+  wire — forwarding one is a 400 on a field never aimed at the model.
+
 ## [1.9.8] — 2026-08-19
 
 Tool calling engages reliably on OpenAI-compatible endpoints that need it spelled out.

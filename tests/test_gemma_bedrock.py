@@ -13,14 +13,28 @@ import types
 from types import SimpleNamespace as _ns
 from typing import Any
 
+import pytest
+
+import shipit_agent.llms.litellm_adapter as adapter
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms import BedrockChatLLM, BedrockGemmaChatLLM
+from shipit_agent.llms.bedrock_token import BEARER_ENV_VARS, BedrockTokenError
 
 
 def _native_mantle() -> bool:
     from shipit_agent.llms.litellm_adapter import _litellm_supports_bedrock_mantle
 
     return _litellm_supports_bedrock_mantle()
+
+
+def _clear_bearer_env(monkeypatch) -> None:
+    """Drop every spelling of the Bedrock API key.
+
+    Without this a developer machine holding a real key would pass these tests
+    for the wrong reason — the routing under test would never be exercised.
+    """
+    for var in BEARER_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 class TestGemmaRouting:
@@ -39,22 +53,92 @@ class TestGemmaRouting:
         else:
             assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
 
-    def test_gemma4_without_bearer_key_uses_the_shim(self, monkeypatch) -> None:
-        """SigV4-only environments must not be routed to the bearer-token
-        native provider (it 401s — verified live)."""
-        monkeypatch.delenv("BEDROCK_MANTLE_API_KEY", raising=False)
+    def test_sigv4_only_env_derives_a_bearer_token(self, monkeypatch) -> None:
+        """A SigV4-only environment is no longer a dead end.
+
+        Both mantle routes need a bearer token, and ordinary AWS credentials can
+        produce one (a short-term Bedrock API key *is* a SigV4-presigned
+        request). So rather than being pushed onto the shim — which needs the
+        very bearer token we were said not to have, and 401s without it — the
+        credentials already present are signed into one.
+        """
+        _clear_bearer_env(monkeypatch)
+        monkeypatch.setattr(
+            adapter, "generate_bearer_token", lambda **_: "bedrock-api-key-derived"
+        )
+        llm = BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
+        if _native_mantle():
+            assert llm._mantle_delegate is None
+            assert llm.model == "bedrock_mantle/google.gemma-4-31b"
+        else:
+            assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
+
+    def test_no_credentials_at_all_fails_at_construction(self, monkeypatch) -> None:
+        """With nothing to authenticate with, say so now rather than at the
+        first call — an adapter that builds fine and then 401s is the single
+        most confusing shape this failure can take."""
+        _clear_bearer_env(monkeypatch)
+
+        def _no_credentials(**_: Any):
+            raise BedrockTokenError("No AWS credentials found.")
+
+        monkeypatch.setattr(adapter, "generate_bearer_token", _no_credentials)
+        with pytest.raises(RuntimeError, match="AWS_BEARER_TOKEN_BEDROCK"):
+            BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
+
+    def test_aws_bearer_token_env_var_is_honoured(self, monkeypatch) -> None:
+        """AWS documents AWS_BEARER_TOKEN_BEDROCK, the shim reads it, and the
+        docstring tells users to export it — so the route gate must see it too.
+        Checking only BEDROCK_MANTLE_API_KEY pushed correctly-configured users
+        onto the fallback path."""
+        _clear_bearer_env(monkeypatch)
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "test-key")
+
+        def _must_not_derive(**_: Any):  # pragma: no cover - guards the assert
+            raise AssertionError("a token was already available; none should be signed")
+
+        monkeypatch.setattr(adapter, "generate_bearer_token", _must_not_derive)
+        llm = BedrockChatLLM(model="google.gemma-4-31b")
+        if _native_mantle():
+            assert llm.model == "bedrock_mantle/google.gemma-4-31b"
+
+    @pytest.mark.parametrize(
+        "model_id",
+        ["google.gemma-4-31b", "gemma4-31b", "gemma_4-31b", "google.gemma-5-31b"],
+    )
+    def test_mantle_detection_is_not_punctuation_sensitive(
+        self, monkeypatch, model_id
+    ) -> None:
+        """`"gemma-4" in model` sent `gemma4-31b` to Converse, which cannot
+        serve it — so the same model worked or failed on how its id was
+        punctuated."""
+        monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-key")
+        llm = BedrockChatLLM(model=model_id)
+        routed_to_mantle = llm._mantle_delegate is not None or llm.model.startswith(
+            "bedrock_mantle/"
+        )
+        assert routed_to_mantle, f"{model_id} was not recognised as a mantle model"
+
+    def test_shim_route_is_fully_constructed(self, monkeypatch) -> None:
+        """The shim path used to `return` before calling super().__init__, so a
+        BedrockChatLLM reporting itself as one lacked attributes every other
+        instance has."""
+        monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-key")
+        _force_shim_path(monkeypatch)
         llm = BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
         assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
-        assert llm._mantle_delegate.model == "google.gemma-4-31b"
+        assert llm.prompt_caching is False  # mantle is not Anthropic-family
+        assert isinstance(llm.completion_kwargs, dict)
+
+    def test_bedrock_prefix_stripped(self, monkeypatch) -> None:
+        monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-key")
+        _force_shim_path(monkeypatch)
+        llm = BedrockChatLLM(model="bedrock/google.gemma-4-e2b", region="us-east-1")
+        assert llm._mantle_delegate.model == "google.gemma-4-e2b"
         assert (
             llm._mantle_delegate.client_kwargs["base_url"]
             == "https://bedrock-mantle.us-east-1.api.aws/openai/v1"
         )
-
-    def test_bedrock_prefix_stripped(self, monkeypatch) -> None:
-        monkeypatch.delenv("BEDROCK_MANTLE_API_KEY", raising=False)
-        llm = BedrockChatLLM(model="bedrock/google.gemma-4-e2b")
-        assert llm._mantle_delegate.model == "google.gemma-4-e2b"
 
     def test_explicit_bedrock_mantle_prefix_is_honoured(self, monkeypatch) -> None:
         monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-key")

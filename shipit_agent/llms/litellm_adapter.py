@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any, Callable
 
 from shipit_agent.llms.base import LLMResponse
+from shipit_agent.llms.capabilities import sanitize_params
+from shipit_agent.llms.bedrock_token import (
+    BedrockTokenError,
+    existing_bearer_token,
+    generate_bearer_token,
+)
 from shipit_agent.models import Message, ToolCall
 
 
@@ -262,6 +269,12 @@ class LiteLLMChatLLM:
         # via ``completion_kwargs``.
         if request_tools and "tool_choice" not in extra_kwargs:
             extra_kwargs["tool_choice"] = "auto"
+
+        # Strip parameters this model family is known to reject, rather than
+        # letting the provider 400 mid-turn on a field the caller never set
+        # deliberately (`temperature` usually arrives from a default). Blocks
+        # nothing for an unmatched model. See llms/capabilities.py.
+        extra_kwargs, _dropped = sanitize_params(self.model, extra_kwargs)
 
         if text_delta_callback is not None or tool_input_callback is not None:
             return _stream_completion(
@@ -544,6 +557,14 @@ def _extract_reasoning(message: Any) -> str | None:
     return None
 
 
+#: Bedrock Mantle model ids in every spelling seen in the wild — ``gemma-4``,
+#: ``gemma4``, ``gemma_4`` — and any major version from 4 up. Matching the
+#: literal ``"gemma-4"`` alone silently routed ``gemma4-31b`` to the Converse
+#: API, which cannot serve it, so the same model worked or failed depending on
+#: how its id was punctuated.
+_MANTLE_MODEL_RE = re.compile(r"gemma[-_]?([4-9]|\d{2,})")
+
+
 def _litellm_supports_bedrock_mantle() -> bool:
     """Does the installed LiteLLM ship the native ``bedrock_mantle`` provider?
 
@@ -578,11 +599,49 @@ class BedrockChatLLM(LiteLLMChatLLM):
         # only environment falls through to the shim below (verified live:
         # the native route 401s without BEDROCK_MANTLE_API_KEY).
         lowered = model.lower()
-        is_mantle = "gemma-4" in lowered or lowered.startswith("bedrock_mantle/")
-        has_mantle_key = bool(
-            completion_kwargs.get("api_key")
-            or os.getenv("BEDROCK_MANTLE_API_KEY")
+        is_mantle = bool(_MANTLE_MODEL_RE.search(lowered)) or lowered.startswith(
+            "bedrock_mantle/"
         )
+        # Accept every spelling of the Bedrock API key. AWS documents
+        # ``AWS_BEARER_TOKEN_BEDROCK``; that is also the one the OpenAI shim
+        # below actually reads and the one this package's own docstring tells
+        # users to export. Checking only ``BEDROCK_MANTLE_API_KEY`` here meant a
+        # correctly-configured user was pushed off the preferred native route
+        # onto the shim.
+        mantle_key = completion_kwargs.get("api_key") or existing_bearer_token()
+        # A SigV4-only environment (access keys, a profile, an SSO login, an
+        # instance or task role — the common AWS setup) has no bearer token, and
+        # both mantle routes need one. Rather than build an adapter that 401s on
+        # its first call, derive the token: a short-term Bedrock API key *is* a
+        # SigV4-presigned request, so the credentials already present are
+        # sufficient. See shipit_agent/llms/bedrock_token.py.
+        if is_mantle and not mantle_key:
+            region_hint = completion_kwargs.get(
+                "aws_region_name"
+            ) or completion_kwargs.get("region")
+            try:
+                mantle_key = generate_bearer_token(region=region_hint)
+            except BedrockTokenError as exc:
+                raise RuntimeError(
+                    f"{model!r} is a Bedrock Mantle model, served over the "
+                    "OpenAI-compatible bedrock-mantle endpoint. It authenticates "
+                    "with a Bedrock API key sent as a BEARER token, not with "
+                    "SigV4 request signing, and no key was found or derivable.\n"
+                    f"  Underlying cause: {exc}\n"
+                    "  Either export AWS_BEARER_TOKEN_BEDROCK=... (AWS console → "
+                    "Amazon Bedrock → API keys), or configure ordinary AWS "
+                    "credentials plus a region and one will be derived for you.\n"
+                    "SigV4-authenticated Bedrock models (Anthropic, Nova, Llama, "
+                    "Mistral, Titan) are unaffected."
+                ) from exc
+
+        has_mantle_key = bool(mantle_key)
+        if has_mantle_key:
+            # Both routes read the key from `api_key`; pass the derived token
+            # explicitly rather than exporting it, so a token minted for this
+            # adapter never leaks into the process environment or into any other
+            # library that happens to read that variable.
+            completion_kwargs["api_key"] = mantle_key
         if is_mantle and has_mantle_key and _litellm_supports_bedrock_mantle():
             bare = model.split("/", 1)[-1] if "/" in model else model
             completion_kwargs.pop("base_url", None)
@@ -608,7 +667,14 @@ class BedrockChatLLM(LiteLLMChatLLM):
                 base_url=base_url,
                 **completion_kwargs,
             )
-            self.model = model
+            # Initialise the base class even though `complete()` delegates.
+            # Returning early left the instance without `prompt_caching` and
+            # `completion_kwargs`, so a `BedrockChatLLM` that reports itself as
+            # one did not carry the attributes every other instance has —
+            # `doctor` only avoids an AttributeError because it happens to
+            # guard with hasattr, and it then reports the wrong cache mode.
+            # Caching stays off: the mantle endpoint is not Anthropic-family.
+            super().__init__(model=model, prompt_caching=False, **completion_kwargs)
             return
 
         # Bedrock's Anthropic path requires strict tool_use/tool_result id

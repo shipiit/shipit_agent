@@ -9,7 +9,14 @@ still land on turn/step boundaries so no tool result is orphaned.
 """
 from __future__ import annotations
 
-from shipit_agent.compaction import Compactor, messages_tokens, starts_a_turn
+import pytest
+
+from shipit_agent.compaction import (
+    Compactor,
+    count_messages,
+    messages_tokens,
+    starts_a_turn,
+)
 from shipit_agent.models import Message
 from shipit_agent.token_calibration import TokenCalibrator
 
@@ -91,8 +98,40 @@ def test_calibrated_compaction_still_cuts_on_a_turn_boundary():
     assert msgs[boundary].role != "tool"
 
 
-def test_no_calibrator_matches_legacy_messages_only_when_prefix_zero():
-    """Backwards compatible: no prefix, no calibrator == the old behaviour."""
+def test_no_calibrator_and_no_prefix_is_exactly_the_message_count():
+    """With nothing added, the trigger counts the messages and nothing else.
+
+    This used to assert equality with ``messages_tokens`` — the raw
+    ``chars/4`` estimator. The counter is now the real per-model tokenizer
+    where one is obtainable, so the identity that matters is against
+    ``count_messages``: the *same* function the boundary walk and the
+    calibrator use. Pinning the old estimator here would have re-introduced
+    the unit split those three consumers must not have.
+    """
     msgs = conversation(turns=3)
     comp = Compactor(context_window_tokens=WINDOW)
-    assert comp.estimated_prompt_tokens(msgs) == messages_tokens(msgs)
+    assert comp.estimated_prompt_tokens(msgs) == count_messages(msgs, comp.model)
+
+
+def test_real_counting_beats_the_estimate_on_dense_json():
+    """The reason for the change: ``chars/4`` under-counts dense tool output,
+    which is precisely the shape that most needs compacting."""
+    import json
+
+    from shipit_agent.token_counting import real_counting_available
+
+    if not real_counting_available():
+        pytest.skip("no tokenizer available in this environment")
+
+    blob = json.dumps({"rows": [{"id": i, "name": "x" * 8} for i in range(60)]})
+    msgs = [Message(role="tool", content=blob)]
+    assert count_messages(msgs, "gpt-4o") > messages_tokens(msgs)
+
+
+def test_counting_degrades_to_the_estimate_without_a_tokenizer(monkeypatch):
+    """The tokenizer is optional; losing it must cost accuracy, not the run."""
+    import shipit_agent.token_counting as tc
+
+    monkeypatch.setattr(tc, "_litellm_count", lambda *_a, **_k: None)
+    msgs = conversation(turns=2)
+    assert count_messages(msgs, "gpt-4o") == messages_tokens(msgs)

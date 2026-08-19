@@ -476,3 +476,51 @@ class TestPythonStyleCalls:
         cleaned, calls = self._heal(text)
         assert calls == []
         assert cleaned == text
+
+
+class TestNonAsciiMarkerTokens:
+    """Some models emit a tool call as text with a marker token glued to the
+    name. Captured live from Gemma 4 on bedrock-mantle::
+
+        I will check the current weather in Paris.
+
+        逃weather_lookup(city='Paris')展开提示符
+
+    `\\b` cannot help here: Python's word-boundary is Unicode-aware, so the
+    marker and the tool name are both word characters and no boundary exists
+    between them. The call was silently skipped and the turn ended as
+    narration — measured at roughly one run in five.
+    """
+
+    def test_marker_glued_to_name_still_heals(self) -> None:
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        _, healed = heal_tool_calls(
+            "I will check the current weather in Paris.\n\n"
+            "逃weather_lookup(city='Paris')展开提示符",
+            {"weather_lookup"},
+        )
+        assert [(c.name, c.arguments) for c in healed] == [
+            ("weather_lookup", {"city": "Paris"})
+        ]
+
+    def test_rule_is_general_not_cjk_specific(self) -> None:
+        """The fix is 'not preceded by an ASCII identifier character', so any
+        marker works — nothing about the script is encoded."""
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        for marker in ("逃", "→", "»", "▶", "​"):
+            _, healed = heal_tool_calls(
+                f"{marker}weather_lookup(city='Paris')", {"weather_lookup"}
+            )
+            assert healed, f"marker {marker!r} defeated healing"
+
+    def test_longer_identifier_is_still_refused(self) -> None:
+        """The only thing `\\b` was buying — not matching a genuine longer
+        identifier — must survive the change."""
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        _, healed = heal_tool_calls(
+            "my_weather_lookup(city='Paris')", {"weather_lookup"}
+        )
+        assert healed == []

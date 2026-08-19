@@ -1,5 +1,11 @@
 from .base import LLM, LLMResponse
 from .anthropic_adapter import AnthropicChatLLM
+from .bedrock_token import (
+    BedrockTokenError,
+    bedrock_bearer_token,
+    export_bearer_token,
+    generate_bearer_token,
+)
 from .citations import (
     content_document,
     extract_citations,
@@ -39,8 +45,12 @@ __all__ = [
     "BedrockChatLLM",
     "BedrockGemmaChatLLM",
     "build_llm_from_env",
+    "bedrock_bearer_token",
+    "BedrockTokenError",
     "build_llm_from_settings",
     "code_execution",
+    "export_bearer_token",
+    "generate_bearer_token",
     "computer_use",
     "content_document",
     "extract_citations",

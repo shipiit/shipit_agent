@@ -94,3 +94,68 @@ MODEL_ALIASES: dict[str, str] = {
     "gpt4o": "gpt-4o",
     "gpt4o-mini": "gpt-4o-mini",
 }
+
+
+def resolve_pricing_key(
+    model: str | None, pricing: dict[str, dict[str, float]]
+) -> str | None:
+    """Find the pricing key for *model*, or ``None`` if nothing matches.
+
+    A plain dict lookup is the wrong shape here, and quietly so. Real model ids
+    arrive carrying vendor routing prefixes and version suffixes —
+    ``bedrock/openai.gpt-oss-120b-1:0``, ``us.anthropic.claude-opus-5``,
+    ``anthropic/claude-sonnet-4`` — while the table is keyed by family. An
+    exact lookup misses every one of them, and a miss does not raise: the call
+    is priced at $0.00, so a configured budget can never be exceeded and the
+    only symptom is a log line. That failure mode is silent in exactly the
+    situation the budget exists for.
+
+    So this mirrors the matcher ``compaction.get_model_limits`` already uses,
+    for the same ids:
+
+    1. an explicit alias,
+    2. an exact key,
+    3. the **longest** matching key prefix — longest so ``claude-opus-4-1``
+       never resolves to the shorter, differently-priced ``claude-opus-4``,
+    4. failing that, peel vendor prefixes one ``/`` or ``.`` segment at a time.
+
+    Step 4 runs only after step 3 has failed on the whole id, because model
+    names legitimately contain dots: splitting eagerly would turn
+    ``gemini-2.5-pro`` into ``5-pro`` and lose a match that was there.
+    """
+    if not model:
+        return None
+
+    def _longest_prefix(name: str) -> str | None:
+        best: tuple[int, str] | None = None
+        for key in pricing:
+            lowered = key.lower()
+            if name.startswith(lowered) and (best is None or len(lowered) > best[0]):
+                best = (len(lowered), key)
+        return best[1] if best else None
+
+    aliased = MODEL_ALIASES.get(model, model)
+    if aliased in pricing:
+        return aliased
+
+    normalized = str(aliased).lower()
+    for key in pricing:
+        if key.lower() == normalized:
+            return key
+
+    found = _longest_prefix(normalized)
+    if found:
+        return found
+
+    remainder = normalized
+    while True:
+        cut = min(
+            (remainder.index(sep) for sep in ("/", ".") if sep in remainder),
+            default=-1,
+        )
+        if cut < 0:
+            return None
+        remainder = remainder[cut + 1 :]
+        found = _longest_prefix(remainder)
+        if found:
+            return found

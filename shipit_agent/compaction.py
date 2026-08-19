@@ -200,6 +200,41 @@ def messages_tokens(messages: Sequence[Message]) -> int:
     return sum(estimate_tokens(m.content or "") for m in messages)
 
 
+def content_tokens(content: Any, model: str | None = None) -> int:
+    """Tokens in one message's content — real count when one is obtainable.
+
+    ``estimate_tokens`` is ``chars/4``, and its own docstring notes that dense
+    JSON runs 2.5–3 chars/token, so a tool-heavy run is under-counted by the
+    better part of half. The calibrator corrects that after a few completions,
+    but the first turns of every run are uncorrected, and the clamp means it can
+    only ever raise a too-low estimate *later*.
+
+    A real per-model tokenizer removes the error at the source. It is optional
+    (it needs LiteLLM's tables), so this degrades to the estimate rather than
+    depending on it — the same shape as LibreChat's tokenizer, which falls back
+    to ``chars/4`` whenever an encoding is missing.
+    """
+    if isinstance(content, list):
+        # Multimodal blocks: a tokenizer cannot see pixels, and the flat
+        # per-image allowance is already the right order of magnitude.
+        return estimate_tokens(content)
+    from shipit_agent.token_counting import count_tokens
+
+    return count_tokens(content or "", model)
+
+
+def count_messages(messages: Sequence[Message], model: str | None = None) -> int:
+    """Token count across a message list, real when available.
+
+    Every consumer of a token count — the compaction trigger, the retention
+    boundary walk, and the calibrator's estimate — must go through this one
+    function. If they disagree on units, the trigger fires against one number
+    while the boundary is chosen against another, and the retained context
+    silently misses its target.
+    """
+    return sum(content_tokens(m.content or "", model) for m in messages)
+
+
 def should_compact(context_tokens: int, input_budget: int) -> bool:
     """Has the prompt grown enough to compact before the next model call?"""
     return context_tokens >= input_budget * TRIGGER_RATIO
@@ -231,7 +266,11 @@ def starts_a_step(message: Message) -> bool:
     return message.role == "assistant"
 
 
-def find_boundary(messages: Sequence[Message], target_tokens: int) -> int:
+def find_boundary(
+    messages: Sequence[Message],
+    target_tokens: int,
+    count: Callable[[Any], int] | None = None,
+) -> int:
     """Index to start replay from: the newest safe cut that fits the target.
 
     Prefers a **turn** start, so retained messages open the way a conversation
@@ -241,14 +280,19 @@ def find_boundary(messages: Sequence[Message], target_tokens: int) -> int:
 
     Returns ``0`` when no cut helps; nothing is compacted rather than cutting
     somewhere a provider will reject.
+
+    ``count`` must be the same per-message counter the caller used to derive
+    ``target_tokens``; it defaults to the raw estimate so existing callers are
+    unaffected.
     """
     if not messages:
         return 0
+    measure = count or (lambda content: estimate_tokens(content))
     running = 0
     turn_boundary = 0
     step_boundary = 0
     for index in range(len(messages) - 1, -1, -1):
-        running += estimate_tokens(messages[index].content or "")
+        running += measure(messages[index].content or "")
         if running > target_tokens:
             break
         if starts_a_turn(messages[index]):
@@ -354,7 +398,7 @@ class Compactor:
         scaled by the learned per-model correction. The single number the
         trigger and the retention target both derive from, so they never
         disagree."""
-        raw = messages_tokens(messages) + self.fixed_prefix_tokens
+        raw = count_messages(messages, self.model) + self.fixed_prefix_tokens
         if self.calibrator is not None:
             return self.calibrator.calibrated(self.model, raw)
         return raw
@@ -381,17 +425,19 @@ class Compactor:
         if not force and not self.needs_compaction(messages):
             return None
 
-        # Retain messages such that the calibrated prefix+messages estimate
-        # lands near TARGET_RATIO of the budget. ``find_boundary`` sums the RAW
-        # estimate, so back the prefix and the calibration factor out of the
-        # target it is given, keeping that function pure while the decision
-        # stays in real (calibrated) tokens.
+        # Retain messages such that the calibrated prefix+messages count lands
+        # near TARGET_RATIO of the budget. ``find_boundary`` sums UNCALIBRATED
+        # counts, so back the prefix and the calibration factor out of the
+        # target it is given — and hand it the same per-message counter used
+        # above, so both sides of this subtraction are in one unit.
         factor = (
             self.calibrator.factor(self.model) if self.calibrator is not None else 1.0
         )
         gross = self.limits.input_budget * TARGET_RATIO
         target = int(max(1, gross / max(factor, 1.0) - self.fixed_prefix_tokens))
-        boundary = find_boundary(messages, target)
+        boundary = find_boundary(
+            messages, target, lambda content: content_tokens(content, self.model)
+        )
         if boundary <= 0:
             # No valid cut point that helps — better to send an oversized
             # prompt and let the provider complain than to cut mid-turn.

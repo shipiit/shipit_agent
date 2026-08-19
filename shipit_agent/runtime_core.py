@@ -996,7 +996,7 @@ class RuntimeCore:
         way. Call ONLY for real model steps — never the summary completion,
         whose prompt is a different shape.
         """
-        from shipit_agent.compaction import messages_tokens
+        from shipit_agent.compaction import count_messages
 
         usage = getattr(response, "usage", None) or {}
         actual = (
@@ -1006,10 +1006,9 @@ class RuntimeCore:
         )
         if actual <= 0:
             return
-        estimated = messages_tokens(sent_messages) + self._fixed_prefix_tokens
-        self.token_calibrator.observe(
-            getattr(self.llm, "model", None), estimated, actual
-        )
+        model = getattr(self.llm, "model", None)
+        estimated = count_messages(sent_messages, model) + self._fixed_prefix_tokens
+        self.token_calibrator.observe(model, estimated, actual)
 
     # ── compaction ───────────────────────────────────────────────────────
 

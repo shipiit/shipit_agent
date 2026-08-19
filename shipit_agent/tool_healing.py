@@ -292,8 +292,24 @@ def _python_style_calls(
 ) -> list[tuple[tuple[int, int], dict]]:
     """Spans and arguments of ``tool_name(key="value")`` calls in prose."""
     found: list[tuple[tuple[int, int], dict]] = []
+    # `\b` is the wrong boundary here. Gemma via bedrock-mantle glues a
+    # non-ASCII marker token straight onto the name — observed live::
+    #
+    #     I will check the current weather in Paris.\n\n逃weather_lookup(city='Paris')展开提示符
+    #
+    # Python's `\b` is Unicode-aware, so `逃` and `w` are *both* word
+    # characters and no boundary exists between them: the call never matched
+    # and the turn ended as narration. `_name_adjacent_calls` already tolerates
+    # this for the brace form (it matches on `prefix.endswith(name)`), which is
+    # why the same run healed `联tool_search{...}` but not this.
+    #
+    # An explicit "not preceded by an ASCII identifier character" still refuses
+    # to match a genuine longer identifier like `my_weather_lookup(...)`, which
+    # is the only thing `\b` was buying.
     pattern = re.compile(
-        r"\b(" + "|".join(re.escape(n) for n in sorted(allowed)) + r")\s*\(([^()]*)\)"
+        r"(?<![A-Za-z0-9_])("
+        + "|".join(re.escape(n) for n in sorted(allowed))
+        + r")\s*\(([^()]*)\)"
     )
     for match in pattern.finditer(text[:_MAX_SCAN_CHARS]):
         arguments = _parse_python_kwargs(match.group(2))

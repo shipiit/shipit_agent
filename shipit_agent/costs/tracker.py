@@ -15,7 +15,7 @@ from typing import Any, Callable, Literal
 from shipit_agent.hooks import AgentHooks
 
 from .budget import Budget, BudgetExceededError
-from .pricing import MODEL_ALIASES, MODEL_PRICING
+from .pricing import MODEL_ALIASES, MODEL_PRICING, resolve_pricing_key
 
 logger = logging.getLogger(__name__)
 
@@ -382,8 +382,14 @@ class CostTracker:
     # ------------------------------------------------------------------
 
     def _resolve_model(self, model: str) -> str:
-        """Resolve a model alias to its canonical pricing key."""
-        return MODEL_ALIASES.get(model, model)
+        """Resolve a model id to its pricing key.
+
+        Returns the id unchanged when nothing matches, so the caller's
+        ``resolved not in self._pricing`` unknown-model check still works.
+        """
+        return resolve_pricing_key(model, self._pricing) or MODEL_ALIASES.get(
+            model, model
+        )
 
     def _check_warning(self) -> None:
         """Emit a cost warning if the threshold has been crossed."""

@@ -176,6 +176,45 @@ class ToolResult:
 
 
 @dataclass(slots=True)
+class ToolCallPart:
+    """A tool call and its result, as one indivisible unit — the *collapsed*
+    storage shape (see :mod:`shipit_agent.chat_history`).
+
+    The output lives on the call rather than in a separate message so the two
+    cannot be separated by a partial write, a compaction boundary, or a history
+    truncation. That separation is the only thing request-patching (
+    ``modify_params``) ever repaired.
+    """
+
+    id: str
+    name: str
+    args: dict[str, Any] = field(default_factory=dict)
+    output: str | None = None  # None = still running (paused / in flight)
+    is_error: bool = False
+    truncated: bool = False
+    duration_ms: float = 0.0
+    #: Set when paused for human review. Its presence is what a UI renders
+    #: approval controls from.
+    approval: dict[str, Any] | None = None
+    input_validation_error: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def complete(self) -> bool:
+        return self.output is not None or self.is_error
+
+
+@dataclass(slots=True)
+class TextPart:
+    """Prose inside a collapsed turn, with the calls it relates to."""
+
+    text: str
+    #: Which calls this prose relates to. Without it, "I'll check two things"
+    #: → two calls → "both fine" reloads as an unordered pile.
+    tool_call_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Message:
     """One turn of the conversation."""
 

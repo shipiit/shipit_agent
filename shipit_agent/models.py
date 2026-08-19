@@ -348,6 +348,10 @@ class AgentResult:
     artifacts: list[Artifact] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     parsed: Any = None
+    #: RAG sources cited by this run. Kept so the existing runtime, which
+    #: constructs ``AgentResult(rag_sources=…)``, works against the merged
+    #: (superset) model rather than raising on an unexpected keyword.
+    rag_sources: list[Any] = field(default_factory=list)
 
     @property
     def steps(self) -> list[AgentEvent]:

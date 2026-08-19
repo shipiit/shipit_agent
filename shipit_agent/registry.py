@@ -28,7 +28,7 @@ def _safe_discover(mcp: MCPServer) -> list:
         return list(discover_mcp_tools(mcp))
     except Exception as exc:  # noqa: BLE001 — one dead server must not fail the run
         logger.warning(
-            "MCP server %r discovery failed (%s: %s); its tools are unavailable "
+            "MCP server %r is unreachable (%s: %s); its tools are unavailable "
             "this run", getattr(mcp, "name", "?"), type(exc).__name__, exc)
         return []
 

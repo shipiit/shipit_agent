@@ -74,11 +74,18 @@ class LegacyAgent:
 
 
 def test_the_bridge_does_not_ship_a_competing_agent():
-    """The existing Agent is the product; the loop plugs in underneath it."""
-    import shipit_agent
+    """The existing Agent is the product; the loop plugs in underneath it.
 
-    assert "Agent" not in shipit_agent.__all__
-    assert "spec_from_agent" in shipit_agent.__all__
+    In the merged tree the real ``Agent`` stays exported (it IS the product);
+    what matters is that the bridge does not define a SECOND, competing Agent —
+    it reads the existing one via ``spec_from_agent``.
+    """
+    import shipit_agent
+    from shipit_agent import bridge
+
+    assert "Agent" in shipit_agent.__all__          # the real Agent is the product
+    assert not hasattr(bridge, "Agent")             # bridge ships no competing one
+    assert hasattr(bridge, "spec_from_agent")       # it reads the existing Agent
 
 
 def test_every_field_the_bridge_reads_keeps_its_name():

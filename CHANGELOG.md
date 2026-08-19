@@ -5,6 +5,21 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.8] — 2026-08-19
+
+Tool calling engages reliably on OpenAI-compatible endpoints that need it spelled out.
+
+### Fixed
+
+- **Send `tool_choice: "auto"` when tools are offered.** The LiteLLM adapter passed
+  `tools` but never `tool_choice`. Most providers assume `auto`, but some
+  OpenAI-compatible endpoints — notably AWS Bedrock's Gemma (`bedrock-mantle`)
+  route, per AWS's own examples — only engage function calling when
+  `tool_choice` is sent explicitly; without it the model narrates the call as
+  prose and loops instead of emitting a structured call. A caller can still
+  override (`"required"`/`"none"`) via `completion_kwargs`. Applies to both the
+  streaming and non-streaming paths.
+
 ## [1.9.7] — 2026-08-18
 
 Context accounting is real from the first turn, not an estimate.

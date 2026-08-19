@@ -253,6 +253,15 @@ class LiteLLMChatLLM:
             # LiteLLM accepts a per-call `timeout` and forwards it to every
             # provider it wraps; the per-request value wins.
             extra_kwargs["timeout"] = timeout
+        # When tools are offered, tell the model it MAY call one ("auto"). Most
+        # providers assume this, but some OpenAI-compatible endpoints — notably
+        # Bedrock's Gemma (`bedrock-mantle`) route, per AWS's own examples — only
+        # engage function calling reliably when `tool_choice` is sent
+        # explicitly; without it the model narrates the call as prose instead of
+        # emitting a structured one. A caller can override ("required"/"none")
+        # via ``completion_kwargs``.
+        if request_tools and "tool_choice" not in extra_kwargs:
+            extra_kwargs["tool_choice"] = "auto"
 
         if text_delta_callback is not None or tool_input_callback is not None:
             return _stream_completion(

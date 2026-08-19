@@ -277,6 +277,21 @@ class LiteLLMChatLLM:
                 pass
 
         extra_kwargs = dict(self.completion_kwargs)
+        # Per-model parameter hygiene: drop params this model rejects (Gemma on
+        # Mantle takes temperature/top_p only — top_k, penalties, logprobs,
+        # thinking_budget all 400) and fill AWS-recommended defaults the caller
+        # left unset (Gemma: temperature=1.0, top_p=0.95). Unknown models get a
+        # permissive default that strips/fills nothing.
+        try:
+            from shipit_agent.llms.capabilities import (
+                apply_recommended_params,
+                sanitize_params,
+            )
+
+            accepted, _dropped = sanitize_params(self.model, extra_kwargs)
+            extra_kwargs = apply_recommended_params(self.model, accepted)
+        except Exception:  # noqa: BLE001 — param hygiene must never break a call
+            pass
         # Host params are instructions to shipit's own compactor/loop, not fields
         # any provider knows — forwarding one is a 400 naming a parameter never
         # aimed at the model. Strip them before the wire.

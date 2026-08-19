@@ -1,0 +1,157 @@
+# shipit.yaml — reference configuration
+#
+# Everything in this file is optional. Every key below already has the value
+# shown as a shipped default, so deleting this file entirely leaves a working
+# agent with identical behaviour. The file exists so that nothing has to be
+# changed by editing source or cutting a release.
+#
+# Resolution order, highest precedence first:
+#   1. overrides passed in code             load_config(overrides={...})
+#   2. this file                            $SHIPIT_CONFIG → ./shipit.yaml
+#                                           → ./.shipit/config.yaml
+#                                           → ~/.shipit/config.yaml
+#   3. shipit_upgrade.config.DEFAULTS
+#
+# Mappings merge deeply. Lists replace, so a list here can be shorter than the
+# shipped one — removing a region actually removes it.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Providers
+# ─────────────────────────────────────────────────────────────────────────────
+providers:
+  bedrock_mantle:
+    # The OpenAI-compatible surface that serves Gemma 4. {region} is filled in.
+    base_url: "https://bedrock-mantle.{region}.api.aws/openai/v1"
+
+    # Checked before the first call, so an unsupported region fails with a
+    # message that names the alternatives instead of a DNS error. Add a region
+    # here the day AWS adds one — no release needed.
+    regions:
+      - us-east-1
+      - us-east-2
+      - us-west-2
+      - eu-central-1
+
+    # Mantle authenticates with a bearer token, not SigV4. When no token is
+    # exported, one is derived from ordinary AWS credentials.
+    auth: bearer
+    token_ttl_seconds: 43200   # AWS maximum for a short-term key: 12 hours
+    refresh_at: 0.8            # re-derive at 80% of lifetime, before expiry
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Service tiers
+#
+# Opted into per invocation and mixable within one run. The foreground turn is
+# the only one whose latency anyone observes; background fan-out belongs on the
+# discounted tier. Verification stays on standard because it gates the answer.
+# ─────────────────────────────────────────────────────────────────────────────
+service_tiers:
+  default: standard
+  by_purpose:
+    main: priority
+    subagent: flex
+    summarizer: flex
+    memory: flex
+    assessor: flex
+    progress: flex
+    title: flex
+    verifier: standard
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Retry
+#
+# 429 and 503 mean opposite things. A token quota was exceeded: retrying fast
+# makes it worse, so the delay starts long. Regional capacity dipped: most are
+# momentary, so the delay starts short. Auth refreshes the credential once and
+# does not loop. A malformed request is never retried — N identical failures
+# only hide the cause.
+# ─────────────────────────────────────────────────────────────────────────────
+retry:
+  token_quota:
+    max_attempts: 4
+    base_delay: 20.0
+    max_delay: 120.0
+    jitter: true
+  capacity:
+    max_attempts: 6
+    base_delay: 1.0
+    max_delay: 45.0
+    jitter: true
+  auth:
+    max_attempts: 2
+    base_delay: 0.0
+    refresh_credentials_first: true
+  bad_request:
+    max_attempts: 1
+  transient:
+    max_attempts: 4
+    base_delay: 1.0
+  unknown:
+    max_attempts: 2
+    base_delay: 2.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Skills
+#
+# The catalog — one line per skill — lives in the cached prefix. Bodies load on
+# demand via the load_skill tool, so raising catalog_entries costs roughly ten
+# tokens per skill rather than a whole body.
+# ─────────────────────────────────────────────────────────────────────────────
+skills:
+  catalog_entries: 200       # how many skills the model can see at once
+  description_chars: 120     # per-entry summary length in the catalog
+  body_chars: 24000          # a loaded body beyond this is truncated visibly
+  always_apply: 20           # skills primed before turn one
+  manual: 10                 # trigger-phrase matches per run
+  primed_per_turn: 30        # ceiling on model-initiated loads
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tools
+# ─────────────────────────────────────────────────────────────────────────────
+tools:
+  # A message list is cumulative: one huge tool result is not paid once, it is
+  # re-sent on every turn that follows it.
+  max_output_chars: 16000
+  max_output_group_chars: 48000
+
+  # Circuit breaker on streamed tool-call arguments. A model looping inside a
+  # JSON string argument otherwise streams until memory runs out.
+  max_call_arg_bytes: 65536
+  per_tool_arg_bytes:
+    write_file: 262144
+    edit_file: 262144
+    document_builder: 262144
+
+  # An edit tool refuses to modify a file this session has not read, or one
+  # that changed on disk since that read. A prompt instruction is not enough:
+  # it fails under context pressure, which is when a bad edit is worst.
+  enforce_read_before_write: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Context
+# ─────────────────────────────────────────────────────────────────────────────
+context:
+  reserve_ratio: 0.05        # headroom held back from the model's window
+  compact_at: 0.85           # compact when the prompt reaches this fraction
+  retain_recent_turns: 4     # turns kept verbatim after a compaction
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Checkpoints
+#
+# Primed skills and discovered deferred tools live outside the message list. A
+# resume that restores only messages comes back quietly less capable.
+# ─────────────────────────────────────────────────────────────────────────────
+checkpoint:
+  enabled: true
+  directory: .shipit/checkpoints
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prompt prefix
+#
+# Implicit prompt caching needs a byte-stable prefix. Cached tokens are cheaper
+# and do not count against the input-token quota, so stability is throughput,
+# not a micro-optimisation. Sorting tools is the cheapest half of it.
+# ─────────────────────────────────────────────────────────────────────────────
+prefix:
+  sort_tools: true
+  assert_stability: false    # turn on in tests and CI; leave off in production

@@ -63,11 +63,27 @@ def test_order_is_preserved_for_collision_handling():
     assert "beta__dup" in reg.tools     # beta (second) is namespaced
 
 
-def test_a_failing_server_still_raises():
+def test_a_failing_server_is_isolated_not_fatal():
+    """A failing server used to abort the whole build.
+
+    That made one unreachable server — a sleeping laptop, an expired token, a
+    container still starting — take down every unrelated tool with it. The
+    healthy server's tools must survive; the dead one contributes nothing when
+    there is no cached schema to build stubs from.
+    """
     good = SlowServer("good", ["ok"], delay=0.05)
     bad = SlowServer("bad", [], delay=0.05, error=RuntimeError("connect refused"))
-    with pytest.raises(RuntimeError, match="connect refused"):
-        ToolRegistry.build(mcps=[good, bad])
+    reg = ToolRegistry.build(mcps=[good, bad])
+    assert "ok" in reg.tools
+
+
+def test_the_failure_is_reported_not_swallowed(caplog):
+    """Isolation must not mean silence — a tool vanishing with no explanation
+    is harder to diagnose than a crash."""
+    bad = SlowServer("bad", [], delay=0.01, error=RuntimeError("connect refused"))
+    with caplog.at_level("WARNING"):
+        ToolRegistry.build(mcps=[bad])
+    assert any("unreachable" in r.message.lower() for r in caplog.records)
 
 
 def test_single_server_still_works():

@@ -76,6 +76,7 @@ from shipit_agent.skills import (
 from shipit_agent.skills.tool_bundles import tool_names_for_skills
 from shipit_agent.stores import MemoryStore, SessionStore
 from shipit_agent.tracing import TraceStore
+from shipit_agent.agent_mixin import UpgradeMixin
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ _LIVE_STYLES = frozenset({"auto", "rich", "plain", "tree", "modern"})
 
 
 @dataclass(slots=True)
-class Agent:
+class Agent(UpgradeMixin):
     """The primary SHIPIT agent — LLM + tools + skills + RAG in one class.
 
     **Core fields:**

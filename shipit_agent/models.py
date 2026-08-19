@@ -1,75 +1,193 @@
+"""The values that move through a run.
+
+The one change here that matters more than the rest: **a tool call carries its
+own id**. Providers correlate a call to its result by id — Bedrock rejects a
+multi-step run with "Expected toolResult blocks for Ids: …" when the pairing is
+absent — and an id that lives in a loose ``metadata`` dict is an id that the
+type system cannot check, that a helper holding only a :class:`ToolCall` cannot
+reach, and that every adapter has to rediscover.
+
+Carrying it as a field has three consequences worth naming:
+
+* **No history rewriting.** With correct pairing emitted directly, the SDK no
+  longer has to patch requests by inserting filler turns. Those insertions
+  polluted context, cost tokens on every subsequent turn, and — since implicit
+  prompt caching keys on a stable prefix — silently destroyed every cache hit
+  for the rest of the conversation.
+* **Parallel calls are unambiguous.** Two concurrent calls to the same tool are
+  distinguishable, which they are not when a name is the only handle.
+* **Runs can be resumed.** A checkpoint can name the call it stopped on.
+
+Ids are also mirrored into ``metadata`` on serialisation, so adapters written
+against the old shape keep working through one release. Read the field; write
+both.
+"""
+
 from __future__ import annotations
 
+import itertools
 import time
+import uuid
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Iterable, Literal
 
+__all__ = [
+    "Role",
+    "EventType",
+    "Message",
+    "ToolCall",
+    "ToolResult",
+    "AgentEvent",
+    "AgentResult",
+    "Artifact",
+    "new_tool_call_id",
+    "pair_calls_and_results",
+]
 
 Role = Literal["system", "user", "assistant", "tool"]
+
 EventType = Literal[
     "run_started",
+    "iteration_started",
     "reasoning_started",
+    "reasoning_delta",
     "reasoning_completed",
-    "step_started",
-    "planning_started",
-    "planning_completed",
+    "text_delta",
+    "tool_group_started",
     "tool_called",
+    "tool_input_delta",
+    "tool_output_delta",
     "tool_completed",
     "tool_failed",
     "tool_denied",
-    # A structured call refused by the argument gate before it could run —
-    # part of the record, not an in-flight moment.
     "tool_arguments_rejected",
-    "action_queued",
-    "connection_requested",
-    # A file a tool left behind — a page, a workbook, a document.
-    "artifact_created",
-    # Model-generated progress narration (Agent(progress_summaries=True)).
-    "agent_decision",
-    "agent_observation",
-    "progress_summary_failed",
-    # One iteration's tool calls, so a UI can draw them as one expandable box.
-    "tool_group_started",
     "tool_group_completed",
-    # The answer, as its own event: a client should not have to infer it from
-    # run_completed's payload.
-    "final_answer",
-    # A closing accounting — iterations, tool calls, tokens, estimated cost.
-    "run_summary",
-    "text_delta",
-    "tool_input_started",
-    "tool_input_delta",
-    "tool_output_started",
-    "tool_output_delta",
-    "usage_tick",
-    "interactive_request",
+    "skill_catalog_ready",
+    "skill_loaded",
     "mcp_attached",
-    "skills_selected",
+    "tools_discovered",
+    "tools_rebound",
+    "subagent_started",
+    "subagent_event",
+    "subagent_completed",
+    "context_compacted",
+    "approval_required",
+    "checkpoint_saved",
+    "usage_tick",
     "llm_retry",
-    "tool_retry",
+    "final_answer",
+    "run_summary",
     "run_completed",
     "run_failed",
     "run_cancelled",
-    "guardrail_triggered",
-    "lockdown_engaged",
-    "sub_agent_event",
-    "tool_call_healed",
-    "context_snapshot",
-    "context_compacted",
-    "rag_sources",
 ]
+
+_counter = itertools.count(1)
+
+
+def new_tool_call_id(prefix: str = "call") -> str:
+    """A locally-unique id, for providers that do not supply one.
+
+    Short and readable rather than a bare UUID, because these ids appear in
+    logs, traces and error messages, and a human comparing two of them at a
+    glance is a routine part of debugging a parallel tool batch.
+    """
+    return f"{prefix}_{next(_counter):03d}_{uuid.uuid4().hex[:8]}"
+
+
+@dataclass(slots=True)
+class ToolCall:
+    """A model's request to run one tool."""
+
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+    #: Provider-supplied id, or one generated at parse time. Never empty once
+    #: the call has been through :meth:`ensure_id`.
+    id: str = ""
+    #: Position within its batch, so a UI can order parallel calls stably.
+    index: int = 0
+
+    def ensure_id(self) -> "ToolCall":
+        """Fill a missing id in place and return self, for fluent parsing."""
+        if not self.id:
+            self.id = new_tool_call_id()
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "arguments": dict(self.arguments),
+            "index": self.index,
+        }
+
+    def to_wire(self) -> dict[str, Any]:
+        """OpenAI-shaped ``tool_calls`` entry."""
+        import json
+
+        return {
+            "id": self.id or new_tool_call_id(),
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "arguments": json.dumps(self.arguments, sort_keys=True, default=str),
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], *, index: int = 0) -> "ToolCall":
+        return cls(
+            name=str(data.get("name", "")),
+            arguments=dict(data.get("arguments") or {}),
+            id=str(data.get("id", "")),
+            index=int(data.get("index", index)),
+        ).ensure_id()
+
+
+@dataclass(slots=True)
+class ToolResult:
+    """What a tool produced, bound to the call that asked for it."""
+
+    name: str
+    output: str
+    #: The id of the :class:`ToolCall` this answers. Required for correct
+    #: pairing; empty only for results synthesised outside a call.
+    tool_call_id: str = ""
+    #: Errors are results, not exceptions — the model must be able to recover
+    #: from a failed tool without the run ending.
+    is_error: bool = False
+    #: True when the model-visible text was shortened. Truncation is always
+    #: visible, so the model knows to fetch the rest rather than assuming it
+    #: saw everything.
+    truncated: bool = False
+    duration_ms: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "output": self.output,
+            "tool_call_id": self.tool_call_id,
+            "is_error": self.is_error,
+            "truncated": self.truncated,
+            "duration_ms": self.duration_ms,
+            "metadata": dict(self.metadata),
+        }
 
 
 @dataclass(slots=True)
 class Message:
+    """One turn of the conversation."""
+
     role: Role
     #: Plain text, or a list of provider-portable content blocks for
-    #: multimodal turns — Anthropic-shape ``{"type": "image", "source":
-    #: {"type": "base64" | "url", ...}}`` plus ``{"type": "text", ...}``.
-    #: Adapters translate blocks to each provider's wire shape; runtime
-    #: code that needs prose reads :attr:`text`, never ``content`` raw.
-    content: str | list[dict[str, Any]]
+    #: multimodal turns. Runtime code that needs prose reads :attr:`text`.
+    content: str | list[dict[str, Any]] = ""
     name: str | None = None
+    #: Calls this assistant turn requested. First-class, not metadata.
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    #: For ``role="tool"``: which call this answers.
+    tool_call_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -84,57 +202,109 @@ class Message:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        # Ids are mirrored into metadata so adapters written against the older
+        # shape keep working for one release. Read the field; write both.
+        metadata = dict(self.metadata)
+        if self.tool_calls:
+            metadata["tool_calls"] = [c.to_dict() for c in self.tool_calls]
+        if self.tool_call_id:
+            metadata["tool_call_id"] = self.tool_call_id
         return {
             "role": self.role,
             "content": self.content,
             "name": self.name,
-            "metadata": dict(self.metadata),
+            "tool_calls": [c.to_dict() for c in self.tool_calls],
+            "tool_call_id": self.tool_call_id,
+            "metadata": metadata,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Message":
+        """Rebuild a message, accepting both the new and the legacy shape."""
+        metadata = dict(data.get("metadata") or {})
+        raw_calls = data.get("tool_calls") or metadata.get("tool_calls") or []
+        calls = [
+            ToolCall.from_dict(entry, index=index)
+            for index, entry in enumerate(raw_calls)
+            if isinstance(entry, dict)
+        ]
+        metadata.pop("tool_calls", None)
+        call_id = data.get("tool_call_id") or metadata.pop("tool_call_id", None)
+        return cls(
+            role=data.get("role", "user"),
+            content=data.get("content", ""),
+            name=data.get("name"),
+            tool_calls=calls,
+            tool_call_id=str(call_id) if call_id else None,
+            metadata=metadata,
+        )
 
-@dataclass(slots=True)
-class ToolCall:
-    name: str
-    arguments: dict[str, Any] = field(default_factory=dict)
+    @classmethod
+    def from_tool_result(cls, result: ToolResult) -> "Message":
+        """The ``role="tool"`` turn that answers a call, correctly paired."""
+        return cls(
+            role="tool",
+            content=result.output,
+            name=result.name,
+            tool_call_id=result.tool_call_id,
+            metadata={"is_error": result.is_error, "truncated": result.truncated},
+        )
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "arguments": dict(self.arguments),
-        }
 
+def pair_calls_and_results(messages: Iterable[Message]) -> tuple[bool, list[str]]:
+    """Check that every tool call in *messages* has exactly one result.
 
-@dataclass(slots=True)
-class ToolResult:
-    name: str
-    output: str
-    metadata: dict[str, Any] = field(default_factory=dict)
+    Returns ``(ok, problems)``. This is the invariant that ``modify_params``
+    used to paper over by rewriting the request; asserting it directly is how
+    the rewriting stays switched off.
+    """
+    expected: dict[str, str] = {}
+    answered: set[str] = set()
+    problems: list[str] = []
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "output": self.output,
-            "metadata": dict(self.metadata),
-        }
+    for message in messages:
+        for call in message.tool_calls:
+            if not call.id:
+                problems.append(f"tool call {call.name!r} has no id")
+            elif call.id in expected:
+                problems.append(f"duplicate tool call id {call.id}")
+            else:
+                expected[call.id] = call.name
+        if message.role == "tool":
+            if not message.tool_call_id:
+                problems.append(f"tool result {message.name!r} has no tool_call_id")
+            elif message.tool_call_id in answered:
+                problems.append(f"duplicate result for {message.tool_call_id}")
+            else:
+                answered.add(message.tool_call_id)
+
+    for call_id, name in expected.items():
+        if call_id not in answered:
+            problems.append(f"unanswered tool call {name!r} ({call_id})")
+    for call_id in answered - set(expected):
+        problems.append(f"result for unknown call id {call_id}")
+
+    return (not problems), problems
 
 
 @dataclass(slots=True)
 class AgentEvent:
+    """One observable moment of a run."""
+
     type: EventType
-    message: str
+    message: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
     @property
     def display_message(self) -> str:
-        """Return the concise, user-facing text for this event."""
+        """The concise, user-facing text for this event."""
         summary = self.payload.get("summary")
         if isinstance(summary, str) and summary.strip():
             return summary.strip()
-        message = self.message.strip()
-        if message:
-            return message
-        for key in ("chunk", "delta"):
+        if self.message.strip():
+            return self.message.strip()
+        for key in ("chunk", "delta", "text"):
             value = self.payload.get(key)
             if isinstance(value, str) and value:
                 return value
@@ -150,35 +320,41 @@ class AgentEvent:
 
 
 @dataclass(slots=True)
+class Artifact:
+    """A file a tool left behind."""
+
+    name: str
+    content: str
+    media_type: str = "text/plain"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "content": self.content,
+            "media_type": self.media_type,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(slots=True)
 class AgentResult:
+    """Everything a finished run produced."""
+
     output: str
-    messages: list[Message]
-    events: list[AgentEvent]
+    messages: list[Message] = field(default_factory=list)
+    events: list[AgentEvent] = field(default_factory=list)
     tool_results: list[ToolResult] = field(default_factory=list)
+    artifacts: list[Artifact] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     parsed: Any = None
-    rag_sources: list[Any] = field(default_factory=list)
 
     @property
     def steps(self) -> list[AgentEvent]:
         return self.events
 
     def summary(self) -> dict[str, Any]:
-        """Run metrics computed from the event trace.
-
-        Returns wall-clock duration, iteration count, token usage, and a
-        per-tool breakdown (calls, failures, total time)::
-
-            {
-              "duration_seconds": 3.4,
-              "iterations": 2,
-              "tool_calls": 3,
-              "tool_failures": 0,
-              "usage": {"input_tokens": 812, "output_tokens": 240},
-              "tools": {"bash": {"calls": 2, "failures": 0, "total_ms": 2140.0},
-                        "edit_file": {"calls": 1, "failures": 0, "total_ms": 12.0}},
-            }
-        """
+        """Run metrics computed from the event trace."""
         tools: dict[str, dict[str, Any]] = {}
         iterations: set[Any] = set()
         calls = failures = 0
@@ -206,43 +382,21 @@ class AgentResult:
             if len(self.events) >= 2
             else 0.0
         )
-        usage = self.metadata.get("usage", {})
         return {
             "duration_seconds": duration,
             "iterations": len(iterations),
             "tool_calls": calls,
             "tool_failures": failures,
-            "usage": dict(usage) if isinstance(usage, dict) else {},
+            "usage": dict(self.metadata.get("usage", {}) or {}),
             "tools": tools,
         }
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "output": self.output,
-            "messages": [message.to_dict() for message in self.messages],
-            "events": [event.to_dict() for event in self.events],
-            "tool_results": [
-                tool_result.to_dict() for tool_result in self.tool_results
-            ],
-            "metadata": dict(self.metadata),
-            "rag_sources": [
-                src.to_dict() if hasattr(src, "to_dict") else src
-                for src in self.rag_sources
-            ],
-        }
-
-
-@dataclass(slots=True)
-class Artifact:
-    name: str
-    content: str
-    media_type: str = "text/plain"
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "content": self.content,
-            "media_type": self.media_type,
+            "messages": [m.to_dict() for m in self.messages],
+            "events": [e.to_dict() for e in self.events],
+            "tool_results": [r.to_dict() for r in self.tool_results],
+            "artifacts": [a.to_dict() for a in self.artifacts],
             "metadata": dict(self.metadata),
         }

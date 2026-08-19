@@ -241,6 +241,29 @@ class LiteLLMChatLLM:
 
         payload_messages = [_serialize_message(m) for m in messages]
         request_tools = tools or None
+        # Inline `$ref`/`$defs` and dialect-sanitize each tool's parameter schema
+        # BEFORE it goes on the wire. Pydantic/FastMCP MCP servers emit `$defs` +
+        # `$ref` for nested argument models; OpenAI tolerates it, but a strict
+        # OpenAI-*compatible* validator like Bedrock Mantle often does not —
+        # simple tools keep working, nested ones fail quietly, and the model
+        # reads as stupid rather than blocked. Cached and never-raising.
+        if request_tools:
+            try:
+                from shipit_agent.llms.capabilities import capabilities_for
+                from shipit_agent.llms.schema_prep import prepare_tool_schema
+
+                # `$ref` inlining is dialect-independent; the dialect only tunes
+                # the sanitize step. Default to the strictest (openai_strict) so
+                # Bedrock Mantle gets clean schemas even where the capability
+                # row carries no dialect.
+                _dialect = getattr(
+                    capabilities_for(self.model), "schema_dialect", "openai_strict"
+                ) or "openai_strict"
+                request_tools = [
+                    prepare_tool_schema(t, dialect=_dialect) for t in request_tools
+                ]
+            except Exception:  # noqa: BLE001 — schema prep must never break a call
+                pass
         # Add prompt-caching breakpoints for Anthropic-family models. Guarded so
         # non-Anthropic providers never receive the unsupported field and
         # nothing crashes if message/tool shapes are unexpected.
@@ -254,6 +277,14 @@ class LiteLLMChatLLM:
                 pass
 
         extra_kwargs = dict(self.completion_kwargs)
+        # Host params are instructions to shipit's own compactor/loop, not fields
+        # any provider knows — forwarding one is a 400 naming a parameter never
+        # aimed at the model. Strip them before the wire.
+        for _host in (
+            "max_context_tokens", "file_token_limit", "fileTokenLimit",
+            "max_iterations", "max_tool_output_chars", "context_window_tokens",
+        ):
+            extra_kwargs.pop(_host, None)
         if response_format:
             extra_kwargs["response_format"] = response_format
         if timeout is not None:

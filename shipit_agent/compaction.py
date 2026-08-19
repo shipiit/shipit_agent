@@ -79,7 +79,11 @@ MODEL_CONTEXT_WINDOWS: dict[str, tuple[int, int]] = {
     "llama-3.3": (128_000, 8_192),
     "mistral-large": (128_000, 8_192),
     "gemma-3": (128_000, 8_192),
-    "gemma-4": (128_000, 8_192),
+    # Gemma 4 31B / 26B-A4B are 256K windows; E2B is 128K. The more specific
+    # e2b key wins by longest-prefix match. Without these, a 256K model was
+    # compacted at an eighth of its capacity — the likely cause of "it forgets".
+    "gemma-4-e2b": (128_000, 8_192),
+    "gemma-4": (256_000, 16_384),
     "gpt-oss": (128_000, 32_768),
 }
 

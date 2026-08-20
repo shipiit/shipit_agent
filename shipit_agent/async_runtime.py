@@ -13,7 +13,7 @@ from shipit_agent.permissions import PermissionEngine
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
 from shipit_agent.runtime_core import RuntimeCore, evict_prior_tool_outputs
-from shipit_agent.runtime import (
+from shipit_agent.runtime_state import (
     RuntimeState,
     _isolated_tool_state,
     _merge_tool_state,

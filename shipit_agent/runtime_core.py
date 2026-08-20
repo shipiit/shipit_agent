@@ -20,12 +20,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import threading
-import unicodedata
 
 from typing import Any, Sequence
 
+from shipit_agent.action_detection import is_malformed_action_attempt
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import Message
 from shipit_agent.permissions import (
@@ -35,83 +34,6 @@ from shipit_agent.permissions import (
 )
 
 __all__ = ["RuntimeCore", "is_malformed_action_attempt"]
-
-
-# Call grammar, not provider output vocabulary. Natural-language intent is
-# never guessed here because that can turn a valid answer into another costly
-# model invocation.
-_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_.-]*"
-_NAMED_OBJECT = re.compile(
-    rf"(?<![A-Za-z0-9_])({_IDENTIFIER})\s*(?:\(|:|=)?\s*\{{",
-    re.MULTILINE,
-)
-_ANGLE_FORM = re.compile(rf"<\s*/?\s*({_IDENTIFIER})(?:\s|>|$)")
-
-
-def is_malformed_action_attempt(
-    text: str | None, *, allowed_names: Sequence[str] = ()
-) -> bool:
-    """Return whether text has the structure of an unparsed tool call.
-
-    This is schema-driven and provider-neutral. A response is eligible for
-    one recovery attempt only when it contains an advertised tool name in
-    invocation position, an identifier-prefixed object, an incomplete
-    angle-delimited protocol form, or a degenerate surface dominated by empty
-    whitespace. Ordinary natural language is always a final answer.
-
-    This detector never promotes or executes text. Promotion is the stricter
-    job of ``tool_healing.heal_tool_calls``, which validates names and
-    arguments against the advertised schemas.
-    """
-    raw_source = text or ""
-    source = raw_source.strip()
-    if not source:
-        return False
-
-    advertised = {name for name in allowed_names if name}
-
-    # A stopped generation can contain one short visible line followed by
-    # hundreds of empty whitespace tokens. Detect the ratio, not the words:
-    # this is equally valid for every language and provider. Require tools to
-    # be advertised so a deliberately spacious tool-less answer is untouched.
-    compact = " ".join(source.split())
-    if (
-        advertised
-        and len(raw_source) >= 256
-        and len(compact) <= 300
-        and len(raw_source) >= max(1, len(compact)) * 3
-    ):
-        return True
-
-    for match in _NAMED_OBJECT.finditer(source):
-        if not advertised or match.group(1) in advertised:
-            return True
-
-    if advertised:
-        names = "|".join(
-            re.escape(name) for name in sorted(advertised, key=len, reverse=True)
-        )
-        if re.search(
-            rf"(?<![A-Za-z0-9_])(?:{names})\s*(?:\(|\{{|:|=)", source
-        ):
-            return True
-
-        # A generation that stops mid-clause after spelling an actual tool
-        # name is incomplete by shape. Punctuation is checked by Unicode
-        # category, so this works for non-English answers without enumerating
-        # language-specific sentence endings.
-        # Require code formatting around the identifier. A normal answer such
-        # as "Used helper" may end without punctuation and must not be turned
-        # into a retry merely because a tool happens to be named ``helper``.
-        code_formatted_name = re.search(rf"`(?:{names})`", source)
-        if code_formatted_name and not unicodedata.category(source[-1]).startswith(
-            "P"
-        ):
-            return True
-
-    # Any unclosed angle-delimited protocol fragment is malformed by shape;
-    # no tag name is privileged.
-    return bool(_ANGLE_FORM.search(source)) and source.count("<") != source.count(">")
 
 
 # What a file extension means to a person. Anything unlisted is "File" —

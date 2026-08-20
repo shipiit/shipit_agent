@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import copy
 import queue
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 from uuid import uuid4
 
@@ -31,6 +29,20 @@ from shipit_agent.runtime_core import (
     _declared_paths,
     evict_prior_tool_outputs,
 )
+from shipit_agent.runtime_narration import (
+    _arguments_by_name,
+    _bounded,
+    _describe_result,
+    _first_sentences,
+    _join_clauses,
+    _looks_like_prose,
+    _result_failed,
+)
+from shipit_agent.runtime_state import (
+    RuntimeState,
+    _isolated_tool_state,
+    _merge_tool_state,
+)
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -43,197 +55,6 @@ from shipit_agent.tool_runner import ToolRunner, safe_tool_event_metadata
 from shipit_agent.tools import Tool, ToolContext, ToolOutputChunk
 from shipit_agent.tools.helpers import build_tools_prompt
 from shipit_agent.tracing import InMemoryTraceStore, TraceStore
-
-
-@dataclass(slots=True)
-class RuntimeState:
-    messages: list[Message] = field(default_factory=list)
-    events: list[AgentEvent] = field(default_factory=list)
-    tool_results: list[ToolResult] = field(default_factory=list)
-    #: ``(tool, arguments) -> digest of the output it produced``, for this
-    #: run only. Held on the run rather than the runtime because a pointer
-    #: to "the result above" is a lie in the next run, where it is not.
-    seen_tool_outputs: dict = field(default_factory=dict)
-    #: The last observation line the runtime composed. Narrating the next
-    #: step needs to know what the last one found, and this already says it —
-    #: which is what lets the decision prompt stay a few hundred characters
-    #: instead of carrying the conversation.
-    last_observation: str = ""
-    #: ``(tool, arguments_key)`` of every READ-ONLY call already executed this
-    #: run. A weak model re-issues a read it already ran; the duplicate gate
-    #: uses this to skip the re-execution (not just shrink the output) and point
-    #: the model at the result it already has. Per-run, like seen_tool_outputs.
-    executed_readonly_calls: set = field(default_factory=set)
-    #: The verify-on-stop gate for this run (a :class:`VerifyGate`), or None when
-    #: ``verify_before_stop`` is off. Tracks edits + verify runs and decides
-    #: whether a turn that changed code may finish without passing tests.
-    verify_gate: Any = None
-
-
-# Keys in the runtime's shared_state that hold shared *service* objects (not
-# per-tool data). They must be passed by reference, never deep-copied, when
-# isolating state for concurrent tool execution.
-_SHARED_SERVICE_STATE_KEYS = frozenset({"memory_store", "credential_store"})
-
-
-def _isolated_tool_state(shared_state: dict[str, Any]) -> dict[str, Any]:
-    """Return a per-tool copy of ``shared_state`` for safe concurrent writes.
-
-    Service objects (memory/credential stores) are shared by reference; plain
-    data is deep-copied so two tools running in parallel can't corrupt each
-    other's reads/writes (e.g. both doing ``state.setdefault("artifacts", [])
-    .append(...)``). Copies are merged back via :func:`_merge_tool_state`.
-    """
-    isolated: dict[str, Any] = {}
-    for key, value in shared_state.items():
-        if key in _SHARED_SERVICE_STATE_KEYS:
-            isolated[key] = value
-            continue
-        try:
-            isolated[key] = copy.deepcopy(value)
-        except Exception:
-            isolated[key] = value
-    return isolated
-
-
-def _merge_tool_state(target: dict[str, Any], child: dict[str, Any]) -> None:
-    """Merge a finished tool's isolated state back into the canonical state.
-
-    Lists are extended with items the child added (de-duplicated); dicts are
-    shallow-merged; scalars are last-write-wins. Called in original tool order
-    so the merge is deterministic.
-    """
-    for key, value in child.items():
-        if key in _SHARED_SERVICE_STATE_KEYS:
-            continue
-        if key not in target:
-            target[key] = value
-        elif isinstance(value, list) and isinstance(target.get(key), list):
-            existing = target[key]
-            for item in value:
-                if item not in existing:
-                    existing.append(item)
-        elif isinstance(value, dict) and isinstance(target.get(key), dict):
-            target[key].update(value)
-        else:
-            target[key] = value
-
-
-
-
-def _join_clauses(parts: list[str]) -> str:
-    """``a``, ``a and b``, ``a, b and c`` — an English list, not a dump."""
-    parts = [part for part in parts if part]
-    if not parts:
-        return ""
-    if len(parts) == 1:
-        return parts[0]
-    return ", ".join(parts[:-1]) + " and " + parts[-1]
-
-
-def _arguments_by_name(tool_calls: list[Any] | None) -> dict[str, dict]:
-    """Arguments per tool name, so a result can name what it acted on.
-
-    Keyed by name rather than zipped by position: a call that was denied
-    or failed to execute produces no result, and a positional pairing
-    would then attribute every later result to the wrong call.
-    """
-    found: dict[str, dict] = {}
-    for call in tool_calls or []:
-        name = getattr(call, "name", "")
-        if name and name not in found:
-            found[name] = dict(getattr(call, "arguments", None) or {})
-    return found
-
-
-def _bounded(value: Any, limit: int) -> str:
-    """A compact, display-safe string for a narration prompt."""
-    text = " ".join(str(value or "").split())
-    return text if len(text) <= limit else text[:limit].rstrip() + "…"
-
-
-#: A narration line is a short paragraph — two or three sentences, the
-#: length a person actually reads as an explanation. Shorter than this and
-#: it degenerates into a caption ("Asking question openai/openai-python."),
-#: which is the thing the decision model exists to replace.
-_SPOKEN_LIMIT = 400
-
-
-def _first_sentences(text: str | None) -> str:
-    """The model's own opening, trimmed to something glanceable.
-
-    Reasoning scratch and pre-tool prose run long; the decision line is
-    read in passing. Cut at a sentence boundary rather than mid-word, and
-    give up rather than emit a fragment — a bad sentence here is worse
-    than the composed label it would replace.
-    """
-    stripped = (text or "").strip()
-    if not stripped:
-        return ""
-    # Collapse whitespace so a multi-line answer reads as one line.
-    stripped = " ".join(stripped.split())
-    if len(stripped) <= _SPOKEN_LIMIT:
-        return stripped
-    cut = stripped[:_SPOKEN_LIMIT]
-    for end in (". ", "! ", "? "):
-        index = cut.rfind(end)
-        if index > 40:
-            return cut[: index + 1]
-    return cut.rsplit(" ", 1)[0] + "…"
-
-
-#: Fragments of a mangled tool call, when a model writes one as text.
-#: Observed from Gemma 4: `off,name":"} // ERROR in thought process, fixing
-#: to: rl_gr` reached a user's screen as the agent's stated reasoning,
-#: because the decision line trusts the model's own words and this was not
-#: words.
-_NOT_PROSE = ('":', '"}', '{"', "//", "```", "<tool", "()")
-
-
-def _looks_like_prose(text: str) -> bool:
-    """Whether the model's own text is safe to show as reasoning.
-
-    Preferring the model's sentence over a composed label is right when
-    the model wrote a sentence. It also writes broken tool calls as text,
-    and those must not be presented to a user as the agent's thinking —
-    the composed label is a worse sentence but never a wrong one, so it is
-    the correct fallback.
-    """
-    stripped = (text or "").strip()
-    if len(stripped) < 4:
-        return False
-    if any(marker in stripped for marker in _NOT_PROSE):
-        return False
-    # Real prose is mostly letters and spaces. A serialised argument list
-    # is mostly punctuation, whatever its exact shape.
-    letters = sum(character.isalpha() or character.isspace()
-                  for character in stripped)
-    return letters / len(stripped) >= 0.75
-
-
-def _describe_result(result: ToolResult) -> str:
-    """What the tool said about its own result — never a guess at it.
-
-    A tool may put a short phrase in ``metadata["summary"]`` ("6,746
-    matches", "11 pages", "no rows"). That is the only source used here.
-
-    An earlier version read the payload instead, pattern-matching keys
-    like ``total`` out of JSON. It was wrong in principle and wrong in
-    practice: only the tool knows whether its ``total`` counts results,
-    pages or bytes, so the narrator was inventing a fact and stating it
-    with confidence. A tool that says nothing about its result gets no
-    detail rather than a fabricated one — and teaching a tool to describe
-    itself is a one-line change in that tool, where the knowledge is.
-    """
-    metadata = getattr(result, "metadata", None) or {}
-    summary = metadata.get("summary")
-    return str(summary).strip() if summary else ""
-
-
-def _result_failed(result: ToolResult) -> bool:
-    """Whether a tool reported failure, by either convention it uses."""
-    metadata = result.metadata or {}
-    return bool(metadata.get("error")) or metadata.get("ok") is False
 
 
 class AgentRuntime(RuntimeCore):

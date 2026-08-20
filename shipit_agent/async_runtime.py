@@ -55,6 +55,7 @@ class AsyncAgentRuntime(RuntimeCore):
         tools: list[Tool] | None = None,
         mcps: list[MCPServer] | None = None,
         required_tools: list[str] | None = None,
+        require_tool_call: bool = False,
         max_required_tool_text_chars: int = 2_048,
         metadata: dict[str, Any] | None = None,
         history_messages: list[Message] | None = None,
@@ -91,6 +92,7 @@ class AsyncAgentRuntime(RuntimeCore):
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
         self.required_tools = list(required_tools or [])
+        self.require_tool_call = bool(require_tool_call)
         self.max_required_tool_text_chars = max(
             0, int(max_required_tool_text_chars or 0)
         )
@@ -638,6 +640,8 @@ class AsyncAgentRuntime(RuntimeCore):
         initially_required = self.initial_required_tool_names(user_prompt, registry)
         if initially_required:
             shared_state["forced_tool_names"] = initially_required
+        elif self.require_tool_call and list(registry.values()):
+            shared_state["force_any_tool"] = True
         tool_prompt = build_tools_prompt(
             registry.values(), connections=self.connections.all(), mcps=self.mcps,
             supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
@@ -748,6 +752,7 @@ class AsyncAgentRuntime(RuntimeCore):
             # selection is re-evaluated every step (a no-op when off).
             force_text = bool(shared_state.pop("force_text_after_duplicate", False))
             forced_names = set(shared_state.get("forced_tool_names") or ())
+            force_any_tool = bool(shared_state.get("force_any_tool"))
             active_schemas = (
                 [] if force_text
                 else self.select_step_schemas(tool_schemas, shared_state)
@@ -779,12 +784,14 @@ class AsyncAgentRuntime(RuntimeCore):
                 iteration=iteration,
                 ran_tools=bool(state.tool_results),
             )
-            if forced_names:
+            if forced_names or force_any_tool:
                 step_messages.append(Message(
                     role="user",
                     content=(
-                        "Execute the required registered tool now: "
-                        + ", ".join(sorted(forced_names))
+                        ("Execute the required registered tool now: "
+                         + ", ".join(sorted(forced_names))
+                         if forced_names else
+                         "Execute the most appropriate available tool now")
                         + ". Emit the structured call, not prose or a simulated result."
                     ),
                     metadata={"internal": True, "kind": "required_tool"},
@@ -802,7 +809,9 @@ class AsyncAgentRuntime(RuntimeCore):
                 messages=step_messages,
                 tools=step_schemas,
                 base_prompt=base_prompt,
-                require_tool_call=bool(forced_names and step_schemas),
+                require_tool_call=bool(
+                    (forced_names or force_any_tool) and step_schemas
+                ),
             )
             self.track_usage(state, response, iteration)
             # Learn this model's real tokens-per-char from the view we just
@@ -831,6 +840,24 @@ class AsyncAgentRuntime(RuntimeCore):
                 )
 
             if not response.tool_calls:
+                if force_any_tool and iteration < self.max_iterations:
+                    state.messages.append(Message(
+                        role="assistant",
+                        content="[Unverified response discarded: no required tool executed.]",
+                    ))
+                    state.messages.append(Message(
+                        role="user",
+                        content=(
+                            "A registered tool must execute before answering. "
+                            "Call the best available tool now; do not simulate its result."
+                        ),
+                        metadata={"internal": True, "kind": "required_tool_retry"},
+                    ))
+                    self.emit(
+                        state, "tool_call_healed", "Retrying required tool use",
+                        nudge=True, iteration=iteration,
+                    )
+                    continue
                 executed = {result.name for result in state.tool_results}
                 missing_required = sorted(forced_names - executed)
                 missing_requested = self.missing_requested_tools(
@@ -1009,6 +1036,8 @@ class AsyncAgentRuntime(RuntimeCore):
                 state.messages, tool_call_records
             ):
                 shared_state["force_text_after_duplicate"] = True
+            if state.tool_results:
+                shared_state.pop("force_any_tool", None)
             if forced_names:
                 remaining_forced = forced_names - {
                     result.name for result in state.tool_results

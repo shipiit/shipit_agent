@@ -152,6 +152,9 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     #: advertises only these tools and uses native required-tool mode first,
     #: then resets to automatic selection after they have run.
     required_tools: list[str] = field(default_factory=list)
+    #: Require at least one available tool on the first model step, without
+    #: constraining which one. Mirrors provider ``tool_choice="required"``.
+    require_tool_call: bool = False
     #: Stop a provider that ignores required tool choice from spending its
     #: whole output budget narrating a call. The partial prose is discarded and
     #: the bounded recovery step receives the same required tool contract.
@@ -888,6 +891,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             tools=effective_tools,
             mcps=self.mcps,
             required_tools=self.required_tools,
+            require_tool_call=self.require_tool_call,
             max_required_tool_text_chars=self.max_required_tool_text_chars,
             metadata={
                 "agent_name": self.name,
@@ -1138,6 +1142,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             tools=effective_tools,
             mcps=self.mcps,
             required_tools=self.required_tools,
+            require_tool_call=self.require_tool_call,
             max_required_tool_text_chars=self.max_required_tool_text_chars,
             metadata={
                 "agent_name": self.name,

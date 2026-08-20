@@ -402,6 +402,39 @@ def test_required_tool_prose_is_bounded_before_recovery() -> None:
     assert [item.name for item in result.tool_results] == ["remote_search"]
 
 
+def test_host_can_require_any_routed_tool_without_requiring_all() -> None:
+    seen: list[tuple[list[str], bool]] = []
+
+    class Chooser:
+        def complete(self, *, tools=None, require_tool_call=False, **_kwargs):
+            names = [(schema.get("function") or {}).get("name") for schema in tools]
+            seen.append((names, require_tool_call))
+            if len(seen) == 1:
+                return LLMResponse(tool_calls=[
+                    ToolCall(name="get_profile", arguments={"name": "Akira"})
+                ])
+            return LLMResponse(content="Profile retrieved")
+
+    result = Agent(
+        llm=Chooser(),
+        tools=[
+            FunctionTool.from_callable(
+                lambda name: name, name="get_profile", read_only=True
+            ),
+            FunctionTool.from_callable(
+                lambda name: name, name="list_posts", read_only=True
+            ),
+        ],
+        require_tool_call=True,
+        auto_use_skills=False,
+        max_iterations=3,
+    ).run("Check the selected source for Akira")
+
+    assert seen[0] == (["get_profile", "list_posts"], True)
+    assert seen[1] == (["get_profile", "list_posts"], False)
+    assert [item.name for item in result.tool_results] == ["get_profile"]
+
+
 def test_stream_deadline_is_absolute_not_per_chunk() -> None:
     from shipit_agent.llms.litellm_adapter import _iter_with_deadline
 

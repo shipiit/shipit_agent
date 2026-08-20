@@ -141,6 +141,36 @@ def test_async_required_tool_completion_receives_abort_callback() -> None:
     assert probe.stopped is True
 
 
+def test_async_text_streaming_stays_enabled_with_tool_schemas() -> None:
+    class StreamingFinal:
+        model = "test"
+
+        async def acomplete(self, *, text_delta_callback=None, **kwargs):
+            assert text_delta_callback is not None
+            text_delta_callback("final text")
+            return LLMResponse(content="final text")
+
+        def complete(self, **kwargs):
+            raise AssertionError("sync fallback should not run")
+
+    async def scenario() -> RuntimeState:
+        state = RuntimeState()
+        runtime = AsyncAgentRuntime(llm=StreamingFinal(), prompt="p")
+        await runtime._complete_async(
+            state=state,
+            messages=[],
+            tools=[{"function": {"name": "available_tool"}}],
+            base_prompt="p",
+        )
+        await asyncio.sleep(0)
+        return state
+
+    state = asyncio.run(scenario())
+    assert [
+        event.payload["chunk"] for event in state.events if event.type == "text_delta"
+    ] == ["final text"]
+
+
 def test_async_tool_prefers_native_arun() -> None:
     class AsyncTool:
         name = "native_tool"

@@ -347,7 +347,10 @@ class AsyncAgentRuntime(RuntimeCore):
         loop = asyncio.get_running_loop()
         repetition_guard = RepetitionGuard()
         provisional_chars = 0
-        expose_text_deltas = not tools and self.guardrails is None
+        # Keep final answers streaming when tool schemas remain advertised.
+        # Native structured tool calling separates calls from answer text;
+        # schema availability alone is not evidence that this is a tool step.
+        expose_text_deltas = self.guardrails is None
 
         def _schedule_emit(event_type: str, message: str, **payload: Any) -> None:
             loop.call_soon_threadsafe(

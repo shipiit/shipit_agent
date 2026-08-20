@@ -1184,10 +1184,11 @@ detail you were not given and do not say what you will do next."""
 
         repetition_guard = RepetitionGuard()
         provisional_chars = 0
-        # Tool-step prose is provisional: it may be followed by a structured
-        # call or discarded by recovery. Monitor it for repetition, but only
-        # publish deltas from a forced final/text-only completion.
-        expose_text_deltas = not tools and self.guardrails is None
+        # Tool schemas being available does not mean this completion will call
+        # one. Native structured providers can produce the final answer while
+        # those schemas remain advertised, so gating on ``not tools`` silently
+        # disables token streaming for normal agent answers.
+        expose_text_deltas = self.guardrails is None
 
         # When the LLM adapter supports streaming via ``text_delta_callback``,
         # emit each text chunk as a ``text_delta`` event so the SSE adapter

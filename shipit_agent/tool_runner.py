@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import re
-from collections.abc import Iterable
+from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -200,6 +202,60 @@ class ToolRunner:
             if output_callback is not None:
                 output_callback(ToolOutputChunk(result.output, dict(result.metadata)))
             return result
+        return self._collect_output(tool_call.name, output, output_callback)
+
+    async def run_tool_call_async(
+        self,
+        tool_call: ToolCall,
+        context: ToolContext,
+        output_callback: ToolOutputCallback | None = None,
+    ) -> ToolResult:
+        """Run a native async tool when available, else preserve context in a thread.
+
+        Tools may expose ``arun`` or ``run_async`` without changing the existing
+        synchronous Tool protocol. This keeps old integrations compatible while
+        allowing HTTP/MCP/database tools to avoid occupying executor threads.
+        """
+        tool = self.registry.get(tool_call.name)
+        if tool is None:
+            raise KeyError(f"Unknown tool: {tool_call.name}")
+        loaded = context.state.get("loaded_tool_names")
+        if isinstance(loaded, set):
+            loaded.add(tool_call.name)
+        safe_arguments = {
+            k: v
+            for k, v in tool_call.arguments.items()
+            if k not in self._RESERVED_ARG_NAMES
+        }
+        async_runner = getattr(tool, "arun", None) or getattr(tool, "run_async", None)
+        try:
+            if callable(async_runner):
+                output = async_runner(context, **safe_arguments)
+                if inspect.isawaitable(output):
+                    output = await output
+            else:
+                return await asyncio.to_thread(
+                    self.run_tool_call, tool_call, context, output_callback
+                )
+        except (KeyError, TypeError) as exc:
+            declared, required = _declared_parameters(tool)
+            missing = _missing_argument(exc, safe_arguments, declared)
+            if missing is None:
+                raise
+            result = ToolResult(
+                name=tool_call.name,
+                output=_missing_argument_message(tool_call.name, missing, required),
+                metadata={"error": "missing_argument", "argument": missing},
+            )
+            if output_callback is not None:
+                output_callback(ToolOutputChunk(result.output, dict(result.metadata)))
+            return result
+
+        if isinstance(output, AsyncIterable):
+            items: list[Any] = []
+            async for item in output:
+                items.append(item)
+            output = items
         return self._collect_output(tool_call.name, output, output_callback)
 
     def run_many(

@@ -43,6 +43,7 @@ from shipit_agent.runtime_state import (
     _isolated_tool_state,
     _merge_tool_state,
 )
+from shipit_agent.session_lock import session_run_lock
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -1336,11 +1337,12 @@ detail you were not given and do not say what you will do next."""
         # blocks (text + images/documents) that become the user message,
         # while ``user_prompt`` stays the plain text used for guardrails,
         # planning, tool context and events.
-        try:
-            return self._run_inner(user_prompt, user_content=user_content)
-        finally:
-            if self.close_mcps_on_finish:
-                self.close_mcps()
+        with session_run_lock(self.session_store, self.session_id):
+            try:
+                return self._run_inner(user_prompt, user_content=user_content)
+            finally:
+                if self.close_mcps_on_finish:
+                    self.close_mcps()
 
     def _run_inner(
         self,

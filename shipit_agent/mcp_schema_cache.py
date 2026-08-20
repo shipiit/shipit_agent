@@ -53,7 +53,11 @@ DEFAULT_TTL_SECONDS = 24 * 60 * 60
 def cache_dir() -> Path:
     """Where cache files live. ``SHIPIT_MCP_CACHE_DIR`` overrides the default."""
     override = os.getenv("SHIPIT_MCP_CACHE_DIR")
-    base = Path(override).expanduser() if override else Path.home() / ".shipit_agent" / "mcp-cache"
+    base = (
+        Path(override).expanduser()
+        if override
+        else Path.home() / ".shipit_agent" / "mcp-cache"
+    )
     return base
 
 
@@ -113,11 +117,15 @@ def fingerprint(
 def _path_for(name: str, fp: str) -> Path:
     # A filesystem-safe slug of the server name keeps files eyeball-identifiable
     # while the fingerprint guarantees uniqueness.
-    slug = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name)[:40] or "mcp"
+    slug = (
+        "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name)[:40] or "mcp"
+    )
     return cache_dir() / f"{slug}-{fp}.json"
 
 
-def load(name: str, fp: str, *, ttl: float = DEFAULT_TTL_SECONDS) -> list[dict[str, Any]] | None:
+def load(
+    name: str, fp: str, *, ttl: float = DEFAULT_TTL_SECONDS
+) -> list[dict[str, Any]] | None:
     """Return cached tool descriptors, or ``None`` on any miss.
 
     A miss is: no file, a TTL-expired file, a wrong schema version, or an
@@ -130,7 +138,9 @@ def load(name: str, fp: str, *, ttl: float = DEFAULT_TTL_SECONDS) -> list[dict[s
     except FileNotFoundError:
         return None
     except OSError as err:  # permissions, etc. — treat as a miss
-        logger.debug("MCP schema cache unreadable for %s (%s); doing live discovery", name, err)
+        logger.debug(
+            "MCP schema cache unreadable for %s (%s); doing live discovery", name, err
+        )
         return None
     try:
         payload = json.loads(raw)
@@ -143,11 +153,15 @@ def load(name: str, fp: str, *, ttl: float = DEFAULT_TTL_SECONDS) -> list[dict[s
             return None
         return list(payload["tools"])
     except (ValueError, TypeError) as err:  # corrupt / truncated JSON
-        logger.warning("MCP schema cache for %s is corrupt (%s); ignoring it", name, err)
+        logger.warning(
+            "MCP schema cache for %s is corrupt (%s); ignoring it", name, err
+        )
         return None
 
 
-def save(name: str, fp: str, tools: list[dict[str, Any]], *, saved_at: float | None = None) -> None:
+def save(
+    name: str, fp: str, tools: list[dict[str, Any]], *, saved_at: float | None = None
+) -> None:
     """Persist tool descriptors atomically. Best-effort — never raises.
 
     ``saved_at`` is injectable so tests are deterministic; production passes the
@@ -176,3 +190,11 @@ def save(name: str, fp: str, tools: list[dict[str, Any]], *, saved_at: float | N
                 os.unlink(tmp)
     except OSError as err:
         logger.debug("could not write MCP schema cache for %s (%s)", name, err)
+
+
+def invalidate(name: str, fp: str) -> None:
+    """Remove one cached schema snapshot, best-effort and idempotently."""
+    try:
+        _path_for(name, fp).unlink(missing_ok=True)
+    except OSError as err:
+        logger.debug("could not invalidate MCP schema cache for %s (%s)", name, err)

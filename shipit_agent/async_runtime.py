@@ -1,23 +1,46 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
+from collections import deque
 from typing import Any, AsyncIterator, Callable
 from uuid import uuid4
 
 from shipit_agent.construction import construct_tool_registry
 from shipit_agent.integrations import CredentialStore
-from shipit_agent.llms.base import LLM, LLMResponse
+from shipit_agent.llms.base import (
+    LLM,
+    LLMResponse,
+    accepts_kwarg,
+    accepts_text_delta_callback,
+    accepts_tool_input_callback,
+)
 from shipit_agent.mcp import MCPServer
-from shipit_agent.models import AgentEvent, Message, ToolResult
+from shipit_agent.models import AgentEvent, Message, ToolCall, ToolResult
+from shipit_agent.narrate.verbs import summarize
 from shipit_agent.permissions import PermissionEngine
 from shipit_agent.policies import RetryPolicy, RouterPolicy
 from shipit_agent.registry import ToolRegistry
-from shipit_agent.runtime_core import RuntimeCore, evict_prior_tool_outputs
+from shipit_agent.runtime_core import (
+    RuntimeCore,
+    _declared_paths,
+    evict_prior_tool_outputs,
+)
+from shipit_agent.runtime_narration import (
+    _arguments_by_name,
+    _bounded,
+    _describe_result,
+    _first_sentences,
+    _join_clauses,
+    _looks_like_prose,
+    _result_failed,
+)
 from shipit_agent.runtime_state import (
     RuntimeState,
     _isolated_tool_state,
     _merge_tool_state,
 )
+from shipit_agent.session_lock import async_session_run_lock
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -51,6 +74,8 @@ class AsyncAgentRuntime(RuntimeCore):
         self,
         *,
         llm: LLM,
+        decision_llm: LLM | None = None,
+        progress_summaries: bool = True,
         prompt: str,
         tools: list[Tool] | None = None,
         mcps: list[MCPServer] | None = None,
@@ -86,8 +111,22 @@ class AsyncAgentRuntime(RuntimeCore):
         lockdown: Any = None,
         code_mode: bool = False,
         deferred_tools: Any = False,
+        verify_before_stop: bool = False,
+        response_format: dict[str, Any] | None = None,
+        session_runtime_state: dict[str, Any] | None = None,
+        close_mcps_on_finish: bool = True,
+        stream_queue_maxsize: int = 256,
+        cancel_on_stream_close: bool = True,
+        stream_join_timeout: float = 2.0,
     ) -> None:
         self.llm = llm
+        self.decision_llm = decision_llm
+        self.progress_summaries = progress_summaries
+        self.response_format = response_format
+        self.close_mcps_on_finish = bool(close_mcps_on_finish)
+        self.stream_queue_maxsize = max(1, int(stream_queue_maxsize))
+        self.cancel_on_stream_close = bool(cancel_on_stream_close)
+        self.stream_join_timeout = max(0.0, float(stream_join_timeout))
         self.prompt = prompt
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
@@ -115,9 +154,9 @@ class AsyncAgentRuntime(RuntimeCore):
         self.context_window_tokens = context_window_tokens
         self.replan_interval = replan_interval
         self.permissions = permissions
-        # Everything shared with AgentRuntime — guardrails, lockdown,
-        # approvals, healing, usage, compaction — comes from RuntimeCore, so
-        # the two loops cannot drift apart again.
+        # Shared controls — guardrails, lockdown, approvals, healing, usage,
+        # and compaction — are initialized by the same RuntimeCore contract as
+        # the synchronous runtime.
         self._init_core(
             approvals=approvals,
             guardrails=guardrails,
@@ -132,11 +171,146 @@ class AsyncAgentRuntime(RuntimeCore):
             tool_output_dir=tool_output_dir,
             reminder=reminder,
             evict_prior_tool_outputs=evict_prior_tool_outputs,
+            verify_before_stop=verify_before_stop,
+            session_runtime_state=session_runtime_state,
         )
+        self._llm_streams_text = accepts_text_delta_callback(self.llm.complete)
+        self._llm_streams_tool_input = accepts_tool_input_callback(self.llm.complete)
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
 
     def registry(self) -> ToolRegistry:
         return construct_tool_registry(tools=self.tools, mcps=self.mcps)
+
+    async def _run_planner_if_needed(
+        self,
+        *,
+        state: RuntimeState,
+        registry: ToolRegistry,
+        user_prompt: str,
+        base_prompt: str,
+        shared_state: dict[str, Any],
+        tool_runner: ToolRunner,
+    ) -> None:
+        planner = registry.get("plan_task")
+        if (
+            planner is None
+            or not self.router_policy.auto_plan
+            or not self.router_policy.should_plan(user_prompt)
+        ):
+            return
+        self.emit(state, "planning_started", "Planner started", prompt=user_prompt)
+        result = await tool_runner.run_tool_call_async(
+            ToolCall(name=planner.name, arguments={"goal": user_prompt}),
+            ToolContext(
+                prompt=user_prompt,
+                system_prompt=base_prompt,
+                metadata=dict(self.metadata),
+                state=shared_state,
+                session_id=self.session_id,
+            ),
+        )
+        state.tool_results.append(result)
+        state.messages.append(
+            Message(
+                role="user",
+                content=f"[Planner output]\n{result.output}",
+                metadata={
+                    "source": "planner",
+                    "planner_tool": planner.name,
+                    "internal": True,
+                },
+            )
+        )
+        self.emit(
+            state, "planning_completed", "Planner completed", output=result.output
+        )
+
+    def _install_code_mode(
+        self,
+        *,
+        state: RuntimeState,
+        registry: ToolRegistry,
+        tool_runner: ToolRunner,
+        shared_state: dict[str, Any],
+        user_prompt: str,
+        base_prompt: str,
+        loop: asyncio.AbstractEventLoop,
+    ) -> str:
+        """Install code-mode bindings without bypassing the async tool gates.
+
+        ``execute_code`` itself runs outside the event loop. Calls made through
+        its synchronous ``env`` bridge are therefore submitted back to this
+        runtime's loop, where they use the same permission, approval, retry,
+        guardrail, and transcript path as direct async tool calls.
+        """
+        from shipit_agent.codemode import CORE_TOOLS, binding_index, build_bindings
+        from shipit_agent.codemode.catalog import load_catalog
+        from shipit_agent.tools.describe_binding.describe_binding_tool import (
+            BINDINGS_STATE_KEY,
+        )
+        from shipit_agent.tools.execute_code.execute_code_tool import (
+            INVOKER_STATE_KEY,
+        )
+
+        bound_tools = [
+            tool
+            for tool in registry.values()
+            if getattr(tool, "name", "") not in CORE_TOOLS
+        ]
+        if not bound_tools:
+            return ""
+
+        catalogs = {
+            getattr(tool, "name", ""): load_catalog(tool) for tool in bound_tools
+        }
+        bindings = build_bindings(bound_tools, catalogs=catalogs)
+        counter = {"n": 0}
+
+        def _invoke(
+            binding_name: str, method: str, kwargs: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            binding = bindings.get(binding_name)
+            if binding is None:
+                raise KeyError(f"no binding named {binding_name!r}")
+            if method not in binding.methods:
+                raise AttributeError(f"env.{binding_name} has no method {method!r}")
+
+            arguments = dict(kwargs)
+            if method != "call":
+                arguments["action"] = method
+            counter["n"] += 1
+            record = {"id": f"env_{counter['n']}", "name": binding.tool_name}
+            call = type(
+                "EnvToolCall",
+                (),
+                {"name": binding.tool_name, "arguments": arguments},
+            )()
+            future = asyncio.run_coroutine_threadsafe(
+                self._execute_single_tool(
+                    state=state,
+                    registry=registry,
+                    tool_runner=tool_runner,
+                    tool_call=call,
+                    tool_call_record=record,
+                    context=ToolContext(
+                        prompt=user_prompt,
+                        system_prompt=base_prompt,
+                        metadata=dict(self.metadata),
+                        state=shared_state,
+                        session_id=self.session_id,
+                    ),
+                    iteration=0,
+                ),
+                loop,
+            )
+            result, message = future.result()
+            if result is None:
+                raise PermissionError(message.content)
+            return result.output, dict(result.metadata)
+
+        shared_state[BINDINGS_STATE_KEY] = bindings
+        shared_state[INVOKER_STATE_KEY] = _invoke
+        return binding_index(bindings)
 
     def emit(
         self, state: RuntimeState, event_type: str, message: str, **payload: Any
@@ -159,11 +333,85 @@ class AsyncAgentRuntime(RuntimeCore):
         )
 
     async def _complete_async(
-        self, *, messages: list[Message], tools: list[dict[str, Any]], base_prompt: str,
+        self,
+        *,
+        state: RuntimeState,
+        messages: list[Message],
+        tools: list[dict[str, Any]],
+        base_prompt: str,
         require_tool_call: bool = False,
     ) -> LLMResponse:
-        """Run the synchronous LLM.complete in a thread to avoid blocking."""
-        from shipit_agent.llms.base import accepts_kwarg
+        """Use a provider's native async API, with a context-preserving fallback."""
+        from shipit_agent.action_detection import RepetitionGuard
+
+        loop = asyncio.get_running_loop()
+        repetition_guard = RepetitionGuard()
+        provisional_chars = 0
+        expose_text_deltas = not tools and self.guardrails is None
+
+        def _schedule_emit(event_type: str, message: str, **payload: Any) -> None:
+            loop.call_soon_threadsafe(
+                lambda: self.emit(state, event_type, message, **payload)
+            )
+
+        def _on_text_delta(chunk: str) -> bool | None:
+            nonlocal provisional_chars
+            if not chunk:
+                return None
+            provisional_chars += len(chunk)
+            if repetition_guard.add(chunk):
+                return False
+            if (
+                require_tool_call
+                and self.max_required_tool_text_chars
+                and provisional_chars >= self.max_required_tool_text_chars
+            ):
+                return False
+            if expose_text_deltas:
+                _schedule_emit("text_delta", "", chunk=chunk)
+            return None
+
+        parsers: dict[str, Any] = {}
+        emitted: dict[str, int] = {}
+
+        def _on_tool_input(call_id: str, tool_name: str, fragment: str) -> None:
+            from shipit_agent.narrate.json_stream import (
+                StreamingToolInputParser,
+                streaming_field_for,
+            )
+
+            parser = parsers.get(call_id)
+            if parser is None:
+                field = streaming_field_for(tool_name)
+                if field is None:
+                    parsers[call_id] = False
+                    return
+                parser = parsers[call_id] = StreamingToolInputParser(field)
+                emitted[call_id] = 0
+                _schedule_emit(
+                    "tool_input_started",
+                    f"Writing {tool_name} input",
+                    tool=tool_name,
+                    call_id=call_id,
+                    field=field,
+                )
+            if parser is False:
+                return
+            parser.append(fragment)
+            if parser.has_error:
+                parsers[call_id] = False
+                return
+            value = parser.streaming_value
+            new = value[emitted[call_id] :]
+            if new:
+                emitted[call_id] = len(value)
+                _schedule_emit(
+                    "tool_input_delta",
+                    "",
+                    tool=tool_name,
+                    call_id=call_id,
+                    delta=new,
+                )
 
         complete_kwargs: dict[str, Any] = dict(
             messages=messages,
@@ -171,22 +419,38 @@ class AsyncAgentRuntime(RuntimeCore):
             system_prompt=base_prompt,
             metadata=dict(self.metadata),
         )
+        async_complete = getattr(self.llm, "acomplete", None)
+        complete_fn = async_complete if callable(async_complete) else self.llm.complete
         from shipit_agent.llms.base import accepts_explicit_kwarg
+
         if require_tool_call and accepts_explicit_kwarg(
-            self.llm.complete, "require_tool_call"
+            complete_fn, "require_tool_call"
         ):
             complete_kwargs["require_tool_call"] = True
         # Per-request timeout, only for adapters that can honour it — same
         # decision as the sync loop.
         if self.retry_policy.request_timeout is not None and accepts_kwarg(
-            self.llm.complete, "timeout"
+            complete_fn, "timeout"
         ):
             complete_kwargs["timeout"] = self.retry_policy.request_timeout
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: self.llm.complete(**complete_kwargs),
-        )
+        if accepts_text_delta_callback(complete_fn):
+            complete_kwargs["text_delta_callback"] = _on_text_delta
+        if accepts_tool_input_callback(complete_fn):
+            complete_kwargs["tool_input_callback"] = _on_tool_input
+        if (
+            self.response_format
+            and not tools
+            and accepts_kwarg(complete_fn, "response_format")
+        ):
+            complete_kwargs["response_format"] = self.response_format
+
+        if callable(async_complete):
+            result = async_complete(**complete_kwargs)
+            if inspect.isawaitable(result):
+                return await result
+            return result
+        # asyncio.to_thread propagates contextvars; run_in_executor does not.
+        return await asyncio.to_thread(self.llm.complete, **complete_kwargs)
 
     async def _complete_with_retry(
         self,
@@ -201,7 +465,10 @@ class AsyncAgentRuntime(RuntimeCore):
         while True:
             try:
                 return await self._complete_async(
-                    messages=messages, tools=tools, base_prompt=base_prompt,
+                    state=state,
+                    messages=messages,
+                    tools=tools,
+                    base_prompt=base_prompt,
                     require_tool_call=require_tool_call,
                 )
             except self.retry_policy.retry_on_exceptions as exc:
@@ -220,6 +487,100 @@ class AsyncAgentRuntime(RuntimeCore):
                 if delay > 0:
                     await asyncio.sleep(delay)
 
+    async def _generate_decision_summary(
+        self,
+        *,
+        state: RuntimeState,
+        response: LLMResponse,
+        user_prompt: str,
+        iteration: int,
+    ) -> str:
+        """Create the same bounded progress line as the synchronous runtime."""
+        if not self.progress_summaries:
+            return ""
+        spoken = _first_sentences(response.content)
+        if _looks_like_prose(spoken):
+            return spoken
+        calls = list(response.tool_calls or [])
+        if not calls:
+            return ""
+
+        if self.decision_llm is not None:
+            actions = "\n".join(
+                f"- {call.name}({_bounded(dict(call.arguments or {}), 250)})"
+                for call in calls
+            )
+            prompt = (
+                "Write one short first-person progress line for the user.\n"
+                f"They asked: {_bounded(user_prompt, 250)}\n"
+                f"Last step: {_bounded(state.last_observation, 250) or 'none'}\n"
+                f"About to run:\n{actions}\n"
+                "Use only these facts; do not claim a result yet."
+            )
+            try:
+                narrator = self.decision_llm
+                async_complete = getattr(narrator, "acomplete", None)
+                kwargs = {
+                    "messages": [Message(role="user", content=prompt)],
+                    "tools": [],
+                    "system_prompt": (
+                        "Narrate agent progress in plain language, without markdown "
+                        "or private reasoning. Use two short sentences at most."
+                    ),
+                    "metadata": {
+                        **dict(self.metadata),
+                        "purpose": "agent_decision_summary",
+                        "iteration": iteration,
+                    },
+                }
+                if callable(async_complete):
+                    narrated = async_complete(**kwargs)
+                    result = (
+                        await narrated if inspect.isawaitable(narrated) else narrated
+                    )
+                else:
+                    result = await asyncio.to_thread(narrator.complete, **kwargs)
+                if getattr(result, "usage", None):
+                    self.track_usage(state, result, iteration)
+                text = _first_sentences(getattr(result, "content", ""))
+                if _looks_like_prose(text):
+                    return text
+            except Exception as exc:  # noqa: BLE001
+                self.emit(
+                    state,
+                    "progress_summary_failed",
+                    "Progress summary generation failed",
+                    purpose="agent_decision_summary",
+                    iteration=iteration,
+                    error=str(exc),
+                )
+
+        actions = [
+            summarize(call.name, dict(call.arguments or {})).present_label()
+            for call in calls
+        ]
+        return _join_clauses(actions) + "."
+
+    def _generate_observation_summary(
+        self,
+        *,
+        tool_results: list[ToolResult],
+        tool_calls: list[Any],
+    ) -> str:
+        """Describe bounded tool outcomes without another model call."""
+        if not tool_results or not self.progress_summaries:
+            return ""
+        arguments = _arguments_by_name(tool_calls)
+        clauses: list[str] = []
+        for result in tool_results:
+            label = summarize(result.name, arguments.get(result.name, {})).past_label()
+            if _result_failed(result):
+                clauses.append(f"{label} — failed")
+            else:
+                detail = _describe_result(result)
+                clauses.append(f"{label} — {detail}" if detail else label)
+        return _join_clauses(clauses) + "."
+
     async def _run_tool_async(
         self,
         tool_runner: ToolRunner,
@@ -227,11 +588,9 @@ class AsyncAgentRuntime(RuntimeCore):
         context: ToolContext,
         output_callback: Callable[[ToolOutputChunk], None] | None = None,
     ) -> ToolResult:
-        """Run a tool call in a thread executor."""
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: tool_runner.run_tool_call(tool_call, context, output_callback),
+        """Run native async tools directly and sync tools in a context-aware thread."""
+        result = await tool_runner.run_tool_call_async(
+            tool_call, context, output_callback
         )
         # Thread-safe output callbacks are queued onto this event loop. Let
         # them drain before the canonical tool_completed event is emitted.
@@ -568,6 +927,19 @@ class AsyncAgentRuntime(RuntimeCore):
         # skipped by the duplicate gate above instead of re-executed.
         if signature is not None:
             state.executed_readonly_calls.add(signature)
+        if state.verify_gate is not None:
+            md = dict(tool_result.metadata or {})
+            arguments = getattr(tool_call, "arguments", None) or {}
+            state.verify_gate.note_tool(
+                read_only=signature is not None,
+                paths=[str(path) for path in _declared_paths(md)],
+                command=str(md.get("command") or arguments.get("command") or ""),
+                exit_code=md.get("exit_code"),
+                output=(
+                    tool_result.output if isinstance(tool_result.output, str) else ""
+                ),
+                ok=md.get("ok"),
+            )
         self.emit(
             state,
             "tool_completed",
@@ -604,10 +976,12 @@ class AsyncAgentRuntime(RuntimeCore):
         # Guarantee MCP cleanup even if registry construction or the loop raises.
         # ``user_content`` mirrors the sync loop: block-shaped user turn,
         # plain text everywhere else.
-        try:
-            return await self._run_inner(user_prompt, user_content=user_content)
-        finally:
-            self.close_mcps()
+        async with async_session_run_lock(self.session_store, self.session_id):
+            try:
+                return await self._run_inner(user_prompt, user_content=user_content)
+            finally:
+                if self.close_mcps_on_finish:
+                    await asyncio.to_thread(self.close_mcps)
 
     async def _run_inner(
         self,
@@ -616,6 +990,24 @@ class AsyncAgentRuntime(RuntimeCore):
         user_content: list[dict[str, Any]] | None = None,
     ) -> tuple[RuntimeState, LLMResponse]:
         state = RuntimeState()
+
+        if self.verify_before_stop:
+            from pathlib import Path
+
+            from shipit_agent.verify import VerifyGate
+
+            root = VerifyGate.project_root_from_output_dir(self.tool_output_dir)
+            db = (
+                str(Path(root) / ".shipit" / "verify.db")
+                if root not in ("", ".")
+                else ":memory:"
+            )
+            try:
+                state.verify_gate = VerifyGate(
+                    session_id=self.session_id, root=root, db_path=db
+                )
+            except Exception:
+                state.verify_gate = None
 
         # Guardrails: blocked prompts never reach the LLM.
         user_prompt, refusal = self.check_input(state, user_prompt)
@@ -633,7 +1025,9 @@ class AsyncAgentRuntime(RuntimeCore):
             )
             return state, LLMResponse(content=refusal)
 
-        registry = self.registry()
+        # MCP discovery may spawn processes and perform several network
+        # handshakes. Keep it off the application event loop.
+        registry = await asyncio.to_thread(self.registry)
         # Build the capability control plane before the system prompt so the
         # model sees the same connection/MCP metadata that tools can search.
         shared_state: dict[str, Any] = self.build_shared_state(registry, state)
@@ -643,7 +1037,9 @@ class AsyncAgentRuntime(RuntimeCore):
         elif self.require_tool_call and list(registry.values()):
             shared_state["force_any_tool"] = True
         tool_prompt = build_tools_prompt(
-            registry.values(), connections=self.connections.all(), mcps=self.mcps,
+            registry.values(),
+            connections=self.connections.all(),
+            mcps=self.mcps,
             supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
         )
         base_prompt = (
@@ -651,6 +1047,22 @@ class AsyncAgentRuntime(RuntimeCore):
         )
         existing_session = self.session_store.load(self.session_id)
         if existing_session:
+            self.token_calibrator.restore(
+                existing_session.metadata.get("token_calibration")
+            )
+            stored_checkpoint = existing_session.metadata.get("compaction_checkpoint")
+            if (
+                self.context_window_tokens >= 0
+                and isinstance(stored_checkpoint, dict)
+                and not self.compactor().latest()
+            ):
+                from shipit_agent.compaction import CompactionCheckpoint
+
+                checkpoint = CompactionCheckpoint.from_dict(stored_checkpoint)
+                if checkpoint.summary and checkpoint.compacted_to <= len(
+                    existing_session.messages
+                ):
+                    self.compactor().checkpoints.append(checkpoint)
             prior_messages = existing_session.messages
         elif self.history_messages:
             prior_messages = self.history_messages
@@ -672,9 +1084,7 @@ class AsyncAgentRuntime(RuntimeCore):
             Message(role="system", content=base_prompt, metadata=dict(self.metadata))
         )
         state.messages.extend(m for m in prior_messages if m.role != "system")
-        state.messages.append(
-            Message(role="user", content=user_content or user_prompt)
-        )
+        state.messages.append(Message(role="user", content=user_content or user_prompt))
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
 
@@ -689,7 +1099,9 @@ class AsyncAgentRuntime(RuntimeCore):
                 state,
                 "skills_selected",
                 "Skills selected: " + ", ".join(skill_ids),
-                skills=[dict(skill) for skill in selected_skills if isinstance(skill, dict)],
+                skills=[
+                    dict(skill) for skill in selected_skills if isinstance(skill, dict)
+                ],
                 skill_ids=skill_ids,
                 injected_tools=list(self.metadata.get("used_skill_tools", [])),
                 count=len(skill_ids),
@@ -707,6 +1119,43 @@ class AsyncAgentRuntime(RuntimeCore):
         # Built by RuntimeCore, so both loops publish identical tool state.
         tool_runner = ToolRunner(registry)
 
+        if self.code_mode:
+            index = self._install_code_mode(
+                state=state,
+                registry=registry,
+                tool_runner=tool_runner,
+                shared_state=shared_state,
+                user_prompt=user_prompt,
+                base_prompt=base_prompt,
+                loop=asyncio.get_running_loop(),
+            )
+            if index:
+                from shipit_agent.codemode import CORE_TOOLS
+
+                core_tools = [
+                    tool
+                    for tool in registry.values()
+                    if getattr(tool, "name", "") in CORE_TOOLS
+                ]
+                core_prompt = build_tools_prompt(
+                    core_tools,
+                    connections=self.connections.all(),
+                    supports_parallel_tool_calls=(
+                        self.model_supports_parallel_tool_calls()
+                    ),
+                )
+                base_prompt = "\n\n".join(
+                    part for part in (self.prompt, core_prompt, index) if part
+                )
+                state.messages[0] = Message(
+                    role="system", content=base_prompt, metadata=dict(self.metadata)
+                )
+                tool_schemas = [
+                    schema
+                    for schema in tool_schemas
+                    if (schema.get("function") or {}).get("name") in CORE_TOOLS
+                ]
+
         # Deferred tool loading — same decision as the sync loop, made by
         # RuntimeCore: core schemas stay resident, the rest are names in an
         # index until tool_search (or a direct call) loads them.
@@ -721,17 +1170,26 @@ class AsyncAgentRuntime(RuntimeCore):
                 if getattr(tool, "name", "") not in deferred_names
             ]
             resident_prompt = build_tools_prompt(
-                resident_tools, connections=self.connections.all(), mcps=self.mcps,
+                resident_tools,
+                connections=self.connections.all(),
+                mcps=self.mcps,
                 supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
             )
             base_prompt = "\n\n".join(
-                part
-                for part in (self.prompt, resident_prompt, deferral_index)
-                if part
+                part for part in (self.prompt, resident_prompt, deferral_index) if part
             )
             state.messages[0] = Message(
                 role="system", content=base_prompt, metadata=dict(self.metadata)
             )
+
+        await self._run_planner_if_needed(
+            state=state,
+            registry=registry,
+            user_prompt=user_prompt,
+            base_prompt=base_prompt,
+            shared_state=shared_state,
+            tool_runner=tool_runner,
+        )
 
         response = LLMResponse(content="")
         # id() of the response already appended as an assistant message in the
@@ -754,12 +1212,14 @@ class AsyncAgentRuntime(RuntimeCore):
             forced_names = set(shared_state.get("forced_tool_names") or ())
             force_any_tool = bool(shared_state.get("force_any_tool"))
             active_schemas = (
-                [] if force_text
+                []
+                if force_text
                 else self.select_step_schemas(tool_schemas, shared_state)
             )
             if forced_names:
                 active_schemas = [
-                    schema for schema in active_schemas
+                    schema
+                    for schema in active_schemas
                     if str((schema.get("function") or {}).get("name", ""))
                     in forced_names
                 ]
@@ -785,17 +1245,21 @@ class AsyncAgentRuntime(RuntimeCore):
                 ran_tools=bool(state.tool_results),
             )
             if forced_names or force_any_tool:
-                step_messages.append(Message(
-                    role="user",
-                    content=(
-                        ("Execute the required registered tool now: "
-                         + ", ".join(sorted(forced_names))
-                         if forced_names else
-                         "Execute the most appropriate available tool now")
-                        + ". Emit the structured call, not prose or a simulated result."
-                    ),
-                    metadata={"internal": True, "kind": "required_tool"},
-                ))
+                step_messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            (
+                                "Execute the required registered tool now: "
+                                + ", ".join(sorted(forced_names))
+                                if forced_names
+                                else "Execute the most appropriate available tool now"
+                            )
+                            + ". Emit the structured call, not prose or a simulated result."
+                        ),
+                        metadata={"internal": True, "kind": "required_tool"},
+                    )
+                )
 
             self.emit(
                 state,
@@ -839,23 +1303,58 @@ class AsyncAgentRuntime(RuntimeCore):
                     content=response.reasoning_content,
                 )
 
+            if response.tool_calls:
+                decision_summary = await self._generate_decision_summary(
+                    state=state,
+                    response=response,
+                    user_prompt=user_prompt,
+                    iteration=iteration,
+                )
+                if decision_summary:
+                    self.emit(
+                        state,
+                        "agent_decision",
+                        decision_summary,
+                        summary=decision_summary,
+                        next_action="call_tools",
+                        tools=[
+                            {
+                                "name": call.name,
+                                "arguments": dict(call.arguments),
+                            }
+                            for call in response.tool_calls
+                        ],
+                        iteration=iteration,
+                        generated_by_model=bool(response.content),
+                        summary_source=(
+                            "model_text" if response.content else "tool_call"
+                        ),
+                    )
+
             if not response.tool_calls:
                 if force_any_tool and iteration < self.max_iterations:
-                    state.messages.append(Message(
-                        role="assistant",
-                        content="[Unverified response discarded: no required tool executed.]",
-                    ))
-                    state.messages.append(Message(
-                        role="user",
-                        content=(
-                            "A registered tool must execute before answering. "
-                            "Call the best available tool now; do not simulate its result."
-                        ),
-                        metadata={"internal": True, "kind": "required_tool_retry"},
-                    ))
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content="[Unverified response discarded: no required tool executed.]",
+                        )
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                "A registered tool must execute before answering. "
+                                "Call the best available tool now; do not simulate its result."
+                            ),
+                            metadata={"internal": True, "kind": "required_tool_retry"},
+                        )
+                    )
                     self.emit(
-                        state, "tool_call_healed", "Retrying required tool use",
-                        nudge=True, iteration=iteration,
+                        state,
+                        "tool_call_healed",
+                        "Retrying required tool use",
+                        nudge=True,
+                        iteration=iteration,
                     )
                     continue
                 executed = {result.name for result in state.tool_results}
@@ -863,23 +1362,29 @@ class AsyncAgentRuntime(RuntimeCore):
                 missing_requested = self.missing_requested_tools(
                     user_prompt, registry, state.tool_results
                 )
-                missing_requested = sorted(set(missing_requested) | set(missing_required))
+                missing_requested = sorted(
+                    set(missing_requested) | set(missing_required)
+                )
                 if missing_requested and iteration < self.max_iterations:
                     self.record_requested_tool_nudge(missing_requested)
                     shared_state["forced_tool_names"] = set(missing_requested)
-                    state.messages.append(Message(
-                        role="assistant",
-                        content="[Unverified response discarded: no requested tool executed.]",
-                    ))
-                    state.messages.append(Message(
-                        role="user",
-                        content=(
-                            "The requested registered tool did not execute. Call "
-                            + ", ".join(missing_requested)
-                            + " now; do not simulate or invent its result."
-                        ),
-                        metadata={"internal": True, "kind": "requested_tool_retry"},
-                    ))
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content="[Unverified response discarded: no requested tool executed.]",
+                        )
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                "The requested registered tool did not execute. Call "
+                                + ", ".join(missing_requested)
+                                + " now; do not simulate or invent its result."
+                            ),
+                            metadata={"internal": True, "kind": "requested_tool_retry"},
+                        )
+                    )
                     self.emit(
                         state,
                         "tool_call_healed",
@@ -901,10 +1406,13 @@ class AsyncAgentRuntime(RuntimeCore):
                     state.messages.append(
                         Message(role="assistant", content=response.content)
                     )
-                    state.messages.append(Message(
-                        role="user", content=self.NUDGE_TEXT,
-                        metadata={"internal": True, "kind": "tool_call_retry"},
-                    ))
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=self.NUDGE_TEXT,
+                            metadata={"internal": True, "kind": "tool_call_retry"},
+                        )
+                    )
                     self.emit(
                         state,
                         "tool_call_healed",
@@ -913,6 +1421,39 @@ class AsyncAgentRuntime(RuntimeCore):
                         iteration=iteration,
                     )
                     continue
+                if state.verify_gate is not None:
+                    if iteration < self.max_iterations:
+                        verify_nudge = state.verify_gate.stop_nudge()
+                        if verify_nudge:
+                            if response.content:
+                                state.messages.append(
+                                    Message(role="assistant", content=response.content)
+                                )
+                                appended_response_id = id(response)
+                            state.messages.append(
+                                Message(
+                                    role="user",
+                                    content=verify_nudge,
+                                    metadata={
+                                        "internal": True,
+                                        "kind": "verify_retry",
+                                    },
+                                )
+                            )
+                            self.emit(
+                                state,
+                                "verify_required",
+                                "Edited code without passing verification — running tests",
+                                iteration=iteration,
+                            )
+                            continue
+                    elif state.verify_gate.would_nudge():
+                        self.emit(
+                            state,
+                            "verify_skipped",
+                            "Edited code but ran out of steps before verification passed",
+                            iteration=iteration,
+                        )
                 break
 
             tool_call_records = self.assign_tool_call_ids(
@@ -944,6 +1485,21 @@ class AsyncAgentRuntime(RuntimeCore):
                 )
             )
             appended_response_id = id(response)
+
+            group_id = f"tool_group_{iteration}"
+            group_result_start = len(state.tool_results)
+            self.emit(
+                state,
+                "tool_group_started",
+                "Tool group started",
+                group_id=group_id,
+                iteration=iteration,
+                tool_count=len(tool_call_records),
+                tools=[
+                    {"name": record["name"], "call_id": record["id"]}
+                    for record in tool_call_records
+                ],
+            )
 
             # Only read-only groups fan out — writes keep their order (see
             # runtime.py for the full rationale). Shared decision on
@@ -1003,6 +1559,7 @@ class AsyncAgentRuntime(RuntimeCore):
                         )
                         if vision is not None:
                             state.messages.append(vision)
+
             else:
                 for idx, tc in enumerate(response.tool_calls):
                     context = ToolContext(
@@ -1032,9 +1589,34 @@ class AsyncAgentRuntime(RuntimeCore):
                         if vision is not None:
                             state.messages.append(vision)
 
-            if self.force_text_after_duplicate_batch(
-                state.messages, tool_call_records
-            ):
+            iteration_results = state.tool_results[group_result_start:]
+            observation_summary = self._generate_observation_summary(
+                tool_results=iteration_results,
+                tool_calls=response.tool_calls,
+            )
+            self.emit(
+                state,
+                "tool_group_completed",
+                "Tool group completed",
+                group_id=group_id,
+                iteration=iteration,
+                tool_count=len(tool_call_records),
+                completed_count=len(iteration_results),
+                summary=observation_summary,
+            )
+            if observation_summary:
+                state.last_observation = observation_summary
+                self.emit(
+                    state,
+                    "agent_observation",
+                    observation_summary,
+                    summary=observation_summary,
+                    iteration=iteration,
+                    next_action="evaluate_results",
+                    generated_by_model=False,
+                )
+
+            if self.force_text_after_duplicate_batch(state.messages, tool_call_records):
                 shared_state["force_text_after_duplicate"] = True
             if state.tool_results:
                 shared_state.pop("force_any_tool", None)
@@ -1046,6 +1628,19 @@ class AsyncAgentRuntime(RuntimeCore):
                     shared_state["forced_tool_names"] = remaining_forced
                 else:
                     shared_state.pop("forced_tool_names", None)
+            if (
+                self.replan_interval > 0
+                and iteration % self.replan_interval == 0
+                and iteration < self.max_iterations
+            ):
+                await self._run_planner_if_needed(
+                    state=state,
+                    registry=registry,
+                    user_prompt=user_prompt,
+                    base_prompt=base_prompt,
+                    shared_state=shared_state,
+                    tool_runner=tool_runner,
+                )
 
         # Summarization if hit iteration cap
         hit_iteration_cap = bool(response.tool_calls) and not response.content
@@ -1108,8 +1703,19 @@ class AsyncAgentRuntime(RuntimeCore):
             *original_prior,
             *state.messages[1 + len(original_prior) :],
         ]
+        session_metadata = dict(existing_session.metadata) if existing_session else {}
+        session_metadata["token_calibration"] = self.token_calibrator.to_dict()
+        latest_checkpoint = (
+            self.compactor().latest() if self.context_window_tokens >= 0 else None
+        )
+        if latest_checkpoint is not None:
+            session_metadata["compaction_checkpoint"] = latest_checkpoint.to_dict()
         self.session_store.save(
-            SessionRecord(session_id=self.session_id, messages=persisted_messages)
+            SessionRecord(
+                session_id=self.session_id,
+                messages=persisted_messages,
+                metadata=session_metadata,
+            )
         )
         self.surface_give_up(state.tool_results)
         response.content = self.sanitize_output(state, response.content)
@@ -1131,28 +1737,69 @@ class AsyncAgentRuntime(RuntimeCore):
         # MCP transports are closed by run()'s finally (covers the error path).
         return state, response
 
-    async def stream(self, user_prompt: str) -> AsyncIterator[AgentEvent]:
-        """Run the agent and yield events as they're emitted."""
-        event_queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()
+    async def stream(
+        self,
+        user_prompt: str,
+        *,
+        user_content: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[AgentEvent]:
+        """Run the agent and yield a bounded stream with disconnect cancellation."""
+        event_buffer: deque[AgentEvent] = deque()
+        wake = asyncio.Event()
+        worker_done = False
+        provisional_types = {"text_delta", "tool_input_delta", "tool_output_delta"}
 
         def _subscriber(event: AgentEvent) -> None:
-            event_queue.put_nowait(event)
+            # Preserve canonical lifecycle events. Under a slow consumer only
+            # replace an older delta; run_completed carries the complete text.
+            if len(event_buffer) >= self.stream_queue_maxsize:
+                drop_index = next(
+                    (
+                        index
+                        for index, queued in enumerate(event_buffer)
+                        if queued.type in provisional_types
+                    ),
+                    None,
+                )
+                if drop_index is None:
+                    self.cancel()
+                    return
+                del event_buffer[drop_index]
+            event_buffer.append(event)
+            wake.set()
 
         self._event_subscriber = _subscriber
 
         async def _worker() -> None:
+            nonlocal worker_done
             try:
-                await self.run(user_prompt)
+                await self.run(user_prompt, user_content=user_content)
             finally:
-                await event_queue.put(None)
+                worker_done = True
+                wake.set()
 
         task = asyncio.create_task(_worker())
         try:
-            while True:
-                item = await event_queue.get()
-                if item is None:
-                    break
-                yield item
+            while not worker_done or event_buffer:
+                if not event_buffer:
+                    wake.clear()
+                    if worker_done:
+                        break
+                    await wake.wait()
+                    continue
+                yield event_buffer.popleft()
         finally:
-            await task
             self._event_subscriber = None
+            if not task.done() and self.cancel_on_stream_close:
+                self.cancel()
+                task.cancel()
+            if task.done() or not self.cancel_on_stream_close:
+                await asyncio.gather(task, return_exceptions=True)
+            else:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(task, return_exceptions=True),
+                        timeout=self.stream_join_timeout,
+                    )
+                except TimeoutError:
+                    task.cancel()

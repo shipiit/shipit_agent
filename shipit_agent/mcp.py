@@ -120,9 +120,9 @@ class MCPRemoteTool:
     annotations: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     remote_name: str = ""
-    tool_meta_resolver: Callable[
-        [ToolContext, str, dict[str, Any]], dict[str, Any] | None
-    ] | None = None
+    tool_meta_resolver: (
+        Callable[[ToolContext, str, dict[str, Any]], dict[str, Any] | None] | None
+    ) = None
     #: Called once before the first `tools/call` to guarantee the server's
     #: `initialize` handshake has run — the seam that lets a tool be registered
     #: from a schema cache without spawning the process, and that re-handshakes
@@ -132,6 +132,7 @@ class MCPRemoteTool:
     @property
     def read_only(self) -> bool:
         return bool(self.annotations.get("readOnlyHint", False))
+
     prompt: str = "Use this MCP tool when the remote server provides the best capability for the task."
     prompt_instructions: str = (
         "Remote MCP capability discovered dynamically from the attached server."
@@ -324,8 +325,7 @@ class MCPSubprocessTransport:
             )
         except subprocess.TimeoutExpired as exc:
             raise MCPError(
-                f"MCP subprocess timed out after {self.timeout:.0f}s "
-                f"on {method!r}"
+                f"MCP subprocess timed out after {self.timeout:.0f}s on {method!r}"
             ) from exc
         if completed.returncode != 0:
             raise MCPError(
@@ -442,9 +442,16 @@ class PersistentMCPSubprocessTransport:
             process = self._ensure_process()
             if process.stdin is None:
                 raise MCPError("Persistent MCP subprocess did not expose stdin.")
-            process.stdin.write(json.dumps({
-                "jsonrpc": "2.0", "method": method, "params": params or {},
-            }) + "\n")
+            process.stdin.write(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": method,
+                        "params": params or {},
+                    }
+                )
+                + "\n"
+            )
             process.stdin.flush()
 
     def close(self) -> None:
@@ -509,11 +516,16 @@ class MCPHTTPTransport:
         return None
 
     def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
-        payload = json.dumps({
-            "jsonrpc": "2.0", "method": method, "params": params or {},
-        }).encode("utf-8")
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": method,
+                "params": params or {},
+            }
+        ).encode("utf-8")
         req = request.Request(
-            self.endpoint, data=payload,
+            self.endpoint,
+            data=payload,
             headers={"content-type": "application/json", **self.headers},
             method="POST",
         )
@@ -572,9 +584,13 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
 
     def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
         """Send a session-affine JSON-RPC notification."""
-        payload = json.dumps({
-            "jsonrpc": "2.0", "method": method, "params": params or {},
-        }).encode("utf-8")
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": method,
+                "params": params or {},
+            }
+        ).encode("utf-8")
         headers = {
             "content-type": "application/json",
             "accept": "application/json, text/event-stream",
@@ -657,9 +673,9 @@ class RemoteMCPServer(MCPServer):
     blocked_tools: set[str] = field(default_factory=set)
     tool_filter: Callable[[dict[str, Any]], bool] | None = None
     include_server_in_tool_names: bool = False
-    tool_meta_resolver: Callable[
-        [ToolContext, str, dict[str, Any]], dict[str, Any] | None
-    ] | None = None
+    tool_meta_resolver: (
+        Callable[[ToolContext, str, dict[str, Any]], dict[str, Any] | None] | None
+    ) = None
     server_capabilities: dict[str, Any] = field(default_factory=dict)
     server_info: dict[str, Any] = field(default_factory=dict)
     #: The server's own usage guidance from the `initialize` handshake.
@@ -726,12 +742,45 @@ class RemoteMCPServer(MCPServer):
             return False
         return self.tool_filter(item) if self.tool_filter is not None else True
 
+    def _paginated_items(self, method: str, key: str) -> list[dict[str, Any]]:
+        """Collect every MCP cursor page and reject looping server cursors."""
+        if self.transport is None:
+            raise MCPError("RemoteMCPServer requires a transport.")
+        items: list[dict[str, Any]] = []
+        cursor: str | None = None
+        seen: set[str] = set()
+        while True:
+            params = {"cursor": cursor} if cursor is not None else {}
+            result = self.transport.request(method, params)
+            items.extend(item for item in result.get(key, []) if isinstance(item, dict))
+            next_cursor = result.get("nextCursor")
+            if next_cursor in (None, ""):
+                return items
+            next_cursor = str(next_cursor)
+            if next_cursor in seen:
+                raise MCPError(
+                    f"MCP server '{self.name}' repeated cursor {next_cursor!r} "
+                    f"while handling {method}."
+                )
+            seen.add(next_cursor)
+            cursor = next_cursor
+
+    def invalidate_tools_cache(self) -> None:
+        """Force live tool discovery on the next registry construction."""
+        if self.cache:
+            from shipit_agent import mcp_schema_cache
+
+            mcp_schema_cache.invalidate(self.name, self._cache_fingerprint())
+        self.tools = []
+        self._discovered = False
+        self._lazy_pending = False
+
     # ── resources ─────────────────────────────────────────────────────
     def list_resources(self) -> list[MCPResource]:
         """Resources the server exposes. Empty if unsupported."""
         try:
             self.initialize()
-            result = self.transport.request("resources/list", {})
+            items = self._paginated_items("resources/list", "resources")
         except MCPError:
             return []  # server doesn't implement resources
         return [
@@ -741,7 +790,7 @@ class RemoteMCPServer(MCPServer):
                 description=str(item.get("description", "")),
                 mime_type=str(item.get("mimeType", "")),
             )
-            for item in result.get("resources", [])
+            for item in items
         ]
 
     def read_resource(self, uri: str) -> str:
@@ -761,7 +810,7 @@ class RemoteMCPServer(MCPServer):
         """Prompt templates the server exposes. Empty if unsupported."""
         try:
             self.initialize()
-            result = self.transport.request("prompts/list", {})
+            items = self._paginated_items("prompts/list", "prompts")
         except MCPError:
             return []  # server doesn't implement prompts
         return [
@@ -770,7 +819,7 @@ class RemoteMCPServer(MCPServer):
                 description=str(item.get("description", "")),
                 arguments=list(item.get("arguments", [])),
             )
-            for item in result.get("prompts", [])
+            for item in items
         ]
 
     def get_prompt(self, name: str, arguments: dict[str, Any] | None = None) -> str:
@@ -860,7 +909,9 @@ class RemoteMCPServer(MCPServer):
             env=getattr(self.transport, "env", None),
         )
 
-    def _descriptor(self, item: dict[str, Any], exposed_name: str, remote_name: str) -> dict[str, Any]:
+    def _descriptor(
+        self, item: dict[str, Any], exposed_name: str, remote_name: str
+    ) -> dict[str, Any]:
         """A resolved, JSON-serialisable tool descriptor — the cache unit."""
         return {
             "name": exposed_name,
@@ -937,10 +988,10 @@ class RemoteMCPServer(MCPServer):
         # Cold path: live discovery (spawn + handshake + tools/list).
         try:
             self.initialize()
-            result = self.transport.request("tools/list", {})
+            tool_items = self._paginated_items("tools/list", "tools")
             descriptors: list[dict[str, Any]] = []
             exposed_names: set[str] = set()
-            for item in result.get("tools", []):
+            for item in tool_items:
                 if not self._tool_allowed(item):
                     continue
                 remote_name = str(item["name"])

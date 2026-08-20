@@ -52,6 +52,7 @@ With skills::
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -347,6 +348,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         default_factory=dict, init=False, repr=False, compare=False
     )
     _run_lock: Any = field(default=None, init=False, repr=False, compare=False)
+    _async_run_lock: Any = field(default=None, init=False, repr=False, compare=False)
     _closed: bool = field(default=False, init=False, repr=False, compare=False)
     # The sub_agent built for `delegation=`, kept so its thread pool is
     # created once per agent rather than once per run.
@@ -386,6 +388,16 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
 
     def __exit__(self, *_: Any) -> None:
         self.close()
+
+    async def __aenter__(self) -> "Agent":
+        return self
+
+    async def __aexit__(self, *_: Any) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        """Release provider/MCP resources without blocking an event loop."""
+        await asyncio.to_thread(self.close)
 
     def clone(self, **changes: Any) -> "Agent":
         """Copy this agent with selected configuration overrides.
@@ -440,6 +452,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         if self.session_id is None:
             self.session_id = str(uuid4())
         self._run_lock = threading.RLock()
+        self._async_run_lock = asyncio.Lock()
         if self.session_store is None:
             from shipit_agent.stores import InMemorySessionStore
 
@@ -821,6 +834,77 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         )
         return None if nothing_attached else blocks
 
+    def _runtime_options(
+        self,
+        *,
+        user_prompt: str,
+        selected_skills: list[Any],
+        effective_tools: list[Any],
+        skill_ids: list[str],
+        skill_tool_names: list[str],
+        skill_details: list[dict[str, Any]],
+        response_format: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """One runtime configuration path shared by sync and async APIs."""
+        return {
+            "llm": self.llm,
+            "decision_llm": self.decision_llm,
+            "progress_summaries": self.progress_summaries,
+            "reminder": self.reminder,
+            "evict_prior_tool_outputs": self.evict_prior_tool_outputs,
+            "prompt": self._effective_prompt(user_prompt),
+            "tools": effective_tools,
+            "mcps": self.mcps,
+            "required_tools": self.required_tools,
+            "require_tool_call": self.require_tool_call,
+            "max_required_tool_text_chars": self.max_required_tool_text_chars,
+            "metadata": {
+                "agent_name": self.name,
+                "agent_description": self.description,
+                **self.metadata,
+                "used_skills": skill_ids,
+                "used_skill_tools": skill_tool_names,
+                "selected_skills": skill_details,
+            },
+            "history_messages": list(self.history),
+            "memory_store": self.memory_store,
+            "session_store": self.session_store,
+            "session_id": self.session_id,
+            "trace_store": self._resolved_trace_store(),
+            "trace_id": self.trace_id,
+            "max_iterations": self._effective_max_iterations(selected_skills),
+            "retry_policy": self.retry_policy,
+            "router_policy": self.router_policy,
+            "credential_store": self.credential_store,
+            "parallel_tool_execution": self.parallel_tool_execution,
+            "max_tool_concurrency": self.max_tool_concurrency,
+            "hooks": self.hooks,
+            "context_window_tokens": self.context_window_tokens,
+            "fixed_prefix_tokens": self.fixed_prefix_tokens,
+            "max_tool_output_chars": self.max_tool_output_chars,
+            "max_tool_output_group_chars": self.max_tool_output_group_chars,
+            "tool_output_dir": (
+                str(Path(self.project_root) / ".shipit" / "tool-results")
+                if self.persist_large_tool_outputs
+                else None
+            ),
+            "replan_interval": self.replan_interval,
+            "permissions": self._effective_permissions(),
+            "guardrails": self.guardrails,
+            "heal_tool_calls": self.heal_tool_calls,
+            "approvals": self.approvals,
+            "code_mode": self.code_mode,
+            "deferred_tools": self.deferred_tools,
+            "lockdown": self.lockdown,
+            "verify_before_stop": self.verify_before_stop,
+            "response_format": response_format,
+            "session_runtime_state": self._session_runtime_state,
+            "close_mcps_on_finish": False,
+            "stream_queue_maxsize": self.stream_queue_maxsize,
+            "cancel_on_stream_close": self.cancel_on_stream_close,
+            "stream_join_timeout": self.stream_join_timeout,
+        }
+
     def run(
         self,
         user_prompt: str,
@@ -882,62 +966,15 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         )
 
         runtime = self._active_runtime = AgentRuntime(
-            llm=self.llm,
-            decision_llm=self.decision_llm,
-            progress_summaries=self.progress_summaries,
-            reminder=self.reminder,
-            evict_prior_tool_outputs=self.evict_prior_tool_outputs,
-            prompt=self._effective_prompt(user_prompt),
-            tools=effective_tools,
-            mcps=self.mcps,
-            required_tools=self.required_tools,
-            require_tool_call=self.require_tool_call,
-            max_required_tool_text_chars=self.max_required_tool_text_chars,
-            metadata={
-                "agent_name": self.name,
-                "agent_description": self.description,
-                **self.metadata,
-                "used_skills": skill_ids,
-                "used_skill_tools": skill_tool_names,
-                "selected_skills": skill_details,
-            },
-            history_messages=list(self.history),
-            memory_store=self.memory_store,
-            session_store=self.session_store,
-            session_id=self.session_id,
-            trace_store=self._resolved_trace_store(),
-            trace_id=self.trace_id,
-            max_iterations=self._effective_max_iterations(selected_skills),
-            retry_policy=self.retry_policy,
-            router_policy=self.router_policy,
-            credential_store=self.credential_store,
-            parallel_tool_execution=self.parallel_tool_execution,
-            max_tool_concurrency=self.max_tool_concurrency,
-            hooks=self.hooks,
-            context_window_tokens=self.context_window_tokens,
-            fixed_prefix_tokens=self.fixed_prefix_tokens,
-            max_tool_output_chars=self.max_tool_output_chars,
-            max_tool_output_group_chars=self.max_tool_output_group_chars,
-            tool_output_dir=(
-                str(Path(self.project_root) / ".shipit" / "tool-results")
-                if self.persist_large_tool_outputs
-                else None
-            ),
-            replan_interval=self.replan_interval,
-            permissions=self._effective_permissions(),
-            guardrails=self.guardrails,
-            heal_tool_calls=self.heal_tool_calls,
-            approvals=self.approvals,
-            code_mode=self.code_mode,
-            deferred_tools=self.deferred_tools,
-            lockdown=self.lockdown,
-            verify_before_stop=self.verify_before_stop,
-            response_format=response_format,
-            session_runtime_state=self._session_runtime_state,
-            close_mcps_on_finish=False,
-            stream_queue_maxsize=self.stream_queue_maxsize,
-            cancel_on_stream_close=self.cancel_on_stream_close,
-            stream_join_timeout=self.stream_join_timeout,
+            **self._runtime_options(
+                user_prompt=user_prompt,
+                selected_skills=selected_skills,
+                effective_tools=effective_tools,
+                skill_ids=skill_ids,
+                skill_tool_names=skill_tool_names,
+                skill_details=skill_details,
+                response_format=response_format,
+            )
         )
         try:
             with self._run_lock:
@@ -1007,6 +1044,107 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             parsed=parsed,
             rag_sources=rag_sources,
         )
+
+    async def run_async(
+        self,
+        user_prompt: str,
+        *,
+        images: list[str] | None = None,
+        files: list[str] | None = None,
+        output_schema: Any = None,
+        max_validation_retries: int = 2,
+    ) -> AgentResult:
+        """Async equivalent of :meth:`run` using the complete Agent pipeline."""
+        from shipit_agent.async_runtime import AsyncAgentRuntime
+
+        async with self._async_run_lock:
+            user_prompt = self._delegated_prompt(
+                self._expand_slash_command(user_prompt)
+            )
+            effective_user_prompt = user_prompt
+            response_format: dict[str, Any] | None = None
+            if output_schema:
+                from shipit_agent.structured import (
+                    build_schema_prompt,
+                    schema_to_response_format,
+                )
+
+                effective_user_prompt = user_prompt + build_schema_prompt(output_schema)
+                response_format = schema_to_response_format(output_schema) or None
+
+            if self.rag is not None:
+                self.rag.begin_run()
+            selected_skills = self._selected_skills(user_prompt)
+            effective_tools = self._effective_tools(
+                user_prompt, selected_skills=selected_skills
+            )
+            skill_ids, skill_tool_names, skill_details = self._runtime_skill_metadata(
+                selected_skills
+            )
+            runtime = self._active_runtime = AsyncAgentRuntime(
+                **self._runtime_options(
+                    user_prompt=user_prompt,
+                    selected_skills=selected_skills,
+                    effective_tools=effective_tools,
+                    skill_ids=skill_ids,
+                    skill_tool_names=skill_tool_names,
+                    skill_details=skill_details,
+                    response_format=response_format,
+                )
+            )
+            try:
+                state, response = await runtime.run(
+                    effective_user_prompt,
+                    user_content=self._user_content_blocks(
+                        effective_user_prompt, images, files
+                    ),
+                )
+            finally:
+                self._active_runtime = None
+
+            parsed = None
+            if output_schema and response.content:
+                from shipit_agent.structured_output import validate_with_retry
+
+                parsed, retry_text, attempts, attempt_log = await asyncio.to_thread(
+                    validate_with_retry,
+                    llm=self.llm,
+                    raw_text=response.content,
+                    schema=output_schema,
+                    history=state.messages,
+                    max_retries=max_validation_retries,
+                )
+                if parsed is None:
+                    logger.warning(
+                        "output_schema parsing failed after %d attempts. Last error: %s",
+                        attempts,
+                        attempt_log[-1]["error"] if attempt_log else "unknown",
+                    )
+                elif attempts > 1:
+                    response.content = retry_text
+
+            rag_sources = self.rag.end_run() if self.rag is not None else []
+            result_metadata = dict(response.metadata)
+            for key in ("gave_up", "give_up_reason", "give_up_needs"):
+                if key in runtime.metadata:
+                    result_metadata[key] = runtime.metadata[key]
+            result_metadata["used_skills"] = skill_ids
+            result_metadata["used_skill_tools"] = skill_tool_names
+            result_metadata["usage"] = dict(runtime._total_usage)
+            result_metadata["run_summary"] = runtime._build_run_summary(state)
+            return AgentResult(
+                output=response.content,
+                messages=state.messages,
+                events=state.events,
+                tool_results=state.tool_results,
+                metadata=result_metadata,
+                parsed=parsed,
+                rag_sources=rag_sources,
+            )
+
+    async def arun(self, user_prompt: str, **kwargs: Any) -> AgentResult:
+        """Concise alias for :meth:`run_async`."""
+        return await self.run_async(user_prompt, **kwargs)
 
     # ──────────────────────────────────────────────────────────────────
     # Stream (yields events as they happen)
@@ -1133,61 +1271,14 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         )
 
         runtime = self._active_runtime = AgentRuntime(
-            llm=self.llm,
-            decision_llm=self.decision_llm,
-            progress_summaries=self.progress_summaries,
-            reminder=self.reminder,
-            evict_prior_tool_outputs=self.evict_prior_tool_outputs,
-            prompt=self._effective_prompt(user_prompt),
-            tools=effective_tools,
-            mcps=self.mcps,
-            required_tools=self.required_tools,
-            require_tool_call=self.require_tool_call,
-            max_required_tool_text_chars=self.max_required_tool_text_chars,
-            metadata={
-                "agent_name": self.name,
-                "agent_description": self.description,
-                **self.metadata,
-                "used_skills": skill_ids,
-                "used_skill_tools": skill_tool_names,
-                "selected_skills": skill_details,
-            },
-            history_messages=list(self.history),
-            memory_store=self.memory_store,
-            session_store=self.session_store,
-            session_id=self.session_id,
-            trace_store=self._resolved_trace_store(),
-            trace_id=self.trace_id,
-            max_iterations=self._effective_max_iterations(selected_skills),
-            retry_policy=self.retry_policy,
-            router_policy=self.router_policy,
-            credential_store=self.credential_store,
-            parallel_tool_execution=self.parallel_tool_execution,
-            max_tool_concurrency=self.max_tool_concurrency,
-            hooks=self.hooks,
-            context_window_tokens=self.context_window_tokens,
-            fixed_prefix_tokens=self.fixed_prefix_tokens,
-            max_tool_output_chars=self.max_tool_output_chars,
-            max_tool_output_group_chars=self.max_tool_output_group_chars,
-            tool_output_dir=(
-                str(Path(self.project_root) / ".shipit" / "tool-results")
-                if self.persist_large_tool_outputs
-                else None
-            ),
-            replan_interval=self.replan_interval,
-            permissions=self._effective_permissions(),
-            guardrails=self.guardrails,
-            heal_tool_calls=self.heal_tool_calls,
-            approvals=self.approvals,
-            code_mode=self.code_mode,
-            deferred_tools=self.deferred_tools,
-            lockdown=self.lockdown,
-            verify_before_stop=self.verify_before_stop,
-            session_runtime_state=self._session_runtime_state,
-            close_mcps_on_finish=False,
-            stream_queue_maxsize=self.stream_queue_maxsize,
-            cancel_on_stream_close=self.cancel_on_stream_close,
-            stream_join_timeout=self.stream_join_timeout,
+            **self._runtime_options(
+                user_prompt=user_prompt,
+                selected_skills=selected_skills,
+                effective_tools=effective_tools,
+                skill_ids=skill_ids,
+                skill_tool_names=skill_tool_names,
+                skill_details=skill_details,
+            )
         )
         user_content = self._user_content_blocks(user_prompt, images, files)
         sources: list[Any] = []
@@ -1209,6 +1300,60 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
                 message=f"Captured {len(sources)} RAG source(s)",
                 payload={"sources": [s.to_dict() for s in sources]},
             )
+
+    async def astream(
+        self,
+        user_prompt: str,
+        *,
+        images: list[str] | None = None,
+        files: list[str] | None = None,
+    ):
+        """Feature-complete async counterpart to :meth:`stream`."""
+        from shipit_agent.async_runtime import AsyncAgentRuntime
+        from shipit_agent.models import AgentEvent
+
+        async with self._async_run_lock:
+            user_prompt = self._delegated_prompt(
+                self._expand_slash_command(user_prompt)
+            )
+            if self.rag is not None:
+                self.rag.begin_run()
+            selected_skills = self._selected_skills(user_prompt)
+            effective_tools = self._effective_tools(
+                user_prompt, selected_skills=selected_skills
+            )
+            skill_ids, skill_tool_names, skill_details = self._runtime_skill_metadata(
+                selected_skills
+            )
+            runtime = self._active_runtime = AsyncAgentRuntime(
+                **self._runtime_options(
+                    user_prompt=user_prompt,
+                    selected_skills=selected_skills,
+                    effective_tools=effective_tools,
+                    skill_ids=skill_ids,
+                    skill_tool_names=skill_tool_names,
+                    skill_details=skill_details,
+                )
+            )
+            user_content = self._user_content_blocks(user_prompt, images, files)
+            sources: list[Any] = []
+            completed = False
+            try:
+                async for event in runtime.stream(
+                    user_prompt, user_content=user_content
+                ):
+                    yield event
+                completed = True
+            finally:
+                self._active_runtime = None
+                if self.rag is not None:
+                    sources = self.rag.end_run()
+            if completed and sources:
+                yield AgentEvent(
+                    type="rag_sources",
+                    message=f"Captured {len(sources)} RAG source(s)",
+                    payload={"sources": [s.to_dict() for s in sources]},
+                )
 
     # ──────────────────────────────────────────────────────────────────
     # Utilities
@@ -1262,7 +1407,6 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             sequence += 1
             yield sse(event, sequence=sequence)
         yield "event: done\ndata: [DONE]\n\n"
-
 
     def _resolved_trace_store(self) -> Any:
         """The trace store to run with, honouring ``observability``.

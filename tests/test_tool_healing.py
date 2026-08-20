@@ -560,3 +560,22 @@ class TestNonAsciiMarkerTokens:
             "my_weather_lookup(city='Paris')", {"weather_lookup"}
         )
         assert healed == []
+
+    def test_generic_tool_namespace_prefix_resolves_to_declared_name(self) -> None:
+        """Provider namespaces are accepted; identity remains allow-listed."""
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        cleaned, healed = heal_tool_calls(
+            'I will call it now.\n\nllamar tool_weather_lookup(city="Paris")',
+            {"weather_lookup"},
+            schemas={"weather_lookup": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            }},
+        )
+
+        assert [(call.name, call.arguments) for call in healed] == [
+            ("weather_lookup", {"city": "Paris"})
+        ]
+        assert "tool_weather_lookup" not in cleaned

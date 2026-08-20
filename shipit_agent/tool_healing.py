@@ -348,15 +348,27 @@ def _python_style_calls(
     # An explicit "not preceded by an ASCII identifier character" still refuses
     # to match a genuine longer identifier like `my_weather_lookup(...)`, which
     # is the only thing `\b` was buying.
+    # OpenAI-compatible providers sometimes namespace a declared function as
+    # ``tool_<declared_name>`` when writing it in prose. Resolve that generic
+    # namespace back to the exact advertised name; arbitrary prefixes such as
+    # ``my_<name>`` remain rejected. Identity still comes from the allow-list.
+    aliases = {
+        alias: name
+        for name in allowed
+        for alias in (name, f"tool_{name}")
+    }
     pattern = re.compile(
-        r"(?<![A-Za-z0-9_])("
-        + "|".join(re.escape(n) for n in sorted(allowed))
+        r"(?<![A-Za-z0-9_])(" + "|".join(
+            re.escape(n) for n in sorted(aliases, key=len, reverse=True)
+        )
         + r")\s*\(([^()]*)\)"
     )
     for match in pattern.finditer(text[:_MAX_SCAN_CHARS]):
         arguments = _parse_python_kwargs(match.group(2))
         if arguments is not None:
-            found.append((match.span(), {"name": match.group(1), "arguments": arguments}))
+            found.append((match.span(), {
+                "name": aliases[match.group(1)], "arguments": arguments,
+            }))
     return found
 
 

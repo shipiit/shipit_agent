@@ -98,9 +98,12 @@ def is_malformed_action_attempt(
         names = "|".join(
             re.escape(name) for name in sorted(advertised, key=len, reverse=True)
         )
-        if re.search(rf"(?<![A-Za-z0-9_])(?:{names})\s*(?:\(|\{{|:|=)", source):
+        advertised_call = rf"(?:tool_)?(?:{names})"
+        if re.search(
+            rf"(?<![A-Za-z0-9_]){advertised_call}\s*(?:\(|\{{|:|=)", source
+        ):
             return True
-        code_formatted_name = re.search(rf"`(?:{names})`", source)
+        code_formatted_name = re.search(rf"`{advertised_call}`", source)
         if code_formatted_name and not unicodedata.category(source[-1]).startswith(
             "P"
         ):

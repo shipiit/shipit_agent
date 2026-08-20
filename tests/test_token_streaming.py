@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import io
 import sys
+import time
 import types
 from types import SimpleNamespace as ns
+
+import pytest
 
 from shipit_agent import Agent, FunctionTool, StreamRenderer
 from shipit_agent.llms.base import LLMResponse, ToolCall
@@ -189,6 +192,23 @@ class TestOpenAIStreaming:
         assert all(len(delta) <= 48 for delta in got)
         assert "".join(got) == text == out.content
         assert out.metadata["synthetic_deltas"] == len(got)
+
+    def test_openai_stream_has_one_absolute_deadline(self) -> None:
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        class _Completions:
+            def create(self, **_kwargs):
+                def slow():
+                    time.sleep(0.1)
+                    yield _chunk("late")
+                return slow()
+
+        client = ns(chat=ns(completions=_Completions()))
+        with pytest.raises(TimeoutError, match="exceeded"):
+            OpenAIChatLLM(model="gpt-4o", api_key="k")._complete_streaming(
+                client, {"model": "gpt-4o", "messages": []},
+                lambda _chunk: None, timeout=0.01,
+            )
 
 
 class TestAnthropicStreaming:

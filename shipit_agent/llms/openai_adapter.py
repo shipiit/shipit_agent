@@ -7,6 +7,7 @@ from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import Message, ToolCall
 from shipit_agent.llms.litellm_adapter import (
     _extract_reasoning,
+    _iter_with_deadline,
     _parse_tool_arguments,
     _serialize_message,
 )
@@ -188,7 +189,8 @@ class OpenAIChatLLM:
 
         if text_delta_callback is not None or tool_input_callback is not None:
             return self._complete_streaming(
-                client, kwargs, text_delta_callback, tool_input_callback
+                client, kwargs, text_delta_callback, tool_input_callback,
+                timeout=client_kwargs.get("timeout"),
             )
 
         try:
@@ -271,6 +273,7 @@ class OpenAIChatLLM:
         kwargs: dict[str, Any],
         on_delta: Any,
         on_tool_input: Any = None,
+        timeout: Any = None,
     ) -> LLMResponse:
         """Token-by-token completion — same LLMResponse shape as non-streaming.
 
@@ -338,7 +341,7 @@ class OpenAIChatLLM:
         usage: dict[str, int] = {}
         stopped_reason: str | None = None
 
-        for chunk in stream:
+        for chunk in _iter_with_deadline(stream, timeout):
             if getattr(chunk, "usage", None):
                 usage = {
                     "prompt_tokens": chunk.usage.prompt_tokens or 0,

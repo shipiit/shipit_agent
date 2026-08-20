@@ -82,6 +82,10 @@ class ModelCapabilities:
     supports_prompt_cache: bool = False
     supports_reasoning: bool = False
     supports_service_tier: bool = False
+    #: Whether a single assistant turn may request multiple client-side tools.
+    #: This is independent of whether the runtime executes a returned batch
+    #: concurrently. Unknown providers remain permissive.
+    supports_parallel_tool_calls: bool = True
 
     # ── reasoning ─────────────────────────────────────────────────────────
     #: ``replay``  — prior reasoning MUST be resent (DeepSeek thinking mode).
@@ -206,6 +210,7 @@ _GEMMA_4 = ModelCapabilities(
     supports_reasoning=True,
     supports_prompt_cache=True,
     supports_service_tier=True,
+    supports_parallel_tool_calls=False,
     reasoning_history="strip",
     reasoning_channel="responses_api",
     prompt_cache_mode="implicit",

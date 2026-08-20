@@ -229,6 +229,30 @@ class Message:
     tool_call_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """Normalize legacy v1 pairing metadata into the typed v2 fields."""
+        if not self.tool_calls:
+            raw_calls = self.metadata.get("tool_calls") or []
+            if isinstance(raw_calls, (list, tuple)):
+                self.tool_calls = [
+                    ToolCall.from_dict(entry, index=index)
+                    for index, entry in enumerate(raw_calls)
+                    if isinstance(entry, dict)
+                ]
+        else:
+            for call in self.tool_calls:
+                call.ensure_id()
+        if self.tool_calls:
+            self.metadata.setdefault(
+                "tool_calls", [call.to_dict() for call in self.tool_calls]
+            )
+        if not self.tool_call_id:
+            legacy_id = self.metadata.get("tool_call_id")
+            if legacy_id:
+                self.tool_call_id = str(legacy_id)
+        if self.tool_call_id:
+            self.metadata.setdefault("tool_call_id", self.tool_call_id)
+
     @property
     def text(self) -> str:
         """The textual portion of the content, whatever its shape."""
@@ -269,7 +293,7 @@ class Message:
         ]
         metadata.pop("tool_calls", None)
         call_id = data.get("tool_call_id") or metadata.pop("tool_call_id", None)
-        return cls(
+        restored = cls(
             role=data.get("role", "user"),
             content=data.get("content", ""),
             name=data.get("name"),
@@ -277,6 +301,12 @@ class Message:
             tool_call_id=str(call_id) if call_id else None,
             metadata=metadata,
         )
+        # ``__post_init__`` mirrors typed fields for directly-constructed v1
+        # consumers. A deserialized v2 object is canonical, so keep its
+        # metadata clean as promised by this migration boundary.
+        restored.metadata.pop("tool_calls", None)
+        restored.metadata.pop("tool_call_id", None)
+        return restored
 
     @classmethod
     def from_tool_result(cls, result: ToolResult) -> "Message":

@@ -181,12 +181,24 @@ _GENERIC_MCP_GUIDANCE = frozenset(
     }
 )
 
+_PARALLEL_TOOL_GUIDANCE = """- Call several tools in ONE response when they do not depend on each other.
+  Reading three files, or searching two sources, is one turn with three
+  calls — not three turns. Every turn re-sends the whole conversation, so
+  splitting independent work across turns costs the user real money and
+  time for nothing.
+- Call them one at a time only when a call needs the previous result."""
+
+_SERIAL_TOOL_GUIDANCE = """- This model supports exactly ONE tool call per response. Never emit a batch
+  of tool calls. Run independent searches one at a time across successive
+  responses, using each result before choosing the next call."""
+
 
 def build_tools_prompt(
     tools: list[Tool],
     *,
     connections: Iterable[Any] = (),
     mcps: Iterable[Any] = (),
+    supports_parallel_tool_calls: bool = True,
 ) -> str:
     if not tools:
         return ""
@@ -198,8 +210,14 @@ def build_tools_prompt(
     for tool, capability in zip(tools, capabilities, strict=True):
         grouped[capability["category"]].append((tool, capability))
 
+    parallel_guidance = (
+        _PARALLEL_TOOL_GUIDANCE
+        if supports_parallel_tool_calls
+        else _SERIAL_TOOL_GUIDANCE
+    )
+    header = TOOL_SECTION_HEADER.replace(_PARALLEL_TOOL_GUIDANCE, parallel_guidance)
     lines = [
-        TOOL_SECTION_HEADER,
+        header,
         "",
         f"Available capabilities ({len(tools)} tools across {len(grouped)} families):",
         "Use tool_search when the best tool is unclear. Check connections before "

@@ -38,6 +38,10 @@ _TAGGED_RE = re.compile(
 )
 # ```json ... ``` fenced block (also bare ``` fences)
 _FENCED_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+# Gemma 4 mapping form: ``<call>{"tool_name": {"arg": "x"}}</call>``.
+_CALL_MAPPING_RE = re.compile(
+    r"<call>\s*(\{.*?\})\s*</call>", re.IGNORECASE | re.DOTALL
+)
 
 
 #: A parameter name in any real tool schema is an identifier.
@@ -181,6 +185,22 @@ def _try_parse_call(
     return ToolCall(name=name, arguments=coerced)
 
 
+def _try_parse_mapping_call(
+    raw: str, allowed: set[str], schemas: Mapping[str, dict] | None = None
+) -> ToolCall | None:
+    """Parse ``{"tool_name": {arguments}}`` without guessing a tool."""
+    data = _relaxed_json(raw)
+    if not isinstance(data, dict) or len(data) != 1:
+        return None
+    name, arguments = next(iter(data.items()))
+    if name not in allowed:
+        return None
+    coerced = _coerce_arguments(arguments)
+    if coerced is None or not _qualifies(name, coerced, schemas):
+        return None
+    return ToolCall(name=name, arguments=coerced)
+
+
 def _match_by_schema(
     raw: str, allowed: set[str], schemas: Mapping[str, dict]
 ) -> ToolCall | None:
@@ -216,10 +236,23 @@ def _match_by_schema(
 #: writes when it serialises a call by hand. Quoting them is the entire
 #: repair; values are left alone so a brace inside a string never corrupts.
 _UNQUOTED_KEY_RE = re.compile(r'([{,]\s*)([A-Za-z_][A-Za-z0-9_.-]*)\s*:')
+_BARE_VALUE_RE = re.compile(r'(:\s*)([^"\'\[\]{},][^,}]*)')
+
+
+def _quote_bare_value(match: re.Match[str]) -> str:
+    """Quote a flat prose scalar while preserving real JSON primitives."""
+    prefix, raw = match.group(1), match.group(2).strip()
+    if raw in {"true", "false", "null"}:
+        return prefix + raw
+    try:
+        float(raw)
+    except ValueError:
+        return prefix + json.dumps(raw)
+    return prefix + raw
 
 
 def _relaxed_json(raw: str) -> Any:
-    """``json.loads`` with one observed-in-the-wild relaxation: unquoted keys.
+    """Parse JSON plus the two pseudo-JSON forms observed from weak models.
 
     Returns None when even the relaxed form does not parse — healing must
     promote calls, never invent them.
@@ -228,8 +261,17 @@ def _relaxed_json(raw: str) -> Any:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
+    keyed = _UNQUOTED_KEY_RE.sub(r'\1"\2":', raw)
     try:
-        return json.loads(_UNQUOTED_KEY_RE.sub(r'\1"\2":', raw))
+        return json.loads(keyed)
+    except json.JSONDecodeError:
+        pass
+    # Gemma can omit quotes around a natural-language scalar too:
+    # ``{query:current weather in Paris}``. Restrict this to flat scalar
+    # values; schema validation still decides whether the repaired call is
+    # eligible for promotion.
+    try:
+        return json.loads(_BARE_VALUE_RE.sub(_quote_bare_value, keyed))
     except json.JSONDecodeError:
         return None
 
@@ -522,6 +564,12 @@ def heal_tool_calls(
 
     calls: list[ToolCall] = []
     consumed: list[tuple[int, int]] = []
+
+    for match in _CALL_MAPPING_RE.finditer(text):
+        call = _try_parse_mapping_call(match.group(1), allowed_names, schemas)
+        if call is not None:
+            calls.append(call)
+            consumed.append(match.span())
 
     for pattern in (_TAGGED_RE, _FENCED_RE):
         for match in pattern.finditer(text):

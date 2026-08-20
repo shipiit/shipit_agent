@@ -128,7 +128,10 @@ class AnthropicChatLLM:
                 continue
             if message.role == "tool":
                 tool_call_id = (
-                    message.metadata.get("tool_call_id") or message.name or ""
+                    getattr(message, "tool_call_id", None)
+                    or message.metadata.get("tool_call_id")
+                    or message.name
+                    or ""
                 )
                 block = {
                     "type": "tool_result",
@@ -154,7 +157,9 @@ class AnthropicChatLLM:
                 else:
                     converted.append({"role": "user", "content": [block]})
                 continue
-            if message.role == "assistant" and message.metadata.get("tool_calls"):
+            typed_calls = getattr(message, "tool_calls", None) or []
+            legacy_calls = message.metadata.get("tool_calls") or []
+            if message.role == "assistant" and (typed_calls or legacy_calls):
                 blocks: list[dict[str, Any]] = []
                 # Interleaved thinking round-trip: re-emit any preserved
                 # ``thinking`` blocks (with their signatures) BEFORE the text /
@@ -168,7 +173,12 @@ class AnthropicChatLLM:
                             blocks.append(tb)
                 if message.content:
                     blocks.append({"type": "text", "text": message.content})
-                for call in message.metadata["tool_calls"]:
+                calls = (
+                    [call.to_dict() for call in typed_calls]
+                    if typed_calls
+                    else legacy_calls
+                )
+                for call in calls:
                     blocks.append(
                         {
                             "type": "tool_use",
@@ -499,6 +509,7 @@ class AnthropicChatLLM:
                     ToolCall(
                         name=getattr(block, "name", ""),
                         arguments=dict(getattr(block, "input", {}) or {}),
+                        id=str(getattr(block, "id", "") or ""),
                     )
                 )
             elif btype == _server_tools.SERVER_TOOL_USE_BLOCK:

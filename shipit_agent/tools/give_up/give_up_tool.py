@@ -1,11 +1,10 @@
 """``give_up`` — let the agent say it is stuck, structurally.
 
 Without this, an agent that cannot proceed emits prose ("I'm not able to find
-the config file…") and the loop reads that as a final answer. shipit currently
-catches the near-miss case with a phrase heuristic — ``runtime.py`` matches
-"let me", "i'll", "going to use" against short replies and re-prompts once
-(``_INTENT_MARKERS``). That fires on the *wrong* shape (intent without action)
-and cannot fire on the right one (genuinely blocked).
+the config file…") and the loop reads that as a final answer. The runtime does
+not guess intent from language-specific phrases; only malformed call structure
+receives a bounded recovery attempt. A genuine blocker therefore needs an
+explicit protocol of its own.
 
 Cloudflare OS gives the model a real tool for it, with a required reason. A
 declared stop is unambiguous: the caller can branch on it, an autopilot loop

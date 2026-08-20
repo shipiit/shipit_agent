@@ -108,7 +108,7 @@ _DIRECT: dict[str, PacketKind] = {
 }
 
 #: Payload keys that carry incremental text, in order of preference.
-_TEXT_KEYS = ("chunk", "delta", "text", "output", "summary")
+_TEXT_KEYS = ("chunk", "delta", "text", "content", "output", "summary")
 
 
 def _payload(event: Any) -> Mapping[str, Any]:
@@ -214,7 +214,9 @@ class PacketAccumulator:
             if packet.text:
                 self.errors.append(packet.text)
         elif packet.kind is PacketKind.FINAL and packet.text:
-            self.text.append(packet.text)
+            # FINAL is the canonical whole answer, not another delta. Replace
+            # provisional chunks so consumers never render the answer twice.
+            self.text[:] = [packet.text]
         return packet
 
     @property

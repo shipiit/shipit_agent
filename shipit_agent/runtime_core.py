@@ -21,8 +21,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-
 import threading
+import unicodedata
+
 from typing import Any, Sequence
 
 from shipit_agent.llms.base import LLMResponse
@@ -33,72 +34,84 @@ from shipit_agent.permissions import (
     authorize_tool,
 )
 
-__all__ = ["RuntimeCore", "INTENT_MARKERS", "is_intent_without_action"]
+__all__ = ["RuntimeCore", "is_malformed_action_attempt"]
 
-# Short, action-narrating text with no substance — the stall shape. Kept as a
-# heuristic only because not every model will call `give_up`; a model that
-# does is always preferred.
-INTENT_MARKERS = (
-    "let me",
-    "i will",
-    "i'll",
-    "i am going to",
-    "i'm going to",
-    "first, i",
-    "next, i",
-    "now i",
-    "going to use",
-    "going to call",
-    "let's use",
+
+# Call grammar, not provider output vocabulary. Natural-language intent is
+# never guessed here because that can turn a valid answer into another costly
+# model invocation.
+_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_.-]*"
+_NAMED_OBJECT = re.compile(
+    rf"(?<![A-Za-z0-9_])({_IDENTIFIER})\s*(?:\(|:|=)?\s*\{{",
+    re.MULTILINE,
 )
+_ANGLE_FORM = re.compile(rf"<\s*/?\s*({_IDENTIFIER})(?:\s|>|$)")
 
 
-#: A sentence ends at one of these followed by whitespace or the end.
-_SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+def is_malformed_action_attempt(
+    text: str | None, *, allowed_names: Sequence[str] = ()
+) -> bool:
+    """Return whether text has the structure of an unparsed tool call.
 
+    This is schema-driven and provider-neutral. A response is eligible for
+    one recovery attempt only when it contains an advertised tool name in
+    invocation position, an identifier-prefixed object, an incomplete
+    angle-delimited protocol form, or a degenerate surface dominated by empty
+    whitespace. Ordinary natural language is always a final answer.
 
-def _sentence_count(text: str) -> int:
-    return len([part for part in _SENTENCE_END.split(text) if part.strip()])
-
-
-def is_intent_without_action(text: str | None) -> bool:
-    """Did the model narrate an action and then not take one?
-
-    A stall is a **bare announcement**: the model said it was about to act,
-    said nothing else, and stopped. That shape is what the nudge exists to
-    recover, and it is the shape this recognises — by structure, not by
-    matching more phrases.
-
-    Two things disqualify a response, both structural:
-
-    - **It ends in a question.** A model asking the user something has
-      finished its turn on purpose. Nudging there asks it to justify a
-      failure that did not happen.
-    - **It says more than one thing.** An announcement surrounded by several
-      sentences of substance is a complete reply that happens to contain a
-      turn of phrase, not a model that stopped short.
-
-    Both come from one observed failure. A plain greeting — *"Not much, just
-    standing by and ready to work. How can I help you today? If you need me
-    to look into a specific threat actor ... just let me know."* — matched on
-    "let me" inside "let me know". The runtime nudged; the model replied *"I
-    apologize; I didn't have a task to perform in my previous response, so no
-    tool was necessary"*; and both halves were concatenated into what the
-    user read.
-
-    Adding "let me know" to a list of exceptions would have fixed that
-    sentence and nothing else — the next phrasing would need another entry.
-    Multi-sentence replies and questions are the general case that greeting
-    belonged to.
+    This detector never promotes or executes text. Promotion is the stricter
+    job of ``tool_healing.heal_tool_calls``, which validates names and
+    arguments against the advertised schemas.
     """
-    stripped = (text or "").strip().lower()
-    if not stripped or len(stripped) > 300:
+    raw_source = text or ""
+    source = raw_source.strip()
+    if not source:
         return False
-    if stripped.endswith("?"):
-        return False
-    if _sentence_count(stripped) > 1:
-        return False
-    return any(marker in stripped for marker in INTENT_MARKERS)
+
+    advertised = {name for name in allowed_names if name}
+
+    # A stopped generation can contain one short visible line followed by
+    # hundreds of empty whitespace tokens. Detect the ratio, not the words:
+    # this is equally valid for every language and provider. Require tools to
+    # be advertised so a deliberately spacious tool-less answer is untouched.
+    compact = " ".join(source.split())
+    if (
+        advertised
+        and len(raw_source) >= 256
+        and len(compact) <= 300
+        and len(raw_source) >= max(1, len(compact)) * 3
+    ):
+        return True
+
+    for match in _NAMED_OBJECT.finditer(source):
+        if not advertised or match.group(1) in advertised:
+            return True
+
+    if advertised:
+        names = "|".join(
+            re.escape(name) for name in sorted(advertised, key=len, reverse=True)
+        )
+        if re.search(
+            rf"(?<![A-Za-z0-9_])(?:{names})\s*(?:\(|\{{|:|=)", source
+        ):
+            return True
+
+        # A generation that stops mid-clause after spelling an actual tool
+        # name is incomplete by shape. Punctuation is checked by Unicode
+        # category, so this works for non-English answers without enumerating
+        # language-specific sentence endings.
+        # Require code formatting around the identifier. A normal answer such
+        # as "Used helper" may end without punctuation and must not be turned
+        # into a retry merely because a tool happens to be named ``helper``.
+        code_formatted_name = re.search(rf"`(?:{names})`", source)
+        if code_formatted_name and not unicodedata.category(source[-1]).startswith(
+            "P"
+        ):
+            return True
+
+    # Any unclosed angle-delimited protocol fragment is malformed by shape;
+    # no tag name is privileged.
+    return bool(_ANGLE_FORM.search(source)) and source.count("<") != source.count(">")
 
 
 # What a file extension means to a person. Anything unlisted is "File" —
@@ -313,6 +326,51 @@ class RuntimeCore:
         self._last_nudged_text = ""
         self._compactor_instance: Any = None
         self.connections: Any = None
+
+    def model_supports_parallel_tool_calls(self) -> bool:
+        """Return the active model's declared tool-call batching capability."""
+        from shipit_agent.llms.capabilities import capabilities_for
+
+        model = str(getattr(getattr(self, "llm", None), "model", "") or "")
+        return capabilities_for(model).supports_parallel_tool_calls
+
+    def assign_tool_call_ids(
+        self,
+        tool_calls: Sequence[Any],
+        messages: Sequence[Message],
+        iteration: int,
+    ) -> list[dict[str, Any]]:
+        """Give every call a conversation-unique ID and return wire records.
+
+        Provider IDs are kept unless the provider has reused one earlier in
+        this conversation. Text-healed calls have no provider ID, so the
+        familiar ``call_<iteration>_<position>`` form is used when available
+        and receives a suffix only on a later-turn collision.
+        """
+        used = {
+            call.id
+            for message in messages
+            for call in (getattr(message, "tool_calls", None) or [])
+            if call.id
+        }
+        records: list[dict[str, Any]] = []
+        for index, tool_call in enumerate(tool_calls, start=1):
+            base = str(tool_call.id or f"call_{iteration}_{index}")
+            call_id = base
+            suffix = 2
+            while call_id in used:
+                call_id = f"{base}_{suffix}"
+                suffix += 1
+            used.add(call_id)
+            tool_call.id = call_id
+            records.append(
+                {
+                    "id": call_id,
+                    "name": tool_call.name,
+                    "arguments": dict(tool_call.arguments),
+                }
+            )
+        return records
 
     def check_arguments(self, tool: Any, tool_call: Any) -> str | None:
         """Repair a call's arguments in place; return an error if it cannot run.
@@ -942,15 +1000,22 @@ class RuntimeCore:
             )
 
     def should_nudge(
-        self, response: LLMResponse, *, has_tools: bool, last: bool
+        self,
+        response: LLMResponse,
+        *,
+        has_tools: bool,
+        last: bool,
+        tool_names: Sequence[str] = (),
     ) -> bool:
-        """Is this the stall shape, and may we re-prompt once?"""
+        """Is this an unparsed call shape, and may we re-prompt once?"""
         if not (self.heal_tool_calls and has_tools and not last):
             return False
         if self._nudges_used >= 1:
             return False
-        content = (response.content or "").strip()
-        return is_intent_without_action(content) and content != self._last_nudged_text
+        raw_content = response.content or ""
+        content = raw_content.strip()
+        stalled = is_malformed_action_attempt(raw_content, allowed_names=tool_names)
+        return stalled and content != self._last_nudged_text
 
     def record_nudge(self, response: LLMResponse) -> None:
         self._nudges_used += 1

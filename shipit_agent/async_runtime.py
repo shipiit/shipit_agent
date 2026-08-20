@@ -538,13 +538,14 @@ class AsyncAgentRuntime(RuntimeCore):
             seen=state.seen_tool_outputs,
             limit_override=model_output_limit,
         )
+        tool_result.tool_call_id = tool_call_record["id"]
         msg = Message(
             role="tool",
             name=tool_call.name,
             content=model_output,
+            tool_call_id=tool_call_record["id"],
             metadata={
                 **dict(tool_result.metadata),
-                "tool_call_id": tool_call_record["id"],
             },
         )
         # Record a successful read-only call so an identical repeat this run is
@@ -621,7 +622,8 @@ class AsyncAgentRuntime(RuntimeCore):
         # model sees the same connection/MCP metadata that tools can search.
         shared_state: dict[str, Any] = self.build_shared_state(registry, state)
         tool_prompt = build_tools_prompt(
-            registry.values(), connections=self.connections.all(), mcps=self.mcps
+            registry.values(), connections=self.connections.all(), mcps=self.mcps,
+            supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
         )
         base_prompt = (
             self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
@@ -698,7 +700,8 @@ class AsyncAgentRuntime(RuntimeCore):
                 if getattr(tool, "name", "") not in deferred_names
             ]
             resident_prompt = build_tools_prompt(
-                resident_tools, connections=self.connections.all(), mcps=self.mcps
+                resident_tools, connections=self.connections.all(), mcps=self.mcps,
+                supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
             )
             base_prompt = "\n\n".join(
                 part
@@ -793,6 +796,7 @@ class AsyncAgentRuntime(RuntimeCore):
                     response,
                     has_tools=bool(tool_schemas),
                     last=iteration >= self.max_iterations,
+                    tool_names=tuple(tool.name for tool in registry.values()),
                 ):
                     self.record_nudge(response)
                     state.messages.append(
@@ -802,21 +806,16 @@ class AsyncAgentRuntime(RuntimeCore):
                     self.emit(
                         state,
                         "tool_call_healed",
-                        "Nudged: intent without action",
+                        "Nudged: malformed tool call",
                         nudge=True,
                         iteration=iteration,
                     )
                     continue
                 break
 
-            tool_call_records = [
-                {
-                    "id": f"call_{iteration}_{index}",
-                    "name": tc.name,
-                    "arguments": dict(tc.arguments),
-                }
-                for index, tc in enumerate(response.tool_calls, start=1)
-            ]
+            tool_call_records = self.assign_tool_call_ids(
+                response.tool_calls, state.messages, iteration
+            )
             group_output_limit = None
             if (
                 self.max_tool_output_chars > 0
@@ -831,9 +830,14 @@ class AsyncAgentRuntime(RuntimeCore):
                 Message(
                     role="assistant",
                     content=response.content,
+                    tool_calls=list(response.tool_calls),
                     metadata={
                         **dict(response.metadata),
-                        "tool_calls": tool_call_records,
+                        **(
+                            {"reasoning_content": response.reasoning_content}
+                            if response.reasoning_content
+                            else {}
+                        ),
                     },
                 )
             )
@@ -958,7 +962,14 @@ class AsyncAgentRuntime(RuntimeCore):
                 Message(
                     role="assistant",
                     content=response.content,
-                    metadata=dict(response.metadata),
+                    metadata={
+                        **dict(response.metadata),
+                        **(
+                            {"reasoning_content": response.reasoning_content}
+                            if response.reasoning_content
+                            else {}
+                        ),
+                    },
                 )
             )
 

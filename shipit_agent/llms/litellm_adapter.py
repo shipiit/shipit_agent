@@ -1,18 +1,31 @@
 from __future__ import annotations
 
 import json
-import os
+import queue
 import re
+import threading
+import time
 from typing import Any, Callable
 
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.llms.capabilities import sanitize_params
 from shipit_agent.llms.bedrock_token import (
     BedrockTokenError,
     existing_bearer_token,
     generate_bearer_token,
 )
 from shipit_agent.models import Message, ToolCall
+
+
+def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:
+    """Parse provider arguments without turning one bad call into a dead run."""
+    if isinstance(arguments, dict):
+        return arguments
+    raw = arguments or "{}"
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {"_raw": str(raw)}
+    return parsed if isinstance(parsed, dict) else {"_raw": str(raw)}
 
 
 def _normalize_content(content: Any) -> Any:
@@ -64,7 +77,9 @@ def _normalize_content(content: Any) -> Any:
     return normalized
 
 
-def _serialize_message(message: Any) -> dict[str, Any]:
+def _serialize_message(
+    message: Any, *, include_reasoning: bool = False
+) -> dict[str, Any]:
     # Accept raw dict messages (e.g. from ComputerUseAgent) as well as Message
     # objects — a dict is already in OpenAI message shape; just normalize media.
     if isinstance(message, dict):
@@ -85,7 +100,12 @@ def _serialize_message(message: Any) -> dict[str, Any]:
         "content": _normalize_content(message.content),
         **({"name": message.name} if message.name else {}),
     }
-    tool_calls = message.metadata.get("tool_calls", [])
+    typed_calls = getattr(message, "tool_calls", None) or []
+    tool_calls = (
+        [call.to_dict() for call in typed_calls]
+        if typed_calls
+        else message.metadata.get("tool_calls", [])
+    )
     # A tool's own metadata is merged onto its message, so any tool can land
     # a value here. Only a list of records is meaningful; anything else is a
     # key collision and must not take the request down.
@@ -104,9 +124,16 @@ def _serialize_message(message: Any) -> dict[str, Any]:
             for index, item in enumerate(tool_calls, start=1)
             if isinstance(item, dict)
         ]
-    tool_call_id = message.metadata.get("tool_call_id")
+    tool_call_id = (
+        getattr(message, "tool_call_id", None)
+        or message.metadata.get("tool_call_id")
+    )
     if message.role == "tool" and tool_call_id:
         payload["tool_call_id"] = tool_call_id
+    if include_reasoning and message.role == "assistant":
+        reasoning = message.metadata.get("reasoning_content")
+        if reasoning:
+            payload["reasoning_content"] = reasoning
     return payload
 
 
@@ -239,7 +266,15 @@ class LiteLLMChatLLM:
         except ImportError as exc:
             raise RuntimeError("Install `litellm` to use LiteLLMChatLLM.") from exc
 
-        payload_messages = [_serialize_message(m) for m in messages]
+        from shipit_agent.llms.capabilities import capabilities_for
+
+        caps = capabilities_for(self.model)
+        payload_messages = [
+            _serialize_message(
+                m, include_reasoning=caps.reasoning_history == "replay"
+            )
+            for m in messages
+        ]
         request_tools = tools or None
         # Inline `$ref`/`$defs` and dialect-sanitize each tool's parameter schema
         # BEFORE it goes on the wire. Pydantic/FastMCP MCP servers emit `$defs` +
@@ -315,6 +350,11 @@ class LiteLLMChatLLM:
         # via ``completion_kwargs``.
         if request_tools and "tool_choice" not in extra_kwargs:
             extra_kwargs["tool_choice"] = "auto"
+        if request_tools and "parallel_tool_calls" not in extra_kwargs:
+            from shipit_agent.llms.capabilities import capabilities_for
+
+            if not capabilities_for(self.model).supports_parallel_tool_calls:
+                extra_kwargs["parallel_tool_calls"] = False
 
         # Strip parameters this model family is known to reject, rather than
         # letting the provider 400 mid-turn on a field the caller never set
@@ -360,9 +400,8 @@ class LiteLLMChatLLM:
             tool_calls.append(
                 ToolCall(
                     name=call.function.name,
-                    arguments=json.loads(arguments)
-                    if isinstance(arguments, str)
-                    else arguments,
+                    arguments=_parse_tool_arguments(arguments),
+                    id=str(getattr(call, "id", "") or ""),
                 )
             )
         reasoning_content = _extract_reasoning(message)
@@ -384,6 +423,51 @@ class LiteLLMChatLLM:
             reasoning_content=reasoning_content,
             usage=usage,
         )
+
+
+def _iter_with_deadline(stream: Any, timeout: Any):
+    """Yield a blocking provider stream under one absolute deadline.
+
+    SDK/socket timeouts commonly apply to each individual read. A provider
+    that emits one small chunk before every deadline can therefore occupy an
+    agent forever. The producer thread isolates that blocking iterator while
+    this consumer enforces the caller's total per-request budget.
+    """
+    try:
+        seconds = float(timeout)
+    except (TypeError, ValueError):
+        seconds = 0.0
+    if seconds <= 0:
+        yield from stream
+        return
+
+    items: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+    def consume() -> None:
+        try:
+            for item in stream:
+                items.put(("item", item))
+        except BaseException as exc:  # forwarded on the calling thread
+            items.put(("error", exc))
+        finally:
+            items.put(("done", None))
+
+    threading.Thread(target=consume, name="shipit-llm-stream", daemon=True).start()
+    deadline = time.monotonic() + seconds
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"LLM stream exceeded {seconds:g} seconds")
+        try:
+            kind, value = items.get(timeout=remaining)
+        except queue.Empty as exc:
+            raise TimeoutError(f"LLM stream exceeded {seconds:g} seconds") from exc
+        if kind == "item":
+            yield value
+        elif kind == "error":
+            raise value
+        else:
+            return
 
 
 def _stream_completion(
@@ -431,7 +515,7 @@ def _stream_completion(
     usage: dict[str, int] = {}
 
     try:
-        for chunk in stream:
+        for chunk in _iter_with_deadline(stream, extra_kwargs.get("timeout")):
             choices = getattr(chunk, "choices", None) or []
             if choices:
                 delta = getattr(choices[0], "delta", None)
@@ -506,11 +590,15 @@ def _stream_completion(
     for idx in sorted(tool_call_acc.keys()):
         entry = tool_call_acc[idx]
         raw_args = entry["arguments"] or "{}"
-        try:
-            arguments = json.loads(raw_args)
-        except json.JSONDecodeError:
-            arguments = {"_raw": raw_args}
-        tool_calls.append(ToolCall(name=entry["name"], arguments=arguments))
+        arguments = _parse_tool_arguments(raw_args)
+        tool_calls.append(
+            ToolCall(
+                name=entry["name"],
+                arguments=arguments,
+                id=entry["id"],
+                index=idx,
+            ).ensure_id()
+        )
 
     return LLMResponse(
         content="".join(content_parts),

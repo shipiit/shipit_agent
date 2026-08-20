@@ -139,7 +139,7 @@ class TestNudgeOnStall:
     def _add(a: int, b: int, **_ignored) -> str:
         return str(a + b)
 
-    def test_stall_is_nudged_then_recovers(self) -> None:
+    def test_plain_narration_is_not_guessed_as_a_tool_call(self) -> None:
         llm = self.StallingLLM()
         agent = Agent(
             llm=llm,
@@ -148,10 +148,10 @@ class TestNudgeOnStall:
             max_iterations=6,
         )
         result = agent.run("2+3?")
-        assert llm.saw_nudge                        # nudge message reached the LLM
-        assert result.output == "The sum is 5."
-        assert any(e.payload.get("nudge") for e in result.events
-                   if e.type == "tool_call_healed")
+        assert not llm.saw_nudge
+        assert result.output == "Let me use the add tool for this."
+        assert not any(e.payload.get("nudge") for e in result.events
+                       if e.type == "tool_call_healed")
 
     def test_normal_short_answer_not_nudged(self) -> None:
         class Direct:
@@ -166,12 +166,12 @@ class TestNudgeOnStall:
         assert not any(e.payload.get("nudge") for e in result.events
                        if e.type == "tool_call_healed")
 
-    def test_nudge_capped_at_one(self) -> None:
-        class AlwaysStalls:
+    def test_malformed_call_nudge_is_capped_at_one(self) -> None:
+        class AlwaysMalformed:
             def complete(self, **_kw):
-                return LLMResponse(content="Let me use the add tool now.")
+                return LLMResponse(content='add: {"a": 2, "b":')
 
-        agent = Agent(llm=AlwaysStalls(),
+        agent = Agent(llm=AlwaysMalformed(),
                       tools=[FunctionTool.from_callable(self._add, name="add")],
                       auto_use_skills=False, max_iterations=6)
         result = agent.run("2+3?")

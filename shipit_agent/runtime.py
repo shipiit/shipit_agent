@@ -860,13 +860,14 @@ class AgentRuntime(RuntimeCore):
             seen=state.seen_tool_outputs,
             limit_override=model_output_limit,
         )
+        tool_result.tool_call_id = tool_call_record["id"]
         msg = Message(
             role="tool",
             name=tool_call.name,
             content=model_output,
+            tool_call_id=tool_call_record["id"],
             metadata={
                 **dict(tool_result.metadata),
-                "tool_call_id": tool_call_record["id"],
             },
         )
         # Record a successful read-only call so an identical repeat this run is
@@ -1394,7 +1395,12 @@ detail you were not given and do not say what you will do next."""
             complete_kwargs["tool_input_callback"] = _on_tool_input
         # Only pass the streaming callback to adapters that accept it; older
         # custom adapters keep working unchanged (no inline streaming).
-        if self._llm_streams_text:
+        # A completion offered tools may end with a tool call. Its text is
+        # step narration, not part of the final answer; streaming it through
+        # the answer channel produced one visible "[Executing Tool Calls]"
+        # block per iteration. Only the forced text/final completion streams
+        # answer deltas. Tool-step prose is surfaced once as agent_decision.
+        if self._llm_streams_text and not tools:
             complete_kwargs["text_delta_callback"] = _on_text_delta
         # Per-request timeout, only for adapters that can honour it. A hung
         # connection without one hangs the run — cancel() can't interrupt a
@@ -1518,7 +1524,8 @@ detail you were not given and do not say what you will do next."""
         # model sees the same connection/MCP metadata that tools can search.
         shared_state.update(self.build_shared_state(registry, state))
         tool_prompt = build_tools_prompt(
-            registry.values(), connections=self.connections.all(), mcps=self.mcps
+            registry.values(), connections=self.connections.all(), mcps=self.mcps,
+            supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
         )
         base_prompt = (
             self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
@@ -1618,7 +1625,8 @@ detail you were not given and do not say what you will do next."""
                     if _is_core(getattr(tool, "name", ""))
                 ]
                 core_prompt = build_tools_prompt(
-                    core_tools, connections=self.connections.all()
+                    core_tools, connections=self.connections.all(),
+                    supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
                 )
                 base_prompt = "\n\n".join(
                     part for part in (self.prompt, core_prompt, index) if part
@@ -1647,7 +1655,8 @@ detail you were not given and do not say what you will do next."""
                 if getattr(tool, "name", "") not in deferred_names
             ]
             resident_prompt = build_tools_prompt(
-                resident_tools, connections=self.connections.all(), mcps=self.mcps
+                resident_tools, connections=self.connections.all(), mcps=self.mcps,
+                supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
             )
             base_prompt = "\n\n".join(
                 part
@@ -1819,18 +1828,14 @@ detail you were not given and do not say what you will do next."""
                     )
 
             if not response.tool_calls:
-                # Nudge-on-stall: the model narrated an action ("Let me
-                # search…") but called nothing. One tightly-gated re-prompt —
-                # short intent-shaped text only, capped, never repeated for
-                # identical text — recovers the turn instead of ending it.
-                # The decision lives on RuntimeCore (shared with the async
-                # loop): structural guards — questions and multi-sentence
-                # replies are finished turns, not stalls — plus the one-nudge
-                # cap and the identical-text suppression.
+                # A syntactically attempted call that healing could not safely
+                # promote gets one bounded retry. Plain prose is never
+                # classified by wording and always ends the turn normally.
                 if self.should_nudge(
                     response,
                     has_tools=bool(tool_schemas),
                     last=iteration >= self.max_iterations,
+                    tool_names=tuple(tool.name for tool in registry.values()),
                 ):
                     self.record_nudge(response)
                     state.messages.append(
@@ -1843,7 +1848,7 @@ detail you were not given and do not say what you will do next."""
                     self.emit(
                         state,
                         "tool_call_healed",
-                        "Nudged: intent without action",
+                        "Nudged: malformed tool call",
                         nudge=True,
                         iteration=iteration,
                     )
@@ -1884,21 +1889,21 @@ detail you were not given and do not say what you will do next."""
 
                 break
 
-            tool_call_records = [
-                {
-                    "id": f"call_{iteration}_{index}",
-                    "name": tool_call.name,
-                    "arguments": dict(tool_call.arguments),
-                }
-                for index, tool_call in enumerate(response.tool_calls, start=1)
-            ]
+            tool_call_records = self.assign_tool_call_ids(
+                response.tool_calls, state.messages, iteration
+            )
             state.messages.append(
                 Message(
                     role="assistant",
                     content=response.content,
+                    tool_calls=list(response.tool_calls),
                     metadata={
                         **dict(response.metadata),
-                        "tool_calls": tool_call_records,
+                        **(
+                            {"reasoning_content": response.reasoning_content}
+                            if response.reasoning_content
+                            else {}
+                        ),
                     },
                 )
             )
@@ -2032,7 +2037,14 @@ detail you were not given and do not say what you will do next."""
                 Message(
                     role="assistant",
                     content=response.content,
-                    metadata=dict(response.metadata),
+                    metadata={
+                        **dict(response.metadata),
+                        **(
+                            {"reasoning_content": response.reasoning_content}
+                            if response.reasoning_content
+                            else {}
+                        ),
+                    },
                 )
             )
 

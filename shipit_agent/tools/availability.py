@@ -97,7 +97,11 @@ def is_available(tool: Any) -> tuple[bool, str]:
     check = getattr(tool, "check_fn", None)
     if callable(check):
         name = str(getattr(tool, "name", id(check)))
-        if not _cached_probe(f"fn:{name}", check):
+        # Tool names are not unique configurations. Two instances named
+        # ``image_generate`` may point at different registries/backends; a
+        # positive probe from one must not make the other appear available.
+        # Repeated assembly of the same tool instance still hits the cache.
+        if not _cached_probe(f"fn:{name}:{id(tool)}", check):
             return False, "availability check failed"
 
     return True, ""

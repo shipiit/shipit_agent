@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import Message, ToolCall
-from shipit_agent.llms.litellm_adapter import _extract_reasoning, _serialize_message
+from shipit_agent.llms.litellm_adapter import (
+    _extract_reasoning,
+    _parse_tool_arguments,
+    _serialize_message,
+)
 
 
 # Models that natively produce reasoning / thinking content.
@@ -77,7 +80,15 @@ class OpenAIChatLLM:
             # Per-request override wins over any client-level default.
             client_kwargs["timeout"] = timeout
         client = OpenAI(api_key=self.api_key, **client_kwargs)
-        payload_messages = [_serialize_message(m) for m in messages]
+        from shipit_agent.llms.capabilities import capabilities_for
+
+        caps = capabilities_for(self.model)
+        payload_messages = [
+            _serialize_message(
+                m, include_reasoning=caps.reasoning_history == "replay"
+            )
+            for m in messages
+        ]
 
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -91,6 +102,11 @@ class OpenAIChatLLM:
         # rejects the parameter otherwise.
         if self.tool_choice and tools:
             kwargs["tool_choice"] = self.tool_choice
+        if tools:
+            from shipit_agent.llms.capabilities import capabilities_for
+
+            if not capabilities_for(self.model).supports_parallel_tool_calls:
+                kwargs["parallel_tool_calls"] = False
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
         if self.temperature is not None:
@@ -124,9 +140,8 @@ class OpenAIChatLLM:
             tool_calls.append(
                 ToolCall(
                     name=call.function.name,
-                    arguments=json.loads(arguments)
-                    if isinstance(arguments, str)
-                    else arguments,
+                    arguments=_parse_tool_arguments(arguments),
+                    id=str(getattr(call, "id", "") or ""),
                 )
             )
 
@@ -224,9 +239,8 @@ class OpenAIChatLLM:
                 tool_calls.append(
                     ToolCall(
                         name=call.function.name,
-                        arguments=json.loads(arguments)
-                        if isinstance(arguments, str)
-                        else arguments,
+                        arguments=_parse_tool_arguments(arguments),
+                        id=str(getattr(call, "id", "") or ""),
                     )
                 )
             return LLMResponse(
@@ -239,7 +253,7 @@ class OpenAIChatLLM:
 
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
-        calls: dict[int, dict[str, Any]] = {}  # index → {name, arguments}
+        calls: dict[int, dict[str, Any]] = {}  # index → {id, name, arguments}
         usage: dict[str, int] = {}
 
         for chunk in stream:
@@ -266,7 +280,11 @@ class OpenAIChatLLM:
                 reasoning_parts.append(str(reasoning))
             for frag in getattr(delta, "tool_calls", None) or []:
                 idx = getattr(frag, "index", 0) or 0
-                slot = calls.setdefault(idx, {"name": "", "arguments": ""})
+                slot = calls.setdefault(
+                    idx, {"id": "", "name": "", "arguments": ""}
+                )
+                if getattr(frag, "id", None):
+                    slot["id"] = frag.id
                 fn = getattr(frag, "function", None)
                 if fn is not None:
                     if getattr(fn, "name", None):
@@ -285,7 +303,9 @@ class OpenAIChatLLM:
                             # send one until the call completes.
                             try:
                                 on_tool_input(
-                                    f"call_{idx}", slot["name"], fn.arguments
+                                    slot["id"] or f"call_{idx}",
+                                    slot["name"],
+                                    fn.arguments,
                                 )
                             except Exception:
                                 pass
@@ -293,11 +313,15 @@ class OpenAIChatLLM:
         tool_calls = []
         for idx in sorted(calls):
             raw = calls[idx]["arguments"] or "{}"
-            try:
-                arguments = json.loads(raw)
-            except json.JSONDecodeError:
-                arguments = {"_raw": raw}
-            tool_calls.append(ToolCall(name=calls[idx]["name"], arguments=arguments))
+            arguments = _parse_tool_arguments(raw)
+            tool_calls.append(
+                ToolCall(
+                    name=calls[idx]["name"],
+                    arguments=arguments,
+                    id=calls[idx]["id"],
+                    index=idx,
+                ).ensure_id()
+            )
 
         return LLMResponse(
             content="".join(content_parts),

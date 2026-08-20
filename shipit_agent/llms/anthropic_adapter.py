@@ -400,6 +400,7 @@ class AnthropicChatLLM:
         text_delta_callback: Any = None,
         tool_input_callback: Any = None,
         timeout: float | None = None,
+        require_tool_call: bool = False,
     ) -> LLMResponse:
         try:
             import anthropic
@@ -429,6 +430,8 @@ class AnthropicChatLLM:
             system_prompt=system_prompt,
             documents=documents,
         )
+        if tools and require_tool_call:
+            kwargs["tool_choice"] = {"type": "any"}
 
         # Route to the beta endpoint only when an opt-in feature needs a beta
         # header / beta-only param (``betas`` / ``context_management``). With

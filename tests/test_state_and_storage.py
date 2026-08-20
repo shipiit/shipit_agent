@@ -111,6 +111,32 @@ def test_file_session_store_persists_records(tmp_path) -> None:
     assert len(result.messages) > 2
 
 
+def test_file_session_store_preserves_tool_call_pairing(tmp_path) -> None:
+    from shipit_agent.models import ToolCall, pair_calls_and_results
+    from shipit_agent.stores.session import SessionRecord
+
+    store = FileSessionStore(tmp_path / "sessions")
+    call = ToolCall(name="lookup", arguments={"query": "x"}, id="call-1")
+    store.save(
+        SessionRecord(
+            session_id="paired",
+            messages=[
+                Message(role="assistant", content="", tool_calls=[call]),
+                Message(
+                    role="tool", content="found", name="lookup",
+                    tool_call_id="call-1",
+                ),
+            ],
+        )
+    )
+
+    restored = store.load("paired")
+    assert restored is not None
+    assert restored.messages[0].tool_calls[0].id == "call-1"
+    assert restored.messages[1].tool_call_id == "call-1"
+    assert pair_calls_and_results(restored.messages) == (True, [])
+
+
 def test_agent_can_start_with_seed_history() -> None:
     agent = Agent(
         llm=SimpleEchoLLM(),

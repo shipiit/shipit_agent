@@ -46,6 +46,8 @@ class MCPTransport(Protocol):
         self, method: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
 
+    def notify(self, method: str, params: dict[str, Any] | None = None) -> None: ...
+
     def close(self) -> None: ...
 
 
@@ -77,6 +79,7 @@ class MCPTool:
     description: str
     handler: Callable[..., Any]
     metadata: dict[str, Any] = field(default_factory=dict)
+    read_only: bool | None = None
     input_schema: dict[str, Any] = field(default_factory=dict)
     prompt: str = (
         "Use this MCP tool when the remote capability is the right fit for the task."
@@ -125,6 +128,10 @@ class MCPRemoteTool:
     #: from a schema cache without spawning the process, and that re-handshakes
     #: after a transport respawn. Idempotent; ``None`` means "already ready".
     ensure_ready: Callable[[], None] | None = None
+
+    @property
+    def read_only(self) -> bool:
+        return bool(self.annotations.get("readOnlyHint", False))
     prompt: str = "Use this MCP tool when the remote server provides the best capability for the task."
     prompt_instructions: str = (
         "Remote MCP capability discovered dynamically from the attached server."
@@ -406,25 +413,39 @@ class PersistentMCPSubprocessTransport:
             process = self._ensure_process()
             if process.stdin is None or process.stdout is None:
                 raise MCPError("Persistent MCP subprocess did not expose stdio pipes.")
+            request_id = next(self._id_counter)
             payload = {
                 "jsonrpc": "2.0",
-                "id": next(self._id_counter),
+                "id": request_id,
                 "method": method,
                 "params": params or {},
             }
             process.stdin.write(json.dumps(payload) + "\n")
             process.stdin.flush()
-            line = self._readline_with_deadline(process)
-            if not line:
-                stderr = process.stderr.read() if process.stderr is not None else ""
-                raise MCPError(
-                    stderr.strip()
-                    or "Persistent MCP subprocess exited without a response."
-                )
-            response = json.loads(line)
+            while True:
+                line = self._readline_with_deadline(process)
+                if not line:
+                    stderr = process.stderr.read() if process.stderr is not None else ""
+                    raise MCPError(
+                        stderr.strip()
+                        or "Persistent MCP subprocess exited without a response."
+                    )
+                response = json.loads(line)
+                if response.get("id") == request_id:
+                    break
             if "error" in response:
                 raise MCPError(str(response["error"]))
             return dict(response.get("result", {}))
+
+    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        with self._lock:
+            process = self._ensure_process()
+            if process.stdin is None:
+                raise MCPError("Persistent MCP subprocess did not expose stdin.")
+            process.stdin.write(json.dumps({
+                "jsonrpc": "2.0", "method": method, "params": params or {},
+            }) + "\n")
+            process.stdin.flush()
 
     def close(self) -> None:
         with self._lock:
@@ -487,6 +508,18 @@ class MCPHTTPTransport:
     def close(self) -> None:
         return None
 
+    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        payload = json.dumps({
+            "jsonrpc": "2.0", "method": method, "params": params or {},
+        }).encode("utf-8")
+        req = request.Request(
+            self.endpoint, data=payload,
+            headers={"content-type": "application/json", **self.headers},
+            method="POST",
+        )
+        with request.urlopen(req, timeout=self.timeout):  # nosec B310
+            pass
+
 
 class MCPStreamableHTTPTransport(MCPHTTPTransport):
     """Streamable-HTTP MCP transport (the 2025 spec revision).
@@ -536,6 +569,41 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
         if "error" in parsed:
             raise MCPError(str(parsed["error"]))
         return dict(parsed.get("result", {}))
+
+    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        """Send a session-affine JSON-RPC notification."""
+        payload = json.dumps({
+            "jsonrpc": "2.0", "method": method, "params": params or {},
+        }).encode("utf-8")
+        headers = {
+            "content-type": "application/json",
+            "accept": "application/json, text/event-stream",
+            **self.headers,
+        }
+        if self._session_id:
+            headers["mcp-session-id"] = self._session_id
+        req = request.Request(
+            self.endpoint, data=payload, headers=headers, method="POST"
+        )
+        with request.urlopen(req, timeout=self.timeout):  # nosec B310
+            pass
+
+    def close(self) -> None:
+        """Ask a stateful server to terminate its MCP session."""
+        session_id, self._session_id = self._session_id, None
+        if not session_id:
+            return
+        req = request.Request(
+            self.endpoint,
+            headers={"mcp-session-id": session_id, **self.headers},
+            method="DELETE",
+        )
+        try:
+            with request.urlopen(req, timeout=self.timeout):  # nosec B310
+                pass
+        except OSError:
+            # Session deletion is optional and close must remain idempotent.
+            return
 
     @staticmethod
     def _parse_sse(body: str) -> dict[str, Any]:
@@ -644,6 +712,9 @@ class RemoteMCPServer(MCPServer):
         # The spec's `instructions` field is the server telling the model
         # how to use it — dropping it wasted the server author's one channel.
         self.instructions = str(result.get("instructions") or "")
+        notify = getattr(self.transport, "notify", None)
+        if callable(notify):
+            notify("notifications/initialized", {})
         self._initialized = True
         self._handshook_generation = getattr(self.transport, "generation", 0)
 

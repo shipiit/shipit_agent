@@ -250,9 +250,10 @@ class LiteLLMChatLLM:
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
-        text_delta_callback: Callable[[str], None] | None = None,
+        text_delta_callback: Callable[[str], bool | None] | None = None,
         tool_input_callback: Callable[[str, str, str], None] | None = None,
         timeout: float | None = None,
+        require_tool_call: bool = False,
     ) -> LLMResponse:
         """Run a chat completion.
 
@@ -337,6 +338,8 @@ class LiteLLMChatLLM:
             extra_kwargs.pop(_host, None)
         if response_format:
             extra_kwargs["response_format"] = response_format
+        if request_tools and require_tool_call:
+            extra_kwargs["tool_choice"] = "required"
         if timeout is not None:
             # LiteLLM accepts a per-call `timeout` and forwards it to every
             # provider it wraps; the per-request value wins.
@@ -477,7 +480,7 @@ def _stream_completion(
     payload_messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None,
     extra_kwargs: dict[str, Any],
-    text_delta_callback: Callable[[str], None] | None,
+    text_delta_callback: Callable[[str], bool | None] | None,
     tool_input_callback: Callable[[str, str, str], None] | None = None,
 ) -> LLMResponse:
     """Drive a streaming litellm completion, accumulating text and tool calls.
@@ -513,6 +516,7 @@ def _stream_completion(
     # index -> partial {"id": str, "name": str, "arguments": str}
     tool_call_acc: dict[int, dict[str, str]] = {}
     usage: dict[str, int] = {}
+    stopped_reason: str | None = None
 
     try:
         for chunk in _iter_with_deadline(stream, extra_kwargs.get("timeout")):
@@ -525,7 +529,13 @@ def _stream_completion(
                         content_parts.append(text)
                         try:
                             if text_delta_callback is not None:
-                                text_delta_callback(text)
+                                callback_result = text_delta_callback(text)
+                                if callback_result is False:
+                                    stopped_reason = "degenerate_repetition"
+                                    close = getattr(stream, "close", None)
+                                    if callable(close):
+                                        close()
+                                    break
                         except Exception:
                             # A misbehaving subscriber must not break the
                             # stream — we still need to drain the iterator
@@ -603,7 +613,12 @@ def _stream_completion(
     return LLMResponse(
         content="".join(content_parts),
         tool_calls=tool_calls,
-        metadata={"model": model, "provider": "litellm", "streamed": True},
+        metadata={
+            "model": model,
+            "provider": "litellm",
+            "streamed": True,
+            **({"stream_stopped": stopped_reason} if stopped_reason else {}),
+        },
         reasoning_content="\n".join(reasoning_parts) if reasoning_parts else None,
         usage=usage,
     )

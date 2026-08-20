@@ -415,6 +415,42 @@ class TestNameAdjacentCalls:
         assert calls[0].arguments == {"query": "weather"}
         assert ")" not in cleaned.replace("Now:", "")
 
+    def test_markdown_table_form_observed_in_live_gemma(self):
+        schemas = {
+            "crm_open_tickets": {
+                "type": "object",
+                "properties": {"company": {"type": "string"}},
+                "required": ["company"],
+            }
+        }
+        cleaned, calls = heal_tool_calls(
+            '| crm_open_tickets | {"company":"ACME"} |',
+            {"crm_open_tickets"},
+            schemas=schemas,
+        )
+        assert [(call.name, call.arguments) for call in calls] == [
+            ("crm_open_tickets", {"company": "ACME"})
+        ]
+        assert "crm_open_tickets" not in cleaned
+
+    def test_bare_numeric_object_with_provider_suffix(self):
+        schemas = {
+            "orders_db_query": {
+                "type": "object",
+                "properties": {"min_value_eur": {"type": "number"}},
+                "required": ["min_value_eur"],
+            }
+        }
+        cleaned, calls = heal_tool_calls(
+            "orders_db_query{min_value_eur:500} />",
+            {"orders_db_query"},
+            schemas=schemas,
+        )
+        assert [(call.name, call.arguments) for call in calls] == [
+            ("orders_db_query", {"min_value_eur": 500})
+        ]
+        assert "orders_db_query" not in cleaned
+
     def test_unknown_name_is_left_alone(self):
         text = 'mystery_tool{query: "x"}'
         cleaned, calls = self._heal(text)

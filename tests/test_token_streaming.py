@@ -102,6 +102,27 @@ class TestOpenAIStreaming:
         )
         assert out.content == "ok"
 
+    def test_callback_can_stop_a_degenerate_openai_stream(self, monkeypatch) -> None:
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        _install_fake_openai(
+            monkeypatch, [_chunk("repeat ") for _ in range(100)]
+        )
+        seen = 0
+
+        def stop(_chunk: str) -> bool | None:
+            nonlocal seen
+            seen += 1
+            return False if seen == 8 else None
+
+        out = OpenAIChatLLM(model="gpt-4o-mini", api_key="k").complete(
+            messages=[Message(role="user", content="hi")],
+            text_delta_callback=stop,
+        )
+        assert seen == 8
+        assert out.content == "repeat " * 8
+        assert out.metadata["stream_stopped"] == "degenerate_repetition"
+
     def test_non_stream_fake_degrades_gracefully(self, monkeypatch) -> None:
         """Gateways/fakes that ignore stream=True still work — one delta."""
         from shipit_agent.llms.openai_adapter import OpenAIChatLLM

@@ -69,6 +69,7 @@ class OpenAIChatLLM:
         text_delta_callback: Any = None,
         tool_input_callback: Any = None,
         timeout: float | None = None,
+        require_tool_call: bool = False,
     ) -> LLMResponse:
         try:
             from openai import OpenAI
@@ -100,8 +101,8 @@ class OpenAIChatLLM:
             kwargs["reasoning_effort"] = self.reasoning_effort
         # Only send tool_choice when we actually have tools to call — OpenAI
         # rejects the parameter otherwise.
-        if self.tool_choice and tools:
-            kwargs["tool_choice"] = self.tool_choice
+        if tools and (require_tool_call or self.tool_choice):
+            kwargs["tool_choice"] = "required" if require_tool_call else self.tool_choice
         if tools:
             from shipit_agent.llms.capabilities import capabilities_for
 
@@ -255,6 +256,7 @@ class OpenAIChatLLM:
         reasoning_parts: list[str] = []
         calls: dict[int, dict[str, Any]] = {}  # index → {id, name, arguments}
         usage: dict[str, int] = {}
+        stopped_reason: str | None = None
 
         for chunk in stream:
             if getattr(chunk, "usage", None):
@@ -274,7 +276,17 @@ class OpenAIChatLLM:
                 # Streaming mode is entered when EITHER callback is set;
                 # a tool-input-only caller has no text callback to invoke.
                 if on_delta is not None:
-                    on_delta(text)
+                    try:
+                        if on_delta(text) is False:
+                            stopped_reason = "degenerate_repetition"
+                            close = getattr(stream, "close", None)
+                            if callable(close):
+                                close()
+                            break
+                    except Exception:
+                        # A UI subscriber cannot be allowed to kill the model
+                        # stream; the runtime's own stop signal is ``False``.
+                        pass
             reasoning = getattr(delta, "reasoning_content", None)
             if reasoning:
                 reasoning_parts.append(str(reasoning))
@@ -326,7 +338,12 @@ class OpenAIChatLLM:
         return LLMResponse(
             content="".join(content_parts),
             tool_calls=tool_calls,
-            metadata={"model": self.model, "provider": "openai", "streamed": True},
+            metadata={
+                "model": self.model,
+                "provider": "openai",
+                "streamed": True,
+                **({"stream_stopped": stopped_reason} if stopped_reason else {}),
+            },
             reasoning_content="".join(reasoning_parts) or None,
             usage=usage,
         )

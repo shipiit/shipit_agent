@@ -56,12 +56,7 @@ class FileSessionStore:
         return SessionRecord(
             session_id=raw["session_id"],
             messages=[
-                Message(
-                    role=item["role"],
-                    content=item["content"],
-                    name=item.get("name"),
-                    metadata=dict(item.get("metadata", {})),
-                )
+                Message.from_dict(item)
                 for item in raw.get("messages", [])
             ],
             metadata=dict(raw.get("metadata", {})),
@@ -71,15 +66,7 @@ class FileSessionStore:
         path = self._path_for(record.session_id)
         payload = {
             "session_id": record.session_id,
-            "messages": [
-                {
-                    "role": message.role,
-                    "content": message.content,
-                    "name": message.name,
-                    "metadata": message.metadata,
-                }
-                for message in record.messages
-            ],
+            "messages": [message.to_dict() for message in record.messages],
             "metadata": record.metadata,
         }
         _atomic_write_text(path, json.dumps(payload, indent=2))

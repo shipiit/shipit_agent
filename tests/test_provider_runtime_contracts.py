@@ -161,6 +161,173 @@ def test_incomplete_generation_naming_a_registered_tool_is_recoverable() -> None
     ) is False
 
 
+def test_repeated_generation_is_detected_without_provider_markers() -> None:
+    from shipit_agent.action_detection import (
+        RepetitionGuard,
+        is_malformed_action_attempt,
+    )
+
+    guard = RepetitionGuard()
+    assert guard.add("I will use the next capability.\n") is False
+    stopped = False
+    for _ in range(12):
+        stopped = guard.add("arbitrary-wrapper: ")
+        if stopped:
+            break
+    assert stopped is True
+    assert is_malformed_action_attempt(
+        "I will proceed.\n" + ("arbitrary-wrapper:\n" * 20),
+        allowed_names={"some_tool"},
+    ) is True
+
+
+def test_explicit_tool_requests_are_resolved_from_the_registry() -> None:
+    from shipit_agent.runtime_core import RuntimeCore
+
+    class Tool:
+        def __init__(self, name):
+            self.name = name
+
+    class Registry:
+        def values(self):
+            return [Tool(name) for name in (
+                "weather_lookup", "orders_db_query", "currency_convert",
+                "crm_lookup_customer", "crm_open_tickets",
+            )]
+
+    registry = Registry()
+    assert RuntimeCore.requested_tool_names(
+        "Use the orders tool, then the currency tool.", registry
+    ) == {"orders_db_query", "currency_convert"}
+    assert RuntimeCore.requested_tool_names(
+        "Use the CRM MCP to retrieve open tickets.", registry
+    ) == {"crm_open_tickets"}
+    assert RuntimeCore.requested_tool_names(
+        "Without tools, recall the Berlin weather.", registry
+    ) == set()
+
+
+def test_explicit_tool_request_cannot_finish_with_a_simulated_result() -> None:
+    calls: list[str] = []
+
+    class Scripted:
+        def __init__(self):
+            self.step = 0
+
+        def complete(self, **_kwargs):
+            self.step += 1
+            if self.step == 1:
+                return LLMResponse(content="Pretend console result: 99 degrees")
+            if self.step == 2:
+                return LLMResponse(tool_calls=[
+                    ToolCall(name="weather_lookup", arguments={"city": "Berlin"})
+                ])
+            return LLMResponse(content="Berlin is 21 degrees")
+
+    def weather(city: str) -> str:
+        calls.append(city)
+        return "21 degrees"
+
+    result = Agent(
+        llm=Scripted(),
+        tools=[FunctionTool.from_callable(
+            weather, name="weather_lookup", read_only=True
+        )],
+        auto_use_skills=False,
+        max_iterations=4,
+    ).run("Use the weather tool for Berlin")
+    assert calls == ["Berlin"]
+    assert result.output == "Berlin is 21 degrees"
+    assert any(
+        event.type == "tool_call_healed"
+        and event.message == "Retrying an explicitly requested tool"
+        for event in result.events
+    )
+
+
+def test_internal_recovery_messages_do_not_shift_human_turn_numbers() -> None:
+    from shipit_agent.runtime_core import RuntimeCore
+
+    labelled = RuntimeCore.label_user_turns([
+        Message(role="user", content="first"),
+        Message(role="user", content="retry", metadata={"internal": True}),
+        Message(role="assistant", content="answer"),
+        Message(role="user", content="second"),
+    ])
+    assert labelled[0].content == "[User turn 1]\nfirst"
+    assert labelled[1].content == "retry"
+    assert labelled[3].content == "second"
+
+
+def test_repeated_read_call_forces_synthesis_instead_of_looping() -> None:
+    executions: list[str] = []
+
+    class Repeater:
+        def __init__(self):
+            self.step = 0
+
+        def complete(self, *, tools=None, **_kwargs):
+            self.step += 1
+            if self.step <= 2:
+                return LLMResponse(tool_calls=[
+                    ToolCall(name="weather_lookup", arguments={"city": "Berlin"})
+                ])
+            assert tools in (None, [])
+            return LLMResponse(content="Berlin is 21 degrees")
+
+    def weather(city: str) -> str:
+        executions.append(city)
+        return "21 degrees"
+
+    llm = Repeater()
+    result = Agent(
+        llm=llm,
+        tools=[FunctionTool.from_callable(
+            weather, name="weather_lookup", read_only=True
+        )],
+        auto_use_skills=False,
+        max_iterations=8,
+    ).run("Use the weather tool for Berlin")
+    assert executions == ["Berlin"]
+    assert llm.step == 3
+    assert result.output == "Berlin is 21 degrees"
+
+
+def test_requested_tool_retry_is_constrained_and_required_when_supported() -> None:
+    required_flags: list[bool] = []
+
+    class RequireAware:
+        def __init__(self):
+            self.step = 0
+
+        def complete(self, *, tools=None, require_tool_call=False, **_kwargs):
+            self.step += 1
+            required_flags.append(require_tool_call)
+            if self.step == 1:
+                return LLMResponse(content="simulated conversion")
+            if self.step == 2:
+                names = [(schema.get("function") or {}).get("name") for schema in tools]
+                assert names == ["currency_convert"]
+                assert require_tool_call is True
+                return LLMResponse(tool_calls=[
+                    ToolCall(name="currency_convert", arguments={"amount": 100})
+                ])
+            return LLMResponse(content="108 USD")
+
+    result = Agent(
+        llm=RequireAware(),
+        tools=[FunctionTool.from_callable(
+            lambda amount: f"{amount * 1.08} USD",
+            name="currency_convert",
+            read_only=True,
+        )],
+        auto_use_skills=False,
+        max_iterations=4,
+    ).run("Use the currency tool to convert 100 EUR")
+    assert required_flags[:2] == [False, True]
+    assert result.output == "108 USD"
+
+
 def test_stream_deadline_is_absolute_not_per_chunk() -> None:
     from shipit_agent.llms.litellm_adapter import _iter_with_deadline
 

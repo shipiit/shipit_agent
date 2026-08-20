@@ -344,6 +344,17 @@ class CompactionCheckpoint:
             "created_at": self.created_at,
         }
 
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "CompactionCheckpoint":
+        """Restore a checkpoint stored with a durable chat session."""
+        return cls(
+            compacted_to=max(0, int(value.get("compacted_to", 0) or 0)),
+            summary=str(value.get("summary", "") or ""),
+            tokens_before=max(0, int(value.get("tokens_before", 0) or 0)),
+            tokens_after=max(0, int(value.get("tokens_after", 0) or 0)),
+            created_at=float(value.get("created_at", time.time()) or time.time()),
+        )
+
 
 class Compactor:
     """Decides when to compact, and writes the handoff.

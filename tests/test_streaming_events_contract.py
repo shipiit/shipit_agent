@@ -12,6 +12,7 @@ from shipit_agent.llms.base import LLMResponse
 from shipit_agent.models import ToolCall
 from shipit_agent.tools.base import ToolOutput
 from shipit_agent.tools.tool_search import ToolSearchTool
+from shipit_agent.live import PacketKind, to_packets
 
 
 class StreamingLLM:
@@ -58,6 +59,93 @@ class EchoTool:
 
 def _collect(agent, prompt):
     return list(agent.stream(prompt))
+
+
+class RecordingLLM:
+    def __init__(self):
+        self.requests = []
+        self.turn = 0
+
+    def complete(self, *, messages, tools=None, system_prompt=None, metadata=None,
+                 text_delta_callback=None):
+        self.requests.append(list(messages))
+        self.turn += 1
+        return LLMResponse(content=f"answer-{self.turn}", usage={"total_tokens": 5})
+
+
+def test_plain_agent_keeps_one_session_across_streamed_turns():
+    llm = RecordingLLM()
+    agent = Agent(
+        llm=llm, auto_use_skills=False,
+        auto_project_memory=False, skill_source=None,
+    )
+    session_id = agent.session_id
+    _collect(agent, "first question")
+    _collect(agent, "follow up about that")
+    assert agent.session_id == session_id
+    request = "\n".join(str(message.content) for message in llm.requests[1])
+    assert "[User turn 1]" in request
+    assert "first question" in request
+    assert "answer-1" in request
+    assert "follow up about that" in request
+    assert agent._session_runtime_state["compactor"] is not None
+
+
+def test_stream_failure_is_a_terminal_event_not_a_second_exception():
+    class BrokenLLM:
+        def complete(self, **kwargs):
+            raise ValueError("bad provider response")
+
+    agent = Agent(
+        llm=BrokenLLM(), auto_use_skills=False,
+        auto_project_memory=False, skill_source=None,
+    )
+    events = _collect(agent, "hi")
+    assert events[-1].type == "run_failed"
+    assert events[-1].payload["error_type"] == "ValueError"
+    assert list(to_packets(events))[-1].kind is PacketKind.ERROR
+
+
+def test_tool_events_use_one_canonical_tool_call_id():
+    agent = Agent(
+        llm=StreamingLLM([("", [("echo", {})]), ("done", [])]),
+        tools=[EchoTool("echo")], auto_use_skills=False,
+        auto_project_memory=False, skill_source=None,
+    )
+    events = [e for e in _collect(agent, "go")
+              if e.type in {"tool_called", "tool_completed"}]
+    assert len({e.payload["tool_call_id"] for e in events}) == 1
+    assert all(e.payload["run_id"] for e in events)
+    assert [e.payload["sequence"] for e in events] == sorted(
+        e.payload["sequence"] for e in events
+    )
+
+
+def test_agent_owns_mcp_lifetime_across_streamed_turns():
+    class CountingMCP:
+        name = "counting"
+        instructions = ""
+
+        def __init__(self):
+            self.close_count = 0
+
+        def discover_tools(self):
+            return []
+
+        def close(self):
+            self.close_count += 1
+
+    mcp = CountingMCP()
+    agent = Agent(
+        llm=RecordingLLM(), mcps=[mcp], auto_use_skills=False,
+        auto_project_memory=False, skill_source=None,
+    )
+    _collect(agent, "one")
+    _collect(agent, "two")
+    assert mcp.close_count == 0
+    agent.close()
+    agent.close()
+    assert mcp.close_count == 1
 
 
 def test_stream_opens_with_run_started_and_closes_with_run_completed():

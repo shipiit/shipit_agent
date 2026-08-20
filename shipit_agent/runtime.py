@@ -103,9 +103,18 @@ class AgentRuntime(RuntimeCore):
         #: only on tool-less completions — the final answer / synthesis turn —
         #: where JSON-mode is safe; a mid-loop step still needs to call tools.
         response_format: dict[str, Any] | None = None,
+        session_runtime_state: dict[str, Any] | None = None,
+        close_mcps_on_finish: bool = True,
+        stream_queue_maxsize: int = 256,
+        cancel_on_stream_close: bool = True,
+        stream_join_timeout: float = 2.0,
     ) -> None:
         self.llm = llm
         self.response_format = response_format
+        self.close_mcps_on_finish = close_mcps_on_finish
+        self.stream_queue_maxsize = max(1, int(stream_queue_maxsize))
+        self.cancel_on_stream_close = bool(cancel_on_stream_close)
+        self.stream_join_timeout = max(0.0, float(stream_join_timeout))
         # Retained for compatibility only. Progress narration is composed
         # from the run's own tool calls and results, so nothing here is
         # ever called — turning narration on no longer doubles the model
@@ -152,6 +161,7 @@ class AgentRuntime(RuntimeCore):
             reminder=reminder,
             evict_prior_tool_outputs=evict_prior_tool_outputs,
             verify_before_stop=verify_before_stop,
+            session_runtime_state=session_runtime_state,
         )
         # Detect once whether this LLM adapter accepts the inline-streaming
         # ``text_delta_callback`` kwarg. Adapters on the older protocol
@@ -164,6 +174,8 @@ class AgentRuntime(RuntimeCore):
         # Serializes event emission so parallel tool threads don't interleave
         # writes to a (possibly non-atomic) trace store.
         self._emit_lock = threading.Lock()
+        self.run_id = str(uuid4())
+        self._event_sequence = 0
 
     def registry(self) -> ToolRegistry:
         return construct_tool_registry(tools=self.tools, mcps=self.mcps)
@@ -174,8 +186,14 @@ class AgentRuntime(RuntimeCore):
     def emit(
         self, state: RuntimeState, event_type: str, message: str, **payload: Any
     ) -> None:
-        event = AgentEvent(type=event_type, message=message, payload=payload)
         with self._emit_lock:
+            self._event_sequence += 1
+            payload.setdefault("run_id", self.run_id)
+            payload.setdefault("session_id", self.session_id)
+            payload.setdefault("sequence", self._event_sequence)
+            if "call_id" in payload:
+                payload.setdefault("tool_call_id", payload["call_id"])
+            event = AgentEvent(type=event_type, message=message, payload=payload)
             state.events.append(event)
             if self._event_subscriber is not None:
                 try:
@@ -236,7 +254,10 @@ class AgentRuntime(RuntimeCore):
             Message(
                 role="user",
                 content=f"[Planner output]\n{tool_result.output}",
-                metadata={"source": "planner", "planner_tool": planner.name},
+                metadata={
+                    "source": "planner", "planner_tool": planner.name,
+                    "internal": True,
+                },
             )
         )
         self.emit(
@@ -1148,15 +1169,28 @@ detail you were not given and do not say what you will do next."""
         messages: list[Message],
         tools: list[dict[str, Any]],
         base_prompt: str,
+        require_tool_call: bool = False,
     ) -> LLMResponse:
+        from shipit_agent.action_detection import RepetitionGuard
+
+        repetition_guard = RepetitionGuard()
+        # Tool-step prose is provisional: it may be followed by a structured
+        # call or discarded by recovery. Monitor it for repetition, but only
+        # publish deltas from a forced final/text-only completion.
+        expose_text_deltas = not tools and self.guardrails is None
+
         # When the LLM adapter supports streaming via ``text_delta_callback``,
         # emit each text chunk as a ``text_delta`` event so the SSE adapter
         # downstream can forward tokens inline as they arrive. The callback
         # runs on the same thread that called complete(), so emit() is safe.
-        def _on_text_delta(chunk: str) -> None:
+        def _on_text_delta(chunk: str) -> bool | None:
             if not chunk:
                 return
-            self.emit(state, "text_delta", "", chunk=chunk)
+            if repetition_guard.add(chunk):
+                return False
+            if expose_text_deltas:
+                self.emit(state, "text_delta", "", chunk=chunk)
+            return None
 
         # Stream the one interesting argument of a tool call as the model
         # writes it — the file body, the code, the command — so a renderer can
@@ -1214,6 +1248,11 @@ detail you were not given and do not say what you will do next."""
         )
         if self._llm_streams_tool_input:
             complete_kwargs["tool_input_callback"] = _on_tool_input
+        from shipit_agent.llms.base import accepts_explicit_kwarg
+        if require_tool_call and accepts_explicit_kwarg(
+            self.llm.complete, "require_tool_call"
+        ):
+            complete_kwargs["require_tool_call"] = True
         # Only pass the streaming callback to adapters that accept it; older
         # custom adapters keep working unchanged (no inline streaming).
         # A completion offered tools may end with a tool call. Its text is
@@ -1221,7 +1260,7 @@ detail you were not given and do not say what you will do next."""
         # the answer channel produced one visible "[Executing Tool Calls]"
         # block per iteration. Only the forced text/final completion streams
         # answer deltas. Tool-step prose is surfaced once as agent_decision.
-        if self._llm_streams_text and not tools:
+        if self._llm_streams_text:
             complete_kwargs["text_delta_callback"] = _on_text_delta
         # Per-request timeout, only for adapters that can honour it. A hung
         # connection without one hangs the run — cancel() can't interrupt a
@@ -1283,7 +1322,8 @@ detail you were not given and do not say what you will do next."""
         try:
             return self._run_inner(user_prompt, user_content=user_content)
         finally:
-            self.close_mcps()
+            if self.close_mcps_on_finish:
+                self.close_mcps()
 
     def _run_inner(
         self,
@@ -1353,6 +1393,24 @@ detail you were not given and do not say what you will do next."""
         )
         existing_session = self.session_store.load(self.session_id)
         if existing_session:
+            self.token_calibrator.restore(
+                existing_session.metadata.get("token_calibration")
+            )
+            stored_checkpoint = existing_session.metadata.get(
+                "compaction_checkpoint"
+            )
+            if (
+                self.context_window_tokens >= 0
+                and isinstance(stored_checkpoint, dict)
+                and not self.compactor().latest()
+            ):
+                from shipit_agent.compaction import CompactionCheckpoint
+
+                checkpoint = CompactionCheckpoint.from_dict(stored_checkpoint)
+                if checkpoint.summary and checkpoint.compacted_to <= len(
+                    existing_session.messages
+                ):
+                    self.compactor().checkpoints.append(checkpoint)
             prior_messages = existing_session.messages
         elif self.history_messages:
             prior_messages = self.history_messages
@@ -1515,7 +1573,18 @@ detail you were not given and do not say what you will do next."""
                 break
             # Deferred loading grows the advertised set mid-run, so the
             # selection is re-evaluated every step (a no-op when off).
-            active_schemas = self.select_step_schemas(tool_schemas, shared_state)
+            force_text = bool(shared_state.pop("force_text_after_duplicate", False))
+            forced_names = set(shared_state.get("forced_tool_names") or ())
+            active_schemas = (
+                [] if force_text
+                else self.select_step_schemas(tool_schemas, shared_state)
+            )
+            if forced_names:
+                active_schemas = [
+                    schema for schema in active_schemas
+                    if str((schema.get("function") or {}).get("name", ""))
+                    in forced_names
+                ]
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), active_schemas)
 
@@ -1529,6 +1598,8 @@ detail you were not given and do not say what you will do next."""
             if regrounding:
                 state.messages.extend(regrounding)
                 compacted_messages = [*compacted_messages, *regrounding]
+
+            compacted_messages = self.label_user_turns(compacted_messages)
 
             # Placed last, after the whole conversation, because that is where
             # a model attends most reliably. Appended to this per-call copy —
@@ -1553,6 +1624,7 @@ detail you were not given and do not say what you will do next."""
                 messages=compacted_messages,
                 tools=step_schemas,
                 base_prompt=base_prompt,
+                require_tool_call=bool(forced_names and step_schemas),
             )
             self.track_usage(state, response, iteration)
             # Learn this model's real tokens-per-char from the view we just
@@ -1565,42 +1637,7 @@ detail you were not given and do not say what you will do next."""
             # Arguments are checked against each tool's own schema, and the
             # reasoning channel is searched when the model wrote its call
             # into its thinking instead of its answer.
-            if self.heal_tool_calls and not response.tool_calls:
-                from shipit_agent.tool_healing import (
-                    heal_tool_calls,
-                    schemas_from_tools,
-                )
-
-                _tools = list(registry.values())
-                _names = {tool.name for tool in _tools}
-                _schemas = schemas_from_tools(_tools)
-                healed: list[Any] = []
-                _source = "content"
-                if response.content:
-                    cleaned, healed = heal_tool_calls(
-                        response.content, _names, schemas=_schemas
-                    )
-                    if healed:
-                        response.content = cleaned
-                if (
-                    not healed
-                    and response.reasoning_content
-                    and not (response.content or "").strip()
-                ):
-                    _, healed = heal_tool_calls(
-                        response.reasoning_content, _names, schemas=_schemas
-                    )
-                    _source = "reasoning"
-                if healed:
-                    response.tool_calls = healed
-                    self.emit(
-                        state,
-                        "tool_call_healed",
-                        f"Promoted {len(healed)} text tool call(s)",
-                        tools=[c.name for c in healed],
-                        iteration=iteration,
-                        healed_from=_source,
-                    )
+            self.heal(state, response, registry, iteration)
 
             if self.hooks:
                 self.hooks.run_after_llm(response)
@@ -1649,6 +1686,35 @@ detail you were not given and do not say what you will do next."""
                     )
 
             if not response.tool_calls:
+                missing_requested = self.missing_requested_tools(
+                    user_prompt, registry, state.tool_results
+                )
+                if missing_requested and iteration < self.max_iterations:
+                    self.record_requested_tool_nudge(missing_requested)
+                    shared_state["forced_tool_names"] = set(missing_requested)
+                    state.messages.append(Message(
+                        role="assistant",
+                        content="[Unverified response discarded: no requested tool executed.]",
+                    ))
+                    state.messages.append(Message(
+                        role="user",
+                        content=(
+                            "The requested registered tool did not execute. Call "
+                            + ", ".join(missing_requested)
+                            + " now; do not simulate or invent its result."
+                        ),
+                        metadata={"internal": True, "kind": "requested_tool_retry"},
+                    ))
+                    appended_response_id = id(response)
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Retrying an explicitly requested tool",
+                        tools=missing_requested,
+                        nudge=True,
+                        iteration=iteration,
+                    )
+                    continue
                 # A syntactically attempted call that healing could not safely
                 # promote gets one bounded retry. Plain prose is never
                 # classified by wording and always ends the turn normally.
@@ -1663,7 +1729,10 @@ detail you were not given and do not say what you will do next."""
                         Message(role="assistant", content=response.content)
                     )
                     state.messages.append(
-                        Message(role="user", content=self.NUDGE_TEXT)
+                        Message(
+                            role="user", content=self.NUDGE_TEXT,
+                            metadata={"internal": True, "kind": "tool_call_retry"},
+                        )
                     )
                     appended_response_id = id(response)
                     self.emit(
@@ -1688,7 +1757,10 @@ detail you were not given and do not say what you will do next."""
                                 )
                                 appended_response_id = id(response)
                             state.messages.append(
-                                Message(role="user", content=verify_nudge)
+                                Message(
+                                    role="user", content=verify_nudge,
+                                    metadata={"internal": True, "kind": "verify_retry"},
+                                )
                             )
                             self.emit(
                                 state,
@@ -1756,6 +1828,14 @@ detail you were not given and do not say what you will do next."""
                 iteration=iteration,
                 group_id=group_id,
             )
+            if forced_names:
+                remaining_forced = forced_names - {
+                    result.name for result in iteration_results
+                }
+                if remaining_forced:
+                    shared_state["forced_tool_names"] = remaining_forced
+                else:
+                    shared_state.pop("forced_tool_names", None)
 
             observation_summary = self._generate_observation_summary(
                 state=state,
@@ -1787,6 +1867,11 @@ detail you were not given and do not say what you will do next."""
                     next_action="evaluate_results",
                     generated_by_model=False,
                 )
+
+            if self.force_text_after_duplicate_batch(
+                state.messages, tool_call_records
+            ):
+                shared_state["force_text_after_duplicate"] = True
 
             # Mid-run re-planning: if replan_interval is set and we've
             # completed that many iterations, run the planner again to
@@ -1869,6 +1954,14 @@ detail you were not given and do not say what you will do next."""
                 )
             )
 
+        raw_final_content = response.content
+        response.content = self.sanitize_output(state, response.content)
+        if response.content != raw_final_content:
+            for message in reversed(state.messages):
+                if message.role == "assistant" and message.content == raw_final_content:
+                    message.content = response.content
+                    break
+
         for tool_result in state.tool_results:
             # Only persist tool results that opt-in via persist=True metadata.
             # This prevents memory pollution from noisy tool outputs (e.g.
@@ -1890,28 +1983,20 @@ detail you were not given and do not say what you will do next."""
             *original_prior,
             *state.messages[1 + len(original_prior) :],
         ]
-        self.session_store.save(
-            SessionRecord(session_id=self.session_id, messages=persisted_messages)
+        session_metadata = dict(existing_session.metadata) if existing_session else {}
+        session_metadata["token_calibration"] = self.token_calibrator.to_dict()
+        latest_checkpoint = (
+            self.compactor().latest() if self.context_window_tokens >= 0 else None
         )
-        # Expose the final answer as both `output` (legacy) and `content`
-        # (explicit markdown string) so consumers can render it directly.
-        # ── Guardrails: output gate — redact secrets/PII before anyone sees it ──
-        if self.guardrails is not None and response.content:
-            out_decision = self.guardrails.check_output(response.content)
-            if out_decision.action != "allow":
-                self.emit(
-                    state,
-                    "guardrail_triggered",
-                    f"Output {out_decision.action}: {out_decision.reason}",
-                    stage="output",
-                    reason=out_decision.reason,
-                )
-                response.content = (
-                    out_decision.text
-                    if out_decision.action == "redact"
-                    else f"Response withheld by guardrails: {out_decision.reason}"
-                )
-
+        if latest_checkpoint is not None:
+            session_metadata["compaction_checkpoint"] = latest_checkpoint.to_dict()
+        self.session_store.save(
+            SessionRecord(
+                session_id=self.session_id,
+                messages=persisted_messages,
+                metadata=session_metadata,
+            )
+        )
         # A declared stop (the `give_up` tool) is a first-class outcome, not a
         # buried tool result — surface it so callers and autopilot loops can
         # branch on it instead of pattern-matching prose.
@@ -1962,18 +2047,24 @@ detail you were not given and do not say what you will do next."""
         document / text blocks) exactly as :meth:`run` accepts it, so a
         streaming caller can attach images and files too.
         """
-        event_queue: queue.Queue[AgentEvent | object] = queue.Queue()
+        event_queue: queue.Queue[AgentEvent | object] = queue.Queue(
+            maxsize=self.stream_queue_maxsize
+        )
         sentinel = object()
-        error_box: dict[str, BaseException] = {}
+        completed = threading.Event()
 
         def _subscriber(event: AgentEvent) -> None:
-            event_queue.put(event)
+            while not self.cancelled:
+                try:
+                    event_queue.put(event, timeout=0.1)
+                    return
+                except queue.Full:
+                    continue
 
         def _worker() -> None:
             try:
                 self.run(user_prompt, user_content=user_content)
             except BaseException as exc:  # noqa: BLE001
-                error_box["error"] = exc
                 _subscriber(
                     AgentEvent(
                         type="run_failed",
@@ -1986,7 +2077,14 @@ detail you were not given and do not say what you will do next."""
                     )
                 )
             finally:
-                event_queue.put(sentinel)
+                completed.set()
+                while True:
+                    try:
+                        event_queue.put(sentinel, timeout=0.1)
+                        break
+                    except queue.Full:
+                        if self.cancelled:
+                            break
 
         self._event_subscriber = _subscriber
         worker = threading.Thread(
@@ -2000,7 +2098,7 @@ detail you were not given and do not say what you will do next."""
                     break
                 yield item  # type: ignore[misc]
         finally:
-            worker.join()
+            if not completed.is_set() and self.cancel_on_stream_close:
+                self.cancel()
+            worker.join(timeout=self.stream_join_timeout)
             self._event_subscriber = None
-            if "error" in error_box:
-                raise error_box["error"]

@@ -53,9 +53,11 @@ With skills::
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from shipit_agent.agent_preparation import AgentPreparationMixin
 from shipit_agent.builtins import get_builtin_tools
@@ -195,7 +197,8 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     #: cannot run. Only tools that *declare* requirements can be gated, so this
     #: is safe to leave on: a tool with no declaration is always kept.
     gate_unavailable_tools: bool = True
-    context_window_tokens: int = 0  # 0 = no compaction
+    # 0 = automatic model limit; positive = explicit limit; -1 = disabled.
+    context_window_tokens: int = 0
     #: The fixed prompt prefix (system prompt + tool schemas) is sent on every
     #: call but lives outside ``messages``, so the compaction trigger under-counts
     #: the real prompt by this whole prefix unless it is told. A host that knows
@@ -218,6 +221,9 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     # can fetch omitted sections without paying for the whole body every turn.
     persist_large_tool_outputs: bool = False
     replan_interval: int = 0  # 0 = no periodic replanning
+    stream_queue_maxsize: int = 256
+    cancel_on_stream_close: bool = True
+    stream_join_timeout: float = 2.0
 
     # ── RAG ───────────────────────────────────────────────────────────
     rag: Any = None
@@ -326,6 +332,11 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
 
     # ── internal: handle to the in-flight runtime (for cancel()) ──────
     _active_runtime: Any = field(default=None, repr=False, compare=False)
+    _session_runtime_state: dict[str, Any] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _run_lock: Any = field(default=None, init=False, repr=False, compare=False)
+    _closed: bool = field(default=False, init=False, repr=False, compare=False)
     # The sub_agent built for `delegation=`, kept so its thread pool is
     # created once per agent rather than once per run.
     _auto_sub_agent: Any = field(default=None, repr=False, compare=False)
@@ -345,6 +356,25 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         runtime = self._active_runtime
         if runtime is not None:
             runtime.cancel()
+
+    def close(self) -> None:
+        """Release MCP transports kept alive across this agent's turns."""
+        if self._closed:
+            return
+        self._closed = True
+        for mcp in self.mcps:
+            close = getattr(mcp, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    logger.debug("MCP close failed", exc_info=True)
+
+    def __enter__(self) -> "Agent":
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        self.close()
 
     def clone(self, **changes: Any) -> "Agent":
         """Copy this agent with selected configuration overrides.
@@ -393,6 +423,24 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         2. If no ``skill_registry`` is provided, build one from ``skill_source``.
         3. Resolve string skill ids in ``self.skills`` into ``Skill`` objects.
         """
+        # These defaults belong to the conversation, not to each short-lived
+        # runtime. Otherwise every stream() call starts a new empty session.
+        if self.session_id is None:
+            self.session_id = str(uuid4())
+        self._run_lock = threading.RLock()
+        if self.session_store is None:
+            from shipit_agent.stores import InMemorySessionStore
+
+            self.session_store = InMemorySessionStore()
+        if self.memory_store is None:
+            from shipit_agent.stores import InMemoryMemoryStore
+
+            self.memory_store = InMemoryMemoryStore()
+        if self.stream_queue_maxsize < 1:
+            raise ValueError("stream_queue_maxsize must be positive")
+        if self.stream_join_timeout < 0:
+            raise ValueError("stream_join_timeout cannot be negative")
+
         # Fold in any plugins first, so their tools and hooks are present
         # before the rest of construction (RAG, skills) runs. Cheap no-op when
         # the list is empty.
@@ -870,13 +918,22 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             lockdown=self.lockdown,
             verify_before_stop=self.verify_before_stop,
             response_format=response_format,
+            session_runtime_state=self._session_runtime_state,
+            close_mcps_on_finish=False,
+            stream_queue_maxsize=self.stream_queue_maxsize,
+            cancel_on_stream_close=self.cancel_on_stream_close,
+            stream_join_timeout=self.stream_join_timeout,
         )
-        state, response = runtime.run(
-            effective_user_prompt,
-            user_content=self._user_content_blocks(
-                effective_user_prompt, images, files
-            ),
-        )
+        try:
+            with self._run_lock:
+                state, response = runtime.run(
+                    effective_user_prompt,
+                    user_content=self._user_content_blocks(
+                        effective_user_prompt, images, files
+                    ),
+                )
+        finally:
+            self._active_runtime = None
 
         # Optionally parse structured output from the LLM response, with
         # validation-retry: if the first parse fails, send the error back
@@ -923,6 +980,8 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
                 result_metadata[key] = runtime.metadata[key]
         result_metadata["used_skills"] = skill_ids
         result_metadata["used_skill_tools"] = skill_tool_names
+        result_metadata["usage"] = dict(runtime._total_usage)
+        result_metadata["run_summary"] = runtime._build_run_summary(state)
 
         return AgentResult(
             output=response.content,
@@ -1106,21 +1165,32 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             deferred_tools=self.deferred_tools,
             lockdown=self.lockdown,
             verify_before_stop=self.verify_before_stop,
+            session_runtime_state=self._session_runtime_state,
+            close_mcps_on_finish=False,
+            stream_queue_maxsize=self.stream_queue_maxsize,
+            cancel_on_stream_close=self.cancel_on_stream_close,
+            stream_join_timeout=self.stream_join_timeout,
         )
         user_content = self._user_content_blocks(user_prompt, images, files)
-        for event in runtime.stream(user_prompt, user_content=user_content):
-            yield event
-
-        if self.rag is not None:
+        sources: list[Any] = []
+        completed = False
+        try:
+            with self._run_lock:
+                for event in runtime.stream(user_prompt, user_content=user_content):
+                    yield event
+            completed = True
+        finally:
+            self._active_runtime = None
+            if self.rag is not None:
+                sources = self.rag.end_run()
+        if completed and sources:
             from shipit_agent.models import AgentEvent
 
-            sources = self.rag.end_run()
-            if sources:
-                yield AgentEvent(
-                    type="rag_sources",
-                    message=f"Captured {len(sources)} RAG source(s)",
-                    payload={"sources": [s.to_dict() for s in sources]},
-                )
+            yield AgentEvent(
+                type="rag_sources",
+                message=f"Captured {len(sources)} RAG source(s)",
+                payload={"sources": [s.to_dict() for s in sources]},
+            )
 
     # ──────────────────────────────────────────────────────────────────
     # Utilities

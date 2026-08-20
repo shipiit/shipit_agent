@@ -384,7 +384,20 @@ def _name_adjacent_calls(
         opened = prefix.endswith("(")
         if opened:
             prefix = prefix[:-1].rstrip()
-        name = next((n for n in allowed if prefix.endswith(n)), None)
+        # Markdown tables and provider wrappers commonly put punctuation
+        # between the declared name and its argument object, for example
+        # ``| crm_open_tickets | {"company":"ACME"} |``. Permit only
+        # non-word separators on the same line. Identity still comes from the
+        # advertised name and arguments still have to pass schema validation.
+        line_prefix = prefix.rsplit("\n", 1)[-1]
+        alternatives = "|".join(
+            re.escape(n) for n in sorted(allowed, key=len, reverse=True)
+        )
+        name_match = re.search(
+            rf"(?<![A-Za-z0-9_])({alternatives})[^A-Za-z0-9_{{}}]*$",
+            line_prefix,
+        )
+        name = name_match.group(1) if name_match else None
         if name is None:
             continue
         data = _relaxed_json(text[start:end])
@@ -407,7 +420,8 @@ def _name_adjacent_calls(
             or _plausible_argument_names(coerced)
         ):
             continue
-        span_start = len(prefix) - len(name)
+        line_start = len(prefix) - len(line_prefix)
+        span_start = line_start + name_match.start(1)
         span_end = end
         if opened and text[end:end + 1] == ")":
             span_end += 1

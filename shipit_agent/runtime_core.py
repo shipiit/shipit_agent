@@ -21,6 +21,8 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+from copy import deepcopy
+import re
 
 from typing import Any, Sequence
 
@@ -207,6 +209,9 @@ class RuntimeCore:
         self.heal_tool_calls = bool(options.get("heal_tool_calls", True))
         self.code_mode = bool(options.get("code_mode", False))
         self.context_window_tokens = int(options.get("context_window_tokens", 0) or 0)
+        self._session_runtime_state = options.get("session_runtime_state")
+        if self._session_runtime_state is None:
+            self._session_runtime_state = {}
         # The fixed prompt prefix (system prompt + tool schemas) is sent on
         # every call but lives outside ``messages``. Counted toward the
         # compaction trigger so it does not fire ~a-prefix's-worth late. 0 keeps
@@ -218,7 +223,9 @@ class RuntimeCore:
         # has enough samples, and clamped so it can only ever compact earlier.
         from shipit_agent.token_calibration import TokenCalibrator
 
-        self.token_calibrator = TokenCalibrator()
+        self.token_calibrator = self._session_runtime_state.setdefault(
+            "token_calibrator", TokenCalibrator()
+        )
         self.max_tool_output_chars = int(options.get("max_tool_output_chars", 0) or 0)
         self.max_tool_output_group_chars = int(
             options.get("max_tool_output_group_chars", 0) or 0
@@ -246,7 +253,8 @@ class RuntimeCore:
         self._guarded_tool_calls = 0
         self._nudges_used = 0
         self._last_nudged_text = ""
-        self._compactor_instance: Any = None
+        self._requested_tool_nudges: set[str] = set()
+        self._compactor_instance: Any = self._session_runtime_state.get("compactor")
         self.connections: Any = None
 
     def model_supports_parallel_tool_calls(self) -> bool:
@@ -255,6 +263,124 @@ class RuntimeCore:
 
         model = str(getattr(getattr(self, "llm", None), "model", "") or "")
         return capabilities_for(model).supports_parallel_tool_calls
+
+    @staticmethod
+    def requested_tool_names(user_prompt: str, registry: Any) -> set[str]:
+        """Resolve tools the user explicitly requested from live schemas.
+
+        Exact names always qualify. Human forms such as "weather tool" and
+        "CRM MCP ... open tickets" are resolved by registry-name tokens near
+        the words tool/MCP; ambiguous matches are left to the model.
+        """
+        def words(value: str) -> list[str]:
+            found = re.findall(r"[a-z0-9]+", value.lower().replace("_", " "))
+            return [word[:-1] if len(word) > 3 and word.endswith("s") else word
+                    for word in found]
+
+        prompt_words = words(user_prompt)
+        prompt_set = set(prompt_words)
+        marker_positions = {
+            index for index, word in enumerate(prompt_words) if word in {"tool", "mcp"}
+        }
+        all_entries: list[tuple[str, list[str], int, bool]] = []
+        requested: set[str] = set()
+        normalized_prompt = " ".join(prompt_words)
+        for tool in registry.values():
+            name = str(getattr(tool, "name", "") or "")
+            tokens = words(name)
+            if not name or not tokens:
+                continue
+            explicit_name = (
+                (len(tokens) > 1 and " ".join(tokens) in normalized_prompt)
+                or ("_" in name and name.lower() in user_prompt.lower())
+            )
+            if explicit_name:
+                requested.add(name)
+                continue
+            score = sum(token in prompt_set for token in tokens)
+            near_marker = any(
+                abs(index - marker) <= 2
+                for index, token in enumerate(prompt_words)
+                for marker in marker_positions
+                if token == tokens[0]
+            )
+            all_entries.append((name, tokens, score, near_marker))
+
+        anchors: dict[str, list[tuple[str, int]]] = {}
+        for name, tokens, score, near_marker in all_entries:
+            if near_marker:
+                anchors.setdefault(tokens[0], []).append((name, score))
+        for candidates in anchors.values():
+            if len(candidates) == 1:
+                requested.add(candidates[0][0])
+                continue
+            best = max(score for _name, score in candidates)
+            winners = [name for name, score in candidates if score == best]
+            if len(winners) == 1:
+                requested.add(winners[0])
+        return requested
+
+    def missing_requested_tools(
+        self, user_prompt: str, registry: Any, tool_results: Sequence[Any]
+    ) -> list[str]:
+        requested = self.requested_tool_names(user_prompt, registry)
+        executed = {str(getattr(result, "name", "")) for result in tool_results}
+        return sorted(requested - executed - self._requested_tool_nudges)
+
+    def record_requested_tool_nudge(self, names: Sequence[str]) -> None:
+        self._requested_tool_nudges.update(names)
+
+    @staticmethod
+    def force_text_after_duplicate_batch(
+        messages: Sequence[Message], call_records: Sequence[dict[str, Any]]
+    ) -> bool:
+        """Whether every call in the latest batch was already executed."""
+        ids = {str(record.get("id", "")) for record in call_records}
+        outcomes = [
+            message for message in messages
+            if message.role == "tool" and str(message.tool_call_id or "") in ids
+        ]
+        return bool(ids) and len(outcomes) == len(ids) and all(
+            message.metadata.get("duplicate_suppressed") for message in outcomes
+        )
+
+    @staticmethod
+    def label_user_turns(messages: Sequence[Message]) -> list[Message]:
+        """Label user turns in the transient model view.
+
+        Tool calls insert several assistant/tool messages between user turns,
+        so an instruction such as "use facts from turns 1, 3, and 5" is
+        otherwise ambiguous to a model counting raw messages. Copies are
+        returned because these labels are navigation aids, not user content,
+        and must never enter the runtime transcript or durable session record.
+        """
+        labelled: list[Message] = []
+        human_user_indexes = [
+            index for index, message in enumerate(messages)
+            if message.role == "user"
+            and not (
+                message.metadata.get("internal")
+                or message.metadata.get("vision_bridge")
+                or message.metadata.get("regrounding")
+                or message.metadata.get("source") == "planner"
+            )
+        ]
+        current_user_index = human_user_indexes[-1] if human_user_indexes else -1
+        turn = 0
+        for index, message in enumerate(messages):
+            clone = deepcopy(message)
+            synthetic = bool(
+                clone.metadata.get("internal")
+                or clone.metadata.get("vision_bridge")
+                or clone.metadata.get("regrounding")
+                or clone.metadata.get("source") == "planner"
+            )
+            if clone.role == "user" and not synthetic:
+                turn += 1
+                if index != current_user_index and isinstance(clone.content, str):
+                    clone.content = f"[User turn {turn}]\n{clone.content}"
+            labelled.append(clone)
+        return labelled
 
     def assign_tool_call_ids(
         self,
@@ -501,7 +627,7 @@ class RuntimeCore:
                     "text": f"[image returned by the {tool_name} tool]",
                 },
             ],
-            metadata={"vision_bridge": True, "tool": tool_name},
+            metadata={"vision_bridge": True, "internal": True, "tool": tool_name},
         )
 
     @classmethod
@@ -904,7 +1030,7 @@ class RuntimeCore:
             )
             if healed:
                 response.content = cleaned
-        if not healed and response.reasoning_content and not (response.content or "").strip():
+        if not healed and response.reasoning_content:
             _, healed = heal_tool_calls(
                 response.reasoning_content, names, schemas=schemas
             )
@@ -1010,6 +1136,7 @@ class RuntimeCore:
                 fixed_prefix_tokens=self._fixed_prefix_tokens,
                 calibrator=self.token_calibrator,
             )
+            self._session_runtime_state["compactor"] = self._compactor_instance
         return self._compactor_instance
 
     def compact(
@@ -1035,7 +1162,7 @@ class RuntimeCore:
         the gate forces a cheap re-read (the file is often still in the hot
         tail) before the next edit is allowed.
         """
-        if not self.context_window_tokens:
+        if self.context_window_tokens < 0:
             return messages
         compactor = self.compactor()
         latest = compactor.latest()
@@ -1171,7 +1298,7 @@ class RuntimeCore:
                             f"[re-grounding after compaction] Current contents "
                             f"of {path.name}:\n{text}"
                         ),
-                        metadata={"regrounding": True, "path": path_str},
+                        metadata={"regrounding": True, "internal": True, "path": path_str},
                     )
                 )
                 # Restore the read-gate for the re-read file so an edit can

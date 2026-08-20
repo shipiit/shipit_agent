@@ -211,3 +211,24 @@ def test_callback_exception_does_not_break_stream(fake_litellm):
 
     # Stream still drains, response still assembled.
     assert out.content == "safeal so safe" or out.content == "safealso safe" or out.content == "safe" + "also safe"
+
+
+def test_callback_can_stop_a_degenerate_stream_early(fake_litellm):
+    chunks = [_make_text_chunk("repeat ") for _ in range(100)]
+    fake_litellm.completion.return_value = iter(chunks)
+    seen = 0
+
+    def stop_after_eight(_chunk: str) -> bool | None:
+        nonlocal seen
+        seen += 1
+        return False if seen == 8 else None
+
+    llm = LiteLLMChatLLM(model="test-model")
+    out = llm.complete(
+        messages=[Message(role="user", content="hi")],
+        text_delta_callback=stop_after_eight,
+    )
+
+    assert seen == 8
+    assert out.content == "repeat " * 8
+    assert out.metadata["stream_stopped"] == "degenerate_repetition"

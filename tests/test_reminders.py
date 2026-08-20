@@ -29,9 +29,9 @@ class TestWhatItSays:
         them as retrieved."""
         assert build_reminder(ran_tools=False, out_of_steps=False) == GROUNDING_REMINDER
 
-    def test_after_tools_it_asks_for_depth(self) -> None:
+    def test_after_tools_it_does_not_replace_the_users_request(self) -> None:
         text = build_reminder(ran_tools=True, out_of_steps=False)
-        assert text == DEPTH_REMINDER
+        assert text is None
 
     def test_on_the_last_step_it_asks_for_an_answer(self) -> None:
         text = build_reminder(ran_tools=True, out_of_steps=True)
@@ -49,29 +49,26 @@ class TestWhatItSays:
 
     def test_custom_guidance_joins_a_built_in(self) -> None:
         text = build_reminder(ran_tools=True, out_of_steps=False, custom="Cite ids.")
-        assert DEPTH_REMINDER in text and text.endswith("Cite ids.")
+        assert text == "Cite ids."
 
     def test_blank_custom_guidance_adds_nothing(self) -> None:
         assert build_reminder(
             ran_tools=False, out_of_steps=False, custom="   "
         ) == GROUNDING_REMINDER
 
-    def test_exactly_one_built_in_applies_at_a_time(self) -> None:
-        """Three risks, three phases of a turn — never two at once, or the
-        reminder becomes the boilerplate it exists to avoid being."""
+    def test_at_most_one_built_in_applies_at_a_time(self) -> None:
+        """A successful intermediate tool step intentionally has none."""
         for ran, out in ((False, False), (True, False), (True, True)):
-            text = build_reminder(ran_tools=ran, out_of_steps=out)
+            text = build_reminder(ran_tools=ran, out_of_steps=out) or ""
             present = [
                 r for r in (GROUNDING_REMINDER, DEPTH_REMINDER, LAST_STEP_REMINDER)
                 if r in text
             ]
-            assert len(present) == 1, (ran, out, present)
+            assert len(present) <= 1, (ran, out, present)
 
     def test_grounding_gives_way_once_a_tool_has_run(self) -> None:
         """After retrieval the risk is no longer invention."""
-        assert GROUNDING_REMINDER not in build_reminder(
-            ran_tools=True, out_of_steps=False
-        )
+        assert build_reminder(ran_tools=True, out_of_steps=False) is None
 
 
 class _Recorder:
@@ -114,24 +111,23 @@ class TestItReachesTheModel:
         _agent(llm).run("hi")
         assert not any(DEPTH_REMINDER in t for t in llm.texts(0))
 
-    def test_it_appears_once_a_tool_has_run(self) -> None:
+    def test_no_internal_user_message_appears_after_a_tool_has_run(self) -> None:
         llm = _Recorder([
             LLMResponse(tool_calls=[ToolCall(name="search_echo",
                                              arguments={"query": "qilin"})]),
             LLMResponse(content="done"),
         ])
         _agent(llm).run("tell me about qilin in detail")
-        assert any(DEPTH_REMINDER in t for t in llm.texts(1))
+        assert not any(DEPTH_REMINDER in t for t in llm.texts(1))
 
-    def test_it_is_the_very_last_message(self) -> None:
-        """Its whole value is proximity to generation."""
+    def test_the_tool_result_remains_the_very_last_message(self) -> None:
         llm = _Recorder([
             LLMResponse(tool_calls=[ToolCall(name="search_echo",
                                              arguments={"query": "q"})]),
             LLMResponse(content="done"),
         ])
         _agent(llm).run("detail please")
-        assert DEPTH_REMINDER in llm.texts(1)[-1]
+        assert "15 results for q" in llm.texts(1)[-1]
 
     def test_custom_guidance_reaches_the_model(self) -> None:
         llm = _Recorder([LLMResponse(content="done")])

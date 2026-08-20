@@ -116,6 +116,34 @@ class TokenCalibrator:
         """*estimated* scaled by the current factor for *model*."""
         return int(estimated * self.factor(model))
 
+    def to_dict(self) -> dict[str, dict[str, float | int]]:
+        """Serializable calibration state for durable chat sessions."""
+        with self._lock:
+            return {
+                key: {"ratio": stat.ratio, "samples": stat.samples}
+                for key, stat in self._stats.items()
+            }
+
+    def restore(self, value: object) -> None:
+        """Merge previously persisted model statistics, ignoring bad data."""
+        if not isinstance(value, dict):
+            return
+        restored: dict[str, _ModelStat] = {}
+        for key, raw in value.items():
+            if not isinstance(key, str) or not isinstance(raw, dict):
+                continue
+            try:
+                ratio = max(1.0, min(float(raw.get("ratio", 1.0)), self.max_factor))
+                samples = max(0, int(raw.get("samples", 0)))
+            except (TypeError, ValueError):
+                continue
+            restored[key] = _ModelStat(ratio=ratio, samples=samples)
+        with self._lock:
+            for key, stat in restored.items():
+                current = self._stats.get(key)
+                if current is None or stat.samples > current.samples:
+                    self._stats[key] = stat
+
     @staticmethod
     def _key(model: str | None) -> str:
         return (model or "").strip().lower() or "_default"

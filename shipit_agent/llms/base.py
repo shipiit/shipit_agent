@@ -50,6 +50,14 @@ def accepts_kwarg(complete_fn: Any, name: str) -> bool:
     return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
+def accepts_explicit_kwarg(complete_fn: Any, name: str) -> bool:
+    """Whether an adapter explicitly opts into a behavioral control."""
+    try:
+        return name in inspect.signature(complete_fn).parameters
+    except (ValueError, TypeError):
+        return False
+
+
 def accepts_tool_input_callback(complete_fn: Any) -> bool:
     """Can this adapter stream a tool call's arguments as they are written?
 
@@ -109,8 +117,9 @@ class LLM(Protocol):
         tools: list[dict[str, Any]] | None = None,
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
-        text_delta_callback: Callable[[str], None] | None = None,
+        text_delta_callback: Callable[[str], bool | None] | None = None,
         # (tool_call_id, tool_name, raw_json_delta). Optional: adapters that
         # cannot surface partial tool arguments simply don't accept it.
         tool_input_callback: Callable[[str, str, str], None] | None = None,
+        require_tool_call: bool = False,
     ) -> LLMResponse: ...

@@ -12,6 +12,30 @@ _NAMED_OBJECT = re.compile(
     re.MULTILINE,
 )
 _ANGLE_FORM = re.compile(rf"<\s*/?\s*({_IDENTIFIER})(?:\s|>|$)")
+_REPEATED_SUFFIX = re.compile(r"(.{4,128}?)(?:\1){7,}$", re.DOTALL)
+
+
+class RepetitionGuard:
+    """Incrementally detect a provider stuck repeating an arbitrary suffix.
+
+    The detector knows nothing about model families, tags, or tool syntax. It
+    normalizes whitespace and looks only for the same 4–128 character unit at
+    least eight times at the end of a bounded rolling window.
+    """
+
+    def __init__(self, *, window: int = 4096) -> None:
+        self.window = window
+        self._text = ""
+
+    def add(self, chunk: str) -> bool:
+        self._text = (self._text + str(chunk))[-self.window :]
+        compact = " ".join(self._text.split())
+        return len(compact) >= 32 and _REPEATED_SUFFIX.search(compact) is not None
+
+
+def is_degenerate_repetition(text: str | None) -> bool:
+    guard = RepetitionGuard(window=8192)
+    return guard.add(text or "")
 
 
 def is_malformed_action_attempt(
@@ -29,6 +53,9 @@ def is_malformed_action_attempt(
         return False
 
     advertised = {name for name in allowed_names if name}
+    if advertised and is_degenerate_repetition(source):
+        return True
+
     compact = " ".join(source.split())
     if (
         advertised

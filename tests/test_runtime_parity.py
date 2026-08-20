@@ -408,4 +408,4 @@ class TestBothLoopsSpendTokensTheSameWay:
         returned, _schemas = core.step_request(
             messages=original, tool_schemas=[{"a": 1}], iteration=2, ran_tools=True
         )
-        assert len(original) == 1 and len(returned) == 2
+        assert len(original) == 1 and len(returned) == 1

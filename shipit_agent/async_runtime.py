@@ -151,7 +151,8 @@ class AsyncAgentRuntime(RuntimeCore):
         )
 
     async def _complete_async(
-        self, *, messages: list[Message], tools: list[dict[str, Any]], base_prompt: str
+        self, *, messages: list[Message], tools: list[dict[str, Any]], base_prompt: str,
+        require_tool_call: bool = False,
     ) -> LLMResponse:
         """Run the synchronous LLM.complete in a thread to avoid blocking."""
         from shipit_agent.llms.base import accepts_kwarg
@@ -162,6 +163,11 @@ class AsyncAgentRuntime(RuntimeCore):
             system_prompt=base_prompt,
             metadata=dict(self.metadata),
         )
+        from shipit_agent.llms.base import accepts_explicit_kwarg
+        if require_tool_call and accepts_explicit_kwarg(
+            self.llm.complete, "require_tool_call"
+        ):
+            complete_kwargs["require_tool_call"] = True
         # Per-request timeout, only for adapters that can honour it — same
         # decision as the sync loop.
         if self.retry_policy.request_timeout is not None and accepts_kwarg(
@@ -181,12 +187,14 @@ class AsyncAgentRuntime(RuntimeCore):
         messages: list[Message],
         tools: list[dict[str, Any]],
         base_prompt: str,
+        require_tool_call: bool = False,
     ) -> LLMResponse:
         attempt = 0
         while True:
             try:
                 return await self._complete_async(
-                    messages=messages, tools=tools, base_prompt=base_prompt
+                    messages=messages, tools=tools, base_prompt=base_prompt,
+                    require_tool_call=require_tool_call,
                 )
             except self.retry_policy.retry_on_exceptions as exc:
                 if attempt >= self.retry_policy.max_llm_retries:
@@ -729,7 +737,18 @@ class AsyncAgentRuntime(RuntimeCore):
                 break
             # Deferred loading grows the advertised set mid-run, so the
             # selection is re-evaluated every step (a no-op when off).
-            active_schemas = self.select_step_schemas(tool_schemas, shared_state)
+            force_text = bool(shared_state.pop("force_text_after_duplicate", False))
+            forced_names = set(shared_state.get("forced_tool_names") or ())
+            active_schemas = (
+                [] if force_text
+                else self.select_step_schemas(tool_schemas, shared_state)
+            )
+            if forced_names:
+                active_schemas = [
+                    schema for schema in active_schemas
+                    if str((schema.get("function") or {}).get("name", ""))
+                    in forced_names
+                ]
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), active_schemas)
 
@@ -742,6 +761,8 @@ class AsyncAgentRuntime(RuntimeCore):
             if regrounding:
                 state.messages.extend(regrounding)
                 compacted_messages = [*compacted_messages, *regrounding]
+
+            compacted_messages = self.label_user_turns(compacted_messages)
 
             step_messages, step_schemas = self.step_request(
                 messages=compacted_messages,
@@ -762,6 +783,7 @@ class AsyncAgentRuntime(RuntimeCore):
                 messages=step_messages,
                 tools=step_schemas,
                 base_prompt=base_prompt,
+                require_tool_call=bool(forced_names and step_schemas),
             )
             self.track_usage(state, response, iteration)
             # Learn this model's real tokens-per-char from the view we just
@@ -790,6 +812,34 @@ class AsyncAgentRuntime(RuntimeCore):
                 )
 
             if not response.tool_calls:
+                missing_requested = self.missing_requested_tools(
+                    user_prompt, registry, state.tool_results
+                )
+                if missing_requested and iteration < self.max_iterations:
+                    self.record_requested_tool_nudge(missing_requested)
+                    shared_state["forced_tool_names"] = set(missing_requested)
+                    state.messages.append(Message(
+                        role="assistant",
+                        content="[Unverified response discarded: no requested tool executed.]",
+                    ))
+                    state.messages.append(Message(
+                        role="user",
+                        content=(
+                            "The requested registered tool did not execute. Call "
+                            + ", ".join(missing_requested)
+                            + " now; do not simulate or invent its result."
+                        ),
+                        metadata={"internal": True, "kind": "requested_tool_retry"},
+                    ))
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Retrying an explicitly requested tool",
+                        tools=missing_requested,
+                        nudge=True,
+                        iteration=iteration,
+                    )
+                    continue
                 # Nudge-on-stall: the model narrated an action and called
                 # nothing. One tightly-gated re-prompt recovers the turn.
                 if self.should_nudge(
@@ -802,7 +852,10 @@ class AsyncAgentRuntime(RuntimeCore):
                     state.messages.append(
                         Message(role="assistant", content=response.content)
                     )
-                    state.messages.append(Message(role="user", content=self.NUDGE_TEXT))
+                    state.messages.append(Message(
+                        role="user", content=self.NUDGE_TEXT,
+                        metadata={"internal": True, "kind": "tool_call_retry"},
+                    ))
                     self.emit(
                         state,
                         "tool_call_healed",
@@ -929,6 +982,19 @@ class AsyncAgentRuntime(RuntimeCore):
                         vision = self.vision_followup(tool_result, tc.name)
                         if vision is not None:
                             state.messages.append(vision)
+
+            if self.force_text_after_duplicate_batch(
+                state.messages, tool_call_records
+            ):
+                shared_state["force_text_after_duplicate"] = True
+            if forced_names:
+                remaining_forced = forced_names - {
+                    result.name for result in state.tool_results
+                }
+                if remaining_forced:
+                    shared_state["forced_tool_names"] = remaining_forced
+                else:
+                    shared_state.pop("forced_tool_names", None)
 
         # Summarization if hit iteration cap
         hit_iteration_cap = bool(response.tool_calls) and not response.content

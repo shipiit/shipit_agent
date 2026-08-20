@@ -113,6 +113,7 @@ def build_mcp():
                           "required": ["company"]},
             handler=lambda context, company="", **_: json.dumps(
                 crm.get(company, {"error": "unknown"})),
+            read_only=True,
         ),
         MCPTool(
             name="crm_open_tickets",
@@ -122,6 +123,7 @@ def build_mcp():
                           "required": ["company"]},
             handler=lambda context, company="", **_: json.dumps(
                 tickets.get(company, [])),
+            read_only=True,
         ),
     ])
 

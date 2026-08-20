@@ -21,9 +21,11 @@ the runtime already knows: whether tools ran, and whether any step remains.
 
 from __future__ import annotations
 
-#: After tools ran and steps remain. Targets the observed failure: a search
-#: returns fifteen items, the model opens one, and answers as if it had read
-#: them all — a sample presented as a finding.
+#: Legacy guidance retained as a public constant for compatibility. It is no
+#: longer injected automatically: ``ran_tools`` only tells the runtime that at
+#: least one tool ran, not that a collection was returned or left unread. As a
+#: trailing user message this caused smaller models to acknowledge the
+#: reminder instead of answering the original request.
 DEPTH_REMINDER = (
     "Before answering: if a tool returned several relevant items and you have "
     "examined only one, open the others now — several in one response. If your "
@@ -120,11 +122,10 @@ def build_reminder(
 ) -> str | None:
     """Compose the reminder for this step, or ``None`` if there is nothing to say.
 
-    The three built-ins follow the shape of the turn, so exactly one applies
-    at a time and none of them is boilerplate: before anything has been
-    retrieved the risk is invention; once something has, the risk is
-    answering from too little of it; on the last step the risk is spending it
-    on a call that cannot run.
+    The built-ins only cover states the runtime can prove: no tool has run, or
+    no further step is available. A successful tool call deliberately gets no
+    automatic trailing user message; the runtime cannot infer from a boolean
+    whether the result was a collection that needs further inspection.
 
     ``custom`` is caller-supplied standing guidance. It is included whenever
     it is set, because it is the caller's own reliability requirement — the
@@ -133,9 +134,7 @@ def build_reminder(
     parts: list[str] = []
     if out_of_steps:
         parts.append(LAST_STEP_REMINDER)
-    elif ran_tools:
-        parts.append(DEPTH_REMINDER)
-    else:
+    elif not ran_tools:
         parts.append(GROUNDING_REMINDER)
     if custom and custom.strip():
         parts.append(custom.strip())

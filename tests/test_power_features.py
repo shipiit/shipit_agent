@@ -422,11 +422,11 @@ class TestContextWindowManagement:
         assert did_compact is False
 
     def test_no_compaction_when_disabled(self) -> None:
-        """No compaction when context_window_tokens=0."""
+        """A negative context window explicitly disables compaction."""
         runtime = AgentRuntime(
             llm=SimpleEchoLLM(),
             prompt="test",
-            context_window_tokens=0,
+            context_window_tokens=-1,
         )
         messages = [Message(role="user", content="x" * 10000)]
         _before = messages

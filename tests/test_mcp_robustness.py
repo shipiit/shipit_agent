@@ -10,6 +10,7 @@ from shipit_agent.mcp import (
     MCPServer,
     MCPTool,
     PersistentMCPSubprocessTransport,
+    MCPStreamableHTTPTransport,
     RemoteMCPServer,
     _sanitize_tool_name,
 )
@@ -37,6 +38,9 @@ class FakeTransport:
             return {"tools": self._tools}
         return {"content": [{"type": "text", "text": "ok"}]}
 
+    def notify(self, method, params=None):
+        self.requests.append(method)
+
     def close(self):
         pass
 
@@ -52,6 +56,7 @@ def test_exposed_names_are_sanitized_unconditionally():
     assert tool.name == "deepwiki_ask_question"
     # The wire call still uses the server's exact spelling.
     assert tool.remote_name == "deepwiki**ask_question"
+    assert "notifications/initialized" in transport.requests
 
 
 def test_sanitize_handles_length_and_leading_digit():
@@ -114,3 +119,28 @@ def test_server_instructions_reach_the_system_prompt():
     assert "docs lookups" in prompt
     # The boilerplate per-tool guidance is NOT repeated under each tool.
     assert "remote server provides the best capability" not in prompt
+
+
+def test_streamable_notifications_and_close_keep_session_affinity(monkeypatch):
+    seen: list[tuple[str, str | None]] = []
+
+    class Response:
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def open_request(req, timeout):
+        seen.append((req.method, req.headers.get("Mcp-session-id")))
+        return Response()
+
+    monkeypatch.setattr("shipit_agent.mcp.request.urlopen", open_request)
+    transport = MCPStreamableHTTPTransport("https://mcp.invalid")
+    transport._session_id = "session-7"
+    transport.notify("notifications/initialized", {})
+    transport.close()
+    transport.close()
+    assert seen == [("POST", "session-7"), ("DELETE", "session-7")]

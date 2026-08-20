@@ -132,7 +132,11 @@ def _packet(event: Any) -> Packet:
         kind=kind,
         text=_text_of(event, payload),
         tool=str(payload.get("tool", "") or payload.get("name", "")),
-        tool_call_id=str(payload.get("tool_call_id", "") or payload.get("id", "")),
+        tool_call_id=str(
+            payload.get("tool_call_id", "")
+            or payload.get("call_id", "")
+            or payload.get("id", "")
+        ),
         data=payload,
     )
 
@@ -145,23 +149,24 @@ def to_packets(events: Iterable[Any], *, drop_empty: bool = True) -> Iterator[Pa
     forwarding those makes a consumer's concatenation logic noisier for nothing.
     """
     final: Packet | None = None
-    for event in events:
-        packet = _packet(event)
-        if (
-            drop_empty
-            and not packet.text
-            and packet.kind in (PacketKind.TEXT, PacketKind.TOOL_OUTPUT, PacketKind.TOOL_INPUT)
-        ):
-            continue
-        if packet.is_terminal:
-            # Held back rather than forwarded: a run emits its answer and then
-            # its accounting, and a consumer whose loop ends on the terminal
-            # packet would never see the summary. Exactly one terminal packet
-            # is emitted, and it is always last.
-            if final is None or (not final.text and packet.text):
-                final = packet
-            continue
-        yield packet
+    try:
+        for event in events:
+            packet = _packet(event)
+            if (
+                drop_empty and not packet.text
+                and packet.kind in (PacketKind.TEXT, PacketKind.TOOL_OUTPUT, PacketKind.TOOL_INPUT)
+            ):
+                continue
+            if packet.is_terminal:
+                if final is None or (not final.text and packet.text):
+                    final = packet
+                continue
+            yield packet
+    except Exception as exc:
+        final = Packet(
+            kind=PacketKind.ERROR, text=str(exc),
+            data={"error_type": type(exc).__name__, "error": str(exc)},
+        )
     yield final or Packet(kind=PacketKind.FINAL)
 
 
@@ -170,19 +175,24 @@ async def to_packets_async(
 ) -> AsyncIterator[Packet]:
     """Async twin of :func:`to_packets`, with identical semantics."""
     final: Packet | None = None
-    async for event in events:
-        packet = _packet(event)
-        if (
-            drop_empty
-            and not packet.text
-            and packet.kind in (PacketKind.TEXT, PacketKind.TOOL_OUTPUT, PacketKind.TOOL_INPUT)
-        ):
-            continue
-        if packet.is_terminal:
-            if final is None or (not final.text and packet.text):
-                final = packet
-            continue
-        yield packet
+    try:
+        async for event in events:
+            packet = _packet(event)
+            if (
+                drop_empty and not packet.text
+                and packet.kind in (PacketKind.TEXT, PacketKind.TOOL_OUTPUT, PacketKind.TOOL_INPUT)
+            ):
+                continue
+            if packet.is_terminal:
+                if final is None or (not final.text and packet.text):
+                    final = packet
+                continue
+            yield packet
+    except Exception as exc:
+        final = Packet(
+            kind=PacketKind.ERROR, text=str(exc),
+            data={"error_type": type(exc).__name__, "error": str(exc)},
+        )
     yield final or Packet(kind=PacketKind.FINAL)
 
 

@@ -77,6 +77,7 @@ _CANONICAL = frozenset(
         "tool_arguments_rejected",
         "action_queued",
         "sub_agent_event",
+        "subagent_event",
         "run_completed",
         "run_cancelled",
         "context_compacted",

@@ -362,6 +362,46 @@ def test_host_can_require_a_routed_tool_without_prompt_name_matching() -> None:
     assert result.output == "Grounded result"
 
 
+def test_required_tool_prose_is_bounded_before_recovery() -> None:
+    generated: list[int] = []
+
+    class IgnoresFirstChoice:
+        def __init__(self):
+            self.step = 0
+
+        def complete(self, *, text_delta_callback=None, **_kwargs):
+            self.step += 1
+            if self.step == 1:
+                chunks = []
+                for _ in range(100):
+                    chunk = "I will execute the requested lookup now. "
+                    chunks.append(chunk)
+                    if text_delta_callback and text_delta_callback(chunk) is False:
+                        break
+                generated.append(len("".join(chunks)))
+                return LLMResponse(content="".join(chunks))
+            if self.step == 2:
+                return LLMResponse(tool_calls=[
+                    ToolCall(name="remote_search", arguments={"q": "Akira"})
+                ])
+            return LLMResponse(content="Grounded result")
+
+    result = Agent(
+        llm=IgnoresFirstChoice(),
+        tools=[FunctionTool.from_callable(
+            lambda q: q, name="remote_search", read_only=True
+        )],
+        required_tools=["remote_search"],
+        max_required_tool_text_chars=256,
+        auto_use_skills=False,
+        max_iterations=4,
+    ).run("Check the selected source for Akira")
+
+    assert generated[0] < 400
+    assert result.output == "Grounded result"
+    assert [item.name for item in result.tool_results] == ["remote_search"]
+
+
 def test_stream_deadline_is_absolute_not_per_chunk() -> None:
     from shipit_agent.llms.litellm_adapter import _iter_with_deadline
 

@@ -72,6 +72,7 @@ class AgentRuntime(RuntimeCore):
         tools: list[Tool] | None = None,
         mcps: list[MCPServer] | None = None,
         required_tools: list[str] | None = None,
+        max_required_tool_text_chars: int = 2_048,
         metadata: dict[str, Any] | None = None,
         history_messages: list[Message] | None = None,
         memory_store: MemoryStore | None = None,
@@ -126,6 +127,9 @@ class AgentRuntime(RuntimeCore):
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
         self.required_tools = list(required_tools or [])
+        self.max_required_tool_text_chars = max(
+            0, int(max_required_tool_text_chars or 0)
+        )
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
         self.memory_store = memory_store or InMemoryMemoryStore()
@@ -1176,6 +1180,7 @@ detail you were not given and do not say what you will do next."""
         from shipit_agent.action_detection import RepetitionGuard
 
         repetition_guard = RepetitionGuard()
+        provisional_chars = 0
         # Tool-step prose is provisional: it may be followed by a structured
         # call or discarded by recovery. Monitor it for repetition, but only
         # publish deltas from a forced final/text-only completion.
@@ -1186,9 +1191,17 @@ detail you were not given and do not say what you will do next."""
         # downstream can forward tokens inline as they arrive. The callback
         # runs on the same thread that called complete(), so emit() is safe.
         def _on_text_delta(chunk: str) -> bool | None:
+            nonlocal provisional_chars
             if not chunk:
                 return
+            provisional_chars += len(chunk)
             if repetition_guard.add(chunk):
+                return False
+            if (
+                require_tool_call
+                and self.max_required_tool_text_chars
+                and provisional_chars >= self.max_required_tool_text_chars
+            ):
                 return False
             if expose_text_deltas:
                 self.emit(state, "text_delta", "", chunk=chunk)
@@ -1616,6 +1629,16 @@ detail you were not given and do not say what you will do next."""
                 iteration=iteration,
                 ran_tools=bool(state.tool_results),
             )
+            if forced_names:
+                compacted_messages.append(Message(
+                    role="user",
+                    content=(
+                        "Execute the required registered tool now: "
+                        + ", ".join(sorted(forced_names))
+                        + ". Emit the structured call, not prose or a simulated result."
+                    ),
+                    metadata={"internal": True, "kind": "required_tool"},
+                ))
 
             self.emit(
                 state,
@@ -1691,9 +1714,12 @@ detail you were not given and do not say what you will do next."""
                     )
 
             if not response.tool_calls:
+                executed = {result.name for result in state.tool_results}
+                missing_required = sorted(forced_names - executed)
                 missing_requested = self.missing_requested_tools(
                     user_prompt, registry, state.tool_results
                 )
+                missing_requested = sorted(set(missing_requested) | set(missing_required))
                 if missing_requested and iteration < self.max_iterations:
                     self.record_requested_tool_nudge(missing_requested)
                     shared_state["forced_tool_names"] = set(missing_requested)

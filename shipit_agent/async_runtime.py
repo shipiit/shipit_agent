@@ -55,6 +55,7 @@ class AsyncAgentRuntime(RuntimeCore):
         tools: list[Tool] | None = None,
         mcps: list[MCPServer] | None = None,
         required_tools: list[str] | None = None,
+        max_required_tool_text_chars: int = 2_048,
         metadata: dict[str, Any] | None = None,
         history_messages: list[Message] | None = None,
         memory_store: MemoryStore | None = None,
@@ -90,6 +91,9 @@ class AsyncAgentRuntime(RuntimeCore):
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
         self.required_tools = list(required_tools or [])
+        self.max_required_tool_text_chars = max(
+            0, int(max_required_tool_text_chars or 0)
+        )
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
         self.memory_store = memory_store or InMemoryMemoryStore()
@@ -775,6 +779,16 @@ class AsyncAgentRuntime(RuntimeCore):
                 iteration=iteration,
                 ran_tools=bool(state.tool_results),
             )
+            if forced_names:
+                step_messages.append(Message(
+                    role="user",
+                    content=(
+                        "Execute the required registered tool now: "
+                        + ", ".join(sorted(forced_names))
+                        + ". Emit the structured call, not prose or a simulated result."
+                    ),
+                    metadata={"internal": True, "kind": "required_tool"},
+                ))
 
             self.emit(
                 state,
@@ -817,9 +831,12 @@ class AsyncAgentRuntime(RuntimeCore):
                 )
 
             if not response.tool_calls:
+                executed = {result.name for result in state.tool_results}
+                missing_required = sorted(forced_names - executed)
                 missing_requested = self.missing_requested_tools(
                     user_prompt, registry, state.tool_results
                 )
+                missing_requested = sorted(set(missing_requested) | set(missing_required))
                 if missing_requested and iteration < self.max_iterations:
                     self.record_requested_tool_nudge(missing_requested)
                     shared_state["forced_tool_names"] = set(missing_requested)

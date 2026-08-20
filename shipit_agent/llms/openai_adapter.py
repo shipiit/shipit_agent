@@ -148,7 +148,15 @@ class OpenAIChatLLM:
         # Only send tool_choice when we actually have tools to call — OpenAI
         # rejects the parameter otherwise.
         if tools and (require_tool_call or self.tool_choice):
-            kwargs["tool_choice"] = "required" if require_tool_call else self.tool_choice
+            if require_tool_call and len(tools) == 1:
+                name = str((tools[0].get("function") or {}).get("name", ""))
+                kwargs["tool_choice"] = {
+                    "type": "function", "function": {"name": name}
+                }
+            else:
+                kwargs["tool_choice"] = (
+                    "required" if require_tool_call else self.tool_choice
+                )
         if tools:
             from shipit_agent.llms.capabilities import capabilities_for
 

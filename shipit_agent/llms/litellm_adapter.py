@@ -339,7 +339,13 @@ class LiteLLMChatLLM:
         if response_format:
             extra_kwargs["response_format"] = response_format
         if request_tools and require_tool_call:
-            extra_kwargs["tool_choice"] = "required"
+            if len(request_tools) == 1:
+                name = str((request_tools[0].get("function") or {}).get("name", ""))
+                extra_kwargs["tool_choice"] = {
+                    "type": "function", "function": {"name": name}
+                }
+            else:
+                extra_kwargs["tool_choice"] = "required"
         if timeout is not None:
             # LiteLLM accepts a per-call `timeout` and forwards it to every
             # provider it wraps; the per-request value wins.

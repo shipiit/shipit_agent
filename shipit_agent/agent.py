@@ -152,6 +152,10 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     #: advertises only these tools and uses native required-tool mode first,
     #: then resets to automatic selection after they have run.
     required_tools: list[str] = field(default_factory=list)
+    #: Stop a provider that ignores required tool choice from spending its
+    #: whole output budget narrating a call. The partial prose is discarded and
+    #: the bounded recovery step receives the same required tool contract.
+    max_required_tool_text_chars: int = 2_048
     name: str = "shipit"
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -884,6 +888,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             tools=effective_tools,
             mcps=self.mcps,
             required_tools=self.required_tools,
+            max_required_tool_text_chars=self.max_required_tool_text_chars,
             metadata={
                 "agent_name": self.name,
                 "agent_description": self.description,
@@ -1133,6 +1138,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             tools=effective_tools,
             mcps=self.mcps,
             required_tools=self.required_tools,
+            max_required_tool_text_chars=self.max_required_tool_text_chars,
             metadata={
                 "agent_name": self.name,
                 "agent_description": self.description,

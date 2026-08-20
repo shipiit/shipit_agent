@@ -62,6 +62,20 @@ _NON_OPENAI_PARAMS = frozenset(
     }
 )
 
+# A few OpenAI-compatible gateways acknowledge ``stream=True`` but sometimes
+# return a completed response object (Bedrock Mantle can do this after a
+# reasoning pass). The provider latency cannot be recovered, but emitting the
+# already-buffered text in bounded deltas keeps downstream SSE/rendering
+# contracts consistent and avoids one enormous UI update.
+_BUFFERED_DELTA_CHARS = 48
+
+
+def _buffered_deltas(text: str) -> list[str]:
+    return [
+        text[offset:offset + _BUFFERED_DELTA_CHARS]
+        for offset in range(0, len(text), _BUFFERED_DELTA_CHARS)
+    ]
+
 
 class OpenAIChatLLM:
     def __init__(
@@ -285,12 +299,15 @@ class OpenAIChatLLM:
                 raise first_exc from None
 
         # Some gateways (and test fakes) ignore stream=True and return a plain
-        # completion object. Detect that and degrade gracefully: one delta
-        # with the full text, same LLMResponse out.
+        # completion object. Detect that and degrade gracefully. The upstream
+        # response was buffered, so this cannot restore time-to-first-token;
+        # bounded synthetic deltas only preserve the consumer/UI contract.
         if hasattr(stream, "choices"):
             choice = stream.choices[0].message
-            if choice.content and on_delta is not None:
-                on_delta(choice.content)
+            deltas = _buffered_deltas(choice.content or "")
+            if on_delta is not None:
+                for delta in deltas:
+                    on_delta(delta)
             tool_calls = []
             for call in choice.tool_calls or []:
                 arguments = call.function.arguments or "{}"
@@ -304,7 +321,13 @@ class OpenAIChatLLM:
             return LLMResponse(
                 content=choice.content or "",
                 tool_calls=tool_calls,
-                metadata={"model": self.model, "provider": "openai"},
+                metadata={
+                    "model": self.model,
+                    "provider": "openai",
+                    "streamed": False,
+                    "buffered_fallback": True,
+                    "synthetic_deltas": len(deltas),
+                },
                 reasoning_content=_extract_reasoning(choice),
                 usage={},
             )

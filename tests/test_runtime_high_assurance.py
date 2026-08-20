@@ -171,6 +171,29 @@ def test_async_text_streaming_stays_enabled_with_tool_schemas() -> None:
     ] == ["final text"]
 
 
+def test_async_completion_text_circuit_breaker_is_provider_neutral() -> None:
+    class StreamingLoop:
+        model = "test"
+
+        async def acomplete(self, *, text_delta_callback=None, **kwargs):
+            stopped = False
+            for _ in range(100):
+                if text_delta_callback("abcdefgh") is False:
+                    stopped = True
+                    break
+            return LLMResponse(content="stopped" if stopped else "unbounded")
+
+        def complete(self, **kwargs):
+            raise AssertionError("sync fallback should not run")
+
+    response = asyncio.run(AsyncAgentRuntime(
+        llm=StreamingLoop(), prompt="p", max_completion_text_chars=24,
+    )._complete_async(
+        state=RuntimeState(), messages=[], tools=[], base_prompt="p",
+    ))
+    assert response.content == "stopped"
+
+
 def test_async_tool_prefers_native_arun() -> None:
     class AsyncTool:
         name = "native_tool"

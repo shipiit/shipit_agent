@@ -138,7 +138,7 @@ class TestOpenAIStreaming:
         assert stopped is True
 
     def test_non_stream_fake_degrades_gracefully(self, monkeypatch) -> None:
-        """Gateways/fakes that ignore stream=True still work — one delta."""
+        """A gateway that ignores streaming still emits bounded UI deltas."""
         from shipit_agent.llms.openai_adapter import OpenAIChatLLM
 
         response = ns(choices=[ns(message=ns(
@@ -159,6 +159,36 @@ class TestOpenAIStreaming:
         )
         assert out.content == "plain"
         assert got == ["plain"]
+        assert out.metadata["streamed"] is False
+        assert out.metadata["buffered_fallback"] is True
+
+    def test_buffered_gateway_response_is_split_without_changing_text(
+        self, monkeypatch
+    ) -> None:
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        text = "A long buffered answer. " * 20
+        response = ns(choices=[ns(message=ns(
+            content=text, tool_calls=[], reasoning_content=None))], usage=None)
+
+        class _Completions:
+            def create(self, **_kwargs):
+                return response
+
+        fake = types.ModuleType("openai")
+        fake.OpenAI = lambda **_kw: ns(chat=ns(completions=_Completions()))
+        monkeypatch.setitem(sys.modules, "openai", fake)
+
+        got: list[str] = []
+        out = OpenAIChatLLM(model="google.gemma-4-26b-a4b", api_key="k").complete(
+            messages=[Message(role="user", content="hi")],
+            text_delta_callback=got.append,
+        )
+
+        assert len(got) > 1
+        assert all(len(delta) <= 48 for delta in got)
+        assert "".join(got) == text == out.content
+        assert out.metadata["synthetic_deltas"] == len(got)
 
 
 class TestAnthropicStreaming:

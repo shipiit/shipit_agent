@@ -82,6 +82,7 @@ class AsyncAgentRuntime(RuntimeCore):
         required_tools: list[str] | None = None,
         require_tool_call: bool = False,
         max_required_tool_text_chars: int = 2_048,
+        max_completion_text_chars: int = 0,
         metadata: dict[str, Any] | None = None,
         history_messages: list[Message] | None = None,
         memory_store: MemoryStore | None = None,
@@ -134,6 +135,9 @@ class AsyncAgentRuntime(RuntimeCore):
         self.require_tool_call = bool(require_tool_call)
         self.max_required_tool_text_chars = max(
             0, int(max_required_tool_text_chars or 0)
+        )
+        self.max_completion_text_chars = max(
+            0, int(max_completion_text_chars or 0)
         )
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
@@ -368,6 +372,11 @@ class AsyncAgentRuntime(RuntimeCore):
                 require_tool_call
                 and self.max_required_tool_text_chars
                 and provisional_chars >= self.max_required_tool_text_chars
+            ):
+                return False
+            if (
+                self.max_completion_text_chars
+                and provisional_chars >= self.max_completion_text_chars
             ):
                 return False
             if expose_text_deltas:

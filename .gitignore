@@ -53,6 +53,7 @@ marketing/
 .shipit_notebook_workspace/
 .shipit_notebooks/
 .smoke_checkpoints/
+.shipit_notebook_workspace/
 memory.json
 sessions/
 traces/

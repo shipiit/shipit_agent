@@ -160,6 +160,11 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     #: whole output budget narrating a call. The partial prose is discarded and
     #: the bounded recovery step receives the same required tool contract.
     max_required_tool_text_chars: int = 2_048
+    #: Optional provider-neutral circuit breaker for one completion's visible
+    #: text. Zero leaves the provider's token limit authoritative. Hosts can
+    #: set a smaller bound for interactive agents where a runaway completion
+    #: must not consume an entire large output allowance.
+    max_completion_text_chars: int = 0
     name: str = "shipit"
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -858,6 +863,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             "required_tools": self.required_tools,
             "require_tool_call": self.require_tool_call,
             "max_required_tool_text_chars": self.max_required_tool_text_chars,
+            "max_completion_text_chars": self.max_completion_text_chars,
             "metadata": {
                 "agent_name": self.name,
                 "agent_description": self.description,

@@ -21,12 +21,6 @@ from shipit_agent.llms import BedrockChatLLM, BedrockGemmaChatLLM
 from shipit_agent.llms.bedrock_token import BEARER_ENV_VARS, BedrockTokenError
 
 
-def _native_mantle() -> bool:
-    from shipit_agent.llms.litellm_adapter import _litellm_supports_bedrock_mantle
-
-    return _litellm_supports_bedrock_mantle()
-
-
 def _clear_bearer_env(monkeypatch) -> None:
     """Drop every spelling of the Bedrock API key.
 
@@ -39,39 +33,35 @@ def _clear_bearer_env(monkeypatch) -> None:
 
 class TestGemmaRouting:
     """Gemma 4 rides Bedrock's OpenAI-compatible mantle endpoint, never
-    Converse. Preferred: LiteLLM's native `bedrock_mantle/` provider
-    (https://docs.litellm.ai/docs/providers/bedrock_mantle); fallback for
-    older LiteLLM installs: the OpenAI-adapter shim aimed at the mantle URL."""
+    Converse — and always through the OpenAI-adapter shim aimed at the mantle
+    URL (`.../openai/v1`), which returns NATIVE structured `tool_calls`.
+    LiteLLM's native `bedrock_mantle/` provider is deliberately NOT used: on
+    this endpoint it 400s `model '…' isn't supported on this route` for the
+    Gemma ids, and (being the Converse-style path) it would surface tool calls
+    as prose to be re-parsed. The shim is the whole route, not a fallback."""
 
-    def test_gemma4_routes_natively_with_bearer_key(self, monkeypatch) -> None:
-        """With a Bedrock API key present, LiteLLM's native provider wins."""
+    def test_gemma4_routes_through_shim_with_bearer_key(self, monkeypatch) -> None:
+        """A Bedrock API key does not switch on the native route — Gemma always
+        goes through the shim so tool calls arrive structured."""
         monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-key")
         llm = BedrockChatLLM(model="google.gemma-4-31b")
-        if _native_mantle():
-            assert llm._mantle_delegate is None
-            assert llm.model == "bedrock_mantle/google.gemma-4-31b"
-        else:
-            assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
+        assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
+        assert llm.model == "google.gemma-4-31b"
 
     def test_sigv4_only_env_derives_a_bearer_token(self, monkeypatch) -> None:
         """A SigV4-only environment is no longer a dead end.
 
-        Both mantle routes need a bearer token, and ordinary AWS credentials can
-        produce one (a short-term Bedrock API key *is* a SigV4-presigned
-        request). So rather than being pushed onto the shim — which needs the
-        very bearer token we were said not to have, and 401s without it — the
-        credentials already present are signed into one.
+        The shim needs a bearer token, and ordinary AWS credentials can produce
+        one (a short-term Bedrock API key *is* a SigV4-presigned request). So
+        rather than 401ing on the first call, the credentials already present
+        are signed into one and handed to the shim delegate.
         """
         _clear_bearer_env(monkeypatch)
         monkeypatch.setattr(
             adapter, "generate_bearer_token", lambda **_: "bedrock-api-key-derived"
         )
         llm = BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
-        if _native_mantle():
-            assert llm._mantle_delegate is None
-            assert llm.model == "bedrock_mantle/google.gemma-4-31b"
-        else:
-            assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
+        assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
 
     def test_no_credentials_at_all_fails_at_construction(self, monkeypatch) -> None:
         """With nothing to authenticate with, say so now rather than at the
@@ -87,10 +77,9 @@ class TestGemmaRouting:
             BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
 
     def test_aws_bearer_token_env_var_is_honoured(self, monkeypatch) -> None:
-        """AWS documents AWS_BEARER_TOKEN_BEDROCK, the shim reads it, and the
-        docstring tells users to export it — so the route gate must see it too.
-        Checking only BEDROCK_MANTLE_API_KEY pushed correctly-configured users
-        onto the fallback path."""
+        """AWS documents AWS_BEARER_TOKEN_BEDROCK and the shim reads it, so an
+        already-present token must be used as-is — never re-derived by signing
+        fresh SigV4 credentials when a valid key is already exported."""
         _clear_bearer_env(monkeypatch)
         monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "test-key")
 
@@ -99,8 +88,7 @@ class TestGemmaRouting:
 
         monkeypatch.setattr(adapter, "generate_bearer_token", _must_not_derive)
         llm = BedrockChatLLM(model="google.gemma-4-31b")
-        if _native_mantle():
-            assert llm.model == "bedrock_mantle/google.gemma-4-31b"
+        assert isinstance(llm._mantle_delegate, BedrockGemmaChatLLM)
 
     @pytest.mark.parametrize(
         "model_id",
@@ -143,10 +131,9 @@ class TestGemmaRouting:
     def test_explicit_bedrock_mantle_prefix_is_honoured(self, monkeypatch) -> None:
         monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-key")
         llm = BedrockChatLLM(model="bedrock_mantle/google.gemma-4-26b-a4b")
-        if _native_mantle():
-            assert llm.model == "bedrock_mantle/google.gemma-4-26b-a4b"
-        else:
-            assert llm._mantle_delegate.model == "google.gemma-4-26b-a4b"
+        # Even an explicit `bedrock_mantle/` prefix routes through the shim; the
+        # prefix is stripped and the bare model id handed to the delegate.
+        assert llm._mantle_delegate.model == "google.gemma-4-26b-a4b"
 
     def test_non_gemma4_uses_converse(self) -> None:
         llm = BedrockChatLLM(model="bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0")

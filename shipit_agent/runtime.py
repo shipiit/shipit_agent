@@ -71,6 +71,7 @@ class AgentRuntime(RuntimeCore):
         prompt: str,
         tools: list[Tool] | None = None,
         mcps: list[MCPServer] | None = None,
+        required_tools: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
         history_messages: list[Message] | None = None,
         memory_store: MemoryStore | None = None,
@@ -124,6 +125,7 @@ class AgentRuntime(RuntimeCore):
         self.prompt = prompt
         self.tools = list(tools or [])
         self.mcps = list(mcps or [])
+        self.required_tools = list(required_tools or [])
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
         self.memory_store = memory_store or InMemoryMemoryStore()
@@ -1384,6 +1386,9 @@ detail you were not given and do not say what you will do next."""
         # Build the capability control plane before the system prompt so the
         # model sees the same connection/MCP metadata that tools can search.
         shared_state.update(self.build_shared_state(registry, state))
+        initially_required = self.initial_required_tool_names(user_prompt, registry)
+        if initially_required:
+            shared_state["forced_tool_names"] = initially_required
         tool_prompt = build_tools_prompt(
             registry.values(), connections=self.connections.all(), mcps=self.mcps,
             supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),

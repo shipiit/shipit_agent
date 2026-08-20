@@ -123,6 +123,20 @@ class TestOpenAIStreaming:
         assert out.content == "repeat " * 8
         assert out.metadata["stream_stopped"] == "degenerate_repetition"
 
+    def test_repetition_guard_stops_an_alternating_prose_loop(self) -> None:
+        from shipit_agent.action_detection import RepetitionGuard
+
+        guard = RepetitionGuard()
+        first = "Actually, I will call the forum search with the requested subject."
+        second = "Wait, I will call the leak search with the requested subject."
+        stopped = False
+        for line in [first, second] * 10:
+            stopped = guard.add(line + "\n\n")
+            if stopped:
+                break
+
+        assert stopped is True
+
     def test_non_stream_fake_degrades_gracefully(self, monkeypatch) -> None:
         """Gateways/fakes that ignore stream=True still work — one delta."""
         from shipit_agent.llms.openai_adapter import OpenAIChatLLM

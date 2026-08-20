@@ -28,6 +28,41 @@ def _is_reasoning_model(model: str) -> bool:
     return any(p.search(m) for p in _REASONING_MODEL_PATTERNS)
 
 
+#: Genuine ``OpenAI()`` client-constructor parameters. Anything else a caller
+#: passes is a completion/sampling parameter (forwarded to
+#: ``chat.completions.create``) or a non-OpenAI flag we drop. Routing all of
+#: them to the client used to make it reject ``drop_params`` and silently
+#: swallow ``top_p`` (it never reached the model).
+_OPENAI_CLIENT_PARAMS = frozenset(
+    {
+        "base_url",
+        "organization",
+        "project",
+        "timeout",
+        "max_retries",
+        "default_headers",
+        "default_query",
+        "http_client",
+        "websocket_base_url",
+    }
+)
+#: LiteLLM-only / non-OpenAI knobs that must never reach the OpenAI SDK.
+_NON_OPENAI_PARAMS = frozenset(
+    {
+        "drop_params",
+        "modify_params",
+        "custom_llm_provider",
+        "api_base",
+        "aws_region_name",
+        "region",
+        "prompt_caching",
+        "num_retries",
+        "aws_bedrock_client",
+        "mock_response",
+    }
+)
+
+
 class OpenAIChatLLM:
     def __init__(
         self,
@@ -56,7 +91,18 @@ class OpenAIChatLLM:
         # important for OpenAI-compatible endpoints such as Bedrock Mantle.
         self.max_tokens = max_tokens
         self.temperature = temperature
-        self.client_kwargs = client_kwargs
+        # Split remaining kwargs: real client config stays for OpenAI(), extra
+        # sampling params (top_p, penalties, seed, …) ride the completion call,
+        # and non-OpenAI flags (drop_params, …) are dropped.
+        self.client_kwargs: dict[str, Any] = {}
+        self.extra_completion: dict[str, Any] = {}
+        for _k, _v in client_kwargs.items():
+            if _k in _OPENAI_CLIENT_PARAMS:
+                self.client_kwargs[_k] = _v
+            elif _k in _NON_OPENAI_PARAMS:
+                continue
+            else:
+                self.extra_completion[_k] = _v
 
     def complete(
         self,
@@ -114,6 +160,9 @@ class OpenAIChatLLM:
             kwargs["temperature"] = self.temperature
         if response_format:
             kwargs["response_format"] = response_format
+        # Extra sampling params (top_p, penalties, seed, …) the caller supplied.
+        for _k, _v in self.extra_completion.items():
+            kwargs.setdefault(_k, _v)
 
         if text_delta_callback is not None or tool_input_callback is not None:
             return self._complete_streaming(

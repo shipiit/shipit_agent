@@ -327,6 +327,24 @@ class RuntimeCore:
         executed = {str(getattr(result, "name", "")) for result in tool_results}
         return sorted(requested - executed - self._requested_tool_nudges)
 
+    def initial_required_tool_names(self, user_prompt: str, registry: Any) -> set[str]:
+        """Resolve first-step required tools against the live registry.
+
+        Hosts may provide ``Agent(required_tools=[...])`` when their own
+        routing has made an unambiguous capability choice. Exact tool requests
+        typed by the user receive the same treatment automatically. Unknown
+        names are ignored so a changing connector catalogue cannot break a run.
+        """
+        available = {
+            str(getattr(tool, "name", "") or "") for tool in registry.values()
+        }
+        configured = {
+            str(name) for name in (getattr(self, "required_tools", None) or ())
+            if str(name)
+        }
+        explicit = self.requested_tool_names(user_prompt, registry)
+        return (configured | explicit) & available
+
     def record_requested_tool_nudge(self, names: Sequence[str]) -> None:
         self._requested_tool_nudges.update(names)
 

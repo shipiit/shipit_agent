@@ -303,11 +303,12 @@ def test_requested_tool_retry_is_constrained_and_required_when_supported() -> No
         def complete(self, *, tools=None, require_tool_call=False, **_kwargs):
             self.step += 1
             required_flags.append(require_tool_call)
+            if require_tool_call:
+                names = [(schema.get("function") or {}).get("name") for schema in tools]
+                assert names == ["currency_convert"]
             if self.step == 1:
                 return LLMResponse(content="simulated conversion")
             if self.step == 2:
-                names = [(schema.get("function") or {}).get("name") for schema in tools]
-                assert names == ["currency_convert"]
                 assert require_tool_call is True
                 return LLMResponse(tool_calls=[
                     ToolCall(name="currency_convert", arguments={"amount": 100})
@@ -324,8 +325,41 @@ def test_requested_tool_retry_is_constrained_and_required_when_supported() -> No
         auto_use_skills=False,
         max_iterations=4,
     ).run("Use the currency tool to convert 100 EUR")
-    assert required_flags[:2] == [False, True]
+    assert required_flags[:2] == [True, True]
     assert result.output == "108 USD"
+
+
+def test_host_can_require_a_routed_tool_without_prompt_name_matching() -> None:
+    calls: list[tuple[list[str], bool]] = []
+
+    class Routed:
+        def complete(self, *, tools=None, require_tool_call=False, **_kwargs):
+            names = [(schema.get("function") or {}).get("name") for schema in tools]
+            calls.append((names, require_tool_call))
+            if len(calls) == 1:
+                return LLMResponse(tool_calls=[
+                    ToolCall(name="remote_search", arguments={"q": "Akira"})
+                ])
+            return LLMResponse(content="Grounded result")
+
+    result = Agent(
+        llm=Routed(),
+        tools=[
+            FunctionTool.from_callable(
+                lambda q: q, name="remote_search", read_only=True
+            ),
+            FunctionTool.from_callable(
+                lambda q: q, name="unrelated_lookup", read_only=True
+            ),
+        ],
+        required_tools=["remote_search"],
+        auto_use_skills=False,
+        max_iterations=3,
+    ).run("Check the named intelligence source for Akira")
+
+    assert calls == [(["remote_search"], True),
+                     (["remote_search", "unrelated_lookup"], False)]
+    assert result.output == "Grounded result"
 
 
 def test_stream_deadline_is_absolute_not_per_chunk() -> None:

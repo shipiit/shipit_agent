@@ -791,15 +791,13 @@ class BedrockChatLLM(LiteLLMChatLLM):
             # adapter never leaks into the process environment or into any other
             # library that happens to read that variable.
             completion_kwargs["api_key"] = mantle_key
-        if is_mantle and has_mantle_key and _litellm_supports_bedrock_mantle():
-            bare = model.split("/", 1)[-1] if "/" in model else model
-            completion_kwargs.pop("base_url", None)
-            super().__init__(model=f"bedrock_mantle/{bare}", **completion_kwargs)
-            return
 
-        # Fallback for older LiteLLM installs: the OpenAI-compatible shim
-        # pointed at the mantle URL (needs a Bedrock API key in
-        # AWS_BEARER_TOKEN_BEDROCK). ``complete()`` forwards to the delegate.
+        # Always use the OpenAI-compatible shim (`.../openai/v1`) for mantle
+        # models — the route AWS documents for Gemma 4, which returns NATIVE
+        # structured `tool_calls`. LiteLLM's native `bedrock_mantle/` provider is
+        # deliberately NOT used: on this endpoint it 400s
+        # `model '…' isn't supported on this route` for the Gemma ids.
+        # ``complete()`` forwards to the delegate.
         if is_mantle:
             from shipit_agent.llms.openai_adapter import BedrockGemmaChatLLM
 
@@ -809,6 +807,9 @@ class BedrockChatLLM(LiteLLMChatLLM):
             )
             api_key = completion_kwargs.pop("api_key", None)
             base_url = completion_kwargs.pop("base_url", None)
+            # Caching is hard-coded off below; drop any caller-supplied
+            # `prompt_caching` so it can't collide with that keyword.
+            completion_kwargs.pop("prompt_caching", None)
             self._mantle_delegate = BedrockGemmaChatLLM(
                 model=mantle_model,
                 region=region,
@@ -851,14 +852,20 @@ class BedrockChatLLM(LiteLLMChatLLM):
     def complete(
         self,
         *,
+        text_delta_callback: Callable[[str], bool | None] | None = None,
         tool_input_callback: Callable[[str, str, str], None] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         # Gemma 4 → OpenAI-compatible mantle endpoint; everything else →
-        # Converse. `tool_input_callback` is named explicitly rather than left
-        # to **kwargs so capability sniffing can see it: both delegates
-        # support it, but an unnamed kwarg is indistinguishable from an
-        # adapter that would raise on it.
+        # Converse. `text_delta_callback` and `tool_input_callback` are named
+        # explicitly rather than left to **kwargs so capability sniffing
+        # (`accepts_text_delta_callback`, which requires the parameter by name
+        # and does NOT count a bare **kwargs) can see them. Both delegates
+        # support both callbacks; an unnamed kwarg would make the runtime treat
+        # this adapter as non-streaming and never pass the callback — silently
+        # disabling token-by-token output on the mantle route.
+        if text_delta_callback is not None:
+            kwargs["text_delta_callback"] = text_delta_callback
         if tool_input_callback is not None:
             kwargs["tool_input_callback"] = tool_input_callback
         if self._mantle_delegate is not None:

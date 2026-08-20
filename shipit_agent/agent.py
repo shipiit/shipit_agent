@@ -148,6 +148,10 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     prompt: str = DEFAULT_AGENT_PROMPT
     tools: list[Any] = field(default_factory=list)
     mcps: list[Any] = field(default_factory=list)
+    #: Tool names that must execute before this run may finish. The runtime
+    #: advertises only these tools and uses native required-tool mode first,
+    #: then resets to automatic selection after they have run.
+    required_tools: list[str] = field(default_factory=list)
     name: str = "shipit"
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -387,6 +391,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         defaults = {
             "tools": list(self.tools),
             "mcps": list(self.mcps),
+            "required_tools": list(self.required_tools),
             "metadata": dict(self.metadata),
             "history": list(self.history),
             "skills": list(self.skills),
@@ -878,6 +883,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
             mcps=self.mcps,
+            required_tools=self.required_tools,
             metadata={
                 "agent_name": self.name,
                 "agent_description": self.description,
@@ -1126,6 +1132,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             prompt=self._effective_prompt(user_prompt),
             tools=effective_tools,
             mcps=self.mcps,
+            required_tools=self.required_tools,
             metadata={
                 "agent_name": self.name,
                 "agent_description": self.description,

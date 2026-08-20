@@ -15,6 +15,28 @@ _ANGLE_FORM = re.compile(rf"<\s*/?\s*({_IDENTIFIER})(?:\s|>|$)")
 _REPEATED_SUFFIX = re.compile(r"(.{4,128}?)(?:\1){7,}$", re.DOTALL)
 
 
+def _has_periodic_tail(text: str) -> bool:
+    """Detect alternating/repeating prose blocks without knowing their words.
+
+    Degenerate generations are not always one repeated token sequence.  A
+    model may alternate two or three complete sentences (A, B, A, B, ...),
+    which defeats a character-suffix detector while consuming the whole output
+    budget.  Look for any short period repeated four times at the end.  Long
+    blocks are required so ordinary short lists and punctuation cannot trip it.
+    """
+    blocks = [
+        " ".join(block.split())
+        for block in re.split(r"(?:\n\s*){2,}|(?<=[.!?])\s+", text)
+        if len(" ".join(block.split())) >= 24
+    ]
+    for period in range(1, min(6, len(blocks) // 4) + 1):
+        width = period * 4
+        tail = blocks[-width:]
+        if tail == tail[:period] * 4:
+            return True
+    return False
+
+
 class RepetitionGuard:
     """Incrementally detect a provider stuck repeating an arbitrary suffix.
 
@@ -30,7 +52,10 @@ class RepetitionGuard:
     def add(self, chunk: str) -> bool:
         self._text = (self._text + str(chunk))[-self.window :]
         compact = " ".join(self._text.split())
-        return len(compact) >= 32 and _REPEATED_SUFFIX.search(compact) is not None
+        return len(compact) >= 32 and (
+            _REPEATED_SUFFIX.search(compact) is not None
+            or _has_periodic_tail(self._text)
+        )
 
 
 def is_degenerate_repetition(text: str | None) -> bool:

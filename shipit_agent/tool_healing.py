@@ -568,6 +568,107 @@ def schemas_from_tools(tools: Any) -> dict[str, dict]:
     return schemas
 
 
+# Anthropic/Claude-lineage XML tool-call form, which some models emit
+# unprompted even on other providers::
+#
+#     <function_calls>
+#     <invoke name="get_entity">
+#     <parameter name="domain">ransomlook</parameter>
+#     <parameter name="entity">groups</parameter>
+#     </invoke>
+#     </function_calls>
+#
+# Each `<invoke>` is one call; each `<parameter>` one argument. Values are
+# coerced (a JSON array written as text becomes a list) and the call must clear
+# the same allow-list + schema bar as every other healed form.
+_XML_INVOKE_RE = re.compile(
+    r"<invoke\s+name\s*=\s*[\"']([A-Za-z_][A-Za-z0-9_.-]*)[\"']\s*>(.*?)</invoke>",
+    re.IGNORECASE | re.DOTALL,
+)
+_XML_PARAM_RE = re.compile(
+    r"<parameter\s+name\s*=\s*[\"']([A-Za-z_][A-Za-z0-9_.-]*)[\"']\s*>(.*?)</parameter>",
+    re.IGNORECASE | re.DOTALL,
+)
+_XML_BLOCK_RE = re.compile(
+    r"<function_calls>.*?</function_calls>", re.IGNORECASE | re.DOTALL
+)
+
+
+def _xml_style_calls(
+    text: str,
+    allowed: set[str],
+    schemas: Mapping[str, dict] | None,
+) -> list[tuple[tuple[int, int], ToolCall]]:
+    """Calls written in the Anthropic `<function_calls><invoke>` XML form."""
+    found: list[tuple[tuple[int, int], ToolCall]] = []
+    for block in _XML_BLOCK_RE.finditer(text[:_MAX_SCAN_CHARS]):
+        for invoke in _XML_INVOKE_RE.finditer(block.group(0)):
+            name = invoke.group(1)
+            if name not in allowed:
+                continue
+            arguments: dict[str, Any] = {}
+            for param in _XML_PARAM_RE.finditer(invoke.group(2)):
+                arguments[param.group(1)] = _coerce_value(param.group(2).strip())
+            if not _qualifies(name, arguments, schemas):
+                continue
+            found.append((block.span(), ToolCall(name=name, arguments=arguments)))
+    return found
+
+
+def merge_split_calls(
+    calls: list[ToolCall], schemas: Mapping[str, dict] | None = None
+) -> list[ToolCall]:
+    """Collapse calls a model split across several single-argument invocations.
+
+    A weaker model asked for ``get_entity(domain=…, entity=…, entity_id=…)``
+    sometimes emits three separate calls, one argument each — the multi-arg
+    failure. When several calls name the SAME tool and their argument keys do
+    not overlap, they are almost certainly one logical call taken apart, so
+    union the arguments back together (first value wins on the impossible tie).
+
+    Kept deliberately conservative: calls whose keys DO overlap are genuinely
+    distinct invocations (two searches with different ``query``) and are left
+    untouched; and when a schema is known, a merge that would not fit it is
+    abandoned rather than forced. Order is preserved by the first appearance of
+    each tool name.
+    """
+    if len(calls) < 2:
+        return calls
+    order: list[str] = []
+    grouped: dict[str, list[ToolCall]] = {}
+    for call in calls:
+        grouped.setdefault(call.name, [])
+        if call.name not in order:
+            order.append(call.name)
+        grouped[call.name].append(call)
+
+    merged: list[ToolCall] = []
+    for name in order:
+        group = grouped[name]
+        if len(group) < 2:
+            merged.extend(group)
+            continue
+        union: dict[str, Any] = {}
+        keys_disjoint = True
+        for call in group:
+            args = call.arguments if isinstance(call.arguments, dict) else {}
+            if any(key in union for key in args):
+                keys_disjoint = False
+                break
+            union.update(args)
+        schema = (schemas or {}).get(name)
+        fits = (
+            _arguments_fit_schema(union, schema)
+            if isinstance(schema, dict)
+            else True
+        )
+        if keys_disjoint and fits and union:
+            merged.append(ToolCall(name=name, arguments=union))
+        else:
+            merged.extend(group)
+    return merged
+
+
 def heal_tool_calls(
     text: str,
     allowed_names: set[str],
@@ -596,6 +697,14 @@ def heal_tool_calls(
         if call is not None:
             calls.append(call)
             consumed.append(match.span())
+
+    # Anthropic `<function_calls><invoke>` XML — an explicit, high-confidence
+    # form, so recovered alongside the other tagged shapes rather than as a
+    # last resort. One block can carry several invokes.
+    for span, call in _xml_style_calls(text, allowed_names, schemas):
+        calls.append(call)
+        if span not in consumed:
+            consumed.append(span)
 
     for pattern in (_TAGGED_RE, _FENCED_RE):
         for match in pattern.finditer(text):
@@ -663,4 +772,6 @@ def heal_tool_calls(
         cursor = end
     remaining.append(text[cursor:])
     cleaned = "".join(remaining).strip()
-    return cleaned, calls
+    # A model that split one call across several single-argument invocations
+    # gets them reassembled here (same tool, disjoint keys → one call).
+    return cleaned, merge_split_calls(calls, schemas)

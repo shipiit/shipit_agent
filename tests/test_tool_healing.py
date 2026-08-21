@@ -579,3 +579,112 @@ class TestNonAsciiMarkerTokens:
             ("weather_lookup", {"city": "Paris"})
         ]
         assert "tool_weather_lookup" not in cleaned
+
+
+class TestAnthropicXmlRecovery:
+    """The `<function_calls><invoke>` form some models emit unprompted."""
+
+    _SCHEMAS = {
+        "get_entity": {
+            "type": "object",
+            "properties": {"domain": {}, "entity": {}, "entity_id": {}},
+            "required": ["domain", "entity", "entity_id"],
+        }
+    }
+
+    def test_multi_parameter_invoke_is_recovered(self) -> None:
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        text = (
+            "Let me look that up.\n"
+            "<function_calls>\n"
+            '<invoke name="get_entity">\n'
+            '<parameter name="domain">ransomlook</parameter>\n'
+            '<parameter name="entity">groups</parameter>\n'
+            '<parameter name="entity_id">akira</parameter>\n'
+            "</invoke>\n"
+            "</function_calls>"
+        )
+        cleaned, healed = heal_tool_calls(text, {"get_entity"}, schemas=self._SCHEMAS)
+        assert [(c.name, c.arguments) for c in healed] == [
+            ("get_entity", {"domain": "ransomlook", "entity": "groups",
+                            "entity_id": "akira"})
+        ]
+        assert "function_calls" not in cleaned
+        assert cleaned == "Let me look that up."
+
+    def test_xml_parameter_json_value_is_coerced(self) -> None:
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        text = (
+            "<function_calls><invoke name=\"search\">"
+            "<parameter name=\"queries\">[\"a\", \"b\"]</parameter>"
+            "</invoke></function_calls>"
+        )
+        _, healed = heal_tool_calls(
+            text, {"search"},
+            schemas={"search": {"type": "object",
+                                "properties": {"queries": {"type": "array"}}}},
+        )
+        assert healed and healed[0].arguments == {"queries": ["a", "b"]}
+
+    def test_undeclared_name_in_xml_is_not_promoted(self) -> None:
+        from shipit_agent.tool_healing import heal_tool_calls
+
+        text = ('<function_calls><invoke name="delete_all">'
+                '<parameter name="x">1</parameter></invoke></function_calls>')
+        _, healed = heal_tool_calls(text, {"get_entity"}, schemas=self._SCHEMAS)
+        assert healed == []
+
+
+class TestSplitCallMerging:
+    """A model that split one call into several single-argument calls."""
+
+    _SCHEMAS = {
+        "get_entity": {
+            "type": "object",
+            "properties": {"domain": {}, "entity": {}, "entity_id": {}},
+            "required": ["domain", "entity", "entity_id"],
+        },
+        "search": {"type": "object", "properties": {"query": {}}},
+    }
+
+    def test_disjoint_same_tool_calls_merge(self) -> None:
+        from shipit_agent.llms.base import ToolCall
+        from shipit_agent.tool_healing import merge_split_calls
+
+        merged = merge_split_calls(
+            [ToolCall(name="get_entity", arguments={"domain": "ransomlook"}),
+             ToolCall(name="get_entity", arguments={"entity": "groups"}),
+             ToolCall(name="get_entity", arguments={"entity_id": "akira"})],
+            self._SCHEMAS,
+        )
+        assert [(c.name, c.arguments) for c in merged] == [
+            ("get_entity", {"domain": "ransomlook", "entity": "groups",
+                            "entity_id": "akira"})
+        ]
+
+    def test_overlapping_keys_are_kept_separate(self) -> None:
+        from shipit_agent.llms.base import ToolCall
+        from shipit_agent.tool_healing import merge_split_calls
+
+        calls = [ToolCall(name="search", arguments={"query": "akira"}),
+                 ToolCall(name="search", arguments={"query": "qilin"})]
+        merged = merge_split_calls(calls, self._SCHEMAS)
+        assert [c.arguments for c in merged] == [{"query": "akira"},
+                                                 {"query": "qilin"}]
+
+    def test_distinct_tools_are_untouched(self) -> None:
+        from shipit_agent.llms.base import ToolCall
+        from shipit_agent.tool_healing import merge_split_calls
+
+        calls = [ToolCall(name="search", arguments={"query": "x"}),
+                 ToolCall(name="get_entity", arguments={"domain": "d"})]
+        assert merge_split_calls(calls, self._SCHEMAS) == calls
+
+    def test_single_call_is_returned_unchanged(self) -> None:
+        from shipit_agent.llms.base import ToolCall
+        from shipit_agent.tool_healing import merge_split_calls
+
+        calls = [ToolCall(name="search", arguments={"query": "x"})]
+        assert merge_split_calls(calls, self._SCHEMAS) == calls

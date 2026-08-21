@@ -1032,13 +1032,36 @@ class RuntimeCore:
         Reasoning heals the call only — the thinking text is left intact,
         since it was never going to be shown as the answer.
         """
-        if not self.heal_tool_calls or response.tool_calls:
+        if not self.heal_tool_calls:
             return
-        from shipit_agent.tool_healing import heal_tool_calls, schemas_from_tools
+        from shipit_agent.tool_healing import (
+            heal_tool_calls,
+            merge_split_calls,
+            schemas_from_tools,
+        )
 
         tools = list(registry.values())
         names = {tool.name for tool in tools}
         schemas = schemas_from_tools(tools)
+
+        # A model can split one call across several native single-argument
+        # invocations too, not only in prose. Reassemble those before they run;
+        # the merge is a no-op unless the same tool was called with disjoint
+        # keys. Text healing below is only for turns with NO structured call.
+        if response.tool_calls:
+            merged = merge_split_calls(list(response.tool_calls), schemas)
+            if len(merged) != len(response.tool_calls):
+                self.emit(
+                    state,
+                    "tool_call_healed",
+                    f"Merged {len(response.tool_calls)} split call(s) into "
+                    f"{len(merged)}",
+                    tools=[c.name for c in merged],
+                    iteration=iteration,
+                    healed_from="split_merge",
+                )
+                response.tool_calls = merged
+            return
 
         healed: list[Any] = []
         source = "content"

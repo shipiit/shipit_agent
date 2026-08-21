@@ -338,27 +338,27 @@ class LiteLLMChatLLM:
             extra_kwargs.pop(_host, None)
         if response_format:
             extra_kwargs["response_format"] = response_format
-        if request_tools and require_tool_call:
-            if len(request_tools) == 1:
-                name = str((request_tools[0].get("function") or {}).get("name", ""))
-                extra_kwargs["tool_choice"] = {
-                    "type": "function", "function": {"name": name}
-                }
-            else:
-                extra_kwargs["tool_choice"] = "required"
         if timeout is not None:
             # LiteLLM accepts a per-call `timeout` and forwards it to every
             # provider it wraps; the per-request value wins.
             extra_kwargs["timeout"] = timeout
-        # When tools are offered, tell the model it MAY call one ("auto"). Most
-        # providers assume this, but some OpenAI-compatible endpoints — notably
-        # Bedrock's Gemma (`bedrock-mantle`) route, per AWS's own examples — only
-        # engage function calling reliably when `tool_choice` is sent
-        # explicitly; without it the model narrates the call as prose instead of
-        # emitting a structured one. A caller can override ("required"/"none")
-        # via ``completion_kwargs``.
-        if request_tools and "tool_choice" not in extra_kwargs:
-            extra_kwargs["tool_choice"] = "auto"
+        # One shared ladder decides tool_choice (see llms/tool_choice.py). When
+        # tools are offered we always send a value: most providers assume
+        # "auto", but some OpenAI-compatible endpoints — notably Bedrock's Gemma
+        # (`bedrock-mantle`) route, per AWS's own examples — only engage function
+        # calling reliably when `tool_choice` is present; without it the model
+        # narrates the call as prose. A caller can still override via
+        # ``completion_kwargs``.
+        if "tool_choice" not in extra_kwargs:
+            from shipit_agent.llms.tool_choice import resolve_tool_choice
+
+            choice = resolve_tool_choice(
+                request_tools,
+                require_tool_call=require_tool_call,
+                default_auto=True,
+            )
+            if choice is not None:
+                extra_kwargs["tool_choice"] = choice
         if request_tools and "parallel_tool_calls" not in extra_kwargs:
             from shipit_agent.llms.capabilities import capabilities_for
 

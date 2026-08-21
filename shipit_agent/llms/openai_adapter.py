@@ -160,18 +160,17 @@ class OpenAIChatLLM:
         # Tell reasoning-capable models to actually emit a thinking block.
         if self.reasoning_effort:
             kwargs["reasoning_effort"] = self.reasoning_effort
-        # Only send tool_choice when we actually have tools to call — OpenAI
-        # rejects the parameter otherwise.
-        if tools and (require_tool_call or self.tool_choice):
-            if require_tool_call and len(tools) == 1:
-                name = str((tools[0].get("function") or {}).get("name", ""))
-                kwargs["tool_choice"] = {
-                    "type": "function", "function": {"name": name}
-                }
-            else:
-                kwargs["tool_choice"] = (
-                    "required" if require_tool_call else self.tool_choice
-                )
+        # One shared ladder decides tool_choice (see llms/tool_choice.py); only
+        # send it when we have tools, since OpenAI rejects the parameter
+        # otherwise. No `default_auto` here — this endpoint does not need the
+        # explicit "auto" the mantle route does.
+        from shipit_agent.llms.tool_choice import resolve_tool_choice
+
+        choice = resolve_tool_choice(
+            tools, require_tool_call=require_tool_call, configured=self.tool_choice
+        )
+        if choice is not None:
+            kwargs["tool_choice"] = choice
         if tools:
             from shipit_agent.llms.capabilities import capabilities_for
 

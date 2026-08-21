@@ -1110,9 +1110,21 @@ class RuntimeCore:
         self._nudges_used += 1
         self._last_nudged_text = (response.content or "").strip()
 
+    # Reprompt-on-failure, in the spirit of production tool-runners: name why
+    # the attempt did not count (the tool name or its arguments were mistyped
+    # or written as prose, so nothing ran) and tell the model exactly how to
+    # recover. Kept as a cross-provider user message rather than a synthetic
+    # tool-response: shipit's Message model does not carry a tool_call_id to
+    # pair a fabricated failure result against, and an unpaired tool message is
+    # rejected by strict providers (Bedrock-Anthropic). The wording gives the
+    # same self-correction signal without that fragility.
     NUDGE_TEXT = (
-        "You described an action but did not call any tool. Call the tool now, "
-        "or give your final answer directly."
+        "You attempted a tool call, but it was not emitted as a structured "
+        "call — the tool name or its arguments were likely mistyped or written "
+        "as prose, so nothing ran. Re-issue it now as a real structured call "
+        "with the exact tool name and correctly-typed arguments, or, if no tool "
+        "is needed, give your final answer directly. Do not describe the call "
+        "in text."
     )
 
     # ── usage ────────────────────────────────────────────────────────────

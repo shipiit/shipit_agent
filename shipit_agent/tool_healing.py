@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
+from html.parser import HTMLParser
 from typing import Any
 
 from .llms.base import ToolCall
@@ -594,6 +595,40 @@ _XML_BLOCK_RE = re.compile(
 )
 
 
+class _TaggedCallParser(HTMLParser):
+    """Parse generic ``<call:name key="value"/>`` envelopes.
+
+    This is a compatibility decoder for a response *shape*, not a provider,
+    model, or tool-name special case. The standard-library parser owns
+    quoting and entity decoding; promotion remains controlled exclusively by
+    the agent's advertised tool names and JSON schemas.
+    """
+
+    def __init__(self, source: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self._line_offsets = [0]
+        self.calls: list[tuple[tuple[int, int], str, dict[str, Any]]] = []
+        for index, char in enumerate(source):
+            if char == "\n":
+                self._line_offsets.append(index + 1)
+
+    def handle_startendtag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        prefix, separator, name = tag.partition(":")
+        if prefix.casefold() != "call" or not separator or not name:
+            return
+        line, column = self.getpos()
+        start = self._line_offsets[line - 1] + column
+        raw = self.get_starttag_text() or ""
+        arguments = {
+            key: _coerce_value(value.strip())
+            for key, value in attrs
+            if value is not None
+        }
+        self.calls.append(((start, start + len(raw)), name, arguments))
+
+
 def _xml_style_calls(
     text: str,
     allowed: set[str],
@@ -612,6 +647,30 @@ def _xml_style_calls(
             if not _qualifies(name, arguments, schemas):
                 continue
             found.append((block.span(), ToolCall(name=name, arguments=arguments)))
+    return found
+
+
+def _tagged_attribute_calls(
+    text: str,
+    allowed: set[str],
+    schemas: Mapping[str, dict] | None,
+) -> list[tuple[tuple[int, int], ToolCall]]:
+    """Schema-qualified calls from generic tagged attribute envelopes."""
+    found: list[tuple[tuple[int, int], ToolCall]] = []
+    source = text[:_MAX_SCAN_CHARS]
+    parser = _TaggedCallParser(source)
+    try:
+        parser.feed(source)
+        parser.close()
+    except Exception:
+        # Healing is best effort. A malformed text envelope remains prose.
+        return found
+    for span, name, arguments in parser.calls:
+        if name not in allowed:
+            continue
+        if not _qualifies(name, arguments, schemas):
+            continue
+        found.append((span, ToolCall(name=name, arguments=arguments)))
     return found
 
 
@@ -702,6 +761,11 @@ def heal_tool_calls(
     # form, so recovered alongside the other tagged shapes rather than as a
     # last resort. One block can carry several invokes.
     for span, call in _xml_style_calls(text, allowed_names, schemas):
+        calls.append(call)
+        if span not in consumed:
+            consumed.append(span)
+
+    for span, call in _tagged_attribute_calls(text, allowed_names, schemas):
         calls.append(call)
         if span not in consumed:
             consumed.append(span)

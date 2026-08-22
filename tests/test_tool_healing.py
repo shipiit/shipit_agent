@@ -179,6 +179,56 @@ class TestNudgeOnStall:
                   if e.type == "tool_call_healed" and e.payload.get("nudge")]
         assert len(nudges) == 1                     # capped, no dead loop
 
+    def test_repeated_malformed_calls_switch_to_text_only_recovery(self) -> None:
+        class RepeatingThenAnswers:
+            def __init__(self) -> None:
+                self.tool_counts = []
+
+            def complete(self, *, tools=None, **_kw):
+                self.tool_counts.append(len(tools or []))
+                if not tools:
+                    return LLMResponse(content="I could not verify the sum.")
+                repeated = "Actually, I will call add now. " * 12
+                return LLMResponse(content=repeated)
+
+        llm = RepeatingThenAnswers()
+        agent = Agent(
+            llm=llm,
+            tools=[FunctionTool.from_callable(self._add, name="add")],
+            auto_use_skills=False,
+            max_iterations=6,
+        )
+
+        result = agent.run("2+3?")
+
+        assert result.output == "I could not verify the sum."
+        assert llm.tool_counts == [1, 1, 0]
+        assert any(
+            e.type == "tool_call_healed"
+            and e.payload.get("recovery") == "text_only"
+            for e in result.events
+        )
+        assert all(
+            len(str(getattr(message, "content", "") or "")) < 2_048
+            for message in result.messages
+            if message.role == "assistant"
+        )
+
+    def test_degenerate_final_text_is_never_exposed(self) -> None:
+        class RepeatingFinal:
+            def complete(self, **_kw):
+                return LLMResponse(content="Wait, I will call it. " * 20)
+
+        result = Agent(
+            llm=RepeatingFinal(),
+            auto_use_skills=False,
+            max_iterations=1,
+        ).run("Answer directly")
+
+        assert "stuck repeating" in result.output
+        assert "Wait, I will call it" not in result.output
+        assert any(e.type == "model_output_recovered" for e in result.events)
+
 
 class TestChunkOverlapBudget:
     """Unsloth-style carry_budget: overlap never overflows the chunk target."""
@@ -635,6 +685,38 @@ class TestAnthropicXmlRecovery:
                 '<parameter name="x">1</parameter></invoke></function_calls>')
         _, healed = heal_tool_calls(text, {"get_entity"}, schemas=self._SCHEMAS)
         assert healed == []
+
+
+class TestTaggedAttributeCallRecovery:
+    """Generic ``<call:tool arg="value"/>`` compatibility envelopes."""
+
+    _SCHEMA = {
+        "open_url": {
+            "type": "object",
+            "properties": {"url": {"type": "string"}},
+            "required": ["url"],
+        }
+    }
+
+    def test_allowlisted_colon_call_is_recovered(self) -> None:
+        text = (
+            "I will fetch it now.\n\n"
+            '<call:open_url url="https://example.test/a?x=1&amp;y=2"/>'
+        )
+        cleaned, healed = heal_tool_calls(
+            text, {"open_url"}, schemas=self._SCHEMA
+        )
+
+        assert cleaned == "I will fetch it now."
+        assert [(call.name, call.arguments) for call in healed] == [
+            ("open_url", {"url": "https://example.test/a?x=1&y=2"})
+        ]
+
+    def test_undeclared_colon_call_is_not_promoted(self) -> None:
+        text = '<call:delete_all scope="everything"/>'
+        assert heal_tool_calls(text, {"open_url"}, schemas=self._SCHEMA) == (
+            text, []
+        )
 
 
 class TestSplitCallMerging:

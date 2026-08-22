@@ -130,3 +130,18 @@ def test_strip_html_produces_structured_markdown():
     assert "evil" not in md  # script dropped
     assert "copyright" not in md  # footer chrome dropped
     assert "Home About" not in md  # nav dropped
+
+def test_open_url_reads_article_data_embedded_in_a_spa_shell():
+    html = '''
+    <html><body><div>Loading application. Please wait.</div>
+    <script>window.PAGE = {"navigation": {"title": "Noise", "body": "tiny"},
+      "node": {"title": "Rendered report", "body":
+      "<p>This is the meaningful article body with enough detail to be selected. It was embedded for client-side hydration and should remain available to the agent even when the visible DOM is only a loading shell.</p>"}};</script>
+    </body></html>
+    '''
+
+    text = _strip_html(html)
+
+    assert "# Rendered report" in text
+    assert "meaningful article body" in text
+    assert "Loading application" not in text

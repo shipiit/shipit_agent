@@ -121,11 +121,25 @@ _REPEAT_MIN_CHARS = 2_000
 #: Below this, the stub costs more than the payload it replaces.
 _EVICT_MIN_CHARS = 1_000
 
-_EVICTED_NOTICE = (
-    "[This tool call completed in an earlier turn; its results are no longer "
-    "available. The call and its arguments are above — call it again if you "
-    "need the data.]"
-)
+def _evicted_notice(message: Message) -> str:
+    """A compact, factual pointer that does not invite a repeat-call loop."""
+    metadata = dict(message.metadata or {})
+    call_id = str(message.tool_call_id or metadata.get("tool_call_id") or "")
+    path = str(metadata.get("persisted_output_path") or "")
+    original_chars = len(message.content) if isinstance(message.content, str) else 0
+    details = [
+        f"call_id={call_id}" if call_id else "",
+        f"original_chars={original_chars}" if original_chars else "",
+        f"stored_at={path}" if path else "",
+    ]
+    suffix = "; ".join(detail for detail in details if detail)
+    return (
+        "[Earlier tool result omitted from the active prompt to save context"
+        + (f" ({suffix})" if suffix else "")
+        + ". The structured call and the assistant's answer remain above. "
+        "Use those first; rerun only when exact raw data is necessary or may "
+        "have changed.]"
+    )
 
 
 def evict_prior_tool_outputs(
@@ -165,7 +179,8 @@ def evict_prior_tool_outputs(
                 Message(
                     role="tool",
                     name=message.name,
-                    content=_EVICTED_NOTICE,
+                    content=_evicted_notice(message),
+                    tool_call_id=message.tool_call_id,
                     metadata=dict(message.metadata or {}),
                 )
             )
@@ -217,6 +232,7 @@ class RuntimeCore:
         # compaction trigger so it does not fire ~a-prefix's-worth late. 0 keeps
         # the pre-existing messages-only behaviour.
         self._fixed_prefix_tokens = int(options.get("fixed_prefix_tokens", 0) or 0)
+        self._configured_fixed_prefix_tokens = self._fixed_prefix_tokens
         # Learns the per-model gap between our chars/4 estimate and the
         # provider's real ``prompt_tokens`` (fed at each completion) so the
         # trigger uses a calibrated number. Always present; harmless until it
@@ -1110,6 +1126,56 @@ class RuntimeCore:
         self._nudges_used += 1
         self._last_nudged_text = (response.content or "").strip()
 
+    def should_force_text_recovery(
+        self,
+        response: LLMResponse,
+        *,
+        has_tools: bool,
+        last: bool,
+        tool_names: Sequence[str] = (),
+    ) -> bool:
+        """Stop advertising tools after a second malformed action attempt."""
+        if not (self.heal_tool_calls and has_tools and not last):
+            return False
+        if self._nudges_used < 1:
+            return False
+        return is_malformed_action_attempt(
+            response.content or "", allowed_names=tool_names
+        )
+
+    @staticmethod
+    def malformed_attempt_context(response: LLMResponse) -> str:
+        """Keep a failed text-form action useful without replaying its loop."""
+        from shipit_agent.action_detection import is_degenerate_repetition
+
+        content = response.content or ""
+        if len(content) <= 2_048 and not is_degenerate_repetition(content):
+            return content
+        return (
+            "[Malformed narrated tool attempt omitted: no structured tool call "
+            "was emitted and the repeated prose was not executed.]"
+        )
+
+    def stable_final_content(self, state: Any, content: str) -> str:
+        """Never expose a provider's degenerate repetition as a final answer."""
+        from shipit_agent.action_detection import is_degenerate_repetition
+
+        if not is_degenerate_repetition(content):
+            return content
+        observation = str(getattr(state, "last_observation", "") or "").strip()
+        detail = f" Completed tool work: {observation}" if observation else ""
+        self.emit(
+            state,
+            "model_output_recovered",
+            "Stopped a repetitive model response",
+            reason="degenerate_repetition",
+        )
+        return (
+            "I stopped the response because the model became stuck repeating "
+            "an attempted action; that repeated text was not executed."
+            f"{detail} No additional result is verified. Please retry this request."
+        )
+
     # Reprompt-on-failure, in the spirit of production tool-runners: name why
     # the attempt did not count (the tool name or its arguments were mistyped
     # or written as prose, so nothing ran) and tell the model exactly how to
@@ -1191,6 +1257,30 @@ class RuntimeCore:
             )
             self._session_runtime_state["compactor"] = self._compactor_instance
         return self._compactor_instance
+
+    def account_request_overhead(self, tool_schemas: Sequence[Any]) -> None:
+        """Include the current tool-schema payload in compaction decisions.
+
+        Schemas are transmitted outside ``messages`` and can consume thousands
+        of tokens. Calculate them on every cycle because deferred loading and
+        the final tool-free synthesis step change the advertised set. A caller's
+        explicit ``fixed_prefix_tokens`` remains an additive reserve.
+        """
+        import json
+
+        from shipit_agent.compaction import content_tokens
+
+        model = getattr(self.llm, "model", None)
+        try:
+            rendered = json.dumps(list(tool_schemas), sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            rendered = repr(list(tool_schemas))
+        schema_tokens = content_tokens(rendered, model) if tool_schemas else 0
+        self._fixed_prefix_tokens = (
+            self._configured_fixed_prefix_tokens + schema_tokens
+        )
+        if self._compactor_instance is not None:
+            self._compactor_instance.fixed_prefix_tokens = self._fixed_prefix_tokens
 
     def compact(
         self,

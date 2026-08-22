@@ -1220,7 +1220,10 @@ class AsyncAgentRuntime(RuntimeCore):
                 break
             # Deferred loading grows the advertised set mid-run, so the
             # selection is re-evaluated every step (a no-op when off).
-            force_text = bool(shared_state.pop("force_text_after_duplicate", False))
+            force_text = bool(
+                shared_state.pop("force_text_after_duplicate", False)
+                or shared_state.pop("force_text_after_malformed", False)
+            )
             forced_names = set(shared_state.get("forced_tool_names") or ())
             force_any_tool = bool(shared_state.get("force_any_tool"))
             active_schemas = (
@@ -1235,6 +1238,12 @@ class AsyncAgentRuntime(RuntimeCore):
                     if str((schema.get("function") or {}).get("name", ""))
                     in forced_names
                 ]
+            schemas_for_budget = (
+                []
+                if iteration == self.max_iterations and self.max_iterations > 1
+                else active_schemas
+            )
+            self.account_request_overhead(schemas_for_budget)
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), active_schemas)
 
@@ -1416,7 +1425,10 @@ class AsyncAgentRuntime(RuntimeCore):
                 ):
                     self.record_nudge(response)
                     state.messages.append(
-                        Message(role="assistant", content=response.content)
+                        Message(
+                            role="assistant",
+                            content=self.malformed_attempt_context(response),
+                        )
                     )
                     state.messages.append(
                         Message(
@@ -1430,6 +1442,42 @@ class AsyncAgentRuntime(RuntimeCore):
                         "tool_call_healed",
                         "Nudged: malformed tool call",
                         nudge=True,
+                        iteration=iteration,
+                    )
+                    continue
+                if self.should_force_text_recovery(
+                    response,
+                    has_tools=bool(tool_schemas),
+                    last=iteration >= self.max_iterations,
+                    tool_names=tuple(tool.name for tool in registry.values()),
+                ):
+                    shared_state["force_text_after_malformed"] = True
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content=self.malformed_attempt_context(response),
+                        )
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                "The structured action failed twice. Do not call or "
+                                "describe any tool now. Answer the original request "
+                                "concisely from completed results already above, and "
+                                "state what could not be verified."
+                            ),
+                            metadata={
+                                "internal": True,
+                                "kind": "text_only_recovery",
+                            },
+                        )
+                    )
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Switching to text-only recovery after repeated malformed calls",
+                        recovery="text_only",
                         iteration=iteration,
                     )
                     continue
@@ -1679,6 +1727,8 @@ class AsyncAgentRuntime(RuntimeCore):
                     response = summary
             except Exception:
                 pass
+
+        response.content = self.stable_final_content(state, response.content)
 
         # Skip if this exact response was already appended in the loop.
         if response.content and id(response) != appended_response_id:

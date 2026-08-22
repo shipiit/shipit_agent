@@ -146,7 +146,10 @@ def expand(messages: Sequence[Message]) -> list[Message]:
             out.append(
                 Message(
                     role="tool",
-                    content=c.output or f"{c.name} failed.",
+                    # An empty string is a valid, completed tool result.  Do
+                    # not rewrite it as a failure merely because it is falsy.
+                    content=(c.output if c.output is not None
+                             else f"{c.name} failed."),
                     tool_call_id=c.id,
                     name=c.name,
                     metadata=dict(c.metadata),
@@ -193,7 +196,8 @@ def to_wire_messages(messages: Sequence[Message]) -> list[dict[str, Any]]:
                 {
                     "role": "tool",
                     "tool_call_id": c.id,
-                    "content": c.output or f"{c.name} failed.",
+                    "content": (c.output if c.output is not None
+                                else f"{c.name} failed."),
                 }
             )
     return wire

@@ -18,6 +18,7 @@ from shipit_agent.compaction import (
     starts_a_turn,
 )
 from shipit_agent.models import Message
+from shipit_agent.runtime import AgentRuntime
 from shipit_agent.token_calibration import TokenCalibrator
 
 
@@ -135,3 +136,27 @@ def test_counting_degrades_to_the_estimate_without_a_tokenizer(monkeypatch):
     monkeypatch.setattr(tc, "_litellm_count", lambda *_a, **_k: None)
     msgs = conversation(turns=2)
     assert count_messages(msgs, "gpt-4o") == messages_tokens(msgs)
+
+
+def test_runtime_accounts_for_live_tool_schemas_before_first_completion():
+    class LLM:
+        model = "gpt-4o"
+
+        def complete(self, **_kwargs):
+            return None
+
+    runtime = AgentRuntime(llm=LLM(), prompt="p", fixed_prefix_tokens=123)
+    schemas = [{
+        "type": "function",
+        "function": {
+            "name": "search",
+            "description": "x" * 4_000,
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }]
+    runtime.account_request_overhead(schemas)
+
+    assert runtime._fixed_prefix_tokens > 123
+    assert runtime.compactor().fixed_prefix_tokens == runtime._fixed_prefix_tokens
+    runtime.account_request_overhead([])
+    assert runtime._fixed_prefix_tokens == 123

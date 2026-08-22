@@ -1607,7 +1607,10 @@ detail you were not given and do not say what you will do next."""
                 break
             # Deferred loading grows the advertised set mid-run, so the
             # selection is re-evaluated every step (a no-op when off).
-            force_text = bool(shared_state.pop("force_text_after_duplicate", False))
+            force_text = bool(
+                shared_state.pop("force_text_after_duplicate", False)
+                or shared_state.pop("force_text_after_malformed", False)
+            )
             forced_names = set(shared_state.get("forced_tool_names") or ())
             force_any_tool = bool(shared_state.get("force_any_tool"))
             active_schemas = (
@@ -1620,6 +1623,14 @@ detail you were not given and do not say what you will do next."""
                     if str((schema.get("function") or {}).get("name", ""))
                     in forced_names
                 ]
+            # The final cycle is schema-free. Account for exactly what this
+            # cycle will advertise before deciding whether history still fits.
+            schemas_for_budget = (
+                []
+                if iteration == self.max_iterations and self.max_iterations > 1
+                else active_schemas
+            )
+            self.account_request_overhead(schemas_for_budget)
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), active_schemas)
 
@@ -1796,7 +1807,10 @@ detail you were not given and do not say what you will do next."""
                 ):
                     self.record_nudge(response)
                     state.messages.append(
-                        Message(role="assistant", content=response.content)
+                        Message(
+                            role="assistant",
+                            content=self.malformed_attempt_context(response),
+                        )
                     )
                     state.messages.append(
                         Message(
@@ -1810,6 +1824,42 @@ detail you were not given and do not say what you will do next."""
                         "tool_call_healed",
                         "Nudged: malformed tool call",
                         nudge=True,
+                        iteration=iteration,
+                    )
+                    continue
+                if self.should_force_text_recovery(
+                    response,
+                    has_tools=bool(tool_schemas),
+                    last=iteration >= self.max_iterations,
+                    tool_names=tuple(tool.name for tool in registry.values()),
+                ):
+                    shared_state["force_text_after_malformed"] = True
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content=self.malformed_attempt_context(response),
+                        )
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                "The structured action failed twice. Do not call or "
+                                "describe any tool now. Answer the original request "
+                                "concisely from completed results already above, and "
+                                "state what could not be verified."
+                            ),
+                            metadata={
+                                "internal": True,
+                                "kind": "text_only_recovery",
+                            },
+                        )
+                    )
+                    self.emit(
+                        state,
+                        "tool_call_healed",
+                        "Switching to text-only recovery after repeated malformed calls",
+                        recovery="text_only",
                         iteration=iteration,
                     )
                     continue
@@ -2006,6 +2056,8 @@ detail you were not given and do not say what you will do next."""
             except Exception:
                 # Don't let summarization failures mask the whole run.
                 pass
+
+        response.content = self.stable_final_content(state, response.content)
 
         # Append the final answer unless this exact response was already
         # written inside the loop (model narrated alongside a tool call on the

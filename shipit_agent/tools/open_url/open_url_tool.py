@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 import re
 import socket
@@ -120,6 +121,35 @@ class _TextExtractor(HTMLParser):
 
 def _strip_html(value: str) -> str:
     """Readable markdown of a page's main content (structure preserved)."""
+    # Many SPAs render a loading shell but embed the real article as hydration
+    # JSON. Recover article-shaped objects generically before the HTML parser
+    # intentionally drops script elements. This is based on fields, not on a
+    # publisher, framework, URL, or JavaScript variable name.
+    decoder = json.JSONDecoder()
+    roots = []
+    for match in re.finditer(r"(?:=|>)\s*(\{)", value or ""):
+        try:
+            candidate, _ = decoder.raw_decode(value, match.start(1))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(candidate, dict):
+            roots.append(candidate)
+    articles: list[tuple[str, str]] = []
+    stack = list(roots)
+    while stack:
+        candidate = stack.pop()
+        if isinstance(candidate, dict):
+            body = candidate.get("articleBody") or candidate.get("body")
+            title = candidate.get("headline") or candidate.get("title") or ""
+            if isinstance(body, str) and len(body.strip()) >= 160:
+                articles.append((str(title), body))
+            stack.extend(candidate.values())
+        elif isinstance(candidate, list):
+            stack.extend(candidate)
+    if articles:
+        title, body = max(articles, key=lambda item: len(item[1]))
+        value = (f"<h1>{title}</h1>" if title else "") + body
+
     parser = _TextExtractor()
     try:
         parser.feed(value or "")
@@ -272,6 +302,17 @@ class OpenURLTool:
                     status = response.status if response is not None else None
                     if status is not None and status >= 400:
                         raise RuntimeError(f"HTTP {status} from {url}")
+
+                    # A SPA often has only a loading shell at DOMContentLoaded.
+                    # Give its network/render pass a bounded chance to settle
+                    # before reading the body; never make network-idle a hard
+                    # requirement because analytics can keep connections open.
+                    try:
+                        page.wait_for_load_state(
+                            "networkidle", timeout=min(timeout_ms, 10_000)
+                        )
+                    except Exception:
+                        pass
 
                     # Prefer visible body text; fall back to full rendered HTML.
                     try:

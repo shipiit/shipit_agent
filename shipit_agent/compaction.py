@@ -6,7 +6,7 @@ Cloudflare OS doesn't:
 ============================  ==========================  =========================
                               before                      here
 ============================  ==========================  =========================
-budget                        ``len(text) // 4``, 0.75     per-model window, 0.85
+budget                        ``len(text) // 4``            per-model window, 0.75
 cut point                     "last 4 messages"            a **turn boundary**
 summary prompt                "summarize this"             a 6-heading handoff
 prompt injection              none                         explicit ignore clause
@@ -45,11 +45,11 @@ __all__ = [
 
 # Compact once the prompt reaches this share of the input budget, leaving room
 # for the response that turn still has to produce.
-TRIGGER_RATIO = 0.85
+TRIGGER_RATIO = 0.75
 
 # Retain roughly this share of the budget after compacting, leaving room for the
 # summary and the turns that follow. Compacting to 85% would re-trigger at once.
-TARGET_RATIO = 0.30
+TARGET_RATIO = 0.20
 
 # A model we have no entry for. One whose real window is smaller will fail at
 # the provider before this ever triggers, which is the safe direction.
@@ -458,7 +458,27 @@ class Compactor:
             # prompt and let the provider complain than to cut mid-turn.
             return None
 
-        older = [m for m in messages[:boundary] if m.role != "system"]
+        # Progressive checkpointing: an existing summary already represents
+        # everything before its cut. Feed that summary plus only the NEW delta
+        # to the summarizer instead of paying to summarize the conversation
+        # from the beginning again. Apart from saving tokens, this prevents
+        # facts in early turns being repeatedly paraphrased until they drift.
+        latest = self.latest()
+        delta_start = latest.compacted_to if latest is not None else 0
+        if latest is not None and boundary <= delta_start:
+            return None
+        older: list[Message] = []
+        if latest is not None:
+            older.append(
+                Message(
+                    role="assistant",
+                    content=latest.summary,
+                    metadata={"compacted": True, "progressive_summary": True},
+                )
+            )
+        older.extend(
+            m for m in messages[delta_start:boundary] if m.role != "system"
+        )
         if not older:
             return None
 
@@ -487,10 +507,30 @@ class Compactor:
             text = (getattr(message, "text", None) or "").strip() if not isinstance(
                 message.content, str
             ) else (message.content or "").strip()
-            if not text:
+            if message.role == "tool":
+                # Raw search pages and MCP payloads are usually the largest
+                # part of a run. The assistant answer after them is the durable
+                # synthesis; replaying kilobytes of raw evidence into another
+                # model call costs heavily and exposes the summarizer to prompt
+                # injection. Preserve a compact status/error marker instead.
+                metadata = dict(message.metadata or {})
+                detail = ""
+                if metadata.get("is_error"):
+                    detail = f": {text[:500]}" if text else ""
+                elif isinstance(metadata.get("summary"), str):
+                    detail = f": {metadata['summary'][:500]}"
+                lines.append(
+                    f"[tool {message.name or 'unknown'} completed{detail}]"
+                )
                 continue
-            label = f"tool {message.name}" if message.role == "tool" else message.role
-            lines.append(f"[{label}]: {text[:2000]}")
+            if message.tool_calls:
+                names = ", ".join(call.name for call in message.tool_calls)
+                if text:
+                    lines.append(f"[assistant]: {text[:2000]}")
+                lines.append(f"[used tools: {names}]")
+                continue
+            if text:
+                lines.append(f"[{message.role}]: {text[:2000]}")
         return lines
 
     def _summarize(self, older: Sequence[Message]) -> str:

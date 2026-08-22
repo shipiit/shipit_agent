@@ -12,7 +12,7 @@ Fetch and read web page content. Extracts text and optionally captures a screens
 
 **When to use AFTER web_search:**
 - Open the most promising search result pages to get full content
-- You can pass multiple URLs at once for efficiency
+- Call once per URL; parallel structured calls may read several independent URLs
 - Verify claims by reading the actual source page
 
 **Decision tree:**

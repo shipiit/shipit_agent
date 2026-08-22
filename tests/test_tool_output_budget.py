@@ -170,4 +170,7 @@ class TestARepeatedCall:
         _result, llm = run(turns=2, tools=dump_tool(["tiny"]))
         joined = llm.context_chars
         assert joined  # ran at all
-        assert all(n < 5_000 for n in joined)
+        # Measure growth caused by the repeated result, not the unrelated
+        # default system prompt length. A small payload should add only the
+        # normal call/result protocol, never a multi-kilobyte omission notice.
+        assert max(joined) - min(joined) < 2_000

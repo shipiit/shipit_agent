@@ -137,6 +137,71 @@ def _serialize_message(
     return payload
 
 
+def _plain_message_content(content: Any) -> str:
+    """Losslessly-enough flatten content blocks for a text-only fallback."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and isinstance(block.get("text"), str):
+                parts.append(block["text"])
+            else:
+                parts.append(str(block))
+        return "\n".join(parts)
+    return str(content)
+
+
+def _bedrock_text_only_history(
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Remove structured tool blocks when Converse receives no tool config.
+
+    Bedrock Converse rejects historical ``toolUse``/``toolResult`` blocks if
+    the current request does not include ``toolConfig``. The final synthesis
+    step intentionally sends no tools, so preserve the evidence as ordinary
+    text while removing only the protocol-level structure. Mantle/Gemma uses
+    the OpenAI endpoint and never enters this path.
+    """
+    converted: list[dict[str, Any]] = []
+    for message in messages:
+        role = message.get("role")
+        calls = message.get("tool_calls") or []
+        if role == "assistant" and calls:
+            lines = [_plain_message_content(message.get("content"))]
+            for call in calls:
+                function = call.get("function", {}) if isinstance(call, dict) else {}
+                lines.append(
+                    "[Tool call completed] "
+                    f"{function.get('name', 'unknown')} "
+                    f"arguments={function.get('arguments', '{}')}"
+                )
+            converted.append({
+                "role": "assistant",
+                "content": "\n".join(part for part in lines if part),
+            })
+            continue
+        if role == "tool":
+            text = (
+                "[Tool result] "
+                f"call_id={message.get('tool_call_id', '')}\n"
+                f"{_plain_message_content(message.get('content'))}"
+            )
+            # Consecutive tool results become one user turn. This preserves
+            # the evidence and satisfies Converse's strict role alternation.
+            if converted and converted[-1].get("role") == "user" and str(
+                converted[-1].get("content", "")
+            ).startswith("[Tool result]"):
+                converted[-1]["content"] += "\n\n" + text
+            else:
+                converted.append({"role": "user", "content": text})
+            continue
+        converted.append(message)
+    return converted
+
+
 def _is_anthropic_model(model: str) -> bool:
     """True for Anthropic-family models (direct, on Bedrock, or on Vertex).
 
@@ -277,6 +342,20 @@ class LiteLLMChatLLM:
             for m in messages
         ]
         request_tools = tools or None
+        # Bedrock Converse requires `toolConfig` whenever any historical
+        # message contains structured tool blocks. A final/synthesis request
+        # deliberately has no tools, so convert those old blocks to text at
+        # the provider boundary. OpenAI-compatible Mantle/Gemma is delegated
+        # before this adapter and is intentionally unaffected.
+        if (
+            self.model.lower().startswith("bedrock/")
+            and not request_tools
+            and any(
+                message.get("role") == "tool" or message.get("tool_calls")
+                for message in payload_messages
+            )
+        ):
+            payload_messages = _bedrock_text_only_history(payload_messages)
         # Inline `$ref`/`$defs` and dialect-sanitize each tool's parameter schema
         # BEFORE it goes on the wire. Pydantic/FastMCP MCP servers emit `$defs` +
         # `$ref` for nested argument models; OpenAI tolerates it, but a strict

@@ -60,6 +60,32 @@ class TestOpenAIStreaming:
         assert out.content == "ok"
         assert seen["max_tokens"] == 16_000
         assert seen["temperature"] == 0.3
+        assert seen["top_p"] == 0.95
+
+    def test_gemma_capabilities_are_enforced_at_the_wire_boundary(
+        self, monkeypatch
+    ) -> None:
+        """Classic Agent calls use the same capability policy as graph calls."""
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        seen = _install_fake_openai(monkeypatch, [_chunk("ok")])
+        out = OpenAIChatLLM(
+            model="google.gemma-4-31b",
+            api_key="k",
+            reasoning_effort="high",
+            top_k=40,
+            frequency_penalty=0.5,
+        ).complete(
+            messages=[Message(role="user", content="hi")],
+            text_delta_callback=lambda _c: None,
+        )
+
+        assert out.content == "ok"
+        assert seen["temperature"] == 1.0
+        assert seen["top_p"] == 0.95
+        assert "reasoning_effort" not in seen
+        assert "top_k" not in seen
+        assert "frequency_penalty" not in seen
 
     def test_text_deltas_hit_callback_in_order(self, monkeypatch) -> None:
         from shipit_agent.llms.openai_adapter import OpenAIChatLLM
@@ -192,6 +218,52 @@ class TestOpenAIStreaming:
         assert all(len(delta) <= 48 for delta in got)
         assert "".join(got) == text == out.content
         assert out.metadata["synthetic_deltas"] == len(got)
+
+    def test_callback_stops_and_truncates_a_buffered_gateway_response(
+        self, monkeypatch
+    ) -> None:
+        """A buffered Mantle response must obey the same stop contract."""
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        text = "Actually, I will call the tool. " * 1_000
+        response = ns(
+            choices=[ns(message=ns(
+                content=text, tool_calls=[], reasoning_content=None))],
+            usage=ns(prompt_tokens=100, completion_tokens=1_000,
+                     total_tokens=1_100),
+        )
+
+        class _Completions:
+            def create(self, **_kwargs):
+                return response
+
+        fake = types.ModuleType("openai")
+        fake.OpenAI = lambda **_kw: ns(chat=ns(completions=_Completions()))
+        monkeypatch.setitem(sys.modules, "openai", fake)
+
+        got: list[str] = []
+
+        def stop(delta: str) -> bool | None:
+            got.append(delta)
+            return False if len(got) == 3 else None
+
+        out = OpenAIChatLLM(
+            model="google.gemma-4-31b", api_key="k"
+        ).complete(
+            messages=[Message(role="user", content="hi")],
+            text_delta_callback=stop,
+        )
+
+        assert len(got) == 3
+        assert out.content == "".join(got)
+        assert len(out.content) <= 3 * 48
+        assert out.metadata["synthetic_deltas"] == 3
+        assert out.metadata["stream_stopped"] == "callback"
+        assert out.usage == {
+            "prompt_tokens": 100,
+            "completion_tokens": 1_000,
+            "total_tokens": 1_100,
+        }
 
     def test_openai_stream_has_one_absolute_deadline(self) -> None:
         from shipit_agent.llms.openai_adapter import OpenAIChatLLM

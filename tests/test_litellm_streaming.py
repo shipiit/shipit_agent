@@ -21,8 +21,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from shipit_agent.llms.litellm_adapter import LiteLLMChatLLM
-from shipit_agent.models import Message
+from shipit_agent.llms.litellm_adapter import BedrockChatLLM, LiteLLMChatLLM
+from shipit_agent.models import Message, ToolCall
 
 
 # ----------------------------------------------------------------------
@@ -97,6 +97,52 @@ def test_complete_without_callback_runs_non_streaming(fake_litellm):
     # Verify stream=True was NOT passed
     call_kwargs = fake_litellm.completion.call_args.kwargs
     assert "stream" not in call_kwargs or call_kwargs.get("stream") is not True
+
+
+def test_bedrock_text_only_completion_flattens_prior_tool_blocks(fake_litellm):
+    """A no-tools Converse call must not carry toolUse/toolResult structure."""
+    fake_litellm.completion.return_value = _make_nonstream_response("summary")
+    llm = BedrockChatLLM(model="bedrock/amazon.nova-pro-v1:0")
+    llm.complete(
+        messages=[
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[ToolCall(
+                    id="call_1", name="search", arguments={"q": "Akira"}
+                )],
+            ),
+            Message(
+                role="tool", content="one result", tool_call_id="call_1"
+            ),
+        ],
+        tools=[],
+    )
+
+    sent = fake_litellm.completion.call_args.kwargs["messages"]
+    assert [message["role"] for message in sent] == ["assistant", "user"]
+    assert all("tool_calls" not in message for message in sent)
+    assert all("tool_call_id" not in message for message in sent)
+    assert "search" in sent[0]["content"]
+    assert "one result" in sent[1]["content"]
+
+
+def test_non_bedrock_text_only_completion_keeps_structured_tool_history(
+    fake_litellm,
+):
+    fake_litellm.completion.return_value = _make_nonstream_response("summary")
+    llm = LiteLLMChatLLM(model="openai/gpt-5")
+    llm.complete(
+        messages=[Message(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall(id="call_1", name="search", arguments={})],
+        )],
+        tools=[],
+    )
+
+    sent = fake_litellm.completion.call_args.kwargs["messages"]
+    assert sent[0]["tool_calls"][0]["function"]["name"] == "search"
 
 
 # ======================================================================

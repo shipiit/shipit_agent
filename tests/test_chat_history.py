@@ -69,6 +69,23 @@ def test_a_completed_call_does_serialise_on_the_wire():
     assert wire[1] == {"role": "tool", "tool_call_id": "c1", "content": "found"}
 
 
+def test_a_completed_empty_result_stays_empty_not_a_fake_failure():
+    """Providers distinguish a completed empty result from a missing result."""
+    done = [
+        Message(role="assistant", content=[
+            TextPart("Checking.", tool_call_ids=["c1"]),
+            ToolCallPart(id="c1", name="search", args={"q": "x"}, output=""),
+        ]),
+    ]
+
+    expanded = expand(done)
+    wire = to_wire_messages(done)
+
+    assert expanded[1].role == "tool"
+    assert expanded[1].content == ""
+    assert wire[1] == {"role": "tool", "tool_call_id": "c1", "content": ""}
+
+
 def test_text_keeps_its_association_with_the_calls_it_precedes():
     """Interleaved reasoning and tool use must survive a reload in order."""
     collapsed = collapse([

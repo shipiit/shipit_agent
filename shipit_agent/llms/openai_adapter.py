@@ -157,9 +157,22 @@ class OpenAIChatLLM:
             "messages": payload_messages,
             "tools": tools or None,
         }
-        # Tell reasoning-capable models to actually emit a thinking block.
+        # Completion controls are normalized at the adapter boundary. This is
+        # the classic Agent path (the graph runtime has its own resolved
+        # parameter object), so without this step the declarative capability
+        # table was documentation rather than enforcement here.
+        requested_params = dict(self.extra_completion)
         if self.reasoning_effort:
-            kwargs["reasoning_effort"] = self.reasoning_effort
+            requested_params["reasoning_effort"] = self.reasoning_effort
+        if self.max_tokens is not None:
+            requested_params["max_tokens"] = self.max_tokens
+        if self.temperature is not None:
+            requested_params["temperature"] = self.temperature
+
+        from shipit_agent.llms.parameters import resolve_parameters
+
+        resolved_params = resolve_parameters(self.model, requested_params)
+        kwargs.update(resolved_params.wire)
         # One shared ladder decides tool_choice (see llms/tool_choice.py); only
         # send it when we have tools, since OpenAI rejects the parameter
         # otherwise. No `default_auto` here — this endpoint does not need the
@@ -176,15 +189,8 @@ class OpenAIChatLLM:
 
             if not capabilities_for(self.model).supports_parallel_tool_calls:
                 kwargs["parallel_tool_calls"] = False
-        if self.max_tokens is not None:
-            kwargs["max_tokens"] = self.max_tokens
-        if self.temperature is not None:
-            kwargs["temperature"] = self.temperature
         if response_format:
             kwargs["response_format"] = response_format
-        # Extra sampling params (top_p, penalties, seed, …) the caller supplied.
-        for _k, _v in self.extra_completion.items():
-            kwargs.setdefault(_k, _v)
 
         if text_delta_callback is not None or tool_input_callback is not None:
             return self._complete_streaming(
@@ -306,10 +312,34 @@ class OpenAIChatLLM:
         # bounded synthetic deltas only preserve the consumer/UI contract.
         if hasattr(stream, "choices"):
             choice = stream.choices[0].message
-            deltas = _buffered_deltas(choice.content or "")
+            content = choice.content or ""
+            deltas = _buffered_deltas(content)
+            emitted_deltas = 0
+            stopped = False
             if on_delta is not None:
                 for delta in deltas:
-                    on_delta(delta)
+                    emitted_deltas += 1
+                    try:
+                        should_continue = on_delta(delta)
+                    except Exception:
+                        # Match native-stream behavior: observers may fail,
+                        # but only an explicit False controls generation.
+                        should_continue = None
+                    if should_continue is False:
+                        # The gateway already generated the full response, so
+                        # we cannot refund those provider tokens. We can still
+                        # enforce the runtime contract: stop publishing and do
+                        # not return the rejected suffix as the final answer.
+                        content = content[:emitted_deltas * _BUFFERED_DELTA_CHARS]
+                        stopped = True
+                        break
+            usage: dict[str, int] = {}
+            if getattr(stream, "usage", None):
+                usage = {
+                    "prompt_tokens": stream.usage.prompt_tokens or 0,
+                    "completion_tokens": stream.usage.completion_tokens or 0,
+                    "total_tokens": stream.usage.total_tokens or 0,
+                }
             tool_calls = []
             for call in choice.tool_calls or []:
                 arguments = call.function.arguments or "{}"
@@ -321,17 +351,18 @@ class OpenAIChatLLM:
                     )
                 )
             return LLMResponse(
-                content=choice.content or "",
+                content=content,
                 tool_calls=tool_calls,
                 metadata={
                     "model": self.model,
                     "provider": "openai",
                     "streamed": False,
                     "buffered_fallback": True,
-                    "synthetic_deltas": len(deltas),
+                    "synthetic_deltas": emitted_deltas,
+                    **({"stream_stopped": "callback"} if stopped else {}),
                 },
                 reasoning_content=_extract_reasoning(choice),
-                usage={},
+                usage=usage,
             )
 
         content_parts: list[str] = []

@@ -25,8 +25,9 @@ BIG = "x" * 15_000
 class TestWhatIsEvicted:
     def test_a_large_payload_is_replaced(self) -> None:
         [out] = evict_prior_tool_outputs([Message(role="tool", name="s", content=BIG)])
-        assert len(out.content) < 300
-        assert "no longer available" in out.content
+        assert len(out.content) < 400
+        assert "omitted from the active prompt" in out.content
+        assert "rerun only" in out.content
 
     def test_a_small_payload_is_left_alone(self) -> None:
         """Below the threshold the notice is the larger of the two."""
@@ -62,7 +63,20 @@ class TestWhatIsEvicted:
         ]
         [out] = evict_prior_tool_outputs(messages)
         assert out.name == "search_echo"
+        assert out.tool_call_id == "call_7"
         assert out.metadata["tool_call_id"] == "call_7"
+
+    def test_persisted_result_pointer_survives(self) -> None:
+        message = Message(
+            role="tool",
+            name="open_url",
+            content=BIG,
+            tool_call_id="call_8",
+            metadata={"persisted_output_path": "/tmp/result.txt"},
+        )
+        [out] = evict_prior_tool_outputs([message])
+        assert "call_id=call_8" in out.content
+        assert "stored_at=/tmp/result.txt" in out.content
 
 
 def _echo(query: str) -> str:

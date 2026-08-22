@@ -16,8 +16,18 @@ class ToolContext:
 
 @dataclass(slots=True)
 class ToolOutput:
+    """A complete tool result plus an optional compact model-facing view.
+
+    ``text`` is always the canonical result retained for callers and traces.
+    A tool that understands its result shape may provide ``model_text`` with
+    the relevant rows, fields, or snippets. The runtime then sends that view
+    to the model instead of blindly taking characters from the canonical
+    payload. This is an explicit tool contract, not tool-name-specific logic.
+    """
+
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    model_text: str | None = None
 
 
 @dataclass(slots=True)

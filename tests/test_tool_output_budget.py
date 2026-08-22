@@ -30,12 +30,17 @@ class ScriptedLLM:
         self.calls = 0
         self.context_chars: list[int] = []
 
-    def complete(self, *, messages, tools=None, system_prompt=None,
-                 metadata=None, text_delta_callback=None):
+    def complete(
+        self,
+        *,
+        messages,
+        tools=None,
+        system_prompt=None,
+        metadata=None,
+        text_delta_callback=None,
+    ):
         self.calls += 1
-        self.context_chars.append(
-            sum(len(m.content or "") for m in messages)
-        )
+        self.context_chars.append(sum(len(m.content or "") for m in messages))
         if self.calls <= self.turns:
             return LLMResponse(
                 tool_calls=[ToolCall(name="dump", arguments={})],
@@ -46,6 +51,7 @@ class ScriptedLLM:
 
 def dump_tool(payloads=None):
     """A tool returning ``BIG`` each call, or a scripted sequence."""
+
     class T:
         def __init__(self) -> None:
             self.name = "dump"
@@ -69,8 +75,13 @@ def dump_tool(payloads=None):
 def run(*, turns=4, tools=None, cap=None):
     llm = ScriptedLLM(turns)
     kwargs = {} if cap is None else {"max_tool_output_chars": cap}
-    agent = Agent(llm=llm, tools=[tools or dump_tool()],
-                  auto_use_skills=False, max_iterations=turns + 2, **kwargs)
+    agent = Agent(
+        llm=llm,
+        tools=[tools or dump_tool()],
+        auto_use_skills=False,
+        max_iterations=turns + 2,
+        **kwargs,
+    )
     return agent.run("go"), llm
 
 
@@ -91,17 +102,50 @@ class TestTheCap:
         _result, llm = run(turns=1, cap=0)
         assert max(llm.context_chars) > len(BIG)
 
+    def test_tool_can_supply_a_semantic_model_view(self) -> None:
+        class SemanticDump:
+            name = "dump"
+            description = "dump"
+            prompt_instructions = ""
+
+            def schema(self):
+                return {
+                    "function": {
+                        "name": "dump",
+                        "parameters": {"properties": {}},
+                    }
+                }
+
+            def run(self, _context, **_kwargs):
+                return ToolOutput(text=BIG, model_text="relevant row: Akira")
+
+        result, llm = run(turns=1, tools=SemanticDump())
+        assert result.tool_results[0].output == BIG
+        assert result.tool_results[0].metadata["model_output_semantic"] is True
+        tool_message = next(m for m in result.messages if m.role == "tool")
+        assert tool_message.content == "relevant row: Akira"
+        assert max(llm.context_chars) < 10_000
+
     def test_parallel_group_shares_one_context_budget(self) -> None:
         class GroupLLM(ScriptedLLM):
-            def complete(self, *, messages, tools=None, system_prompt=None,
-                         metadata=None, text_delta_callback=None):
+            def complete(
+                self,
+                *,
+                messages,
+                tools=None,
+                system_prompt=None,
+                metadata=None,
+                text_delta_callback=None,
+            ):
                 self.calls += 1
                 self.context_chars.append(sum(len(m.content or "") for m in messages))
                 if self.calls == 1:
-                    return LLMResponse(tool_calls=[
-                        ToolCall(name="dump", arguments={"part": index})
-                        for index in range(4)
-                    ])
+                    return LLMResponse(
+                        tool_calls=[
+                            ToolCall(name="dump", arguments={"part": index})
+                            for index in range(4)
+                        ]
+                    )
                 return LLMResponse(content="done")
 
         llm = GroupLLM(1)
@@ -135,7 +179,9 @@ class TestTheCap:
         persisted = Path(result.tool_results[0].metadata["persisted_output_path"])
         assert persisted.is_file()
         assert persisted.read_text(encoding="utf-8") == BIG
-        tool_messages = [message for message in result.messages if message.role == "tool"]
+        tool_messages = [
+            message for message in result.messages if message.role == "tool"
+        ]
         assert str(persisted) in tool_messages[0].content
 
 
@@ -154,9 +200,7 @@ class TestARepeatedCall:
 
     def test_the_pointer_says_where_the_output_went(self) -> None:
         result, _llm = run(turns=4)
-        tool_messages = [
-            m for m in result.messages if getattr(m, "role", "") == "tool"
-        ]
+        tool_messages = [m for m in result.messages if getattr(m, "role", "") == "tool"]
         assert any("already called" in (m.content or "") for m in tool_messages)
 
     def test_a_changed_answer_is_sent_in_full(self) -> None:

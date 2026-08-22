@@ -424,3 +424,11 @@ def test_runtime_accumulates_cache_usage_in_run_totals() -> None:
     assert usage["cache_read_input_tokens"] == 80
     assert usage["cache_creation_input_tokens"] == 10
     assert len([event for event in state.events if event.type == "usage_tick"]) == 1
+
+    summary = next(event for event in state.events if event.type == "run_summary")
+    assert summary.payload["cache"] == {
+        "read_input_tokens": 80,
+        "creation_input_tokens": 10,
+        "eligible_input_tokens": 180,
+        "hit_ratio": 0.4444,
+    }

@@ -121,7 +121,8 @@ _REPEAT_MIN_CHARS = 2_000
 #: Below this, the stub costs more than the payload it replaces.
 _EVICT_MIN_CHARS = 1_000
 
-def _evicted_notice(message: Message) -> str:
+
+def _evicted_notice(message: Message, *, recall_tool_name: str = "") -> str:
     """A compact, factual pointer that does not invite a repeat-call loop."""
     metadata = dict(message.metadata or {})
     call_id = str(message.tool_call_id or metadata.get("tool_call_id") or "")
@@ -133,17 +134,27 @@ def _evicted_notice(message: Message) -> str:
         f"stored_at={path}" if path else "",
     ]
     suffix = "; ".join(detail for detail in details if detail)
+    recall = (
+        f" Retrieve the exact result with {recall_tool_name}(call_id={call_id!r}) "
+        "only if it is needed."
+        if recall_tool_name and call_id
+        else ""
+    )
     return (
         "[Earlier tool result omitted from the active prompt to save context"
         + (f" ({suffix})" if suffix else "")
         + ". The structured call and the assistant's answer remain above. "
-        "Use those first; rerun only when exact raw data is necessary or may "
-        "have changed.]"
+        "Use those first."
+        + recall
+        + " Rerun the original external tool only when its data may have changed.]"
     )
 
 
 def evict_prior_tool_outputs(
-    messages: list[Message], *, min_chars: int = _EVICT_MIN_CHARS
+    messages: list[Message],
+    *,
+    min_chars: int = _EVICT_MIN_CHARS,
+    recall_tool_name: str = "",
 ) -> list[Message]:
     """Replace tool *payloads* from earlier turns with a short notice.
 
@@ -179,7 +190,7 @@ def evict_prior_tool_outputs(
                 Message(
                     role="tool",
                     name=message.name,
-                    content=_evicted_notice(message),
+                    content=_evicted_notice(message, recall_tool_name=recall_tool_name),
                     tool_call_id=message.tool_call_id,
                     metadata=dict(message.metadata or {}),
                 )
@@ -281,6 +292,20 @@ class RuntimeCore:
         return capabilities_for(model).supports_parallel_tool_calls
 
     @staticmethod
+    def install_result_recall(registry: Any, messages: Sequence[Message]) -> str:
+        """Attach exact historical-result recall only when there is data for it."""
+        from shipit_agent.tools.recall_result.recall_result_tool import (
+            RecallToolResult,
+            recallable_results,
+        )
+
+        results = recallable_results(list(messages), min_chars=_EVICT_MIN_CHARS)
+        if not results or registry.get(RecallToolResult.name) is not None:
+            return ""
+        registry.register(RecallToolResult(results))
+        return RecallToolResult.name
+
+    @staticmethod
     def requested_tool_names(user_prompt: str, registry: Any) -> set[str]:
         """Resolve tools the user explicitly requested from live schemas.
 
@@ -288,10 +313,13 @@ class RuntimeCore:
         "CRM MCP ... open tickets" are resolved by registry-name tokens near
         the words tool/MCP; ambiguous matches are left to the model.
         """
+
         def words(value: str) -> list[str]:
             found = re.findall(r"[a-z0-9]+", value.lower().replace("_", " "))
-            return [word[:-1] if len(word) > 3 and word.endswith("s") else word
-                    for word in found]
+            return [
+                word[:-1] if len(word) > 3 and word.endswith("s") else word
+                for word in found
+            ]
 
         prompt_words = words(user_prompt)
         prompt_set = set(prompt_words)
@@ -307,9 +335,8 @@ class RuntimeCore:
             if not name or not tokens:
                 continue
             explicit_name = (
-                (len(tokens) > 1 and " ".join(tokens) in normalized_prompt)
-                or ("_" in name and name.lower() in user_prompt.lower())
-            )
+                len(tokens) > 1 and " ".join(tokens) in normalized_prompt
+            ) or ("_" in name and name.lower() in user_prompt.lower())
             if explicit_name:
                 requested.add(name)
                 continue
@@ -351,11 +378,10 @@ class RuntimeCore:
         typed by the user receive the same treatment automatically. Unknown
         names are ignored so a changing connector catalogue cannot break a run.
         """
-        available = {
-            str(getattr(tool, "name", "") or "") for tool in registry.values()
-        }
+        available = {str(getattr(tool, "name", "") or "") for tool in registry.values()}
         configured = {
-            str(name) for name in (getattr(self, "required_tools", None) or ())
+            str(name)
+            for name in (getattr(self, "required_tools", None) or ())
             if str(name)
         }
         explicit = self.requested_tool_names(user_prompt, registry)
@@ -371,11 +397,16 @@ class RuntimeCore:
         """Whether every call in the latest batch was already executed."""
         ids = {str(record.get("id", "")) for record in call_records}
         outcomes = [
-            message for message in messages
+            message
+            for message in messages
             if message.role == "tool" and str(message.tool_call_id or "") in ids
         ]
-        return bool(ids) and len(outcomes) == len(ids) and all(
-            message.metadata.get("duplicate_suppressed") for message in outcomes
+        return (
+            bool(ids)
+            and len(outcomes) == len(ids)
+            and all(
+                message.metadata.get("duplicate_suppressed") for message in outcomes
+            )
         )
 
     @staticmethod
@@ -390,7 +421,8 @@ class RuntimeCore:
         """
         labelled: list[Message] = []
         human_user_indexes = [
-            index for index, message in enumerate(messages)
+            index
+            for index, message in enumerate(messages)
             if message.role == "user"
             and not (
                 message.metadata.get("internal")
@@ -575,7 +607,11 @@ class RuntimeCore:
             # it to answer), and only once repetition is actually observed — a
             # first honest "here's my plan" is never discouraged.
             if not last_step and is_reannouncing(messages):
-                reminder = f"{reminder}\n\n{REANNOUNCE_DAMPER}" if reminder else REANNOUNCE_DAMPER
+                reminder = (
+                    f"{reminder}\n\n{REANNOUNCE_DAMPER}"
+                    if reminder
+                    else REANNOUNCE_DAMPER
+                )
         else:
             reminder = (self.reminder or "").strip() or None
         if reminder:
@@ -605,9 +641,7 @@ class RuntimeCore:
         return flags
 
     @staticmethod
-    def readonly_call_signature(
-        tool: Any, tool_call: Any
-    ) -> tuple[str, str] | None:
+    def readonly_call_signature(tool: Any, tool_call: Any) -> tuple[str, str] | None:
         """A dedup key for a READ-ONLY call, or None if the tool may mutate.
 
         Returns ``(name, arguments_key)`` only for a tool whose contract is
@@ -678,9 +712,7 @@ class RuntimeCore:
             i
             for i, m in enumerate(messages)
             if isinstance(m.content, list)
-            and any(
-                isinstance(b, dict) and b.get("type") == "image" for b in m.content
-            )
+            and any(isinstance(b, dict) and b.get("type") == "image" for b in m.content)
         ]
         stale = set(image_indexes[: -cls.MAX_VISION_MESSAGES or None])
         if not stale:
@@ -856,7 +888,11 @@ class RuntimeCore:
             # Block-shaped output (images) has no meaningful char budget and
             # stringifying it would feed the model "[{'type': 'image'…}]".
             return raw_output
-        output = raw_output
+        semantic_output = getattr(tool_result, "model_text", None)
+        has_semantic_output = bool(
+            isinstance(semantic_output, str) and semantic_output.strip()
+        )
+        output = semantic_output if has_semantic_output else raw_output
         name = str(getattr(tool_result, "name", "") or "")
         limit = (
             min(self.max_tool_output_chars, limit_override)
@@ -867,22 +903,26 @@ class RuntimeCore:
             if limit_override is not None
             else self.max_tool_output_chars
         )
-        digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()
+        canonical_digest = hashlib.sha256(
+            raw_output.encode("utf-8", "replace")
+        ).hexdigest()
         persisted_path = ""
-        if limit > 0 and len(output) > limit:
+        if limit > 0 and len(raw_output) > limit:
             persisted_path = self._persist_tool_output(
-                tool_result, output=output, name=name, digest=digest
+                tool_result, output=raw_output, name=name, digest=canonical_digest
             )
 
         if seen is not None and len(output) >= _REPEAT_MIN_CHARS:
             key = (name, _arguments_key(arguments))
-            if seen.get(key) == digest:
+            if seen.get(key) == canonical_digest:
                 metadata = getattr(tool_result, "metadata", None)
                 if isinstance(metadata, dict):
-                    metadata.update({
-                        "repeat_of_earlier_call": True,
-                        "omitted_output_chars": len(output),
-                    })
+                    metadata.update(
+                        {
+                            "repeat_of_earlier_call": True,
+                            "omitted_output_chars": len(output),
+                        }
+                    )
                 return (
                     f"[No new data. {name} was already called with exactly "
                     f"these arguments in this run and returned the same "
@@ -898,7 +938,18 @@ class RuntimeCore:
                         else "]"
                     )
                 )
-            seen[key] = digest
+            seen[key] = canonical_digest
+
+        if has_semantic_output:
+            metadata = getattr(tool_result, "metadata", None)
+            if isinstance(metadata, dict):
+                metadata.update(
+                    {
+                        "model_output_semantic": True,
+                        "canonical_output_chars": len(raw_output),
+                        "model_output_chars": len(output),
+                    }
+                )
 
         if limit <= 0 or len(output) <= limit:
             return output
@@ -953,9 +1004,12 @@ class RuntimeCore:
             return ""
         from pathlib import Path
 
-        safe_name = "".join(
-            char if char.isalnum() or char in "-_" else "_" for char in name
-        ).strip("_") or "tool"
+        safe_name = (
+            "".join(
+                char if char.isalnum() or char in "-_" else "_" for char in name
+            ).strip("_")
+            or "tool"
+        )
         path = Path(self.tool_output_dir) / f"{safe_name}-{digest[:16]}.txt"
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -1082,9 +1136,7 @@ class RuntimeCore:
         healed: list[Any] = []
         source = "content"
         if response.content:
-            cleaned, healed = heal_tool_calls(
-                response.content, names, schemas=schemas
-            )
+            cleaned, healed = heal_tool_calls(response.content, names, schemas=schemas)
             if healed:
                 response.content = cleaned
         if not healed and response.reasoning_content:
@@ -1276,11 +1328,41 @@ class RuntimeCore:
         except (TypeError, ValueError):
             rendered = repr(list(tool_schemas))
         schema_tokens = content_tokens(rendered, model) if tool_schemas else 0
-        self._fixed_prefix_tokens = (
-            self._configured_fixed_prefix_tokens + schema_tokens
-        )
+        self._fixed_prefix_tokens = self._configured_fixed_prefix_tokens + schema_tokens
         if self._compactor_instance is not None:
             self._compactor_instance.fixed_prefix_tokens = self._fixed_prefix_tokens
+
+    def fit_provider_request(
+        self,
+        state: Any,
+        messages: Sequence[Message],
+        *,
+        iteration: int,
+    ) -> list[Message]:
+        """Final hard fit of the exact message view before provider dispatch."""
+        from shipit_agent.context_fit import fit_messages
+
+        compactor = self.compactor()
+        budget = compactor.limits.input_budget
+
+        def fits(candidate: Sequence[Message]) -> bool:
+            return compactor.estimated_prompt_tokens(candidate) <= budget
+
+        fitted, stats = fit_messages(messages, fits=fits)
+        if stats["dropped_messages"] or stats["reduced_messages"]:
+            self.emit(
+                state,
+                "context_compacted",
+                "Final request fitted to the provider context window",
+                mode="hard_fit",
+                before=len(messages),
+                after=len(fitted),
+                budget_tokens=budget,
+                estimated_tokens=compactor.estimated_prompt_tokens(fitted),
+                iteration=iteration,
+                **stats,
+            )
+        return fitted
 
     def compact(
         self,
@@ -1370,6 +1452,13 @@ class RuntimeCore:
             except Exception:
                 cost_usd = None
         total = usage.get("total_tokens", 0)
+        prompt_tokens = max(0, int(usage.get("prompt_tokens", 0) or 0))
+        cache_read = max(0, int(usage.get("cache_read_input_tokens", 0) or 0))
+        cache_creation = max(0, int(usage.get("cache_creation_input_tokens", 0) or 0))
+        cache_eligible_input = prompt_tokens + cache_read
+        cache_hit_ratio = (
+            round(cache_read / cache_eligible_input, 4) if cache_eligible_input else 0.0
+        )
         cost_str = f", ${cost_usd:.4f}" if cost_usd else ""
         return {
             "headline": (
@@ -1381,6 +1470,12 @@ class RuntimeCore:
             "tool_results": len(tool_results),
             "compactions": compactions,
             "usage": usage,
+            "cache": {
+                "read_input_tokens": cache_read,
+                "creation_input_tokens": cache_creation,
+                "eligible_input_tokens": cache_eligible_input,
+                "hit_ratio": cache_hit_ratio,
+            },
             "estimated_cost_usd": cost_usd,
             "gave_up": bool(self.metadata.get("gave_up")),
         }
@@ -1441,7 +1536,11 @@ class RuntimeCore:
                             f"[re-grounding after compaction] Current contents "
                             f"of {path.name}:\n{text}"
                         ),
-                        metadata={"regrounding": True, "internal": True, "path": path_str},
+                        metadata={
+                            "regrounding": True,
+                            "internal": True,
+                            "path": path_str,
+                        },
                     )
                 )
                 # Restore the read-gate for the re-read file so an edit can

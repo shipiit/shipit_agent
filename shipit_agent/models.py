@@ -162,6 +162,9 @@ class ToolResult:
     truncated: bool = False
     duration_ms: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    #: Optional semantic extract supplied by the tool. ``output`` remains the
+    #: complete canonical value; only this compact view is sent to the model.
+    model_text: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -172,6 +175,7 @@ class ToolResult:
             "truncated": self.truncated,
             "duration_ms": self.duration_ms,
             "metadata": dict(self.metadata),
+            "model_text": self.model_text,
         }
 
 

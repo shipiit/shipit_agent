@@ -27,7 +27,7 @@ class TestWhatIsEvicted:
         [out] = evict_prior_tool_outputs([Message(role="tool", name="s", content=BIG)])
         assert len(out.content) < 400
         assert "omitted from the active prompt" in out.content
-        assert "rerun only" in out.content
+        assert "Rerun the original external tool only" in out.content
 
     def test_a_small_payload_is_left_alone(self) -> None:
         """Below the threshold the notice is the larger of the two."""
@@ -92,8 +92,10 @@ class _Recorder:
 
     def complete(self, *, messages, tools=None, **_kw) -> LLMResponse:
         self.context_chars.append(
-            sum(len((m.get("content") if isinstance(m, dict) else m.content) or "")
-                for m in messages)
+            sum(
+                len((m.get("content") if isinstance(m, dict) else m.content) or "")
+                for m in messages
+            )
         )
         self.calls += 1
         return self.script[min(self.calls - 1, len(self.script) - 1)]
@@ -140,7 +142,9 @@ class TestAcrossTurns:
         class Capture(_Recorder):
             def complete(self, *, messages, tools=None, **_kw):
                 seen.extend(
-                    str((m.get("metadata") if isinstance(m, dict) else m.metadata) or "")
+                    str(
+                        (m.get("metadata") if isinstance(m, dict) else m.metadata) or ""
+                    )
                     + ((m.get("content") if isinstance(m, dict) else m.content) or "")
                     for m in messages
                 )

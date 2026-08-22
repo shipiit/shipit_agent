@@ -125,7 +125,12 @@ class ToolRunner:
                             dict(chunk.metadata),
                         )
                     )
-            return ToolResult(name=name, output=chunk.text, metadata=chunk.metadata)
+            return ToolResult(
+                name=name,
+                output=chunk.text,
+                metadata=chunk.metadata,
+                model_text=getattr(output, "model_text", None),
+            )
 
         if isinstance(output, (str, bytes)) or not isinstance(output, Iterable):
             raise TypeError(

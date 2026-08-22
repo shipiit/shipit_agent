@@ -44,6 +44,7 @@ from shipit_agent.runtime_state import (
     _merge_tool_state,
 )
 from shipit_agent.session_lock import session_run_lock
+from shipit_agent.session_facts import FactLedger
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -134,9 +135,7 @@ class AgentRuntime(RuntimeCore):
         self.max_required_tool_text_chars = max(
             0, int(max_required_tool_text_chars or 0)
         )
-        self.max_completion_text_chars = max(
-            0, int(max_completion_text_chars or 0)
-        )
+        self.max_completion_text_chars = max(0, int(max_completion_text_chars or 0))
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
         self.memory_store = memory_store or InMemoryMemoryStore()
@@ -268,7 +267,8 @@ class AgentRuntime(RuntimeCore):
                 role="user",
                 content=f"[Planner output]\n{tool_result.output}",
                 metadata={
-                    "source": "planner", "planner_tool": planner.name,
+                    "source": "planner",
+                    "planner_tool": planner.name,
                     "internal": True,
                 },
             )
@@ -740,7 +740,9 @@ class AgentRuntime(RuntimeCore):
                 paths=[str(p) for p in _declared_paths(md)],
                 command=str(md.get("command") or arguments.get("command") or ""),
                 exit_code=md.get("exit_code"),
-                output=tool_result.output if isinstance(tool_result.output, str) else "",
+                output=tool_result.output
+                if isinstance(tool_result.output, str)
+                else "",
                 ok=md.get("ok"),
             )
         self.emit(
@@ -1086,7 +1088,7 @@ results and do not say what the tool will return.""".strip()
             if usage:
                 self.track_usage(state, result, iteration)
             return _first_sentences(getattr(result, "content", ""))
-        except Exception as exc:                              # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             self.emit(
                 state,
                 "progress_summary_failed",
@@ -1163,9 +1165,7 @@ detail you were not given and do not say what you will do next."""
         arguments = _arguments_by_name(tool_calls)
         clauses: list[str] = []
         for result in tool_results:
-            label = summarize(
-                result.name, arguments.get(result.name, {})
-            ).past_label()
+            label = summarize(result.name, arguments.get(result.name, {})).past_label()
             if _result_failed(result):
                 clauses.append(f"{label} — failed")
             else:
@@ -1277,6 +1277,7 @@ detail you were not given and do not say what you will do next."""
         if self._llm_streams_tool_input:
             complete_kwargs["tool_input_callback"] = _on_tool_input
         from shipit_agent.llms.base import accepts_explicit_kwarg
+
         if require_tool_call and accepts_explicit_kwarg(
             self.llm.complete, "require_tool_call"
         ):
@@ -1419,7 +1420,9 @@ detail you were not given and do not say what you will do next."""
         elif self.require_tool_call and list(registry.values()):
             shared_state["force_any_tool"] = True
         tool_prompt = build_tools_prompt(
-            registry.values(), connections=self.connections.all(), mcps=self.mcps,
+            registry.values(),
+            connections=self.connections.all(),
+            mcps=self.mcps,
             supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
         )
         base_prompt = (
@@ -1430,9 +1433,7 @@ detail you were not given and do not say what you will do next."""
             self.token_calibrator.restore(
                 existing_session.metadata.get("token_calibration")
             )
-            stored_checkpoint = existing_session.metadata.get(
-                "compaction_checkpoint"
-            )
+            stored_checkpoint = existing_session.metadata.get("compaction_checkpoint")
             if (
                 self.context_window_tokens >= 0
                 and isinstance(stored_checkpoint, dict)
@@ -1450,6 +1451,29 @@ detail you were not given and do not say what you will do next."""
             prior_messages = self.history_messages
         else:
             prior_messages = []
+        fact_ledger = FactLedger.from_serialized(
+            existing_session.metadata.get("verified_facts")
+            if existing_session
+            else None
+        )
+        recall_tool_name = (
+            self.install_result_recall(registry, prior_messages)
+            if self.evict_prior_tool_outputs
+            else ""
+        )
+        if recall_tool_name:
+            shared_state.update(self.build_shared_state(registry, state))
+            tool_prompt = build_tools_prompt(
+                registry.values(),
+                connections=self.connections.all(),
+                mcps=self.mcps,
+                supports_parallel_tool_calls=(
+                    self.model_supports_parallel_tool_calls()
+                ),
+            )
+            base_prompt = (
+                self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
+            )
         # Prior turns are re-sent in full on every request of this turn. Their
         # tool payloads have already been read and written into the answers
         # below them, so what they buy now is nothing and what they cost is
@@ -1462,7 +1486,9 @@ detail you were not given and do not say what you will do next."""
         # this session (replay, audit, the next turn's own eviction pass).
         original_prior = [m for m in prior_messages if m.role != "system"]
         if self.evict_prior_tool_outputs:
-            prior_messages = evict_prior_tool_outputs(list(prior_messages))
+            prior_messages = evict_prior_tool_outputs(
+                list(prior_messages), recall_tool_name=recall_tool_name
+            )
         # Inject exactly one fresh system message at the front, then the prior
         # turns with any *previously persisted* system messages stripped out.
         # Multi-turn sessions (AgentChatSession reuses session_id + store)
@@ -1474,9 +1500,16 @@ detail you were not given and do not say what you will do next."""
             Message(role="system", content=base_prompt, metadata=dict(self.metadata))
         )
         state.messages.extend(m for m in prior_messages if m.role != "system")
-        state.messages.append(
-            Message(role="user", content=user_content or user_prompt)
-        )
+        rendered_facts = fact_ledger.render()
+        if rendered_facts:
+            state.messages.append(
+                Message(
+                    role="assistant",
+                    content=rendered_facts,
+                    metadata={"internal": True, "kind": "verified_session_facts"},
+                )
+            )
+        state.messages.append(Message(role="user", content=user_content or user_prompt))
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
 
@@ -1491,7 +1524,9 @@ detail you were not given and do not say what you will do next."""
                 state,
                 "skills_selected",
                 "Skills selected: " + ", ".join(skill_ids),
-                skills=[dict(skill) for skill in selected_skills if isinstance(skill, dict)],
+                skills=[
+                    dict(skill) for skill in selected_skills if isinstance(skill, dict)
+                ],
                 skill_ids=skill_ids,
                 injected_tools=list(self.metadata.get("used_skill_tools", [])),
                 count=len(skill_ids),
@@ -1538,7 +1573,8 @@ detail you were not given and do not say what you will do next."""
                     if _is_core(getattr(tool, "name", ""))
                 ]
                 core_prompt = build_tools_prompt(
-                    core_tools, connections=self.connections.all(),
+                    core_tools,
+                    connections=self.connections.all(),
                     supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
                 )
                 base_prompt = "\n\n".join(
@@ -1568,13 +1604,13 @@ detail you were not given and do not say what you will do next."""
                 if getattr(tool, "name", "") not in deferred_names
             ]
             resident_prompt = build_tools_prompt(
-                resident_tools, connections=self.connections.all(), mcps=self.mcps,
+                resident_tools,
+                connections=self.connections.all(),
+                mcps=self.mcps,
                 supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
             )
             base_prompt = "\n\n".join(
-                part
-                for part in (self.prompt, resident_prompt, deferral_index)
-                if part
+                part for part in (self.prompt, resident_prompt, deferral_index) if part
             )
             state.messages[0] = Message(
                 role="system", content=base_prompt, metadata=dict(self.metadata)
@@ -1614,12 +1650,14 @@ detail you were not given and do not say what you will do next."""
             forced_names = set(shared_state.get("forced_tool_names") or ())
             force_any_tool = bool(shared_state.get("force_any_tool"))
             active_schemas = (
-                [] if force_text
+                []
+                if force_text
                 else self.select_step_schemas(tool_schemas, shared_state)
             )
             if forced_names:
                 active_schemas = [
-                    schema for schema in active_schemas
+                    schema
+                    for schema in active_schemas
                     if str((schema.get("function") or {}).get("name", ""))
                     in forced_names
                 ]
@@ -1658,17 +1696,24 @@ detail you were not given and do not say what you will do next."""
                 ran_tools=bool(state.tool_results),
             )
             if forced_names or force_any_tool:
-                compacted_messages.append(Message(
-                    role="user",
-                    content=(
-                        ("Execute the required registered tool now: "
-                         + ", ".join(sorted(forced_names))
-                         if forced_names else
-                         "Execute the most appropriate available tool now")
-                        + ". Emit the structured call, not prose or a simulated result."
-                    ),
-                    metadata={"internal": True, "kind": "required_tool"},
-                ))
+                compacted_messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            (
+                                "Execute the required registered tool now: "
+                                + ", ".join(sorted(forced_names))
+                                if forced_names
+                                else "Execute the most appropriate available tool now"
+                            )
+                            + ". Emit the structured call, not prose or a simulated result."
+                        ),
+                        metadata={"internal": True, "kind": "required_tool"},
+                    )
+                )
+            compacted_messages = self.fit_provider_request(
+                state, compacted_messages, iteration=iteration
+            )
 
             self.emit(
                 state,
@@ -1747,21 +1792,28 @@ detail you were not given and do not say what you will do next."""
 
             if not response.tool_calls:
                 if force_any_tool and iteration < self.max_iterations:
-                    state.messages.append(Message(
-                        role="assistant",
-                        content="[Unverified response discarded: no required tool executed.]",
-                    ))
-                    state.messages.append(Message(
-                        role="user",
-                        content=(
-                            "A registered tool must execute before answering. "
-                            "Call the best available tool now; do not simulate its result."
-                        ),
-                        metadata={"internal": True, "kind": "required_tool_retry"},
-                    ))
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content="[Unverified response discarded: no required tool executed.]",
+                        )
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                "A registered tool must execute before answering. "
+                                "Call the best available tool now; do not simulate its result."
+                            ),
+                            metadata={"internal": True, "kind": "required_tool_retry"},
+                        )
+                    )
                     self.emit(
-                        state, "tool_call_healed", "Retrying required tool use",
-                        nudge=True, iteration=iteration,
+                        state,
+                        "tool_call_healed",
+                        "Retrying required tool use",
+                        nudge=True,
+                        iteration=iteration,
                     )
                     continue
                 executed = {result.name for result in state.tool_results}
@@ -1769,23 +1821,29 @@ detail you were not given and do not say what you will do next."""
                 missing_requested = self.missing_requested_tools(
                     user_prompt, registry, state.tool_results
                 )
-                missing_requested = sorted(set(missing_requested) | set(missing_required))
+                missing_requested = sorted(
+                    set(missing_requested) | set(missing_required)
+                )
                 if missing_requested and iteration < self.max_iterations:
                     self.record_requested_tool_nudge(missing_requested)
                     shared_state["forced_tool_names"] = set(missing_requested)
-                    state.messages.append(Message(
-                        role="assistant",
-                        content="[Unverified response discarded: no requested tool executed.]",
-                    ))
-                    state.messages.append(Message(
-                        role="user",
-                        content=(
-                            "The requested registered tool did not execute. Call "
-                            + ", ".join(missing_requested)
-                            + " now; do not simulate or invent its result."
-                        ),
-                        metadata={"internal": True, "kind": "requested_tool_retry"},
-                    ))
+                    state.messages.append(
+                        Message(
+                            role="assistant",
+                            content="[Unverified response discarded: no requested tool executed.]",
+                        )
+                    )
+                    state.messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                "The requested registered tool did not execute. Call "
+                                + ", ".join(missing_requested)
+                                + " now; do not simulate or invent its result."
+                            ),
+                            metadata={"internal": True, "kind": "requested_tool_retry"},
+                        )
+                    )
                     appended_response_id = id(response)
                     self.emit(
                         state,
@@ -1814,7 +1872,8 @@ detail you were not given and do not say what you will do next."""
                     )
                     state.messages.append(
                         Message(
-                            role="user", content=self.NUDGE_TEXT,
+                            role="user",
+                            content=self.NUDGE_TEXT,
                             metadata={"internal": True, "kind": "tool_call_retry"},
                         )
                     )
@@ -1878,7 +1937,8 @@ detail you were not given and do not say what you will do next."""
                                 appended_response_id = id(response)
                             state.messages.append(
                                 Message(
-                                    role="user", content=verify_nudge,
+                                    role="user",
+                                    content=verify_nudge,
                                     metadata={"internal": True, "kind": "verify_retry"},
                                 )
                             )
@@ -1990,9 +2050,7 @@ detail you were not given and do not say what you will do next."""
                     generated_by_model=False,
                 )
 
-            if self.force_text_after_duplicate_batch(
-                state.messages, tool_call_records
-            ):
+            if self.force_text_after_duplicate_batch(state.messages, tool_call_records):
                 shared_state["force_text_after_duplicate"] = True
 
             # Mid-run re-planning: if replan_interval is set and we've
@@ -2105,10 +2163,17 @@ detail you were not given and do not say what you will do next."""
         persisted_messages = [
             state.messages[0],
             *original_prior,
-            *state.messages[1 + len(original_prior) :],
+            *(
+                message
+                for message in state.messages[1 + len(original_prior) :]
+                if message.metadata.get("kind") != "verified_session_facts"
+            ),
         ]
         session_metadata = dict(existing_session.metadata) if existing_session else {}
         session_metadata["token_calibration"] = self.token_calibrator.to_dict()
+        fact_ledger.ingest_tool_results(state.tool_results)
+        if len(fact_ledger):
+            session_metadata["verified_facts"] = fact_ledger.to_list()
         latest_checkpoint = (
             self.compactor().latest() if self.context_window_tokens >= 0 else None
         )

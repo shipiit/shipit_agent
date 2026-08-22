@@ -41,6 +41,7 @@ from shipit_agent.runtime_state import (
     _merge_tool_state,
 )
 from shipit_agent.session_lock import async_session_run_lock
+from shipit_agent.session_facts import FactLedger
 from shipit_agent.stores import (
     InMemoryMemoryStore,
     InMemorySessionStore,
@@ -136,9 +137,7 @@ class AsyncAgentRuntime(RuntimeCore):
         self.max_required_tool_text_chars = max(
             0, int(max_required_tool_text_chars or 0)
         )
-        self.max_completion_text_chars = max(
-            0, int(max_completion_text_chars or 0)
-        )
+        self.max_completion_text_chars = max(0, int(max_completion_text_chars or 0))
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
         self.memory_store = memory_store or InMemoryMemoryStore()
@@ -1080,6 +1079,29 @@ class AsyncAgentRuntime(RuntimeCore):
             prior_messages = self.history_messages
         else:
             prior_messages = []
+        fact_ledger = FactLedger.from_serialized(
+            existing_session.metadata.get("verified_facts")
+            if existing_session
+            else None
+        )
+        recall_tool_name = (
+            self.install_result_recall(registry, prior_messages)
+            if self.evict_prior_tool_outputs
+            else ""
+        )
+        if recall_tool_name:
+            shared_state.update(self.build_shared_state(registry, state))
+            tool_prompt = build_tools_prompt(
+                registry.values(),
+                connections=self.connections.all(),
+                mcps=self.mcps,
+                supports_parallel_tool_calls=(
+                    self.model_supports_parallel_tool_calls()
+                ),
+            )
+            base_prompt = (
+                self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
+            )
         # Earlier turns' tool payloads have already been read into the
         # answers below them; re-sending them costs their whole length on
         # every step of this turn. The calls and arguments stay.
@@ -1088,7 +1110,9 @@ class AsyncAgentRuntime(RuntimeCore):
         # and written back at save time. (See sync AgentRuntime for details.)
         original_prior = [m for m in prior_messages if m.role != "system"]
         if self.evict_prior_tool_outputs:
-            prior_messages = evict_prior_tool_outputs(list(prior_messages))
+            prior_messages = evict_prior_tool_outputs(
+                list(prior_messages), recall_tool_name=recall_tool_name
+            )
         # Exactly one fresh system message at the front; strip any persisted
         # system messages from prior turns so multi-turn sessions don't stack
         # duplicates and grow unbounded. (See sync AgentRuntime for details.)
@@ -1096,6 +1120,15 @@ class AsyncAgentRuntime(RuntimeCore):
             Message(role="system", content=base_prompt, metadata=dict(self.metadata))
         )
         state.messages.extend(m for m in prior_messages if m.role != "system")
+        rendered_facts = fact_ledger.render()
+        if rendered_facts:
+            state.messages.append(
+                Message(
+                    role="assistant",
+                    content=rendered_facts,
+                    metadata={"internal": True, "kind": "verified_session_facts"},
+                )
+            )
         state.messages.append(Message(role="user", content=user_content or user_prompt))
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
@@ -1281,6 +1314,9 @@ class AsyncAgentRuntime(RuntimeCore):
                         metadata={"internal": True, "kind": "required_tool"},
                     )
                 )
+            step_messages = self.fit_provider_request(
+                state, step_messages, iteration=iteration
+            )
 
             self.emit(
                 state,
@@ -1763,10 +1799,17 @@ class AsyncAgentRuntime(RuntimeCore):
         persisted_messages = [
             state.messages[0],
             *original_prior,
-            *state.messages[1 + len(original_prior) :],
+            *(
+                message
+                for message in state.messages[1 + len(original_prior) :]
+                if message.metadata.get("kind") != "verified_session_facts"
+            ),
         ]
         session_metadata = dict(existing_session.metadata) if existing_session else {}
         session_metadata["token_calibration"] = self.token_calibrator.to_dict()
+        fact_ledger.ingest_tool_results(state.tool_results)
+        if len(fact_ledger):
+            session_metadata["verified_facts"] = fact_ledger.to_list()
         latest_checkpoint = (
             self.compactor().latest() if self.context_window_tokens >= 0 else None
         )

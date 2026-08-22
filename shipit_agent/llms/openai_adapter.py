@@ -78,6 +78,44 @@ def _buffered_deltas(text: str) -> list[str]:
     ]
 
 
+def _usage_dict(usage_obj: Any) -> dict[str, int]:
+    """Normalize an OpenAI usage object, including automatic-cache counters.
+
+    OpenAI-compatible endpoints — including the Bedrock Mantle / Gemma route —
+    do *implicit* prompt caching and report the cached portion under
+    ``prompt_tokens_details.cached_tokens`` (and any write under
+    ``cache_write_tokens``). Surface those under the same
+    ``cache_read_input_tokens`` / ``cache_creation_input_tokens`` keys the cost
+    tracker already reads for Anthropic, so cache savings are visible on EVERY
+    path — the streaming path (which the agent loop uses) previously dropped
+    them, so a real 99%-cached prompt reported as if nothing were cached.
+    """
+    if not usage_obj:
+        return {}
+    out: dict[str, int] = {
+        "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0) or 0,
+        "completion_tokens": getattr(usage_obj, "completion_tokens", 0) or 0,
+        "total_tokens": getattr(usage_obj, "total_tokens", 0) or 0,
+    }
+    try:
+        details = getattr(usage_obj, "prompt_tokens_details", None)
+        cached = getattr(details, "cached_tokens", None) if details else None
+        if cached:
+            out["cache_read_input_tokens"] = int(cached)
+        written = getattr(details, "cache_write_tokens", None) if details else None
+        if written:
+            out["cache_creation_input_tokens"] = int(written)
+        out_details = getattr(usage_obj, "completion_tokens_details", None)
+        reasoning = (
+            getattr(out_details, "reasoning_tokens", None) if out_details else None
+        )
+        if reasoning:
+            out["reasoning_tokens"] = int(reasoning)
+    except Exception:
+        pass
+    return out
+
+
 class OpenAIChatLLM:
     def __init__(
         self,
@@ -226,35 +264,7 @@ class OpenAIChatLLM:
 
         reasoning_content = _extract_reasoning(choice)
 
-        usage: dict[str, int] = {}
-        if response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens or 0,
-                "completion_tokens": response.usage.completion_tokens or 0,
-                "total_tokens": response.usage.total_tokens or 0,
-            }
-            # OpenAI does *automatic* prompt caching — no cache_control needed.
-            # Surface the cached-prompt portion under the same key the
-            # CostTracker reads for Anthropic, so cache reads bill cheaper for
-            # OpenAI/OpenAI-compatible providers too. Reasoning models also
-            # report reasoning tokens — pass them through when present.
-            try:
-                details = getattr(response.usage, "prompt_tokens_details", None)
-                cached = getattr(details, "cached_tokens", None) if details else None
-                if cached:
-                    usage["cache_read_input_tokens"] = int(cached)
-                out_details = getattr(
-                    response.usage, "completion_tokens_details", None
-                )
-                reasoning = (
-                    getattr(out_details, "reasoning_tokens", None)
-                    if out_details
-                    else None
-                )
-                if reasoning:
-                    usage["reasoning_tokens"] = int(reasoning)
-            except Exception:
-                pass
+        usage = _usage_dict(response.usage)
 
         return LLMResponse(
             content=choice.content or "",
@@ -335,11 +345,7 @@ class OpenAIChatLLM:
                         break
             usage: dict[str, int] = {}
             if getattr(stream, "usage", None):
-                usage = {
-                    "prompt_tokens": stream.usage.prompt_tokens or 0,
-                    "completion_tokens": stream.usage.completion_tokens or 0,
-                    "total_tokens": stream.usage.total_tokens or 0,
-                }
+                usage = _usage_dict(stream.usage)
             tool_calls = []
             for call in choice.tool_calls or []:
                 arguments = call.function.arguments or "{}"
@@ -373,11 +379,7 @@ class OpenAIChatLLM:
 
         for chunk in _iter_with_deadline(stream, timeout):
             if getattr(chunk, "usage", None):
-                usage = {
-                    "prompt_tokens": chunk.usage.prompt_tokens or 0,
-                    "completion_tokens": chunk.usage.completion_tokens or 0,
-                    "total_tokens": chunk.usage.total_tokens or 0,
-                }
+                usage = _usage_dict(chunk.usage)
             if not getattr(chunk, "choices", None):
                 continue
             delta = chunk.choices[0].delta

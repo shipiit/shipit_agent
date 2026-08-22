@@ -316,7 +316,7 @@ class LiteLLMChatLLM:
         metadata: dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
         text_delta_callback: Callable[[str], bool | None] | None = None,
-        tool_input_callback: Callable[[str, str, str], None] | None = None,
+        tool_input_callback: Callable[[str, str, str], bool | None] | None = None,
         timeout: float | None = None,
         require_tool_call: bool = False,
     ) -> LLMResponse:
@@ -566,7 +566,7 @@ def _stream_completion(
     tools: list[dict[str, Any]] | None,
     extra_kwargs: dict[str, Any],
     text_delta_callback: Callable[[str], bool | None] | None,
-    tool_input_callback: Callable[[str, str, str], None] | None = None,
+    tool_input_callback: Callable[[str, str, str], bool | None] | None = None,
 ) -> LLMResponse:
     """Drive a streaming litellm completion, accumulating text and tool calls.
 
@@ -653,13 +653,21 @@ def _stream_completion(
                                     # fragments. Forward them so a renderer can
                                     # show the file being written.
                                     try:
-                                        tool_input_callback(
+                                        callback_result = tool_input_callback(
                                             entry["id"] or f"call_{idx}",
                                             entry["name"],
                                             fn_args,
                                         )
+                                        if callback_result is False:
+                                            stopped_reason = "tool_argument_guard"
+                                            close = getattr(stream, "close", None)
+                                            if callable(close):
+                                                close()
+                                            break
                                     except Exception:
                                         pass
+                if stopped_reason:
+                    break
 
             chunk_usage = getattr(chunk, "usage", None)
             if chunk_usage:
@@ -938,7 +946,7 @@ class BedrockChatLLM(LiteLLMChatLLM):
         self,
         *,
         text_delta_callback: Callable[[str], bool | None] | None = None,
-        tool_input_callback: Callable[[str, str, str], None] | None = None,
+        tool_input_callback: Callable[[str, str, str], bool | None] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         # Gemma 4 → OpenAI-compatible mantle endpoint; everything else →

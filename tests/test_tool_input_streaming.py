@@ -391,6 +391,24 @@ class TestOpenAIShapedStreams:
         )
         assert response.tool_calls[0].name == "write_file"
 
+    def test_callback_can_stop_runaway_tool_arguments(self, monkeypatch) -> None:
+        from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+
+        client = self._fake_stream(monkeypatch, ["x" * 64] * 100)
+        seen = 0
+
+        def stop(*_):
+            nonlocal seen
+            seen += 1
+            return False if seen == 5 else None
+
+        response = OpenAIChatLLM(model="gpt-4o", api_key="k")._complete_streaming(
+            client, {"model": "gpt-4o", "messages": []}, None, stop
+        )
+
+        assert seen == 5
+        assert response.metadata["stream_stopped"] == "tool_argument_guard"
+
     def test_text_only_streaming_is_unaffected(self, monkeypatch) -> None:
         from shipit_agent.llms.openai_adapter import OpenAIChatLLM
 

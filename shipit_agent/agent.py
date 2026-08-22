@@ -165,6 +165,10 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     #: set a smaller bound for interactive agents where a runaway completion
     #: must not consume an entire large output allowance.
     max_completion_text_chars: int = 0
+    #: Provider-neutral circuit breaker for one structured tool call's JSON
+    #: arguments. This bounds runaway generations before they reach a tool;
+    #: increase it for tools that intentionally accept very large documents.
+    max_tool_argument_chars: int = 65_536
     name: str = "shipit"
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -864,6 +868,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             "require_tool_call": self.require_tool_call,
             "max_required_tool_text_chars": self.max_required_tool_text_chars,
             "max_completion_text_chars": self.max_completion_text_chars,
+            "max_tool_argument_chars": self.max_tool_argument_chars,
             "metadata": {
                 "agent_name": self.name,
                 "agent_description": self.description,

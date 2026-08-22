@@ -61,6 +61,7 @@ _NEXT_ACTION = {
 
 _NOTICES = {
     "context_compacted": "Older turns were condensed to stay in the context window",
+    "context_compaction_started": "Context automatically compacting",
     "guardrail_triggered": "A guardrail stopped the run",
     "lockdown_engaged": "Lockdown — sensitive data was read, so only read-only "
     "tools may run for the rest of this run",

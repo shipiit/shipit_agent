@@ -120,6 +120,6 @@ class LLM(Protocol):
         text_delta_callback: Callable[[str], bool | None] | None = None,
         # (tool_call_id, tool_name, raw_json_delta). Optional: adapters that
         # cannot surface partial tool arguments simply don't accept it.
-        tool_input_callback: Callable[[str, str, str], None] | None = None,
+        tool_input_callback: Callable[[str, str, str], bool | None] | None = None,
         require_tool_call: bool = False,
     ) -> LLMResponse: ...

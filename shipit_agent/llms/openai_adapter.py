@@ -427,13 +427,21 @@ class OpenAIChatLLM:
                             # index stands in for a call id — OpenAI does not
                             # send one until the call completes.
                             try:
-                                on_tool_input(
+                                callback_result = on_tool_input(
                                     slot["id"] or f"call_{idx}",
                                     slot["name"],
                                     fn.arguments,
                                 )
+                                if callback_result is False:
+                                    stopped_reason = "tool_argument_guard"
+                                    close = getattr(stream, "close", None)
+                                    if callable(close):
+                                        close()
+                                    break
                             except Exception:
                                 pass
+            if stopped_reason:
+                break
 
         tool_calls = []
         for idx in sorted(calls):

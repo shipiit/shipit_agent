@@ -98,6 +98,7 @@ _DIRECT: dict[str, PacketKind] = {
     "subagent_started": PacketKind.EVENT,
     "subagent_event": PacketKind.EVENT,
     "subagent_completed": PacketKind.EVENT,
+    "context_compaction_started": PacketKind.EVENT,
     "context_compacted": PacketKind.COMPACTED,
     "usage_tick": PacketKind.USAGE,
     "run_summary": PacketKind.USAGE,

@@ -30,7 +30,8 @@ from typing import Any
 # mechanics (step_started, llm_retry) are not the caller's business.
 _SIDEBAND_EVENTS = frozenset({
     "tool_called", "tool_completed", "tool_failed", "tool_denied",
-    "action_queued", "usage_tick", "context_compacted", "run_cancelled",
+    "action_queued", "usage_tick", "context_compaction_started",
+    "context_compacted", "run_cancelled",
     "guardrail_triggered",
 })
 

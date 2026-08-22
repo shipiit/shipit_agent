@@ -80,6 +80,7 @@ _CANONICAL = frozenset(
         "subagent_event",
         "run_completed",
         "run_cancelled",
+        "context_compaction_started",
         "context_compacted",
         "guardrail_triggered",
         "lockdown_engaged",

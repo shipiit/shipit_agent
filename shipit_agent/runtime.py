@@ -77,6 +77,7 @@ class AgentRuntime(RuntimeCore):
         require_tool_call: bool = False,
         max_required_tool_text_chars: int = 2_048,
         max_completion_text_chars: int = 0,
+        max_tool_argument_chars: int = 65_536,
         metadata: dict[str, Any] | None = None,
         history_messages: list[Message] | None = None,
         memory_store: MemoryStore | None = None,
@@ -136,6 +137,7 @@ class AgentRuntime(RuntimeCore):
             0, int(max_required_tool_text_chars or 0)
         )
         self.max_completion_text_chars = max(0, int(max_completion_text_chars or 0))
+        self.max_tool_argument_chars = max(0, int(max_tool_argument_chars or 0))
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
         self.memory_store = memory_store or InMemoryMemoryStore()
@@ -1225,19 +1227,34 @@ detail you were not given and do not say what you will do next."""
         # show it appearing instead of nothing until the call is complete.
         parsers: dict[str, Any] = {}
         emitted: dict[str, int] = {}
+        argument_guards: dict[str, RepetitionGuard] = {}
+        argument_chars: dict[str, int] = {}
 
-        def _on_tool_input(call_id: str, tool_name: str, fragment: str) -> None:
+        def _on_tool_input(
+            call_id: str, tool_name: str, fragment: str
+        ) -> bool | None:
             from shipit_agent.narrate.json_stream import (
                 StreamingToolInputParser,
                 streaming_field_for,
             )
+
+            argument_chars[call_id] = argument_chars.get(call_id, 0) + len(fragment)
+            guard = argument_guards.setdefault(call_id, RepetitionGuard())
+            repeated = guard.add(fragment)
+            if (
+                repeated and argument_chars[call_id] >= 512
+            ) or (
+                self.max_tool_argument_chars
+                and argument_chars[call_id] >= self.max_tool_argument_chars
+            ):
+                return False
 
             parser = parsers.get(call_id)
             if parser is None:
                 field = streaming_field_for(tool_name)
                 if field is None:
                     parsers[call_id] = False  # nothing worth streaming here
-                    return
+                    return None
                 parser = parsers[call_id] = StreamingToolInputParser(field)
                 emitted[call_id] = 0
                 self.emit(
@@ -1249,12 +1266,12 @@ detail you were not given and do not say what you will do next."""
                     field=field,
                 )
             if parser is False:
-                return
+                return None
 
             parser.append(fragment)
             if parser.has_error:
                 parsers[call_id] = False
-                return
+                return None
             value = parser.streaming_value
             new = value[emitted[call_id] :]
             if new:
@@ -1267,6 +1284,7 @@ detail you were not given and do not say what you will do next."""
                     call_id=call_id,
                     delta=new,
                 )
+            return None
 
         complete_kwargs: dict[str, Any] = dict(
             messages=messages,

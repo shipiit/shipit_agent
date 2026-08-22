@@ -70,6 +70,7 @@ EventType = Literal[
     "subagent_started",
     "subagent_event",
     "subagent_completed",
+    "context_compaction_started",
     "context_compacted",
     "approval_required",
     "checkpoint_saved",

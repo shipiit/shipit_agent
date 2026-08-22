@@ -514,6 +514,42 @@ class RuntimeCore:
         if repaired != arguments:
             tool_call.arguments = repaired
             arguments = repaired
+        from shipit_agent.action_detection import is_degenerate_repetition
+
+        def _strings(value: Any):
+            if isinstance(value, str):
+                yield value
+            elif isinstance(value, dict):
+                for nested in value.values():
+                    yield from _strings(nested)
+            elif isinstance(value, (list, tuple)):
+                for nested in value:
+                    yield from _strings(nested)
+
+        import json
+
+        encoded_size = len(
+            json.dumps(arguments, ensure_ascii=False, default=str, separators=(",", ":"))
+        )
+        limit = getattr(self, "max_tool_argument_chars", 0)
+        if limit and encoded_size > limit:
+            return (
+                f"Error: {getattr(tool, 'name', 'tool')} produced {encoded_size:,} "
+                f"characters of arguments, above this agent's {limit:,}-character "
+                "per-call safety limit. It was not run. Retry once with only the "
+                "specific input needed for the user's request."
+            )
+        if any(
+            len(" ".join(value.split())) >= 512
+            and is_degenerate_repetition(value)
+            for value in _strings(arguments)
+        ):
+            return (
+                f"Error: {getattr(tool, 'name', 'tool')} produced a pathologically "
+                "repetitive argument. It was not run. Retry once with a concise "
+                "argument copied from the user's request; do not repeat planning "
+                "or instructions inside tool arguments."
+            )
         absent = call_carries_nothing(arguments, schema)
         if not absent:
             return None
@@ -1395,6 +1431,15 @@ class RuntimeCore:
             view = latest.replay(messages)
             if not compactor.needs_compaction(view):
                 return view
+        self.emit(
+            state,
+            "context_compaction_started",
+            "Context automatically compacting",
+            before=len(messages),
+            estimated_tokens=compactor.estimated_prompt_tokens(messages),
+            budget_tokens=compactor.limits.input_budget,
+            iteration=iteration,
+        )
         checkpoint = compactor.compact(messages)
         if checkpoint is None:
             return latest.replay(messages) if latest is not None else messages

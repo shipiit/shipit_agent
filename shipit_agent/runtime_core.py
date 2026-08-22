@@ -307,76 +307,36 @@ class RuntimeCore:
 
     @staticmethod
     def requested_tool_names(user_prompt: str, registry: Any) -> set[str]:
-        """Resolve tools the user explicitly requested from live schemas.
+        """Return exact tool identifiers mentioned in the prompt.
 
-        Exact names always qualify. Human forms such as "weather tool" and
-        "CRM MCP ... open tickets" are resolved by registry-name tokens near
-        the words tool/MCP; ambiguous matches are left to the model.
+        This is diagnostic only. Natural-language intent belongs to the model;
+        mandatory execution belongs to the explicit ``required_tools`` API.
+        The runtime must not turn prose around "tool" or "MCP" into policy.
         """
-
-        def words(value: str) -> list[str]:
-            found = re.findall(r"[a-z0-9]+", value.lower().replace("_", " "))
-            return [
-                word[:-1] if len(word) > 3 and word.endswith("s") else word
-                for word in found
-            ]
-
-        prompt_words = words(user_prompt)
-        prompt_set = set(prompt_words)
-        marker_positions = {
-            index for index, word in enumerate(prompt_words) if word in {"tool", "mcp"}
-        }
-        all_entries: list[tuple[str, list[str], int, bool]] = []
-        requested: set[str] = set()
-        normalized_prompt = " ".join(prompt_words)
-        for tool in registry.values():
-            name = str(getattr(tool, "name", "") or "")
-            tokens = words(name)
-            if not name or not tokens:
-                continue
-            explicit_name = (
-                len(tokens) > 1 and " ".join(tokens) in normalized_prompt
-            ) or ("_" in name and name.lower() in user_prompt.lower())
-            if explicit_name:
-                requested.add(name)
-                continue
-            score = sum(token in prompt_set for token in tokens)
-            near_marker = any(
-                abs(index - marker) <= 2
-                for index, token in enumerate(prompt_words)
-                for marker in marker_positions
-                if token == tokens[0]
+        source = user_prompt.lower()
+        return {
+            name
+            for tool in registry.values()
+            if (name := str(getattr(tool, "name", "") or ""))
+            and re.search(
+                rf"(?<![a-z0-9_]){re.escape(name.lower())}(?![a-z0-9_])",
+                source,
             )
-            all_entries.append((name, tokens, score, near_marker))
-
-        anchors: dict[str, list[tuple[str, int]]] = {}
-        for name, tokens, score, near_marker in all_entries:
-            if near_marker:
-                anchors.setdefault(tokens[0], []).append((name, score))
-        for candidates in anchors.values():
-            if len(candidates) == 1:
-                requested.add(candidates[0][0])
-                continue
-            best = max(score for _name, score in candidates)
-            winners = [name for name, score in candidates if score == best]
-            if len(winners) == 1:
-                requested.add(winners[0])
-        return requested
+        }
 
     def missing_requested_tools(
         self, user_prompt: str, registry: Any, tool_results: Sequence[Any]
     ) -> list[str]:
-        requested = self.requested_tool_names(user_prompt, registry)
-        executed = {str(getattr(result, "name", "")) for result in tool_results}
-        return sorted(requested - executed - self._requested_tool_nudges)
+        # Compatibility seam for custom RuntimeCore subclasses. Shipit no
+        # longer promotes language guesses into mandatory execution policy.
+        return []
 
     def initial_required_tool_names(self, user_prompt: str, registry: Any) -> set[str]:
         """Resolve first-step required tools against the live registry.
 
         Hosts may provide ``Agent(required_tools=[...])`` when their own
-        routing has made an unambiguous capability choice. Exact tool requests
-        typed by the user receive the same treatment automatically. Unknown
-        names are ignored so a changing connector catalogue cannot break a run.
+        routing has made an unambiguous capability choice. Unknown names are
+        ignored so a changing connector catalogue cannot break a run.
         """
         available = {str(getattr(tool, "name", "") or "") for tool in registry.values()}
         configured = {
@@ -384,8 +344,7 @@ class RuntimeCore:
             for name in (getattr(self, "required_tools", None) or ())
             if str(name)
         }
-        explicit = self.requested_tool_names(user_prompt, registry)
-        return (configured | explicit) & available
+        return configured & available
 
     def record_requested_tool_nudge(self, names: Sequence[str]) -> None:
         self._requested_tool_nudges.update(names)
@@ -1431,6 +1390,8 @@ class RuntimeCore:
             view = latest.replay(messages)
             if not compactor.needs_compaction(view):
                 return view
+        elif not compactor.needs_compaction(messages):
+            return messages
         self.emit(
             state,
             "context_compaction_started",

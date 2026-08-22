@@ -1835,7 +1835,9 @@ detail you were not given and do not say what you will do next."""
                     )
                     continue
                 executed = {result.name for result in state.tool_results}
-                missing_required = sorted(forced_names - executed)
+                missing_required = sorted(
+                    forced_names - executed - self._requested_tool_nudges
+                )
                 missing_requested = self.missing_requested_tools(
                     user_prompt, registry, state.tool_results
                 )

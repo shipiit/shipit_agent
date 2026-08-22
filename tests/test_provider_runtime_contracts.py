@@ -192,19 +192,49 @@ def test_explicit_tool_requests_are_resolved_from_the_registry() -> None:
         def values(self):
             return [Tool(name) for name in (
                 "weather_lookup", "orders_db_query", "currency_convert",
-                "crm_lookup_customer", "crm_open_tickets",
+                "crm_lookup_customer", "crm_open_tickets", "web_search",
             )]
 
     registry = Registry()
     assert RuntimeCore.requested_tool_names(
-        "Use the orders tool, then the currency tool.", registry
+        "Use orders_db_query, then currency_convert.", registry
     ) == {"orders_db_query", "currency_convert"}
     assert RuntimeCore.requested_tool_names(
         "Use the CRM MCP to retrieve open tickets.", registry
-    ) == {"crm_open_tickets"}
+    ) == set()
     assert RuntimeCore.requested_tool_names(
         "Without tools, recall the Berlin weather.", registry
     ) == set()
+    assert RuntimeCore.requested_tool_names(
+        "Use the forums MCP and do not use web_search.", registry
+    ) == {"web_search"}
+
+
+def test_requested_tool_retry_is_bounded_when_model_keeps_refusing() -> None:
+    class Refuses:
+        model = "test-model"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, **_kwargs):
+            self.calls += 1
+            return LLMResponse(content="I cannot execute that tool.")
+
+    def weather(city: str) -> str:
+        raise AssertionError("tool must not be fabricated by the runtime")
+
+    llm = Refuses()
+    result = Agent(
+        llm=llm,
+        tools=[FunctionTool.from_callable(weather, name="weather_lookup")],
+        required_tools=["weather_lookup"],
+        auto_use_skills=False,
+        max_iterations=16,
+    ).run("Use the weather tool for Berlin")
+
+    assert llm.calls <= 3
+    assert result.output == "I cannot execute that tool."
 
 
 def test_explicit_tool_request_cannot_finish_with_a_simulated_result() -> None:
@@ -233,6 +263,7 @@ def test_explicit_tool_request_cannot_finish_with_a_simulated_result() -> None:
         tools=[FunctionTool.from_callable(
             weather, name="weather_lookup", read_only=True
         )],
+        required_tools=["weather_lookup"],
         auto_use_skills=False,
         max_iterations=4,
     ).run("Use the weather tool for Berlin")
@@ -322,6 +353,7 @@ def test_requested_tool_retry_is_constrained_and_required_when_supported() -> No
             name="currency_convert",
             read_only=True,
         )],
+        required_tools=["currency_convert"],
         auto_use_skills=False,
         max_iterations=4,
     ).run("Use the currency tool to convert 100 EUR")

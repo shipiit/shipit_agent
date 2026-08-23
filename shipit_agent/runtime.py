@@ -1812,6 +1812,11 @@ detail you were not given and do not say what you will do next."""
                 force_any_retries = int(shared_state.get("force_any_retries", 0) or 0)
                 if (
                     force_any_tool
+                    # Only re-demand a call when a tool was actually advertised
+                    # this step. With no ``step_schemas`` the mandate is
+                    # unsatisfiable — the model had nothing on the wire to call —
+                    # so retrying just loops "Retrying required tool use".
+                    and step_schemas
                     and iteration < self.max_iterations
                     and force_any_retries < self.MAX_FORCE_ANY_RETRIES
                 ):

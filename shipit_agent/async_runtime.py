@@ -1410,6 +1410,9 @@ class AsyncAgentRuntime(RuntimeCore):
                 force_any_retries = int(shared_state.get("force_any_retries", 0) or 0)
                 if (
                     force_any_tool
+                    # Unsatisfiable with no tool advertised this step — see the
+                    # sync runtime: retrying just loops the required-tool nudge.
+                    and step_schemas
                     and iteration < self.max_iterations
                     and force_any_retries < self.MAX_FORCE_ANY_RETRIES
                 ):

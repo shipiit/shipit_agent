@@ -1407,7 +1407,13 @@ class AsyncAgentRuntime(RuntimeCore):
                     )
 
             if not response.tool_calls:
-                if force_any_tool and iteration < self.max_iterations:
+                force_any_retries = int(shared_state.get("force_any_retries", 0) or 0)
+                if (
+                    force_any_tool
+                    and iteration < self.max_iterations
+                    and force_any_retries < self.MAX_FORCE_ANY_RETRIES
+                ):
+                    shared_state["force_any_retries"] = force_any_retries + 1
                     state.messages.append(
                         Message(
                             role="assistant",
@@ -1432,6 +1438,18 @@ class AsyncAgentRuntime(RuntimeCore):
                         iteration=iteration,
                     )
                     continue
+                # Give up forcing after the cap rather than re-emitting the same
+                # retry to max_iterations (the "Retrying required tool use" loop).
+                if force_any_tool:
+                    shared_state.pop("force_any_tool", None)
+                    force_any_tool = False
+                    self.emit(
+                        state,
+                        "step",
+                        "Required tool did not execute; answering from available "
+                        "context",
+                        iteration=iteration,
+                    )
                 executed = {result.name for result in state.tool_results}
                 missing_required = sorted(
                     forced_names - executed - self._requested_tool_nudges

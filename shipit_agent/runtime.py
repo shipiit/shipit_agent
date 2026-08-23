@@ -1809,7 +1809,13 @@ detail you were not given and do not say what you will do next."""
                     )
 
             if not response.tool_calls:
-                if force_any_tool and iteration < self.max_iterations:
+                force_any_retries = int(shared_state.get("force_any_retries", 0) or 0)
+                if (
+                    force_any_tool
+                    and iteration < self.max_iterations
+                    and force_any_retries < self.MAX_FORCE_ANY_RETRIES
+                ):
+                    shared_state["force_any_retries"] = force_any_retries + 1
                     state.messages.append(
                         Message(
                             role="assistant",
@@ -1834,6 +1840,22 @@ detail you were not given and do not say what you will do next."""
                         iteration=iteration,
                     )
                     continue
+                # The required tool never materialized after MAX_FORCE_ANY_RETRIES
+                # attempts. Stop forcing rather than re-emitting the identical
+                # retry every iteration to the cap — a dozen "Retrying required
+                # tool use" lines is the loop this guards against. Drop the
+                # mandate and let the model answer from what it has; the
+                # grounding rules still forbid fabricating a result it never got.
+                if force_any_tool:
+                    shared_state.pop("force_any_tool", None)
+                    force_any_tool = False
+                    self.emit(
+                        state,
+                        "step",
+                        "Required tool did not execute; answering from available "
+                        "context",
+                        iteration=iteration,
+                    )
                 executed = {result.name for result in state.tool_results}
                 missing_required = sorted(
                     forced_names - executed - self._requested_tool_nudges

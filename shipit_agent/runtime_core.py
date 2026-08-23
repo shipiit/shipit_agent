@@ -1240,6 +1240,14 @@ class RuntimeCore:
         "in text."
     )
 
+    #: How many times a turn under ``require_tool_call`` (force-any-tool) may be
+    #: re-prompted to emit the mandatory call before the runtime gives up and
+    #: lets the model answer from what it has. Without a cap the forced-tool
+    #: retry re-fires every iteration to ``max_iterations`` — the visible
+    #: "Retrying required tool use" loop. Two attempts is enough for a model
+    #: that merely stumbled; a model that will not call it never will.
+    MAX_FORCE_ANY_RETRIES = 2
+
     # ── usage ────────────────────────────────────────────────────────────
 
     def track_usage(self, state: Any, response: LLMResponse, iteration: int) -> None:

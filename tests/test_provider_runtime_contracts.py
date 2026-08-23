@@ -237,6 +237,37 @@ def test_requested_tool_retry_is_bounded_when_model_keeps_refusing() -> None:
     assert result.output == "I cannot execute that tool."
 
 
+def test_force_any_tool_retry_is_bounded_when_model_keeps_refusing() -> None:
+    """``require_tool_call`` with no specific ``required_tools`` must not loop
+    the 'Retrying required tool use' nudge every iteration to max_iterations."""
+    class Refuses:
+        model = "test-model"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, **_kwargs):
+            self.calls += 1
+            return LLMResponse(content="I am ready to help.")
+
+    def search(query: str) -> str:
+        raise AssertionError("tool must not be fabricated by the runtime")
+
+    llm = Refuses()
+    result = Agent(
+        llm=llm,
+        tools=[FunctionTool.from_callable(search, name="search")],
+        require_tool_call=True,
+        auto_use_skills=False,
+        max_iterations=16,
+    ).run("Find something for me")
+
+    # Capped at MAX_FORCE_ANY_RETRIES forced re-prompts (2), so completions stay
+    # far below max_iterations rather than a dozen "Retrying required tool use".
+    assert llm.calls <= 4, f"forced-tool retry not bounded: {llm.calls} calls"
+    assert result.output == "I am ready to help."
+
+
 def test_explicit_tool_request_cannot_finish_with_a_simulated_result() -> None:
     calls: list[str] = []
 

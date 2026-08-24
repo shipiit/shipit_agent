@@ -473,7 +473,42 @@ class RuntimeCore:
         if repaired != arguments:
             tool_call.arguments = repaired
             arguments = repaired
+        guarded = self.argument_guard_error(tool, tool_call)
+        if guarded:
+            return guarded
+        absent = call_carries_nothing(arguments, schema)
+        if not absent:
+            return None
+        names = ", ".join(f"'{name}'" for name in absent)
+        # Blind-call repair: a model running with deferred_tools never saw this
+        # tool's schema, so it guesses argument names (``items`` for
+        # ``provided_items``) and the guess bounces here. Handing back the full
+        # signature — every parameter, its type, which are required — turns a
+        # dead retry into a correct one. Weak models (gemini-flash) especially
+        # cannot recover from a name-only bounce without it.
+        signature = self._signature_hint(tool)
+        signature_clause = f" Signature: {signature}." if signature else ""
+        return (
+            f"Error: {getattr(tool, 'name', 'tool')} was called with no usable "
+            f"arguments. It was not run. Call it again and pass {names} — a "
+            f"value taken from the user's question, not an empty string."
+            f"{signature_clause} With nothing to go on this tool returns "
+            f"everything it has, which is not what was asked for."
+        )
+
+    def argument_guard_error(self, tool: Any, tool_call: Any) -> str | None:
+        """The objective guard signal: oversized or degenerating arguments.
+
+        Separate from the missing-argument bounce in :meth:`check_arguments`
+        because only this one counts against the recovery budget. A blind call
+        that guessed an argument name is *expected* to bounce and recover from
+        the signature hint; a payload that blew the size bound or came back
+        pathologically repetitive is a broken generation, and repeating it is
+        what the budget exists to stop.
+        """
         from shipit_agent.action_detection import is_degenerate_repetition
+
+        arguments = dict(getattr(tool_call, "arguments", None) or {})
 
         def _strings(value: Any):
             if isinstance(value, str):
@@ -509,25 +544,100 @@ class RuntimeCore:
                 "argument copied from the user's request; do not repeat planning "
                 "or instructions inside tool arguments."
             )
-        absent = call_carries_nothing(arguments, schema)
-        if not absent:
-            return None
-        names = ", ".join(f"'{name}'" for name in absent)
-        # Blind-call repair: a model running with deferred_tools never saw this
-        # tool's schema, so it guesses argument names (``items`` for
-        # ``provided_items``) and the guess bounces here. Handing back the full
-        # signature — every parameter, its type, which are required — turns a
-        # dead retry into a correct one. Weak models (gemini-flash) especially
-        # cannot recover from a name-only bounce without it.
-        signature = self._signature_hint(tool)
-        signature_clause = f" Signature: {signature}." if signature else ""
-        return (
-            f"Error: {getattr(tool, 'name', 'tool')} was called with no usable "
-            f"arguments. It was not run. Call it again and pass {names} — a "
-            f"value taken from the user's question, not an empty string."
-            f"{signature_clause} With nothing to go on this tool returns "
-            f"everything it has, which is not what was asked for."
+        return None
+
+    # ── recovery budget after rejected arguments ─────────────────────────
+
+    #: What the model is told once a tool's argument-recovery budget is spent.
+    ARGUMENT_RECOVERY_EXHAUSTED = (
+        "Error: {tool} was not run. Its arguments were rejected "
+        "{count} times in a row, so argument generation for this tool has "
+        "failed and {tool} is no longer available in this run. Do not call it "
+        "again. Answer the original request from what is already above and "
+        "say plainly what could not be retrieved."
+    )
+
+    def note_argument_rejection(
+        self, state: Any, tool_name: str, iteration: int
+    ) -> bool:
+        """Count one *completion* of rejected arguments for ``tool_name``.
+
+        Returns ``True`` exactly once — on the completion that spends the
+        budget — so the caller emits a single terminal outcome and quarantines
+        the tool. Counting per completion rather than per call is what makes a
+        batch of parallel malformed calls cost one strike instead of three.
+
+        Held under ``state.argument_rejection_lock`` because the whole
+        read-modify-write must be one step: the sync loop runs a parallel
+        batch in a ThreadPoolExecutor, and every worker in it mutates this
+        same ``RuntimeState`` — ``shared_state`` is isolated per call,
+        ``state`` is not.
+        """
+        budget = int(getattr(self, "max_consecutive_tool_argument_rejections", 0) or 0)
+        if not budget:
+            return False
+        with state.argument_rejection_lock:
+            count, last = state.tool_argument_rejections.get(tool_name, (0, None))
+            if last == iteration:  # already counted this completion
+                return False
+            count += 1
+            state.tool_argument_rejections[tool_name] = (count, iteration)
+            if count < budget or tool_name in state.quarantined_tools:
+                return False
+            state.quarantined_tools.add(tool_name)
+        # ``required_tools`` names this tool specifically. ``require_tool_call``
+        # only says *some* tool must run, so it is deliberately not consulted:
+        # quarantining one tool while others remain callable is not a failed
+        # run, and claiming otherwise reports a failure that did not happen.
+        if tool_name in (getattr(self, "required_tools", None) or ()):
+            self.metadata["gave_up"] = True
+            self.metadata["give_up_reason"] = (
+                f"argument generation for the required tool '{tool_name}' failed "
+                f"{count} times in a row; the tool never ran"
+            )
+            self.metadata.setdefault("give_up_needs", [tool_name])
+        return True
+
+    def clear_argument_rejections(self, state: Any, tool_name: str) -> None:
+        """A call that cleared the gate resets that tool's consecutive count."""
+        with state.argument_rejection_lock:
+            state.tool_argument_rejections.pop(tool_name, None)
+
+    def note_new_quarantines(self, state: Any, shared_state: dict[str, Any]) -> None:
+        """Ask for one text-only completion when a tool was just quarantined.
+
+        One-shot: the flag is popped by the next step. The quarantine itself
+        is permanent but per-tool, so every other tool stays callable — a
+        broken argument stream for one tool must not silently disarm the rest.
+        """
+        seen = set(shared_state.get("quarantined_tools") or ())
+        if not state.quarantined_tools - seen:
+            return
+        shared_state["quarantined_tools"] = set(state.quarantined_tools)
+        shared_state["force_text_after_argument_rejection"] = True
+        # A quarantined tool must also stop being *demanded*: the forced-tool
+        # prompt survives a rejection (nothing was executed, so nothing pruned
+        # it) and would order the model to call a tool no longer advertised.
+        remaining = (
+            set(shared_state.get("forced_tool_names") or ()) - state.quarantined_tools
         )
+        if remaining:
+            shared_state["forced_tool_names"] = remaining
+        else:
+            shared_state.pop("forced_tool_names", None)
+
+    @staticmethod
+    def drop_quarantined_schemas(
+        schemas: list[Any], quarantined: set[str]
+    ) -> list[Any]:
+        """``schemas`` without any tool whose recovery budget is spent."""
+        if not quarantined:
+            return schemas
+        return [
+            schema
+            for schema in schemas
+            if str((schema.get("function") or {}).get("name", "")) not in quarantined
+        ]
 
     @staticmethod
     def _signature_hint(tool: Any) -> str:
@@ -1491,6 +1601,14 @@ class RuntimeCore:
                 "hit_ratio": cache_hit_ratio,
             },
             "estimated_cost_usd": cost_usd,
+            # Rejected calls never executed, so they are counted apart from
+            # ``tool_calls`` rather than folded into it.
+            "tool_arguments_rejected": sum(
+                1 for e in events if e.type == "tool_arguments_rejected"
+            ),
+            "tool_argument_recoveries_exhausted": sum(
+                1 for e in events if e.type == "tool_argument_recovery_exhausted"
+            ),
             "gave_up": bool(self.metadata.get("gave_up")),
         }
 

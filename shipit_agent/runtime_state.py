@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,6 +20,16 @@ class RuntimeState:
     seen_tool_outputs: dict = field(default_factory=dict)
     last_observation: str = ""
     executed_readonly_calls: set = field(default_factory=set)
+    #: tool name -> (consecutive rejected completions, last counted iteration).
+    #: Keyed by logical tool name, never by provider call id — a provider mints
+    #: a fresh id for every retry, so a per-id counter never reaches its budget.
+    tool_argument_rejections: dict = field(default_factory=dict)
+    #: Tools whose argument-recovery budget is spent; not advertised again.
+    quarantined_tools: set = field(default_factory=set)
+    #: Guards the two fields above. Unlike ``shared_state``, this object is
+    #: NOT copied per call — the sync loop's thread pool hands the same
+    #: instance to every worker in a parallel batch.
+    argument_rejection_lock: Any = field(default_factory=threading.Lock)
     verify_gate: Any = None
 
 

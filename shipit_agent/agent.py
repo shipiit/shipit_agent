@@ -169,6 +169,12 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     #: arguments. This bounds runaway generations before they reach a tool;
     #: increase it for tools that intentionally accept very large documents.
     max_tool_argument_chars: int = 65_536
+    #: How many consecutive completions may have a tool's arguments rejected by
+    #: the guard above before that tool is quarantined for the rest of the run.
+    #: Without it a model can emit a fresh broken payload every step and rebill
+    #: the whole prompt until ``max_iterations`` — a safety block turned into a
+    #: token-amplification loop. Zero disables the circuit breaker.
+    max_consecutive_tool_argument_rejections: int = 2
     name: str = "shipit"
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -869,6 +875,9 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             "max_required_tool_text_chars": self.max_required_tool_text_chars,
             "max_completion_text_chars": self.max_completion_text_chars,
             "max_tool_argument_chars": self.max_tool_argument_chars,
+            "max_consecutive_tool_argument_rejections": (
+                self.max_consecutive_tool_argument_rejections
+            ),
             "metadata": {
                 "agent_name": self.name,
                 "agent_description": self.description,

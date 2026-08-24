@@ -78,6 +78,7 @@ class AgentRuntime(RuntimeCore):
         max_required_tool_text_chars: int = 2_048,
         max_completion_text_chars: int = 0,
         max_tool_argument_chars: int = 65_536,
+        max_consecutive_tool_argument_rejections: int = 2,
         metadata: dict[str, Any] | None = None,
         history_messages: list[Message] | None = None,
         memory_store: MemoryStore | None = None,
@@ -138,6 +139,9 @@ class AgentRuntime(RuntimeCore):
         )
         self.max_completion_text_chars = max(0, int(max_completion_text_chars or 0))
         self.max_tool_argument_chars = max(0, int(max_tool_argument_chars or 0))
+        self.max_consecutive_tool_argument_rejections = max(
+            0, int(max_consecutive_tool_argument_rejections or 0)
+        )
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
         self.memory_store = memory_store or InMemoryMemoryStore()
@@ -471,8 +475,34 @@ class AgentRuntime(RuntimeCore):
         # argument is missing so the next step can supply it. Running a search
         # with no query returns the whole corpus, and an answer written from
         # that is about everything except the question.
+        # A quarantined tool stays refused even if the model later produces
+        # well-formed arguments for it: its argument stream already failed its
+        # budget, and re-arming it would reopen the loop this bound closes.
+        if tool_call.name in state.quarantined_tools:
+            self.emit(
+                state,
+                "tool_arguments_rejected",
+                f"Tool quarantined after failed argument recovery: {tool_call.name}",
+                tool=tool_call.name,
+                quarantined=True,
+                iteration=iteration,
+            )
+            return None, Message(
+                role="tool",
+                name=tool_call.name,
+                content=self.ARGUMENT_RECOVERY_EXHAUSTED.format(
+                    tool=tool_call.name,
+                    count=state.tool_argument_rejections.get(tool_call.name, (0,))[0],
+                ),
+                metadata={
+                    "tool_call_id": tool_call_record["id"],
+                    "error": "tool_argument_recovery_exhausted",
+                },
+            )
+
         argument_error = self.check_arguments(tool, tool_call)
         if argument_error:
+            guarded = self.argument_guard_error(tool, tool_call) is not None
             self.emit(
                 state,
                 "tool_arguments_rejected",
@@ -481,15 +511,39 @@ class AgentRuntime(RuntimeCore):
                 arguments=dict(tool_call.arguments or {}),
                 iteration=iteration,
             )
+            # A guard rejection is an objective broken generation, so it spends
+            # the tool's recovery budget; a missing-argument bounce is the
+            # blind-call repair path and must stay free to recover.
+            exhausted = guarded and self.note_argument_rejection(
+                state, tool_call.name, iteration
+            )
+            if exhausted:
+                argument_error = self.ARGUMENT_RECOVERY_EXHAUSTED.format(
+                    tool=tool_call.name,
+                    count=state.tool_argument_rejections[tool_call.name][0],
+                )
+                self.emit(
+                    state,
+                    "tool_argument_recovery_exhausted",
+                    f"Gave up generating arguments for {tool_call.name}",
+                    tool=tool_call.name,
+                    rejections=state.tool_argument_rejections[tool_call.name][0],
+                    iteration=iteration,
+                )
             return None, Message(
                 role="tool",
                 name=tool_call.name,
                 content=argument_error,
                 metadata={
                     "tool_call_id": tool_call_record["id"],
-                    "error": "missing_required_arguments",
+                    "error": (
+                        "tool_argument_recovery_exhausted"
+                        if exhausted
+                        else "missing_required_arguments"
+                    ),
                 },
             )
+        self.clear_argument_rejections(state, tool_call.name)
 
         # ── Duplicate-call gate ─────────────────────────────────────────────
         # A weak model re-issues a read it already ran this turn — the
@@ -1664,6 +1718,7 @@ detail you were not given and do not say what you will do next."""
             force_text = bool(
                 shared_state.pop("force_text_after_duplicate", False)
                 or shared_state.pop("force_text_after_malformed", False)
+                or shared_state.pop("force_text_after_argument_rejection", False)
             )
             forced_names = set(shared_state.get("forced_tool_names") or ())
             force_any_tool = bool(shared_state.get("force_any_tool"))
@@ -1671,6 +1726,9 @@ detail you were not given and do not say what you will do next."""
                 []
                 if force_text
                 else self.select_step_schemas(tool_schemas, shared_state)
+            )
+            active_schemas = self.drop_quarantined_schemas(
+                active_schemas, state.quarantined_tools
             )
             if forced_names:
                 active_schemas = [
@@ -2099,6 +2157,7 @@ detail you were not given and do not say what you will do next."""
 
             if self.force_text_after_duplicate_batch(state.messages, tool_call_records):
                 shared_state["force_text_after_duplicate"] = True
+            self.note_new_quarantines(state, shared_state)
 
             # Mid-run re-planning: if replan_interval is set and we've
             # completed that many iterations, run the planner again to

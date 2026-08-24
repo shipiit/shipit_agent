@@ -355,7 +355,14 @@ class AsyncAgentRuntime(RuntimeCore):
         # Keep final answers streaming when tool schemas remain advertised.
         # Native structured tool calling separates calls from answer text;
         # schema availability alone is not evidence that this is a tool step.
-        expose_text_deltas = self.guardrails is None
+        #
+        # Stream unless a guardrail could rewrite the answer after the fact:
+        # output-modifying rules (secret/PII redaction, output blocklist,
+        # custom/judge output check) must buffer the whole answer to redact
+        # before display. Input and tool-output rules don't touch the answer
+        # stream, so a set with only those streams live.
+        expose_text_deltas = (
+            self.guardrails is None or not self.guardrails.modifies_output())
 
         def _schedule_emit(event_type: str, message: str, **payload: Any) -> None:
             loop.call_soon_threadsafe(

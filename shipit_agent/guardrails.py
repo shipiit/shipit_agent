@@ -173,6 +173,25 @@ class Guardrails:
             )
         return GuardDecision(action="allow", text=text)
 
+    def modifies_output(self) -> bool:
+        """True when a rule can alter or block the FINAL answer text.
+
+        These are the only guardrails that make token streaming unsafe: a
+        redaction or a block cannot be un-sent once tokens have gone out, so
+        the runtime must buffer the whole answer, run ``check_output``, and
+        emit the result at once. Input checks and tool-output scanning never
+        touch the model's answer stream — a guardrails set with only those can
+        stream tokens live and still be fully enforced. Mirrors exactly what
+        ``check_output`` above reads.
+        """
+        return bool(
+            self.block_secret_leaks
+            or self.redact_pii
+            or self.output_blocklist
+            or self.custom_output is not None
+            or self.judge_llm is not None
+        )
+
     # ── presets ───────────────────────────────────────────────────────
     @classmethod
     def strict(cls, **overrides: Any) -> "Guardrails":

@@ -271,3 +271,34 @@ class TestJudge:
 
         g = Guardrails(judge_llm=Broken())
         assert not g.check_input("normal question").blocked
+
+
+class TestModifiesOutput:
+    """The predicate the runtime uses to decide whether it can stream tokens."""
+
+    def test_input_and_tool_only_does_not_modify_output(self) -> None:
+        # Prompt-injection + tool-output scanning never touch the answer
+        # stream, so a set with only those can stream live.
+        g = Guardrails(block_prompt_injection=True, scan_tool_outputs=True,
+                       block_secret_leaks=False, redact_pii=False)
+        assert g.modifies_output() is False
+
+    def test_secret_redaction_modifies_output(self) -> None:
+        assert Guardrails(block_secret_leaks=True).modifies_output() is True
+
+    def test_pii_redaction_modifies_output(self) -> None:
+        assert Guardrails(block_secret_leaks=False,
+                          redact_pii=True).modifies_output() is True
+
+    def test_output_blocklist_modifies_output(self) -> None:
+        assert Guardrails(block_secret_leaks=False,
+                          output_blocklist=["secret-codename"]).modifies_output()
+
+    def test_output_judge_modifies_output(self) -> None:
+        g = Guardrails(block_secret_leaks=False, judge_llm=object())
+        assert g.modifies_output() is True
+
+    def test_presets(self) -> None:
+        # standard() and strict() both redact secrets, so both buffer.
+        assert Guardrails.standard().modifies_output() is True
+        assert Guardrails.strict().modifies_output() is True

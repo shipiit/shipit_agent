@@ -1194,7 +1194,15 @@ detail you were not given and do not say what you will do next."""
         # one. Native structured providers can produce the final answer while
         # those schemas remain advertised, so gating on ``not tools`` silently
         # disables token streaming for normal agent answers.
-        expose_text_deltas = self.guardrails is None
+        #
+        # Stream when there is nothing that could rewrite the answer after the
+        # fact. Output-modifying guardrails (secret/PII redaction, an output
+        # blocklist, a custom/judge output check) must buffer the whole answer
+        # so they can redact before the user sees it — tokens can't be un-sent.
+        # Input checks and tool-output scanning don't touch the answer stream,
+        # so a guardrails set with only those still streams live.
+        expose_text_deltas = (
+            self.guardrails is None or not self.guardrails.modifies_output())
 
         # When the LLM adapter supports streaming via ``text_delta_callback``,
         # emit each text chunk as a ``text_delta`` event so the SSE adapter

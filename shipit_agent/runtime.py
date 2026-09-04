@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import queue
 import threading
 import time
@@ -651,20 +652,11 @@ class AgentRuntime(RuntimeCore):
                 break
             except self.retry_policy.retry_on_exceptions as exc:
                 if attempt >= self.retry_policy.max_tool_retries:
-                    self.emit(
-                        state,
-                        "tool_failed",
-                        f"Tool failed: {tool_call.name}",
-                        tool=tool_call.name,
-                        call_id=tool_call_record["id"],
-                        error=str(exc),
-                        iteration=iteration,
-                        duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
-                    )
                     error_output = f"Error running tool '{tool_call.name}': {exc}"
                     tool_result = ToolResult(
                         name=tool_call.name,
                         output=error_output,
+                        is_error=True,
                         metadata={"error": str(exc)},
                     )
                     if self.guardrails is None:
@@ -683,6 +675,27 @@ class AgentRuntime(RuntimeCore):
                     error=str(exc),
                     iteration=iteration,
                 )
+            except Exception as exc:  # noqa: BLE001 - tools are a fault boundary
+                # A tool implementation bug is not retryable, but it is still
+                # a tool failure rather than an agent failure. Feed the error
+                # back to the model so it can choose another route and keep the
+                # session alive. BaseException remains fatal.
+                error_output = f"Error running tool '{tool_call.name}': {exc}"
+                tool_result = ToolResult(
+                    name=tool_call.name,
+                    output=error_output,
+                    is_error=True,
+                    metadata={
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                if self.guardrails is None:
+                    _publish_output(ToolOutputChunk(
+                        error_output,
+                        {"error": str(exc), "error_type": type(exc).__name__},
+                    ))
+                break
 
         if self.hooks:
             tool_result = self.hooks.run_after_tool(tool_call.name, tool_result)
@@ -747,10 +760,11 @@ class AgentRuntime(RuntimeCore):
                 else "",
                 ok=md.get("ok"),
             )
+        terminal_event = "tool_failed" if tool_result.is_error else "tool_completed"
         self.emit(
             state,
-            "tool_completed",
-            f"Tool completed: {tool_call.name}",
+            terminal_event,
+            f"Tool {'failed' if tool_result.is_error else 'completed'}: {tool_call.name}",
             tool=tool_call.name,
             call_id=tool_call_record["id"],
             group_id=group_id,
@@ -759,6 +773,8 @@ class AgentRuntime(RuntimeCore):
             model_output_chars=len(model_output),
             model_output_reduced=model_output != tool_result.output,
             metadata=safe_tool_event_metadata(tool_result.metadata),
+            error=(str(tool_result.metadata.get("error") or "")
+                   if tool_result.is_error else ""),
             iteration=iteration,
             duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
         )
@@ -854,7 +870,12 @@ class AgentRuntime(RuntimeCore):
             )
             with ThreadPoolExecutor(max_workers=worker_count) as pool:
                 for idx, tc in enumerate(tool_calls):
+                    # Context variables carry request identity, tenant scope,
+                    # tracing and connection state. ThreadPoolExecutor starts
+                    # with an empty context unless we copy it explicitly.
+                    tool_context = contextvars.copy_context()
                     future = pool.submit(
+                        tool_context.run,
                         self._execute_single_tool,
                         state=state,
                         registry=registry,
@@ -2331,8 +2352,15 @@ detail you were not given and do not say what you will do next."""
                             break
 
         self._event_subscriber = _subscriber
+        # Preserve caller-owned ContextVars (tenant/user/tracing state) inside
+        # the streaming worker. Without this, Agent.run() and Agent.stream()
+        # authorize the same MCP call differently.
+        worker_context = contextvars.copy_context()
         worker = threading.Thread(
-            target=_worker, name="shipit-agent-stream", daemon=True
+            target=worker_context.run,
+            args=(_worker,),
+            name="shipit-agent-stream",
+            daemon=True,
         )
         worker.start()
         try:

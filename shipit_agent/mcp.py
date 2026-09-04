@@ -191,6 +191,12 @@ class MCPRemoteTool:
         text_parts = _render_mcp_content(content)
         is_error = bool(result.get("isError", False))
         rendered = "\n".join(part for part in text_parts if part).strip()
+        if not rendered:
+            rendered = (
+                f"MCP tool '{self.name}' returned an error without details."
+                if is_error
+                else f"MCP tool '{self.name}' completed but returned no content."
+            )
         summary = _mcp_result_summary(result, rendered)
         # An MCP tool that returned an image gets it in front of the model,
         # not a "[image: image/png]" placeholder: the first image block's

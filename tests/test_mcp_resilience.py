@@ -2,7 +2,7 @@
 transient blip retries."""
 import pytest
 
-from shipit_agent.mcp import MCPError
+from shipit_agent.mcp import MCPError, MCPRemoteTool
 from shipit_agent.mcp_resilience import (
     CircuitBreaker,
     ResilientMCPTransport,
@@ -123,3 +123,20 @@ def test_close_delegates():
     inner = FakeTransport()
     ResilientMCPTransport(inner).close()
     assert inner.closed
+
+
+def test_empty_successful_mcp_result_is_explicit_not_blank():
+    """A blank tool message gives weaker models nothing to reason from."""
+    tool = MCPRemoteTool(
+        server_name="cases",
+        transport=FakeTransport(),
+        name="get_case_brief",
+        description="Read a case",
+    )
+
+    output = tool.run(None, case_ref="DAR1")
+
+    assert output.text == (
+        "MCP tool 'get_case_brief' completed but returned no content."
+    )
+    assert output.metadata["ok"] is True

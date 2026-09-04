@@ -8,6 +8,7 @@ memory, structured output, and async runtime.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import threading
 import time
 from typing import Any
@@ -146,6 +147,83 @@ class TestRetryPolicyDefaults:
 
 
 class TestGracefulToolFailure:
+    def test_stream_preserves_caller_context_for_tools(self) -> None:
+        """Tenant/auth ContextVars must survive the streaming worker thread."""
+        caller = contextvars.ContextVar("test_tool_caller", default="missing")
+
+        class ContextTool:
+            name = "get_identity"
+            description = "Get caller identity"
+            prompt = ""
+            prompt_instructions = ""
+
+            def schema(self):
+                return {
+                    "function": {
+                        "name": self.name,
+                        "description": self.description,
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+
+            def run(self, context, **kwargs):
+                return caller.get()
+
+        agent = Agent(
+            llm=SingleToolCallLLM("get_identity"),
+            tools=[ContextTool()],
+        )
+        token = caller.set("organization-4242")
+        try:
+            events = list(agent.stream("who am I?"))
+        finally:
+            caller.reset(token)
+
+        completed = next(e for e in events if e.type == "tool_completed")
+        assert completed.payload["output"] == "organization-4242"
+        assert not any(e.type == "run_failed" for e in events)
+
+    def test_legacy_plain_string_tool_result_is_accepted(self) -> None:
+        """In-process MCP adapters commonly return their text directly."""
+
+        class PlainTextTool:
+            name = "get_case_brief"
+            description = "Get a case brief"
+            prompt = ""
+            prompt_instructions = ""
+
+            def schema(self):
+                return {
+                    "function": {
+                        "name": self.name,
+                        "description": self.description,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "case_ref": {"type": "string"},
+                            },
+                        },
+                    },
+                }
+
+            def run(self, context, **kwargs):
+                return f"Case brief {kwargs['case_ref']}"
+
+        agent = Agent(
+            llm=SingleToolCallLLM(
+                "get_case_brief", {"case_ref": "DAR20260076"}
+            ),
+            tools=[PlainTextTool()],
+        )
+
+        result = agent.run("retrieve the case")
+
+        assert result.output == "done"
+        assert result.tool_results[0].output == "Case brief DAR20260076"
+        assert result.tool_results[0].is_error is False
+        assert any(event.type == "tool_completed" for event in result.events)
+        assert not any(event.type == "tool_failed" for event in result.events)
+
     def test_tool_failure_does_not_crash_run(self) -> None:
         """When a tool fails after retries, the agent continues with an error message."""
 
@@ -171,6 +249,61 @@ class TestGracefulToolFailure:
             if m.role == "tool" and "Error running tool" in m.content
         ]
         assert error_msgs
+
+    def test_non_retryable_tool_bug_is_contained_to_the_tool(self) -> None:
+        """A tool bug must not terminate Agent.stream()/run()."""
+
+        def broken_tool(**kwargs: Any) -> str:
+            raise RuntimeError("unexpected response shape")
+
+        agent = Agent(
+            llm=SingleToolCallLLM("broken_tool"),
+            tools=[FunctionTool.from_callable(broken_tool, name="broken_tool")],
+        )
+        result = agent.run("use the tool")
+
+        assert result.output == "done"
+        assert result.tool_results[0].is_error is True
+        terminal = [event for event in result.events if event.type in {
+            "tool_completed", "tool_failed",
+        }]
+        assert [event.type for event in terminal] == ["tool_failed"]
+        assert "unexpected response shape" in result.tool_results[0].output
+
+    def test_stream_survives_a_non_retryable_tool_bug(self) -> None:
+        def broken_tool(**kwargs: Any) -> str:
+            raise ValueError("malformed MCP response")
+
+        agent = Agent(
+            llm=SingleToolCallLLM("broken_tool"),
+            tools=[FunctionTool.from_callable(broken_tool, name="broken_tool")],
+        )
+
+        events = list(agent.stream("use the tool"))
+
+        assert any(event.type == "tool_failed" for event in events)
+        assert any(event.type == "run_completed" for event in events)
+        assert not any(event.type == "run_failed" for event in events)
+
+    def test_explicit_tool_error_metadata_stays_an_error(self) -> None:
+        """MCP-style ToolOutput(ok=False) must not get a green completion."""
+
+        def failed_remote(**kwargs: Any) -> ToolOutput:
+            return ToolOutput(
+                text="remote rejected the request",
+                metadata={"ok": False, "is_error": True, "error": "rejected"},
+            )
+
+        agent = Agent(
+            llm=SingleToolCallLLM("remote"),
+            tools=[FunctionTool.from_callable(failed_remote, name="remote")],
+        )
+        result = agent.run("use the remote")
+
+        assert result.output == "done"
+        assert result.tool_results[0].is_error is True
+        assert [event.type for event in result.events].count("tool_failed") == 1
+        assert [event.type for event in result.events].count("tool_completed") == 0
 
     def test_hallucinated_tool_produces_error_message(self) -> None:
         """Calling a non-existent tool produces an error message, not a crash."""
@@ -730,6 +863,24 @@ class TestAsyncRuntime:
         state, response = asyncio.run(runtime.run("fail"))
         assert response.content == "done"
         assert any(e.type == "tool_failed" for e in state.events)
+
+    def test_async_non_retryable_tool_bug_is_contained(self) -> None:
+        def broken(**kwargs):
+            raise RuntimeError("bad MCP payload")
+
+        runtime = AsyncAgentRuntime(
+            llm=SingleToolCallLLM("broken"),
+            prompt="System",
+            tools=[FunctionTool.from_callable(broken, name="broken")],
+        )
+        state, response = asyncio.run(runtime.run("use it"))
+
+        assert response.content == "done"
+        assert state.tool_results[0].is_error is True
+        terminal = [event.type for event in state.events if event.type in {
+            "tool_completed", "tool_failed",
+        }]
+        assert terminal == ["tool_failed"]
 
     def test_async_hooks(self) -> None:
         """Async runtime should call hooks."""

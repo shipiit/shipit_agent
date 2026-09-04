@@ -19,6 +19,16 @@ _HEAVY_EVENT_METADATA_KEYS = frozenset(
 )
 
 
+def _metadata_is_error(metadata: dict[str, Any]) -> bool:
+    """Honor the tool's explicit outcome marker.
+
+    MCP tools report protocol failures as ordinary ``ToolOutput`` values so
+    the model can recover.  Dropping that marker while converting to the
+    runtime's ``ToolResult`` made a failed MCP call emit ``tool_completed``.
+    """
+    return bool(metadata.get("is_error") or metadata.get("ok") is False)
+
+
 def safe_tool_event_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
     """Keep live events informative without duplicating canonical payloads."""
     return {
@@ -111,8 +121,9 @@ class ToolRunner:
         # a lightweight object exposing the ToolOutput shape without importing
         # or subclassing shipit's dataclass.
         if isinstance(output, ToolOutput) or hasattr(output, "text"):
+            output_metadata = dict(getattr(output, "metadata", {}) or {})
             chunk = ToolOutputChunk(
-                str(output.text), dict(getattr(output, "metadata", {}) or {})
+                str(output.text), output_metadata
             )
             if output_callback is not None and chunk.text:
                 # Remote tools often return one very large ToolOutput object.
@@ -130,9 +141,27 @@ class ToolRunner:
                 output=chunk.text,
                 metadata=chunk.metadata,
                 model_text=getattr(output, "model_text", None),
+                is_error=_metadata_is_error(output_metadata),
             )
 
-        if isinstance(output, (str, bytes)) or not isinstance(output, Iterable):
+        # Plain text was the original and remains the most common return shape
+        # for lightweight tools and in-process MCP adapters. Treat it as a
+        # complete successful result instead of iterating characters or
+        # rejecting a tool that already did its work successfully.
+        if isinstance(output, (str, bytes)):
+            text = (
+                output.decode("utf-8", errors="replace")
+                if isinstance(output, bytes)
+                else output
+            )
+            if output_callback is not None and text:
+                for offset in range(0, len(text), _LIVE_OUTPUT_CHUNK_CHARS):
+                    output_callback(ToolOutputChunk(
+                        text[offset : offset + _LIVE_OUTPUT_CHUNK_CHARS]
+                    ))
+            return ToolResult(name=name, output=text)
+
+        if not isinstance(output, Iterable):
             raise TypeError(
                 f"Tool '{name}' returned {type(output).__name__}; expected "
                 "ToolOutput or an iterable of ToolOutputChunk values"
@@ -158,7 +187,12 @@ class ToolRunner:
                 output_callback(chunk)
         metadata.setdefault("streamed", True)
         metadata.setdefault("stream_chunk_count", chunk_count)
-        return ToolResult(name=name, output="".join(parts), metadata=metadata)
+        return ToolResult(
+            name=name,
+            output="".join(parts),
+            metadata=metadata,
+            is_error=_metadata_is_error(metadata),
+        )
 
     def run_tool_call(
         self,

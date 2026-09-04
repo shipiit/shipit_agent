@@ -170,7 +170,8 @@ def _try_parse_call(
         return None
     if not isinstance(data, dict):
         return None
-    name = data.get("name") or data.get("tool") or data.get("function")
+    name = (data.get("name") or data.get("tool") or data.get("function")
+            or data.get("action"))
     if isinstance(name, dict):  # {"function": {"name": ..., "arguments": ...}}
         arguments = name.get("arguments", {})
         name = name.get("name")

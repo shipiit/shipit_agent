@@ -32,6 +32,18 @@ class TestFormats:
         cleaned, calls = heal_tool_calls(text, ALLOWED)
         assert calls and cleaned == ""
 
+    def test_action_and_parameters_keys(self) -> None:
+        # Gemma spells a text tool call as {"action": ..., "parameters": ...}.
+        # Seen live: <tool_call>{"action":"ask_user","parameters":{...}}</tool_call>
+        # reached the user as raw text because only name/tool/function were
+        # recognised as the name key.
+        text = ('<tool_call>{"action": "ask_user", "parameters": '
+                '{"title": "Setup", "questions": []}}</tool_call>')
+        cleaned, calls = heal_tool_calls(text, {"ask_user"})
+        assert [c.name for c in calls] == ["ask_user"]
+        assert calls[0].arguments["title"] == "Setup"
+        assert cleaned == ""                          # span removed exactly
+
     def test_nested_function_shape(self) -> None:
         text = ('<tool_call>{"function": {"name": "web_search", '
                 '"arguments": "{\\"query\\": \\"y\\"}"}}</tool_call>')

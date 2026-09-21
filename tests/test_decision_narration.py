@@ -180,3 +180,29 @@ class TestThePromptStaysSmall:
         _result, narrator = _run(Silent(), Narrator())
         assert any("About to run:" in p for p in narrator.prompts)
         assert not any("just came back" in p for p in narrator.prompts)
+
+
+def test_a_drafted_answer_keeps_its_headings_tables_and_line_breaks():
+    from shipit_agent.runtime_narration import first_sentences
+
+    text = ("I am retrieving the details for cases A and B now.\n\n"
+            "### Case A: Brief\n**Brief:**   fetching.\n\n| a | b |\n|---|---|")
+    assert first_sentences(text) == (
+        "I am retrieving the details for cases A and B now.\n\n"
+        "### Case A: Brief\n**Brief:** fetching.\n\n| a | b |\n|---|---|")
+
+
+def test_plain_prose_is_still_trimmed_at_a_sentence():
+    from shipit_agent.runtime_narration import first_sentences
+
+    long = ("This sentence is long enough to matter. " * 15).strip()
+    spoken = first_sentences(long)
+    assert spoken.endswith(".") and len(spoken) <= 400
+
+
+def test_soft_wrapped_prose_still_reads_as_one_line():
+    from shipit_agent.runtime_narration import first_sentences
+
+    assert first_sentences("I will open the\ncase file first.") == "I will open the case file first."
+    assert first_sentences("") == ""
+    assert first_sentences(None) == ""

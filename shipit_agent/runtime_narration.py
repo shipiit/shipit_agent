@@ -32,13 +32,35 @@ def bounded(value: Any, limit: int) -> str:
 
 
 _SPOKEN_LIMIT = 400
+_STRUCTURE = ("#", "-", "*", "+", "|", ">", "```", "~~~")
+
+
+def _is_structure(line: str) -> bool:
+    """A heading, list item, table row, quote or fence — not spoken prose."""
+    lead = line.lstrip()
+    if not lead:
+        return False
+    if lead.startswith(_STRUCTURE):
+        return True
+    head = lead.split(".", 1)[0]
+    return head.isdigit() and lead[len(head):len(head) + 2] in (". ", ".\t")
 
 
 def first_sentences(text: str | None) -> str:
-    """Trim model prose at a sentence boundary for a glanceable update."""
+    """The model's words for the progress line, kept readable.
+
+    Plain prose is trimmed at a sentence boundary for a glanceable update.
+    A model that writes a heading, a table or a list alongside its tool call
+    is drafting the answer; that draft is kept whole, line breaks and all,
+    because collapsing it to one line turns every ``###`` and ``|`` into
+    literal text and the reader loses the structure the model wrote.
+    """
     stripped = (text or "").strip()
     if not stripped:
         return ""
+    lines = stripped.splitlines()
+    if any(_is_structure(line) for line in lines):
+        return "\n".join(" ".join(line.split()) for line in lines).strip()
     stripped = " ".join(stripped.split())
     if len(stripped) <= _SPOKEN_LIMIT:
         return stripped

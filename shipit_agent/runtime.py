@@ -1699,7 +1699,9 @@ detail you were not given and do not say what you will do next."""
             active_schemas = (
                 []
                 if force_text
-                else self.select_step_schemas(tool_schemas, shared_state)
+                else self.without_withheld(
+                    self.select_step_schemas(tool_schemas, shared_state), shared_state
+                )
             )
             if forced_names:
                 active_schemas = [
@@ -2126,8 +2128,7 @@ detail you were not given and do not say what you will do next."""
                     generated_by_model=False,
                 )
 
-            if self.force_text_after_duplicate_batch(state.messages, tool_call_records):
-                shared_state["force_text_after_duplicate"] = True
+            self.settle_duplicate_batch(shared_state, state.messages, tool_call_records)
 
             # Mid-run re-planning: if replan_interval is set and we've
             # completed that many iterations, run the planner again to

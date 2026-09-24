@@ -118,6 +118,10 @@ def _declared_paths(metadata: dict) -> list:
 #: Below this, a repeated result is cheaper to resend than to explain.
 _REPEAT_MIN_CHARS = 2_000
 
+#: Tools taken out of the advertised set for the rest of a run because the
+#: model kept repeating an identical call to them.
+WITHHELD_TOOLS_KEY = "withheld_tool_names"
+
 #: Below this, the stub costs more than the payload it replaces.
 _EVICT_MIN_CHARS = 1_000
 
@@ -367,6 +371,42 @@ class RuntimeCore:
                 message.metadata.get("duplicate_suppressed") for message in outcomes
             )
         )
+
+    @classmethod
+    def settle_duplicate_batch(
+        cls,
+        shared_state: dict[str, Any],
+        messages: Sequence[Message],
+        call_records: Sequence[dict[str, Any]],
+    ) -> None:
+        """After a step made only of repeats, take the repeated tools away.
+
+        A model that ignores the "already ran" note will call the same thing
+        again next step. Withholding just those tools leaves it everything
+        else — including whatever it still has to do with the result. Only a
+        model that repeats again after that is sent to text-only.
+        """
+        if not cls.force_text_after_duplicate_batch(messages, call_records):
+            return
+        names = {str(record.get("name") or "") for record in call_records} - {""}
+        withheld = shared_state.setdefault(WITHHELD_TOOLS_KEY, set())
+        if names and not names <= withheld:
+            withheld.update(names)
+            return
+        shared_state["force_text_after_duplicate"] = True
+
+    @staticmethod
+    def without_withheld(
+        schemas: list[Any], shared_state: dict[str, Any]
+    ) -> list[Any]:
+        withheld = shared_state.get(WITHHELD_TOOLS_KEY) or set()
+        if not withheld:
+            return schemas
+        return [
+            schema
+            for schema in schemas
+            if str((schema.get("function") or {}).get("name", "")) not in withheld
+        ]
 
     @staticmethod
     def label_user_turns(messages: Sequence[Message]) -> list[Message]:

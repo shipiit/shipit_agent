@@ -1302,7 +1302,9 @@ class AsyncAgentRuntime(RuntimeCore):
             active_schemas = (
                 []
                 if force_text
-                else self.select_step_schemas(tool_schemas, shared_state)
+                else self.without_withheld(
+                    self.select_step_schemas(tool_schemas, shared_state), shared_state
+                )
             )
             if forced_names:
                 active_schemas = [
@@ -1775,8 +1777,7 @@ class AsyncAgentRuntime(RuntimeCore):
                     generated_by_model=False,
                 )
 
-            if self.force_text_after_duplicate_batch(state.messages, tool_call_records):
-                shared_state["force_text_after_duplicate"] = True
+            self.settle_duplicate_batch(shared_state, state.messages, tool_call_records)
             if state.tool_results:
                 shared_state.pop("force_any_tool", None)
             if forced_names:

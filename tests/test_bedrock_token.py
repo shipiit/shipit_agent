@@ -9,6 +9,7 @@ is invisible from the error.
 from __future__ import annotations
 
 import base64
+import importlib.util
 import urllib.parse
 
 import pytest
@@ -27,6 +28,14 @@ from shipit_agent.llms.bedrock_token import (
 # signature deterministic enough to assert on.
 _ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
 _SECRET_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+# Signing a token is botocore's job, and botocore ships with the optional
+# `bedrock` extra, not the base install. Only the classes that actually sign
+# are gated; region, validation and precedence logic run everywhere.
+needs_botocore = pytest.mark.skipif(
+    importlib.util.find_spec("botocore") is None,
+    reason="signing needs botocore: pip install 'shipit-agent[bedrock]'",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +64,7 @@ def _decode(token: str) -> dict[str, str]:
     return {k: v[0] for k, v in urllib.parse.parse_qs(query).items()}
 
 
+@needs_botocore
 class TestTokenFormat:
     def test_token_is_a_presigned_sigv4_request(self) -> None:
         fields = _decode(generate_bearer_token())
@@ -110,6 +120,7 @@ class TestValidation:
             generate_bearer_token()
 
 
+@needs_botocore
 class TestCaching:
     def test_repeated_calls_reuse_one_token(self) -> None:
         assert generate_bearer_token() == generate_bearer_token()
@@ -155,6 +166,7 @@ class TestPrecedence:
             bedrock_bearer_token(required=True)
 
 
+@needs_botocore
 class TestSecrecy:
     def test_token_is_not_exported_to_the_environment_as_a_side_effect(self) -> None:
         """Deriving a token must not publish it process-wide — only the explicit

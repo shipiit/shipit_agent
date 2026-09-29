@@ -190,9 +190,18 @@ def _force_shim_path(monkeypatch) -> None:
     monkeypatch.setattr(adapter, "_litellm_supports_bedrock_mantle", lambda: False)
 
 
+def _fake_bearer_key(monkeypatch) -> None:
+    """Hand the adapter a bearer key up front. Without one it derives a key from
+    the machine's AWS profile — so these tests passed only on a laptop with
+    ~/.aws configured and failed on a clean CI runner."""
+    _clear_bearer_env(monkeypatch)
+    monkeypatch.setenv("BEDROCK_MANTLE_API_KEY", "test-bearer-key")
+
+
 class TestGemmaAgentic:
     def test_gemma4_parses_native_tool_call(self, monkeypatch) -> None:
         _force_shim_path(monkeypatch)
+        _fake_bearer_key(monkeypatch)
         _install_fake_openai(monkeypatch, _tool_call_response("add", '{"a": 2, "b": 3}'))
         llm = BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
         from shipit_agent.models import Message
@@ -206,6 +215,7 @@ class TestGemmaAgentic:
 
     def test_gemma4_full_agent_loop(self, monkeypatch) -> None:
         _force_shim_path(monkeypatch)
+        _fake_bearer_key(monkeypatch)
         # Turn 1: model calls the tool. Turn 2: model answers.
         _install_fake_openai(
             monkeypatch,

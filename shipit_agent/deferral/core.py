@@ -46,19 +46,41 @@ def resolve_deferred_names(
     stale config cannot break a run). ``tool_search`` is never deferred —
     it is the loading mechanism itself.
     """
+    tools = list(tools)
     names = {_tool_name(t) for t in tools} - {""}
     if not config:
         return set()
-    if config is True:
+    if config == "auto":
+        from shipit_agent.tools.tool_search import ToolSearchTool
+
+        discovery = next((t for t in tools if isinstance(t, ToolSearchTool)), None)
+        candidates = [t for t in tools if t is not discovery]
+        if len(names) <= 10:
+            return set()
+        # Explicit caller priority first, existing core capabilities second,
+        # registration order as a stable tie-breaker. Never reorder per prompt:
+        # that would invalidate cached prefixes on each follow-up.
+        def priority(tool: Any) -> tuple[float, bool]:
+            value = getattr(tool, "discovery_priority", 0)
+            value = float(value) if isinstance(value, (int, float)) else 0.0
+            return (value, _tool_name(tool) in core)
+
+        resident = {_tool_name(t) for t in sorted(candidates, key=priority, reverse=True)[:9]}
+        if discovery is not None:
+            resident.add(_tool_name(discovery))
+        deferred = names - resident
+        return deferred
+    elif config is True:
         deferred = {n for n in names if n not in core}
     else:
         requested = {str(n) for n in config}
         deferred = names & requested
     deferred.discard("tool_search")
+    deferred.discard("search_tools")
     return deferred
 
 
-def deferred_index(tools: Iterable[Any], deferred: set[str]) -> str:
+def deferred_index(tools: Iterable[Any], deferred: set[str], *, search_name: str = "tool_search", compact: bool = False) -> str:
     """The system-prompt section listing deferred tools by name only.
 
     One name per tool, grouped by family — this is the whole prompt cost
@@ -74,19 +96,19 @@ def deferred_index(tools: Iterable[Any], deferred: set[str]) -> str:
         if name in deferred:
             by_family.setdefault(tool_family(tool), []).append(name)
     lines = [
-        "More tools exist beyond the ones defined above. They are listed "
-        "here by name only; their full definitions are not loaded yet:",
+        "Additional capabilities are searchable below; their full definitions "
+        "are loaded only when needed:",
         "",
     ]
     for family in sorted(by_family):
-        names = ", ".join(sorted(by_family[family]))
+        names = (f"{len(by_family[family])} tools" if compact else ", ".join(sorted(by_family[family])))
         lines.append(f"- {family}: {names}")
     lines += [
         "",
-        "To use one, call `tool_search` with what you are trying to do — "
+        f"To use one, call `{search_name}` with what you are trying to do — "
         "matching tools are loaded and become directly callable on your "
-        "next step. You may also call a listed tool directly by name if "
-        "you already know it is the right one.",
+        "next step. Use an already loaded tool directly when it fits. "
+        "Discovery does not execute the matching tools.",
     ]
     return "\n".join(lines)
 
@@ -100,10 +122,14 @@ def select_schemas(
     if not deferred:
         return list(tool_schemas)
     visible = loaded or set()
-    return [
+    resident = [
         schema
         for schema in tool_schemas
-        if _schema_name(schema) not in deferred or _schema_name(schema) in visible
+        if _schema_name(schema) not in deferred
+    ]
+    return resident + [
+        schema for schema in tool_schemas
+        if _schema_name(schema) in deferred and _schema_name(schema) in visible
     ]
 
 

@@ -361,10 +361,14 @@ class CostTracker:
             model = model_name or _extract_model(response) or "unknown"
 
             if usage:
+                input_tokens = usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0)
+                if (getattr(response, "metadata", {}) or {}).get("prompt_tokens_include_cache"):
+                    input_tokens = max(0, input_tokens
+                        - usage.get("cache_read_input_tokens", 0)
+                        - usage.get("cache_creation_input_tokens", 0))
                 self.record_call(
                     model=model,
-                    input_tokens=usage.get("input_tokens", 0)
-                    or usage.get("prompt_tokens", 0),
+                    input_tokens=input_tokens,
                     output_tokens=usage.get("output_tokens", 0)
                     or usage.get("completion_tokens", 0),
                     cache_read_tokens=usage.get("cache_read_input_tokens", 0)

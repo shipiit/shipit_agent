@@ -103,6 +103,13 @@ resolved, the current state of the work, and the next concrete step. Fully \
 integrate any earlier summary rather than referring to it — the handoff must \
 stand alone.
 
+Preserve exact identifiers, evidence values and their associated entities. Keep \
+the chronology of lookups and distinguish historical facts from current state. \
+Resolve relative references ("first", "latest", "that case") to explicit entities \
+within this transcript; never present its last entity as permanently "latest". \
+Messages after this handoff may update the state. Preserve uncertainty and do \
+not turn a planned tool call into a completed action.
+
 Use these headings, in this order:
 
 ## Goal
@@ -405,6 +412,7 @@ class Compactor:
         # Usage of the most recent summarizer call, for the caller's cost
         # accounting — a summary is a real completion and its tokens count.
         self.last_summary_usage: dict[str, int] = {}
+        self.last_summary_metadata: dict[str, Any] = {}
 
     # ── decision ─────────────────────────────────────────────────────────
 
@@ -450,6 +458,20 @@ class Compactor:
         )
         gross = self.limits.input_budget * TARGET_RATIO
         target = int(max(1, gross / max(factor, 1.0) - self.fixed_prefix_tokens))
+        # A tool-heavy fixed prefix can consume the entire retention target.
+        # One token then fits no turn, disabling summarization altogether.
+        # Keep at least the newest real turn; older turns can still be safely
+        # summarized. Oversized individual turns remain subject to hard fit.
+        newest_turn = next(
+            (index for index in range(len(messages) - 1, -1, -1)
+             if starts_a_turn(messages[index])),
+            None,
+        )
+        if newest_turn is not None:
+            target = max(target, sum(
+                content_tokens(message.content or "", self.model)
+                for message in messages[newest_turn:]
+            ))
         boundary = find_boundary(
             messages, target, lambda content: content_tokens(content, self.model)
         )
@@ -536,6 +558,7 @@ class Compactor:
     def _summarize(self, older: Sequence[Message]) -> str:
         lines = self._transcript(older)
         self.last_summary_usage = {}
+        self.last_summary_metadata = {}
         if not lines:
             return ""
 
@@ -553,6 +576,7 @@ class Compactor:
                     metadata={"purpose": "context_compaction"},
                 )
                 self.last_summary_usage = dict(getattr(response, "usage", None) or {})
+                self.last_summary_metadata = dict(getattr(response, "metadata", None) or {})
                 summary = (getattr(response, "content", "") or "").strip()
                 if summary:
                     return (

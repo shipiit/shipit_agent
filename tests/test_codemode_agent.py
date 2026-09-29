@@ -137,7 +137,8 @@ class TestToolCatalogue:
                 + len(agent.llm.seen_system[0])
             )
 
-        plain = measure()
+        # Compare code mode with the eager baseline, not auto discovery.
+        plain = measure(deferred_tools=False)
         coded = measure(code_mode=True)
         assert coded < plain * 0.6, f"code mode {coded} vs {plain}"
 
@@ -145,7 +146,8 @@ class TestToolCatalogue:
         from shipit_agent.builtins import get_builtin_tools
 
         tools = get_builtin_tools(llm=None, project_root=".")
-        plain = Agent(llm=ScriptedLLM([("d", [])]), tools=tools, auto_use_skills=False)
+        plain = Agent(llm=ScriptedLLM([("d", [])]), tools=tools, auto_use_skills=False,
+                      deferred_tools=False)
         plain.run("hi")
         coded = Agent(llm=ScriptedLLM([("d", [])]), tools=tools, code_mode=True,
                       auto_use_skills=False)

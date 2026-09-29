@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from collections.abc import Iterable
 from typing import Any, Protocol, TypeAlias
 
@@ -28,6 +29,36 @@ class ToolOutput:
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
     model_text: str | None = None
+
+    @classmethod
+    def from_records(
+        cls, records: list[dict[str, Any]], *, fields: Iterable[str] | None = None,
+        offset: int = 0, limit: int = 20, source: str | None = None,
+    ) -> "ToolOutput":
+        """Keep complete JSON while exposing an explicit paged projection.
+
+        The tool chooses relevant records/fields; this helper never guesses
+        relevance or summarizes evidence. It is not a security redaction API:
+        callers and traces retain every canonical field.
+        """
+        if offset < 0 or limit < 1:
+            raise ValueError("offset must be >= 0 and limit must be >= 1")
+        columns = list(fields) if fields is not None else None
+        page = records[offset:offset + limit]
+        rows = [{key: row[key] for key in columns if key in row} for row in page] if columns is not None else page
+        next_offset = offset + len(page) if offset + len(page) < len(records) else None
+        view = {"records": rows, "total_records": len(records), "offset": offset,
+                "returned_records": len(rows), "next_offset": next_offset}
+        if columns is not None:
+            view["selected_fields"] = columns
+        if source is not None:
+            view["source"] = source
+        return cls(
+            text=json.dumps(records, ensure_ascii=False),
+            model_text=json.dumps(view, ensure_ascii=False),
+            metadata={"projection": {"total_records": len(records), "offset": offset,
+                                     "returned_records": len(rows), "next_offset": next_offset}},
+        )
 
 
 @dataclass(slots=True)

@@ -125,6 +125,73 @@ Both are backwards compatible and covered by the test suite. See the
 
 ---
 
+## Automatic tool discovery
+
+Ordinary `Agent(llm=llm, tools=tools, mcps=servers)` now defaults to
+`deferred_tools="auto"`. Catalogs that fit ten tools and approximately 4,096
+schema tokens stay visible. Otherwise, the initial request exposes up to nine
+working tools plus `search_tools`, within that schema budget.
+An existing `ToolSearchTool` is reused under its configured name.
+
+Core selection prefers a tool's numeric `discovery_priority`, then Shipit's
+core capabilities, then registration order. Assign higher priorities to your
+application's frequently used tools. Up to three recently discovered schemas
+can be reused within the same session, competing for the same initial slots.
+Changed schemas and statically denied tools are excluded from reuse; argument
+permissions are still checked at execution. Session caches are bounded to 32
+sessions per Agent instance and are not persisted across process restarts.
+The model can search descriptions, names, and MCP server metadata; matching
+tools become callable with their full schemas on the next step. Search does
+not execute them or grant additional permissions. Loaded tools remain visible
+for the rest of the run, so ten is an initial budget, not an execution limit.
+
+Auto mode includes a compact capability-family index instead of listing every
+deferred tool name. Ranking runs locally without additional LLM calls.
+Exact-name searches load only the named tool; names can use underscores,
+camelCase or Unicode. Newly loaded schemas append after those already shown.
+This works through `run()`, `stream()`, and the async runtime using ordinary
+function schemas, including providers without native tool-search support.
+
+Use `deferred_tools=False` to keep every schema visible, `True` for the existing
+core-only policy, or a list of names to defer specific tools. Code mode retains
+its own discovery policy. Measure total request tokens and task completion in
+your workload: discovery adds an LLM step, so schema savings are not a promise
+of equal total-token savings.
+
+See [the discovery review and offline benchmark](docs/tool-discovery-review.md)
+for measured payload reductions and remaining tradeoffs.
+
+Ordinary `Agent` also supports opt-in `progressive_skills=True` for metadata-first
+skill loading and `max_task_tokens=50_000` for a soft per-run token threshold.
+See [progressive skills, budget limits and validation](docs/progressive-agent-controls.md)
+for setup, isolation guarantees and provider-usage caveats.
+
+```python
+from shipit_agent.deferral import DiscoveryPolicy
+
+agent = Agent(
+    llm=llm, tools=tools, mcps=servers,
+    deferred_tools=DiscoveryPolicy(initial_tools=10, schema_tokens=4096, reuse_tools=3),
+)
+```
+
+Discovery itself remains visible even if its schema exceeds a very small
+configured budget. Definitions loaded during a run are not evicted mid-run.
+For large structured results, tools may return
+`ToolOutput.from_records(rows, fields=["id", "evidence"], limit=20)`.
+The model receives an explicit page and total count; callers retain the full
+JSON. This is context reduction, not security redaction.
+
+Run summaries distinguish `finished` from `incomplete` provider output, expose
+finish reasons, failed-tool counts, and recovery counts. `finished` means the
+runtime ended normally, not that an independent grader verified the answer.
+Provider-reported usage counters remain unchanged; cache ratios and cost
+estimates account for whether cached tokens are included in prompt tokens.
+
+An opt-in, billed multi-turn evaluation is available in
+`scripts/evaluate_agent_session.py`. It uses safe fixture tools and an
+in-process MCP server, not production data or production MCP transport.
+
 ## What's new in v1.7.0 — the working set
 
 The biggest capability release yet: do the powerful thing without burning tokens or trust.

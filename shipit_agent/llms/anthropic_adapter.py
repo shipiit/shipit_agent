@@ -564,6 +564,8 @@ class AnthropicChatLLM:
             "model": self.model,
             "provider": "anthropic",
         }
+        if getattr(response, "stop_reason", None):
+            response_metadata["finish_reason"] = response.stop_reason
         if self.thinking_budget_tokens:
             response_metadata["thinking_budget_tokens"] = self.thinking_budget_tokens
         # Only surface power-feature metadata when present, so flags-off

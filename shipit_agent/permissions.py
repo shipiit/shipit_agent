@@ -150,6 +150,25 @@ class PermissionEngine:
     # ------------------------------------------------------------------
     # Decision
     # ------------------------------------------------------------------
+    def discoverable(self, tool_name: str, tool: Any = None) -> bool:
+        """Static catalog visibility, without invoking argument callbacks.
+
+        Discovery is not authorization. Conditional callbacks and approvals
+        are evaluated only when real arguments are available at execution.
+        """
+        if _matches_any(tool_name, self.deny):
+            return False
+        if self.mode == "bypass":
+            return True
+        if self.mode == "plan":
+            return (tool_name == "present_plan" or _matches_any(tool_name, self.allow)
+                    or self.is_read_only(tool_name, tool))
+        if self.mode == "acceptEdits" and self.is_edit(tool_name):
+            return True
+        return (self.callback is not None or _matches_any(tool_name, self.allow)
+                or _matches_any(tool_name, self.ask)
+                or self.default_decision != PermissionDecision.DENY)
+
     def check(
         self, tool_name: str, arguments: dict[str, Any], tool: Any = None
     ) -> PermissionResult:

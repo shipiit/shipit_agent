@@ -429,6 +429,6 @@ def test_runtime_accumulates_cache_usage_in_run_totals() -> None:
     assert summary.payload["cache"] == {
         "read_input_tokens": 80,
         "creation_input_tokens": 10,
-        "eligible_input_tokens": 180,
-        "hit_ratio": 0.4444,
+        "eligible_input_tokens": 190,
+        "hit_ratio": 0.4211,
     }

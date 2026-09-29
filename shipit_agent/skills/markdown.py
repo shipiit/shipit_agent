@@ -88,7 +88,7 @@ class Skill:
         if self.directory is None:
             raise FileNotFoundError(f"{self.id} has no directory on disk")
         target = (self.directory / relative).resolve()
-        if not str(target).startswith(str(self.directory.resolve())):
+        if not target.is_relative_to(self.directory.resolve()):
             raise ValueError(f"{relative!r} escapes the skill directory")
         return target.read_text(encoding="utf-8")
 

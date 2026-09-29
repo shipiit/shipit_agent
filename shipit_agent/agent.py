@@ -286,13 +286,17 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     code_mode: bool = False
 
     # ── deferred tool loading (v1.7) ──────────────────────────────────
-    # Tool paging: core tools keep their full schema in
+    # Default "auto": above ten tools, keep nine core capabilities and a
+    # discovery tool. discovery_priority on a tool overrides core ranking;
+    # ties follow registration order. False opts out. Core tools keep schemas in
     # every request; everything else is listed by NAME only until
     # `tool_search` (or a direct call) loads it. Cuts the fixed per-step
     # schema cost to the working set. ``True`` defers everything outside
     # the core set; a list of names defers exactly those. Ignored when
     # ``code_mode`` is on (code mode collapses the catalogue its own way).
-    deferred_tools: Any = False
+    deferred_tools: Any = "auto"
+    # Pass deferral.DiscoveryPolicy(...) for initial schema-token/count budgets
+    # and bounded session reuse. Auto uses 10 tools / ~4096 schema tokens.
 
     # ── lockdown (exfiltration guard) ─────────────────────────────────
     # Once a tool reports it returned sensitive data, the run may only make
@@ -338,6 +342,8 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     skills: list[SkillLike] = field(default_factory=list)  # always-on skills
     default_skill_ids: list[str] = field(default_factory=list)
     skill_match_limit: int = 3  # max auto-matched
+    progressive_skills: bool = False  # metadata-first, model-selected loading
+    max_task_tokens: int | None = None  # soft per-run stop between model steps
 
     # ── rules (see shipit_agent/rules/) ───────────────────────────────
     # Durable behavioural policy (AGENTS.md house-style), scoped to paths/tools
@@ -414,7 +420,15 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         Mutable configuration containers are copied, while LLMs and durable
         stores are intentionally shared unless explicitly replaced.
         """
-        from dataclasses import replace
+        from dataclasses import fields, replace
+
+        hooks = self.hooks
+        if hooks is not None:
+            hooks = replace(hooks, **{
+                item.name: list(getattr(hooks, item.name))
+                for item in fields(hooks)
+                if isinstance(getattr(hooks, item.name), list)
+            })
 
         defaults = {
             "tools": list(self.tools),
@@ -425,9 +439,16 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             "skills": list(self.skills),
             "default_skill_ids": list(self.default_skill_ids),
             "rules": list(self.rules),
+            "hooks": hooks,
+            # Contributions are already present in tools/hooks. Re-activation
+            # would duplicate tools and mutate callbacks on every chat turn.
+            "plugins": [],
         }
         defaults.update(changes)
-        return replace(self, **defaults)
+        cloned = replace(self, **defaults)
+        if "plugins" not in changes:
+            cloned.plugins = list(self.plugins)
+        return cloned
 
     def as_tool(
         self,
@@ -472,6 +493,10 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             self.memory_store = InMemoryMemoryStore()
         if self.stream_queue_maxsize < 1:
             raise ValueError("stream_queue_maxsize must be positive")
+        if self.max_task_tokens is not None and (
+            type(self.max_task_tokens) is not int or self.max_task_tokens < 1
+        ):
+            raise ValueError("max_task_tokens must be a positive integer or None")
         if self.stream_join_timeout < 0:
             raise ValueError("stream_join_timeout cannot be negative")
 
@@ -861,7 +886,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             "progress_summaries": self.progress_summaries,
             "reminder": self.reminder,
             "evict_prior_tool_outputs": self.evict_prior_tool_outputs,
-            "prompt": self._effective_prompt(user_prompt),
+            "prompt": self._effective_prompt(user_prompt, selected_skills=selected_skills),
             "tools": effective_tools,
             "mcps": self.mcps,
             "required_tools": self.required_tools,
@@ -873,6 +898,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
                 "agent_name": self.name,
                 "agent_description": self.description,
                 **self.metadata,
+                "max_task_tokens": self.max_task_tokens,
                 "used_skills": skill_ids,
                 "used_skill_tools": skill_tool_names,
                 "selected_skills": skill_details,

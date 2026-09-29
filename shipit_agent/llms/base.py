@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
@@ -19,11 +20,34 @@ def coerce_message(message: Any) -> Message:
     if isinstance(message, Message):
         return message
     if isinstance(message, dict):
+        # Preserve the tool protocol when callers provide wire-style history.
+        # Normalize native function envelopes as well as SDK mappings.
+        metadata = dict(message.get("metadata") or {})
+        if "tool_calls" in message:
+            calls = []
+            for call in message.get("tool_calls") or []:
+                if isinstance(call, ToolCall):
+                    calls.append(call.to_dict())
+                elif isinstance(call, dict):
+                    function = call.get("function") or call
+                    arguments = function.get("arguments") or {}
+                    if isinstance(arguments, str):
+                        raw = arguments
+                        try:
+                            arguments = json.loads(raw)
+                        except (ValueError, TypeError):
+                            arguments = {"_raw": raw}
+                        if not isinstance(arguments, dict):
+                            arguments = {"_raw": raw}
+                    calls.append({"name": function.get("name", ""),
+                                  "arguments": arguments, "id": call.get("id", "")})
+            metadata["tool_calls"] = calls
         return Message(
             role=message.get("role", "user"),
             content=message.get("content", ""),
             name=message.get("name"),
-            metadata=dict(message.get("metadata") or {}),
+            tool_call_id=message.get("tool_call_id"),
+            metadata=metadata,
         )
     return message
 

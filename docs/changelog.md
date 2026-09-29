@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+See the [canonical changelog](../CHANGELOG.md#unreleased) for automatic tool
+discovery, progressive skills, token-budget enforcement, history/compaction,
+cache accounting, plugin isolation and the latest validation results.
+
 ## v1.0.18 — 2026-07-31
 
 ### Added

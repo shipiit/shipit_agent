@@ -119,7 +119,7 @@ def build_catalog(
         SkillCatalogEntry(
             id=skill.id,
             name=getattr(skill, "name", skill.id) or skill.id,
-            description=_summary(skill),
+            description=_summary(skill)[:max(0, caps.description_chars)],
         )
         for skill in skills
         if skill.id and skill.id not in skipped
@@ -270,6 +270,11 @@ class LoadSkillTool:
     """
 
     name = LOAD_SKILL_TOOL_NAME
+    # Capability loaders should be reachable without first discovering the
+    # discovery mechanism. This is a preference within the configured budget,
+    # not an exemption from permissions or a grant of the skill's tools.
+    discovery_priority = 10
+    read_only = True
     description = (
         "Load the full instructions for a skill listed in the Skills catalog. "
         "Call this when a task matches a catalog entry and you need its "

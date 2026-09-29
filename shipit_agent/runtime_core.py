@@ -118,6 +118,10 @@ def _declared_paths(metadata: dict) -> list:
 #: Below this, a repeated result is cheaper to resend than to explain.
 _REPEAT_MIN_CHARS = 2_000
 
+#: Tools taken out of the advertised set for the rest of a run because the
+#: model kept repeating an identical call to them.
+WITHHELD_TOOLS_KEY = "withheld_tool_names"
+
 #: Below this, the stub costs more than the payload it replaces.
 _EVICT_MIN_CHARS = 1_000
 
@@ -267,7 +271,7 @@ class RuntimeCore:
             options.get("evict_prior_tool_outputs", True)
         )
         # False | True | iterable of names — see shipit_agent.deferral.
-        self.deferred_tools = options.get("deferred_tools", False)
+        self.deferred_tools = options.get("deferred_tools", "auto")
 
         self._total_usage: dict[str, int] = {
             "prompt_tokens": 0,
@@ -276,6 +280,16 @@ class RuntimeCore:
             "cache_read_input_tokens": 0,
             "cache_creation_input_tokens": 0,
         }
+        self._total_uncached_input = 0
+        self._total_context_input = 0
+        self._request_estimates = {"system": 0, "conversation": 0, "tool_results": 0, "schemas": 0}
+        self._purpose_usage = {"main": 0, "compaction": 0}
+        self._schema_prefix = ""
+        self._prefix_changes = 0
+        self._cache_counters_reported = False
+        self._usage_reports = 0
+        self._complete_usage_reports = 0
+        self._completed_model_calls = 0
         self._cancel_event = threading.Event()
         self._guarded_tool_calls = 0
         self._nudges_used = 0
@@ -368,6 +382,42 @@ class RuntimeCore:
             )
         )
 
+    @classmethod
+    def settle_duplicate_batch(
+        cls,
+        shared_state: dict[str, Any],
+        messages: Sequence[Message],
+        call_records: Sequence[dict[str, Any]],
+    ) -> None:
+        """After a step made only of repeats, take the repeated tools away.
+
+        A model that ignores the "already ran" note will call the same thing
+        again next step. Withholding just those tools leaves it everything
+        else — including whatever it still has to do with the result. Only a
+        model that repeats again after that is sent to text-only.
+        """
+        if not cls.force_text_after_duplicate_batch(messages, call_records):
+            return
+        names = {str(record.get("name") or "") for record in call_records} - {""}
+        withheld = shared_state.setdefault(WITHHELD_TOOLS_KEY, set())
+        if names and not names <= withheld:
+            withheld.update(names)
+            return
+        shared_state["force_text_after_duplicate"] = True
+
+    @staticmethod
+    def without_withheld(
+        schemas: list[Any], shared_state: dict[str, Any]
+    ) -> list[Any]:
+        withheld = shared_state.get(WITHHELD_TOOLS_KEY) or set()
+        if not withheld:
+            return schemas
+        return [
+            schema
+            for schema in schemas
+            if str((schema.get("function") or {}).get("name", "")) not in withheld
+        ]
+
     @staticmethod
     def label_user_turns(messages: Sequence[Message]) -> list[Message]:
         """Label user turns in the transient model view.
@@ -385,6 +435,7 @@ class RuntimeCore:
             if message.role == "user"
             and not (
                 message.metadata.get("internal")
+                or message.metadata.get("compacted")
                 or message.metadata.get("vision_bridge")
                 or message.metadata.get("regrounding")
                 or message.metadata.get("source") == "planner"
@@ -396,6 +447,7 @@ class RuntimeCore:
             clone = deepcopy(message)
             synthetic = bool(
                 clone.metadata.get("internal")
+                or clone.metadata.get("compacted")
                 or clone.metadata.get("vision_bridge")
                 or clone.metadata.get("regrounding")
                 or clone.metadata.get("source") == "planner"
@@ -729,6 +781,33 @@ class RuntimeCore:
 
     # ── deferred tool loading ────────────────────────────────────────────
 
+    def restore_discovery(self, checkpoint: Any) -> None:
+        """Restore names/hashes only; setup revalidates the current catalog.
+
+        SessionStore authorization remains the caller's responsibility.
+        Checkpoints carry no tool results, credentials, or permissions.
+        """
+        if not isinstance(checkpoint, dict) or checkpoint.get("version") != 1:
+            return
+        session_id = str(getattr(self, "session_id", ""))
+        if checkpoint.get("session_id") != session_id:
+            return
+        entries = checkpoint.get("schemas")
+        if not isinstance(entries, dict):
+            return
+        valid = {name: digest for name, digest in list(entries.items())[-64:]
+                 if isinstance(name, str) and len(name) <= 256
+                 and isinstance(digest, str) and len(digest) == 64}
+        sessions = self._session_runtime_state.setdefault("discovery_sessions", {})
+        sessions[session_id] = valid
+        while len(sessions) > 32:
+            sessions.pop(next(iter(sessions)))
+
+    def discovery_checkpoint(self) -> dict[str, Any]:
+        session_id = str(getattr(self, "session_id", ""))
+        schemas = self._session_runtime_state.get("discovery_sessions", {}).get(session_id, {})
+        return {"version": 1, "session_id": session_id, "schemas": dict(schemas)}
+
     def setup_deferral(self, registry: Any, shared_state: dict[str, Any]) -> str:
         """Activate deferred tool loading for this run, if configured.
 
@@ -748,20 +827,69 @@ class RuntimeCore:
             resolve_deferred_names,
         )
 
+        permissions = getattr(self, "permissions", None)
+        visibility = getattr(permissions, "discoverable", None)
+        hidden = {t.name for t in registry.values() if callable(visibility) and not visibility(t.name, t)}
+        shared_state["discovery_hidden"] = hidden
+        shared_state["available_tools"] = [t for t in shared_state.get("available_tools", []) if t.get("name") not in hidden]
         if self.code_mode or not getattr(self, "deferred_tools", False):
             return ""
-        tools = list(registry.values())
-        deferred = resolve_deferred_names(tools, self.deferred_tools)
+        tools = [t for t in registry.values() if t.name not in hidden]
+        from shipit_agent.deferral.policy import (
+            DiscoveryPolicy, schema_tokens, schema_fingerprint, select_resident,
+        )
+        from shipit_agent.deferral import DEFAULT_CORE_TOOLS
+
+        policy = self.deferred_tools if isinstance(self.deferred_tools, DiscoveryPolicy) else DiscoveryPolicy()
+        automatic = self.deferred_tools == "auto" or isinstance(self.deferred_tools, DiscoveryPolicy)
+        schemas = {(s.get("function") or {}).get("name"): s for s in registry.schemas()
+                   if (s.get("function") or {}).get("name") not in hidden}
+        model = getattr(self.llm, "model", None)
+        if automatic:
+            # Small catalogs can still have very expensive schemas.
+            needs_search = len(tools) > policy.initial_tools or sum(schema_tokens(s, model) for s in schemas.values()) > policy.schema_tokens
+            deferred = {t.name for t in tools} if needs_search else set()
+        else:
+            deferred = resolve_deferred_names(tools, self.deferred_tools)
         if not deferred:
             return ""
+        from shipit_agent.tools.tool_search import ToolSearchTool
+
+        search = next((t for t in tools if isinstance(t, ToolSearchTool)), None)
+        if search is None:
+            # Do not replace a user tool sharing the preferred name.
+            name = "search_tools"
+            existing = {getattr(t, "name", "") for t in registry.values()}
+            while name in existing:
+                name = "_" + name
+            search = ToolSearchTool(name=name, default_limit=3)
+            registry.register(search)
+        schemas[search.name] = search.schema()
+        shared_state["discovery_search_name"] = search.name
+        if automatic:
+            # Session ID isolates concurrent conversations on one Agent. The
+            # current registry and schema fingerprint invalidate stale entries.
+            sessions = self._session_runtime_state.setdefault("discovery_sessions", {})
+            session_key = str(getattr(self, "session_id", ""))
+            cached = sessions.get(session_key, {})
+            valid = {name: digest for name, digest in cached.items()
+                     if name in schemas and digest == schema_fingerprint(schemas[name])}
+            recent = list(valid)[-policy.reuse_tools:][::-1] if policy.reuse_tools else []
+            resident = select_resident(tools, schemas, policy, core=DEFAULT_CORE_TOOLS,
+                                       search_name=search.name, recent=recent, model=model)
+            deferred = set(schemas) - resident
+            shared_state["discovery_policy"] = policy
+            shared_state["discovery_session_key"] = session_key
+            shared_state["discovery_fingerprints"] = {name: schema_fingerprint(schema) for name, schema in schemas.items()}
+            shared_state["discovery_cached"] = valid
+        deferred.discard(search.name)
         shared_state[DEFERRED_NAMES_KEY] = deferred
         shared_state[LOADED_NAMES_KEY] = set()
-        shared_state[SCHEMAS_BY_NAME_KEY] = {
-            name: schema
-            for schema in registry.schemas()
-            if (name := ((schema.get("function") or {}).get("name")))
-        }
-        return deferred_index(tools, deferred)
+        shared_state[SCHEMAS_BY_NAME_KEY] = schemas
+        return deferred_index(
+            tools, deferred, search_name=search.name,
+            compact=automatic,
+        )
 
     def select_step_schemas(
         self, tool_schemas: list[Any], shared_state: dict[str, Any]
@@ -777,11 +905,41 @@ class RuntimeCore:
             select_schemas,
         )
 
-        return select_schemas(
-            tool_schemas,
+        selected = select_schemas(
+            [s for s in tool_schemas if (s.get("function") or {}).get("name") not in shared_state.get("discovery_hidden", set())],
             shared_state.get(DEFERRED_NAMES_KEY),
             shared_state.get(LOADED_NAMES_KEY),
         )
+        policy = shared_state.get("discovery_policy")
+        if policy is not None:
+            # Persist only loaded definitions, bounded per session and globally.
+            cache = dict(shared_state.get("discovery_cached", {}))
+            fingerprints = shared_state.get("discovery_fingerprints", {})
+            for schema in selected:
+                name = (schema.get("function") or {}).get("name")
+                if name in (shared_state.get(LOADED_NAMES_KEY) or set()) and name != shared_state.get("discovery_search_name"):
+                    cache.pop(name, None)
+                    cache[name] = fingerprints[name]
+            cache = dict(list(cache.items())[-policy.reuse_tools:]) if policy.reuse_tools else {}
+            sessions = self._session_runtime_state.setdefault("discovery_sessions", {})
+            key = shared_state["discovery_session_key"]
+            sessions.pop(key, None)
+            sessions[key] = cache
+            while len(sessions) > 32:
+                sessions.pop(next(iter(sessions)))
+        if not shared_state.get(DEFERRED_NAMES_KEY):
+            return selected
+        # Append new definitions after previously advertised ones. Inserting a
+        # discovered schema into the middle of the prefix wastes cache reuse.
+        by_name = {
+            (schema.get("function") or {}).get("name"): schema
+            for schema in selected
+        }
+        order = [name for name in shared_state.get("advertised_tool_order", []) if name in by_name]
+        seen = set(order)
+        order.extend(name for name in by_name if name not in seen)
+        shared_state["advertised_tool_order"] = order
+        return [by_name[name] for name in order]
 
     # ── cancellation ─────────────────────────────────────────────────────
 
@@ -1209,6 +1367,7 @@ class RuntimeCore:
 
         if not is_degenerate_repetition(content):
             return content
+        self.metadata["incomplete_reason"] = "degenerate_repetition"
         observation = str(getattr(state, "last_observation", "") or "").strip()
         detail = f" Completed tool work: {observation}" if observation else ""
         self.emit(
@@ -1252,6 +1411,19 @@ class RuntimeCore:
 
     def track_usage(self, state: Any, response: LLMResponse, iteration: int) -> None:
         """Accumulate tokens and emit a running total for the live footer."""
+        self._last_finish_reason = response.metadata.get("finish_reason")
+        from shipit_agent.llms.usage import input_token_counts, has_complete_token_usage
+        uncached, _, _, total_input = input_token_counts(response)
+        self._total_uncached_input += uncached
+        self._total_context_input += total_input
+        purpose = "compaction" if response.metadata.get("purpose") == "context_compaction" else "main"
+        self._purpose_usage[purpose] += total_input + response.usage.get("completion_tokens", 0)
+        self._completed_model_calls += 1
+        self._usage_reports += int(bool(response.usage))
+        self._complete_usage_reports += int(has_complete_token_usage(response))
+        self._cache_counters_reported |= any(
+            key in response.usage for key in ("cache_read_input_tokens", "cache_creation_input_tokens")
+        )
         for key in (
             "prompt_tokens",
             "completion_tokens",
@@ -1268,6 +1440,21 @@ class RuntimeCore:
             iteration=iteration,
         )
 
+    def task_budget_reached(self, state: Any, iteration: int) -> bool:
+        limit = self.metadata.get("max_task_tokens")
+        used = self._total_context_input + self._total_usage.get("completion_tokens", 0)
+        if limit is not None and self._complete_usage_reports < self._completed_model_calls:
+            self.metadata["incomplete_reason"] = "task_budget_usage_unavailable"
+            self.emit(state, "budget_unavailable", "Provider did not report complete usage; stopping budgeted work",
+                      limit=limit, iteration=iteration)
+            return True
+        if limit is None or used < limit:
+            return False
+        self.metadata["incomplete_reason"] = "task_token_budget"
+        self.emit(state, "budget_exhausted", "Task token budget reached",
+                  limit=limit, used=used, iteration=iteration, enforcement="between_steps")
+        return True
+
     def calibrate_from_completion(
         self, sent_messages: Sequence[Message], response: LLMResponse
     ) -> None:
@@ -1277,20 +1464,16 @@ class RuntimeCore:
         messages, not the full history — so the estimate matches what the
         provider actually tokenised. The estimate uses the SAME formula the
         compaction trigger does (messages + fixed prefix) so the learned factor
-        is applied to the number it was measured against. ``actual`` folds in
-        the prompt-cache counters, because on a cache hit ``prompt_tokens``
-        alone under-reports what was sent and would drag the factor the wrong
-        way. Call ONLY for real model steps — never the summary completion,
+        is applied to the number it was measured against. ``actual`` respects
+        each adapter's cache-counter semantics: native Anthropic separates
+        cached input, whereas OpenAI and LiteLLM include it in prompt tokens.
+        Call ONLY for real model steps — never the summary completion,
         whose prompt is a different shape.
         """
         from shipit_agent.compaction import count_messages
 
-        usage = getattr(response, "usage", None) or {}
-        actual = (
-            int(usage.get("prompt_tokens", 0) or 0)
-            + int(usage.get("cache_read_input_tokens", 0) or 0)
-            + int(usage.get("cache_creation_input_tokens", 0) or 0)
-        )
+        from shipit_agent.llms.usage import input_token_counts
+        actual = input_token_counts(response)[3]
         if actual <= 0:
             return
         model = getattr(self.llm, "model", None)
@@ -1331,6 +1514,7 @@ class RuntimeCore:
         except (TypeError, ValueError):
             rendered = repr(list(tool_schemas))
         schema_tokens = content_tokens(rendered, model) if tool_schemas else 0
+        self._schema_prefix = rendered
         self._fixed_prefix_tokens = self._configured_fixed_prefix_tokens + schema_tokens
         if self._compactor_instance is not None:
             self._compactor_instance.fixed_prefix_tokens = self._fixed_prefix_tokens
@@ -1352,6 +1536,21 @@ class RuntimeCore:
             return compactor.estimated_prompt_tokens(candidate) <= budget
 
         fitted, stats = fit_messages(messages, fits=fits)
+        from shipit_agent.compaction import content_tokens
+        import hashlib
+        model = getattr(self.llm, "model", None)
+        for message in fitted:
+            category = "system" if message.role == "system" else "tool_results" if message.role == "tool" else "conversation"
+            self._request_estimates[category] += content_tokens(message.content or "", model)
+        self._request_estimates["schemas"] += max(0, self._fixed_prefix_tokens - self._configured_fixed_prefix_tokens)
+        prefix = self._schema_prefix + repr([m.content for m in fitted if m.role == "system"])
+        digest = hashlib.sha256(prefix.encode()).hexdigest()
+        fingerprints = self._session_runtime_state.setdefault("request_prefixes", {})
+        previous = fingerprints.pop(self.session_id, None)
+        self._prefix_changes += int(previous is not None and previous != digest)
+        fingerprints[self.session_id] = digest
+        while len(fingerprints) > 32:
+            fingerprints.pop(next(iter(fingerprints)))
         if stats["dropped_messages"] or stats["reduced_messages"]:
             self.emit(
                 state,
@@ -1416,7 +1615,10 @@ class RuntimeCore:
         # The summary was a real completion — count its tokens.
         summary_usage = dict(getattr(compactor, "last_summary_usage", None) or {})
         if summary_usage:
-            self.track_usage(state, LLMResponse(usage=summary_usage), iteration)
+            self.track_usage(state, LLMResponse(usage=summary_usage, metadata={
+                **getattr(compactor, "last_summary_metadata", {}),
+                "purpose": "context_compaction",
+            }), iteration)
         replayed = checkpoint.replay(messages)
         self.emit(
             state,
@@ -1456,7 +1658,7 @@ class RuntimeCore:
                 cost_usd = round(
                     CostTracker().calculate_cost(
                         str(model),
-                        usage.get("prompt_tokens", 0),
+                        self._total_uncached_input,
                         usage.get("completion_tokens", 0),
                         cache_read_tokens=usage.get("cache_read_input_tokens", 0),
                         cache_write_tokens=usage.get("cache_creation_input_tokens", 0),
@@ -1466,10 +1668,9 @@ class RuntimeCore:
             except Exception:
                 cost_usd = None
         total = usage.get("total_tokens", 0)
-        prompt_tokens = max(0, int(usage.get("prompt_tokens", 0) or 0))
         cache_read = max(0, int(usage.get("cache_read_input_tokens", 0) or 0))
         cache_creation = max(0, int(usage.get("cache_creation_input_tokens", 0) or 0))
-        cache_eligible_input = prompt_tokens + cache_read
+        cache_eligible_input = self._total_context_input
         cache_hit_ratio = (
             round(cache_read / cache_eligible_input, 4) if cache_eligible_input else 0.0
         )
@@ -1484,6 +1685,17 @@ class RuntimeCore:
             "tool_results": len(tool_results),
             "compactions": compactions,
             "usage": usage,
+            "usage_diagnostics": {
+                "estimated_main_request_content_tokens": dict(self._request_estimates),
+                "reported_tokens_by_purpose": dict(self._purpose_usage),
+                "prefix_changes": self._prefix_changes,
+                "cache_counters_reported": self._cache_counters_reported,
+                "task_token_limit": self.metadata.get("max_task_tokens"),
+                "budget_enforcement": "between_steps",
+                "provider_usage_available": bool(self._usage_reports),
+                "budget_usage_complete": self._complete_usage_reports == self._completed_model_calls,
+                "llm_retry_events": sum(e.type == "llm_retry" for e in events),
+            },
             "cache": {
                 "read_input_tokens": cache_read,
                 "creation_input_tokens": cache_creation,
@@ -1492,6 +1704,17 @@ class RuntimeCore:
             },
             "estimated_cost_usd": cost_usd,
             "gave_up": bool(self.metadata.get("gave_up")),
+            "completion_status": (
+                "incomplete" if self.metadata.get("incomplete_reason")
+                or self.metadata.get("gave_up")
+                or getattr(self, "_last_finish_reason", None) in {"length", "max_tokens", "content_filter"}
+                else "finished"
+            ),
+            "finish_reason": getattr(self, "_last_finish_reason", None),
+            "tool_discovery": self.discovery_checkpoint(),
+            "incomplete_reason": self.metadata.get("incomplete_reason"),
+            "failed_tool_results": sum(bool(r.is_error) for r in tool_results),
+            "recovery_events": sum(e.type in {"llm_retry", "tool_call_healed", "model_output_recovered"} for e in events),
         }
 
     @staticmethod

@@ -46,6 +46,23 @@ def conversation(turns: int, chars: int = 4000) -> list[Message]:
 WINDOW = 20_000  # small window so a few turns approach the budget
 
 
+def test_prefix_above_retention_target_still_summarizes_older_turns():
+    from shipit_agent.llms.base import LLMResponse
+
+    class Summarizer:
+        def complete(self, **kwargs):
+            return LLMResponse(content="Prior verified evidence retained.")
+
+    messages = [user("old question " * 100), assistant("old evidence " * 100),
+                user("current question"), assistant("current answer")]
+    compactor = Compactor(llm=Summarizer(), context_window_tokens=1000,
+                          fixed_prefix_tokens=600)
+    checkpoint = compactor.compact(messages, force=True)
+    assert checkpoint is not None
+    assert checkpoint.compacted_to == 2
+    assert checkpoint.replay(messages)[-2:] == messages[-2:]
+
+
 def test_prefix_makes_the_trigger_fire_earlier():
     msgs = conversation(turns=3)
     plain = Compactor(context_window_tokens=WINDOW)

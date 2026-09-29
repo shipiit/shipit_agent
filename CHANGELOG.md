@@ -5,6 +5,72 @@ All notable changes to **shipit-agent** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.1.0] - 2026-09-29
+
+### Added
+
+- Schema-budgeted automatic tool discovery for ordinary `Agent`, streaming and
+  async runs. Large catalogs start with a small resident set plus discovery;
+  authorized tool schemas load on demand. `DiscoveryPolicy` controls the
+  initial count, schema budget and reuse. Discovery does not grant permission.
+- Bounded, schema-fingerprinted discovery checkpoints for reuse across turns,
+  revalidated against the current authorized catalog. Corpus-weighted lexical
+  search supports authored `discovery_terms`, exact names and MCP metadata.
+- Opt-in `progressive_skills=True`: advertise enabled skill metadata and load
+  instructions on demand with fresh per-run state. Explicit/default skills
+  retain their existing behavior; loading a skill grants no new tools.
+- Optional `max_task_tokens` soft per-run budget. Budget stops retain completed
+  tool evidence and mark work incomplete. Missing/partial input-output usage
+  stops budgeted continuation; the iteration-cap summary also respects the
+  budget. In-flight calls/retries can overshoot; this is not a spending cap.
+- Usage diagnostics separate estimated request content from reported main and
+  compaction usage, track prefix changes, and distinguish partial accounting
+  and missing cache counters from complete reports. Cache hits are not assumed.
+- `ToolOutput.from_records` provides bounded, field-selected model views while
+  retaining canonical evidence for the host.
+- Reproducible live fixture evaluations, 100–500-tool discovery benchmarks,
+  loopback HTTP/SSE MCP failure-isolation tests, and a custom harness guide.
+
+### Fixed
+
+- Preserve native assistant tool calls and matching tool-result IDs when
+  accepting wire-style chat history. Preserve provider finish reasons and
+  expose incomplete output rather than treating every stop as success.
+- Honor separate system prompts in OpenAI/LiteLLM calls, including compaction
+  instructions. Improve summary chronology, exclude summaries from user-turn
+  counts, and retain the newest user turn under tight compaction budgets.
+- Normalize inclusive versus exclusive cache accounting without changing raw
+  provider counters, including compaction usage and cost calculations.
+- Prevent plugin tool/hook reactivation during chat cloning, isolate hook
+  lists, and preserve host-supplied tools when skills contribute capabilities.
+- Deduplicate shared tool guidance; bound skill descriptions; validate skill
+  reference containment; avoid constructing unused builtin tool catalogs.
+- Propagate nested tool failures through code-mode results and preserve
+  streaming alongside tools. Extend MCP reconnect/session-affinity coverage.
+
+### Validation and limitations
+
+- Latest full Shipit regression: **4,514 passed, 31 skipped**; one collection
+  warning. Targeted DRK integration after the final budget fixes: **87 passed**.
+- Real Gemma 31B/Bedrock with controlled MCP data: 40-message session passed
+  40/40 evidence checks with three compactions; a fresh 20-message stream passed
+  20/20 with 537 text deltas, six completed tool calls and one compaction.
+- Budget-enabled live fixture run: 10/10 scenarios, 42,040 input / 391 output
+  tokens, including 2,368 reported cached input tokens. No universal cache
+  savings, all-provider live coverage or production-connector reliability claim.
+- The offline 500-tool benchmark reduced serialized request characters 89.1%
+  while adding one request. This is not a billed-token or intelligence score.
+- Existing plugin/hook composition is supported; executing Claude Code/Codex
+  as a backend is not implemented. Progressive cross-turn skill-body deduplication
+  and session-wide budgets remain future work.
+
+See [controls and detailed validation](docs/progressive-agent-controls.md),
+[efficiency measurements](docs/agent-efficiency-validation.md),
+[discovery review](docs/tool-discovery-review.md) and
+[custom harness composition](docs/guides/custom-agent-harness.md).
+
 ## [1.9.9] — 2026-08-19
 
 Live-trace-driven fixes for Gemma 4 on Bedrock Mantle (and every model): fewer tokens, real cost, tools that actually work.

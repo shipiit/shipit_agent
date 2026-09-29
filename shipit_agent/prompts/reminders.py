@@ -57,8 +57,10 @@ LAST_STEP_REMINDER = (
 #: model has done anything at all.
 GROUNDING_REMINDER = (
     "You have not called any tool yet this turn. If the answer depends on the "
-    "user's own data — their cases, records, documents or feeds — retrieve it "
-    "with a tool first. Never present information as retrieved, looked up or "
+    "user's own data — their cases, records, documents or feeds — and the "
+    "conversation lacks sufficient verified evidence, retrieve it with a tool. "
+    "Reuse sufficient existing results for follow-up questions unless fresh "
+    "verification is requested or needed. Never present information as retrieved, looked up or "
     "tracked unless a tool in this conversation actually returned it. If no "
     "tool can reach what was asked for, say that plainly instead of "
     "producing an example."

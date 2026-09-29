@@ -312,3 +312,76 @@ def test_agent_without_plugins_is_unaffected():
         auto_project_memory=False, skill_source=None,
     )
     assert agent.hooks is None  # untouched when no plugins
+
+
+def test_chat_and_clone_do_not_reactivate_plugins():
+    from shipit_agent import Agent
+    from shipit_agent.chat_session import AgentChatSession
+    from shipit_agent.llms.simple import ShipitLLM
+
+    agent = Agent(llm=ShipitLLM(), plugins=["word-count", "audit-log"],
+                  auto_use_skills=False, auto_project_memory=False, skill_source=None)
+    chat = AgentChatSession(agent, session_id="plugin-chat")
+    for _ in range(20):
+        child = chat._session_agent()
+        assert [t.name for t in child.tools].count("word_count") == 1
+        assert len(child.hooks.after_tool) == 1
+        assert child.plugins == agent.plugins
+        child.hooks.after_tool.append(lambda *args: None)
+        assert len(agent.hooks.after_tool) == 1
+    cloned = agent.clone().clone()
+    assert [t.name for t in cloned.tools].count("word_count") == 1
+    assert len(cloned.hooks.after_tool) == 1
+
+
+@pytest.mark.parametrize("deny_remote", [False, True])
+def test_plugin_mcp_and_policy_compose_in_stream(deny_remote):
+    from shipit_agent import Agent, FunctionTool, MCPServer, MCPTool
+    from shipit_agent.llms.base import LLMResponse
+    from shipit_agent.models import ToolCall
+
+    executions = []
+    observed = []
+
+    def local_lookup():
+        executions.append("local")
+        return "local evidence"
+
+    def remote_lookup(context):
+        executions.append("remote")
+        return "remote evidence"
+
+    def register(registrar):
+        registrar.add_tool(FunctionTool.from_callable(local_lookup, name="local_lookup"))
+        registrar.add_hook("before_tool", lambda name, args:
+                           False if deny_remote and name == "remote_lookup" else None)
+        registrar.add_hook("after_tool", lambda name, output: observed.append(name))
+
+    class Model:
+        calls = 0
+
+        def complete(self, *, text_delta_callback=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return LLMResponse(tool_calls=[ToolCall(name="local_lookup", arguments={})])
+            if self.calls == 2:
+                return LLMResponse(tool_calls=[ToolCall(name="remote_lookup", arguments={})])
+            if text_delta_callback:
+                text_delta_callback("Fixture ")
+                text_delta_callback("complete.")
+            return LLMResponse(content="Fixture complete.")
+
+    server = MCPServer(name="fixture").register_many([MCPTool(
+        name="remote_lookup", description="Read remote fixture evidence",
+        input_schema={"type": "object", "properties": {}},
+        handler=remote_lookup, read_only=True,
+    )])
+    with Agent(llm=Model(), plugins=[Plugin(name="fixture", register=register)],
+               mcps=[server], auto_use_skills=False, auto_project_memory=False,
+               auto_project_skills=False, skill_source=None) as agent:
+        events = list(agent.stream("Retrieve both fixture sources"))
+    assert executions == (["local"] if deny_remote else ["local", "remote"])
+    assert observed == (["local_lookup"] if deny_remote else ["local_lookup", "remote_lookup"])
+    assert any(e.type == "tool_denied" for e in events) == deny_remote
+    assert [e.payload["chunk"] for e in events if e.type == "text_delta"] == ["Fixture ", "complete."]
+    assert sum(e.type == "final_answer" for e in events) == 1

@@ -9,6 +9,99 @@ from shipit_agent.llms.capabilities import capabilities_for
 from shipit_agent.llms.litellm_adapter import _parse_tool_arguments, _serialize_message
 from shipit_agent.models import AgentEvent, Message, ToolCall, pair_calls_and_results
 from shipit_agent.tools.helpers import build_tools_prompt
+import pytest
+from types import SimpleNamespace as NS
+
+
+def test_dictionary_history_retains_native_tool_call_pairs():
+    from shipit_agent.llms.base import coerce_messages
+
+    messages = coerce_messages([
+        {"role": "assistant", "content": "", "tool_calls": [{
+            "id": "native-1", "type": "function", "function": {
+                "name": "search_cases", "arguments": '{"query":"Akira"}',
+            },
+        }]},
+        {"role": "tool", "tool_call_id": "native-1", "content": "No matches"},
+    ])
+    assert messages[0].tool_calls[0].arguments == {"query": "Akira"}
+    assert messages[0].tool_calls[0].name == "search_cases"
+    assert pair_calls_and_results(messages) == (True, [])
+    assert _serialize_message(messages[1])["tool_call_id"] == "native-1"
+
+
+@pytest.mark.parametrize("provider", ["openai", "litellm"])
+@pytest.mark.parametrize("embedded", [False, True])
+def test_adapter_preserves_separate_system_prompt_without_duplication(monkeypatch, provider, embedded):
+    import sys
+    from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+    from shipit_agent.llms.litellm_adapter import LiteLLMChatLLM
+
+    captured = []
+
+    def completion(**kwargs):
+        captured.append(kwargs["messages"])
+        return NS(choices=[NS(message=NS(content="handoff", tool_calls=None),
+                              finish_reason="stop")], usage=None)
+
+    if provider == "openai":
+        monkeypatch.setitem(sys.modules, "openai", NS(OpenAI=lambda **kw: NS(
+            chat=NS(completions=NS(create=completion)))))
+        llm = OpenAIChatLLM(model="fixture", api_key="fixture")
+    else:
+        monkeypatch.setitem(sys.modules, "litellm", NS(completion=completion))
+        llm = LiteLLMChatLLM(model="fixture")
+    messages = [Message(role="user", content="transcript")]
+    if embedded:
+        messages.insert(0, Message(role="system", content="existing instruction"))
+    llm.complete(messages=messages, system_prompt="Summarize, do not answer the transcript")
+    systems = [m for m in captured[0] if m["role"] == "system"]
+    assert len(systems) == 1
+    assert systems[0]["content"] == ("existing instruction" if embedded else "Summarize, do not answer the transcript")
+    assert len(messages) == (2 if embedded else 1)
+
+
+@pytest.mark.parametrize("provider", ["openai", "litellm"])
+def test_stream_protocol_interleaved_calls_finish_and_usage(monkeypatch, provider):
+    import sys
+    from shipit_agent.llms.openai_adapter import OpenAIChatLLM
+    from shipit_agent.llms.litellm_adapter import LiteLLMChatLLM
+
+    def chunk(index, name=None, args=None, ident=None):
+        fragment = NS(index=index, id=ident, function=NS(name=name, arguments=args))
+        return NS(choices=[NS(delta=NS(content=None, tool_calls=[fragment]), finish_reason=None)], usage=None)
+
+    chunks = [chunk(1, "second", '{"q":', "b"), chunk(0, "first", '{"q":', "a"),
+              chunk(1, args='"two"}'), chunk(0, args='"one"}'),
+              NS(choices=[NS(delta=None, finish_reason="tool_calls")], usage=None),
+              NS(choices=[], usage=NS(prompt_tokens=20, completion_tokens=5, total_tokens=25))]
+    if provider == "openai":
+        monkeypatch.setitem(sys.modules, "openai", NS(OpenAI=lambda **kw: NS(
+            chat=NS(completions=NS(create=lambda **kw: iter(chunks))))))
+        llm = OpenAIChatLLM(model="fixture", api_key="fixture")
+    else:
+        monkeypatch.setitem(sys.modules, "litellm", NS(completion=lambda **kw: iter(chunks)))
+        llm = LiteLLMChatLLM(model="fixture")
+    response = llm.complete(messages=[Message(role="user", content="go")], text_delta_callback=lambda _: None)
+    assert [(c.id, c.name, c.arguments) for c in response.tool_calls] == [
+        ("a", "first", {"q": "one"}), ("b", "second", {"q": "two"})]
+    assert response.metadata["finish_reason"] == "tool_calls"
+    assert response.usage["total_tokens"] == 25
+
+
+def test_truncated_answer_is_reported_incomplete():
+    class Limited:
+        def complete(self, **kwargs):
+            return LLMResponse(content="Partial answer", metadata={"finish_reason": "length"})
+    result = Agent(llm=Limited(), auto_use_skills=False).run("Explain")
+    assert result.metadata["run_summary"]["completion_status"] == "incomplete"
+
+
+def test_cache_accounting_respects_provider_counter_semantics():
+    from shipit_agent.llms.usage import input_token_counts
+    usage = {"prompt_tokens": 100, "cache_read_input_tokens": 80, "cache_creation_input_tokens": 10}
+    assert input_token_counts(LLMResponse(usage=usage)) == (100, 80, 10, 190)
+    assert input_token_counts(LLMResponse(usage=usage, metadata={"prompt_tokens_include_cache": True})) == (10, 80, 10, 100)
 
 
 def _search(query: str) -> str:
@@ -319,6 +412,19 @@ def test_internal_recovery_messages_do_not_shift_human_turn_numbers() -> None:
     assert labelled[0].content == "[User turn 1]\nfirst"
     assert labelled[1].content == "retry"
     assert labelled[3].content == "second"
+
+
+def test_compaction_summary_is_not_a_human_turn() -> None:
+    from shipit_agent.runtime_core import RuntimeCore
+
+    labelled = RuntimeCore.label_user_turns([
+        Message(role="user", content="historical handoff", metadata={"compacted": True}),
+        Message(role="user", content="retained question"),
+        Message(role="user", content="current question"),
+    ])
+    assert labelled[0].content == "historical handoff"
+    assert labelled[1].content == "[User turn 1]\nretained question"
+    assert labelled[2].content == "current question"
 
 
 def test_repeated_read_call_forces_synthesis_instead_of_looping() -> None:

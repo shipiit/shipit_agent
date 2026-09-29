@@ -112,6 +112,7 @@ def describe_tool_capability(
         "connection_id": connection_id,
         "connection_state": str(state or ""),
         "server": server,
+        "discovery_terms": metadata.get("discovery_terms", []),
     }
 
 
@@ -142,8 +143,8 @@ How to use them:
 - Call them one at a time only when a call needs the previous result.
 - **A search is the beginning of the work, not the end of it.** When a search
   returns several relevant items and the question asked for detail, depth or
-  "more", open the most relevant ones — several in ONE response, not one and
-  then a conclusion. One item out of fifteen is a sample, and an answer
+  "more", open enough relevant items to support the answer, respecting the
+  model's tool-call limit. One item out of fifteen is a sample, and an answer
   written from it is a guess presented as a finding.
 - Before you answer, ask whether you looked at enough to be right. If the
   answer rests on one result out of many, say so plainly or go back and read
@@ -220,11 +221,18 @@ def build_tools_prompt(
         header,
         "",
         f"Available capabilities ({len(tools)} tools across {len(grouped)} families):",
-        "Use tool_search when the best tool is unclear. Check connections before "
-        "the first connector call; attached MCP tools are direct capabilities.",
+        "Answer directly when the conversation already contains sufficient evidence "
+        "or the request needs no external data or action. Use a loaded tool when "
+        "fresh evidence, exact source content, or an authorized action is needed. "
+        "If none fits and a discovery tool is available, search by the missing "
+        "capability, then call the matching tool. MCP tools are ordinary attached "
+        "capabilities: select by purpose, scope, and arguments, not transport. "
+        "Check connection status only when missing or unavailable access requires it. "
+        "A search match is not a completed action; wait for actual tool results.",
     ]
     for family, entries in grouped.items():
         lines.append(f"\n## {family.title()}")
+        guidance_groups: dict[str, list[str]] = {}
         for tool, capability in entries:
             tags = ["read-only" if capability["read_only"] else "action"]
             if capability["server"]:
@@ -246,12 +254,16 @@ def build_tools_prompt(
             prompt = getattr(tool, "prompt", "").strip()
             prompt_instructions = getattr(tool, "prompt_instructions", "").strip()
             if prompt and prompt not in _GENERIC_MCP_GUIDANCE:
-                lines.append(f"  Guidance: {prompt}")
+                guidance_groups.setdefault(prompt, []).append(tool.name)
             elif (
                 prompt_instructions
                 and prompt_instructions not in _GENERIC_MCP_GUIDANCE
             ):
-                lines.append(f"  Guidance: {prompt_instructions}")
+                guidance_groups.setdefault(prompt_instructions, []).append(tool.name)
+        # Repeat shared instructions once, keeping their scope explicit. Do not
+        # merge merely similar prompts: a small difference may be a constraint.
+        for guidance, names in guidance_groups.items():
+            lines.append(f"Guidance for {', '.join(names)}:\n{guidance}")
 
     # One block per MCP server that sent `instructions` in its handshake —
     # the server author's own usage guidance, said once, instead of a

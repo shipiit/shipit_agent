@@ -56,7 +56,7 @@ class AgentPreparationMixin:
         seen: set[str] = set()
         candidates = [*self.skills]
         candidates.extend(self._resolve_skill_ref(i) for i in self.default_skill_ids)
-        if self.auto_use_skills and self.skill_registry is not None:
+        if self.auto_use_skills and not self.progressive_skills and self.skill_registry is not None:
             candidates.extend(
                 find_relevant_skills(
                     self.skill_registry,
@@ -70,14 +70,33 @@ class AgentPreparationMixin:
                 seen.add(skill.id)
         return selected
 
-    def _effective_prompt(self, user_prompt: str) -> str:
+    def _effective_prompt(
+        self, user_prompt: str, *, selected_skills: list[Skill] | None = None
+    ) -> str:
         effective = self.prompt
-        for skill in self._selected_skills(user_prompt):
+        if selected_skills is None:
+            selected_skills = self._selected_skills(user_prompt)
+        for skill in selected_skills:
             holder = type("PromptHolder", (), {"prompt": effective})()
             apply_skill(holder, skill)
             effective = holder.prompt
+        catalog = self._progressive_skill_catalog(selected_skills)
+        if catalog:
+            effective += "\n\n# Available skills\nLoad relevant instructions with load_skill before applying them. " \
+                "Skills provide guidance, not permission to access new tools or data.\n"
+            effective += "\n".join(f"- {entry.id}: {entry.description}" for entry in catalog)
         rules = self._rules_block()
         return f"{effective}\n\n{rules}" if rules and rules not in effective else effective
+
+    def _progressive_skill_catalog(self, selected_skills):
+        if not self.progressive_skills or self.skill_registry is None:
+            return []
+        from shipit_agent.skills.catalog import build_catalog
+        return build_catalog(
+            (skill for skill in self.skill_registry.list()
+             if skill.is_visible and skill.is_admin_enabled and skill.is_user_enabled),
+            exclude=[skill.id for skill in selected_skills],
+        )
 
     def _rules_block(self) -> str:
         from shipit_agent.rules import RuleSet, collect_tool_rules
@@ -138,13 +157,29 @@ class AgentPreparationMixin:
             if self._auto_sub_agent is not None:
                 effective["sub_agent"] = self._auto_sub_agent
 
-        if selected_skills:
+        missing_skill_tools = [
+            name for name in tool_names_for_skills(selected_skills)
+            if name not in effective
+        ]
+        if missing_skill_tools:
             builtins = get_builtin_tool_map(
                 llm=self.llm, project_root=str(self.project_root)
             )
-            for name in tool_names_for_skills(selected_skills):
+            for name in missing_skill_tools:
                 if name in builtins:
-                    effective[name] = builtins[name]
+                    # Host-supplied tools may enforce tenant scoping or custom
+                    # behavior. A skill adds missing capabilities, not overrides.
+                    effective.setdefault(name, builtins[name])
+        catalog = self._progressive_skill_catalog(selected_skills)
+        if catalog:
+            from shipit_agent.skills.catalog import LoadSkillTool, SkillSession
+            if "load_skill" in effective:
+                raise ValueError("progressive_skills reserves the tool name 'load_skill'")
+            # Fresh state per run: never store mutable loading state on an
+            # Agent shared by several chats. Previous evidence stays in history;
+            # reloading remains possible after history eviction/compaction.
+            lookup = {entry.id: self.skill_registry.get(entry.id) for entry in catalog}
+            effective["load_skill"] = LoadSkillTool(lookup, SkillSession(), available_tools=[])
         tools = list(effective.values())
         if self.verifier is not None and hasattr(self.verifier, "wrap_tools"):
             tools = self.verifier.wrap_tools(tools)

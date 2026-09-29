@@ -19,6 +19,7 @@ default core set) or ``Agent(deferred_tools=["slack", "jira"])`` (defer
 exactly those tools).
 """
 
+from .policy import DiscoveryPolicy
 from .core import (
     DEFAULT_CORE_TOOLS,
     DEFERRED_NAMES_KEY,
@@ -31,6 +32,7 @@ from .core import (
 )
 
 __all__ = [
+    "DiscoveryPolicy",
     "DEFAULT_CORE_TOOLS",
     "DEFERRED_NAMES_KEY",
     "LOADED_NAMES_KEY",

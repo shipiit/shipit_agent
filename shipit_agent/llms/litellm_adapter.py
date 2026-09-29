@@ -335,6 +335,8 @@ class LiteLLMChatLLM:
         from shipit_agent.llms.capabilities import capabilities_for
 
         caps = capabilities_for(self.model)
+        if system_prompt and not any(m.role == "system" for m in messages):
+            messages = [Message(role="system", content=system_prompt), *messages]
         payload_messages = [
             _serialize_message(
                 m, include_reasoning=caps.reasoning_history == "replay"
@@ -507,7 +509,9 @@ class LiteLLMChatLLM:
         return LLMResponse(
             content=getattr(message, "content", "") or "",
             tool_calls=tool_calls,
-            metadata={"model": self.model, "provider": "litellm"},
+            metadata={"model": self.model, "provider": "litellm",
+                      "prompt_tokens_include_cache": True,
+                      "finish_reason": getattr(response.choices[0], "finish_reason", None)},
             reasoning_content=reasoning_content,
             usage=usage,
         )
@@ -602,11 +606,13 @@ def _stream_completion(
     tool_call_acc: dict[int, dict[str, str]] = {}
     usage: dict[str, int] = {}
     stopped_reason: str | None = None
+    finish_reason: str | None = None
 
     try:
         for chunk in _iter_with_deadline(stream, extra_kwargs.get("timeout")):
             choices = getattr(chunk, "choices", None) or []
             if choices:
+                finish_reason = getattr(choices[0], "finish_reason", None) or finish_reason
                 delta = getattr(choices[0], "delta", None)
                 if delta is not None:
                     text = getattr(delta, "content", None)
@@ -710,6 +716,8 @@ def _stream_completion(
             "model": model,
             "provider": "litellm",
             "streamed": True,
+            "finish_reason": finish_reason,
+            "prompt_tokens_include_cache": True,
             **({"stream_stopped": stopped_reason} if stopped_reason else {}),
         },
         reasoning_content="\n".join(reasoning_parts) if reasoning_parts else None,

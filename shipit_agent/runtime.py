@@ -104,7 +104,7 @@ class AgentRuntime(RuntimeCore):
         heal_tool_calls: bool = True,
         approvals: Any | None = None,
         code_mode: bool = False,
-        deferred_tools: Any = False,
+        deferred_tools: Any = "auto",
         lockdown: Any = None,
         verify_before_stop: bool = False,
         #: A provider ``response_format`` dict (from ``output_schema``). Applied
@@ -364,6 +364,8 @@ class AgentRuntime(RuntimeCore):
                 # reason; hand it to the sandbox as an exception so the code
                 # sees a failure rather than a silent empty string.
                 raise PermissionError(message.content)
+            if result.is_error:
+                raise RuntimeError(result.output)
             return result.output, dict(result.metadata)
 
         shared_state[BINDINGS_STATE_KEY] = bindings
@@ -1476,6 +1478,10 @@ detail you were not given and do not say what you will do next."""
             self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
         )
         existing_session = self.session_store.load(self.session_id)
+        self.restore_discovery(
+            existing_session.metadata.get("tool_discovery") if existing_session
+            else self.metadata.get("tool_discovery")
+        )
         if existing_session:
             self.token_calibrator.restore(
                 existing_session.metadata.get("token_calibration")
@@ -1641,7 +1647,8 @@ detail you were not given and do not say what you will do next."""
         # it. Mirrors the code-mode rebuild above — code mode wins if both
         # are on (setup_deferral returns "" in that case).
         deferral_index = self.setup_deferral(registry, shared_state)
-        if deferral_index:
+        if deferral_index or (shared_state.get("discovery_hidden") and not self.code_mode):
+            tool_schemas = registry.schemas()
             from shipit_agent.deferral import DEFERRED_NAMES_KEY
 
             deferred_names = shared_state.get(DEFERRED_NAMES_KEY) or set()
@@ -1649,6 +1656,7 @@ detail you were not given and do not say what you will do next."""
                 tool
                 for tool in registry.values()
                 if getattr(tool, "name", "") not in deferred_names
+                and getattr(tool, "name", "") not in shared_state.get("discovery_hidden", set())
             ]
             resident_prompt = build_tools_prompt(
                 resident_tools,
@@ -1678,6 +1686,9 @@ detail you were not given and do not say what you will do next."""
         # below doesn't write the same text twice.
         appended_response_id: int | None = None
         for iteration in range(1, self.max_iterations + 1):
+            if self.task_budget_reached(state, iteration):
+                response = LLMResponse(content="Stopped by the task token budget policy. Work is incomplete; completed tool results remain in the session.")
+                break
             if self._cancel_event.is_set():
                 self.emit(
                     state,
@@ -2153,6 +2164,9 @@ detail you were not given and do not say what you will do next."""
         # model ONE more turn with `tools=[]` so it's forced to write a
         # natural-language summary of what it learned.
         hit_iteration_cap = bool(response.tool_calls) and not response.content
+        if hit_iteration_cap and self.task_budget_reached(state, self.max_iterations + 1):
+            response = LLMResponse(content="Stopped by the task token budget policy. Work is incomplete; completed tool results remain in the session.")
+            hit_iteration_cap = False
         if hit_iteration_cap:
             self.emit(
                 state,
@@ -2248,6 +2262,7 @@ detail you were not given and do not say what you will do next."""
         ]
         session_metadata = dict(existing_session.metadata) if existing_session else {}
         session_metadata["token_calibration"] = self.token_calibrator.to_dict()
+        session_metadata["tool_discovery"] = self.discovery_checkpoint()
         fact_ledger.ingest_tool_results(state.tool_results)
         if len(fact_ledger):
             session_metadata["verified_facts"] = fact_ledger.to_list()

@@ -216,8 +216,14 @@ class TestAgentIntegration:
     def test_optimized_project_agent_resumes_durable_chat_after_restart(
         self, tmp_path
     ) -> None:
+        class AcknowledgeLLM:
+            def complete(self, **kwargs):
+                # This tests durable history, not the echo stub repeating tool
+                # instructions (which can legitimately trigger recovery).
+                return LLMResponse(content="Acknowledged.")
+
         first = Agent.for_project(
-            llm=ShipitLLM(),
+            llm=AcknowledgeLLM(),
             project_root=tmp_path,
             optimized=True,
             auto_use_skills=False,
@@ -225,7 +231,7 @@ class TestAgentIntegration:
         first.chat_session(session_id="main").send("remember alpha")
 
         restarted = Agent.for_project(
-            llm=ShipitLLM(),
+            llm=AcknowledgeLLM(),
             project_root=tmp_path,
             optimized=True,
             auto_use_skills=False,

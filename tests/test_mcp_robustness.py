@@ -108,6 +108,29 @@ def test_persistent_transport_timeout_kills_wedged_server():
     transport.close()
 
 
+def test_real_stdio_discovery_call_and_reconnect():
+    import sys
+    from pathlib import Path
+    from shipit_agent.tools.base import ToolContext
+
+    transport = PersistentMCPSubprocessTransport(
+        [sys.executable, str(Path(__file__).parents[1] / "scripts" / "fixture_mcp_server.py")],
+        timeout=5,
+    )
+    server = RemoteMCPServer(name="archive", transport=transport)
+    try:
+        [tool] = server.discover_tools()
+        assert tool.read_only
+        context = ToolContext(prompt="Read fixture", session_id="stdio-test")
+        assert "evidence-7919" in tool.run(context, record_id="CASE-0").text
+        transport.close()
+        # An existing discovered tool must reconnect/handshake after shutdown.
+        assert "evidence-39595" in tool.run(context, record_id="CASE-4").text
+        assert server.server_info["name"] == "case-fixture"
+    finally:
+        server.close()
+
+
 def test_server_instructions_reach_the_system_prompt():
     from shipit_agent.tools.helpers import build_tools_prompt
 

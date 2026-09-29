@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
 from shipit_agent.models import AgentEvent, AgentResult, Message
@@ -29,18 +29,22 @@ class AgentChatSession:
     session_store: SessionStore | None = None
     event_callbacks: list[EventCallback] = field(default_factory=list)
     packet_callbacks: list[PacketCallback] = field(default_factory=list)
+    _runtime_state: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.session_store is None:
             self.session_store = self.agent.session_store or InMemorySessionStore()
 
     def _session_agent(self) -> "Agent":
-        return replace(
-            self.agent,
+        agent = self.agent.clone(
             session_id=self.session_id,
             trace_id=self.trace_id or self.session_id,
             session_store=self.session_store,
         )
+        # dataclasses.replace resets init=False fields. Keep compaction and
+        # discovery state across sends, but never share it with another chat.
+        agent._session_runtime_state = self._runtime_state
+        return agent
 
     def _emit_event(self, event: AgentEvent) -> None:
         for callback in self.event_callbacks:

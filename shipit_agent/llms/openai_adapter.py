@@ -183,6 +183,10 @@ class OpenAIChatLLM:
         from shipit_agent.llms.capabilities import capabilities_for
 
         caps = capabilities_for(self.model)
+        # Runtime requests already contain their system message, but helper
+        # calls (notably compaction) pass the instruction separately.
+        if system_prompt and not any(m.role == "system" for m in messages):
+            messages = [Message(role="system", content=system_prompt), *messages]
         payload_messages = [
             _serialize_message(
                 m, include_reasoning=caps.reasoning_history == "replay"
@@ -272,6 +276,8 @@ class OpenAIChatLLM:
             metadata={
                 "model": self.model,
                 "provider": "openai",
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                "prompt_tokens_include_cache": True,
                 **(
                     {"reasoning_effort": self.reasoning_effort}
                     if self.reasoning_effort
@@ -364,6 +370,8 @@ class OpenAIChatLLM:
                     "provider": "openai",
                     "streamed": False,
                     "buffered_fallback": True,
+                    "finish_reason": getattr(stream.choices[0], "finish_reason", None),
+                    "prompt_tokens_include_cache": True,
                     "synthetic_deltas": emitted_deltas,
                     **({"stream_stopped": "callback"} if stopped else {}),
                 },
@@ -376,12 +384,14 @@ class OpenAIChatLLM:
         calls: dict[int, dict[str, Any]] = {}  # index → {id, name, arguments}
         usage: dict[str, int] = {}
         stopped_reason: str | None = None
+        finish_reason: str | None = None
 
         for chunk in _iter_with_deadline(stream, timeout):
             if getattr(chunk, "usage", None):
                 usage = _usage_dict(chunk.usage)
             if not getattr(chunk, "choices", None):
                 continue
+            finish_reason = getattr(chunk.choices[0], "finish_reason", None) or finish_reason
             delta = chunk.choices[0].delta
             if delta is None:
                 continue
@@ -465,6 +475,8 @@ class OpenAIChatLLM:
                 "model": self.model,
                 "provider": "openai",
                 "streamed": True,
+                "finish_reason": finish_reason,
+                "prompt_tokens_include_cache": True,
                 **({"stream_stopped": stopped_reason} if stopped_reason else {}),
             },
             reasoning_content="".join(reasoning_parts) or None,

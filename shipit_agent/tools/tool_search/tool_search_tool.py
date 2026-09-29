@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from difflib import SequenceMatcher
+import math
+import re
+from collections import Counter
 from typing import Any
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -8,7 +10,7 @@ from .prompt import TOOL_SEARCH_PROMPT
 
 
 class ToolSearchTool:
-    """Semantic-ish tool discovery for agents with many available tools.
+    """Lexical tool discovery for agents with many available tools.
 
     Given a plain-language query, ranks every tool currently registered on
     the agent by how well it matches, and returns the top-N with descriptions.
@@ -22,14 +24,20 @@ class ToolSearchTool:
        invent tool names or pick the wrong one. A ranked shortlist grounds
        the decision in actual registered tools.
 
-    Scoring (from drk_cache's implementation):
-        score = SequenceMatcher(query, haystack).ratio() + 0.12 * token_hits
-    where ``haystack`` includes the name, description, instructions, family,
-    connector state, and MCP server, and ``token_hits`` counts how many query
-    words appear literally in it. Tie-break by insertion order.
+    Ranking uses corpus-weighted word overlap, boosts tool-name matches,
+    and prioritizes exact names. It searches descriptions, instructions,
+    capability families and MCP server metadata. Ties retain catalog order.
 
     Pure stdlib — no embeddings, no external services, no API keys.
     """
+
+    read_only = True
+
+    @staticmethod
+    def _tokens(text: str) -> set[str]:
+        # Split camelCase and underscores while retaining Unicode words.
+        text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
+        return set(re.findall(r"[^\W_]+", text.casefold()))
 
     def __init__(
         self,
@@ -38,8 +46,8 @@ class ToolSearchTool:
         description: str = (
             "Search the current agent's available tools and return a ranked "
             "shortlist of the best matches for a task. Use this when many "
-            "tools are available and you want to confirm the right one before "
-            "calling it."
+            "tools are available and no loaded tool fits. Call an already "
+            "loaded matching tool directly instead of searching again."
         ),
         prompt: str | None = None,
         max_limit: int = 10,
@@ -48,7 +56,7 @@ class ToolSearchTool:
     ) -> None:
         self.name = name
         self.description = description
-        self.prompt = prompt or TOOL_SEARCH_PROMPT
+        self.prompt = prompt or TOOL_SEARCH_PROMPT.replace("tool_search", name)
         self.prompt_instructions = (
             "Use this when many tools are available and you need to identify "
             "the right one before acting. Pass a plain-language query "
@@ -86,17 +94,12 @@ class ToolSearchTool:
 
     # ------------------------------------------------------------------ #
 
-    def _score(self, query_lower: str, query_tokens: list[str], haystack: str) -> float:
-        ratio = SequenceMatcher(None, query_lower, haystack).ratio()
-        token_hits = sum(1 for token in query_tokens if token and token in haystack)
-        return round(ratio + (self.token_bonus * token_hits), 4)
-
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         query_text = str(kwargs.get("query", "") or "").strip()
         if not query_text:
             return ToolOutput(
                 text="Error: `query` is required. Describe what you are trying to do.",
-                metadata={"error": "empty_query", "matches": []},
+                metadata={"error": "empty_query", "ok": False, "matches": []},
             )
 
         # Clamp limit to [1, max_limit].
@@ -114,11 +117,20 @@ class ToolSearchTool:
             )
 
         query_lower = query_text.lower()
-        query_tokens = [t for t in query_lower.split() if t]
+        query_tokens = self._tokens(query_text)
+        # Corpus-weighted word matches favour distinctive capabilities over
+        # boilerplate shared by every tool. No model call or embedding cost.
+        documents = [self._tokens(" ".join(
+            str(tool.get(key, "") or "") for key in
+            ("name", "description", "prompt_instructions", "category", "server", "discovery_terms")
+        )) for tool in tools]
+        frequencies = Counter(word for doc in documents for word in doc)
 
         scored: list[dict[str, Any]] = []
         for tool in tools:
             name = str(tool.get("name", "") or "")
+            if name == self.name:
+                continue
             description = str(tool.get("description", "") or "")
             instructions = str(tool.get("prompt_instructions", "") or "")
             category = str(tool.get("category", "") or "")
@@ -143,9 +155,18 @@ class ToolSearchTool:
                     connection_state,
                     server,
                     access_terms,
+                    str(tool.get("discovery_terms", "")),
                 )
-            ).lower()
-            score = self._score(query_lower, query_tokens, haystack)
+            )
+            words = self._tokens(haystack)
+            name_words = self._tokens(name)
+            score = sum(
+                math.log(1 + len(tools) / (1 + frequencies[token]))
+                * (3 if token in name_words else 1)
+                for token in query_tokens & words
+            )
+            if query_lower == name.lower():
+                score += 100
             scored.append(
                 {
                     "name": name,
@@ -161,7 +182,8 @@ class ToolSearchTool:
             )
 
         scored.sort(key=lambda item: item["score"], reverse=True)
-        matches = scored[:limit]
+        exact = [item for item in scored if item["name"].casefold() == query_text.casefold()]
+        matches = exact or scored[:limit]
 
         # Drop matches with zero-ish scores — they're noise.
         meaningful = [m for m in matches if m["score"] > 0.05]
@@ -173,7 +195,7 @@ class ToolSearchTool:
 
         lines = [f"Best tools for '{query_text}' (ranked by relevance):"]
         for idx, match in enumerate(meaningful, start=1):
-            desc = match["description"] or "No description provided."
+            desc = (match["description"] or "No description provided.")[:400]
             details = [match["category"]] if match["category"] else []
             if match["read_only"] is True:
                 details.append("read-only")
@@ -186,15 +208,21 @@ class ToolSearchTool:
                 details.append(f"{match['connection_id']}: {state}")
             detail_text = f"; {', '.join(details)}" if details else ""
             lines.append(
-                f"{idx}. {match['name']} (score={match['score']}{detail_text}) — {desc}"
+                f"{idx}. {match['name']} (score={match['score']:.3f}{detail_text}) — {desc}"
             )
             if match["prompt_instructions"]:
-                lines.append(f"   ↳ when to use: {match['prompt_instructions']}")
+                lines.append(f"   ↳ when to use: {match['prompt_instructions'][:300]}")
 
         # Deferred tool loading: matching a deferred tool loads it — its
         # full schema is advertised from the next step onward. A signature
         # line per loaded tool lets the model plan the call immediately.
         loaded_names = self._load_deferred(context, meaningful, lines)
+        from shipit_agent.deferral import LOADED_NAMES_KEY
+        already_loaded = [m["name"] for m in meaningful
+                          if m["name"] in (context.state.get(LOADED_NAMES_KEY) or ())
+                          and m["name"] not in loaded_names]
+        if already_loaded:
+            lines.append("Already loaded; call directly without another search: " + ", ".join(already_loaded))
 
         return ToolOutput(
             text="\n".join(lines),
@@ -204,6 +232,7 @@ class ToolSearchTool:
                 "total_candidates": len(tools),
                 "matches": meaningful,
                 "loaded": loaded_names,
+                "already_loaded": already_loaded,
             },
         )
 

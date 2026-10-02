@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Stop hooks: `AgentHooks.on_stop` sees the answer the agent is about to give
+  and can send it back to work with a reason (Claude Code-style `Stop`
+  hooks), in sync and async runs. Bounded by `MAX_STOP_CONTINUATIONS` (3);
+  emits `stop_blocked`, `stop_unresolved` and `stop_hook_error`.
 - `StepRouter` (`shipit_agent.routing`): a drop-in LLM that picks the model
   per step of a run. Routine steps (reading successful tool results) and
   summaries run on `fast`; planning a turn, recovering from a failed tool,

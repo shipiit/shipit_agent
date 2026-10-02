@@ -2050,6 +2050,10 @@ detail you were not given and do not say what you will do next."""
                             iteration=iteration,
                         )
 
+                if self.apply_stop_hooks(state, response, iteration, shared_state):
+                    if response.content:
+                        appended_response_id = id(response)
+                    continue
                 break
 
             tool_call_records = self.assign_tool_call_ids(

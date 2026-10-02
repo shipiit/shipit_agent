@@ -1413,6 +1413,67 @@ class RuntimeCore:
     #: that merely stumbled; a model that will not call it never will.
     MAX_FORCE_ANY_RETRIES = 2
 
+    #: How many times stop hooks may send one run back to work. A hook that
+    #: never relents must not turn every answer into ``max_iterations`` steps.
+    MAX_STOP_CONTINUATIONS = 3
+
+    def apply_stop_hooks(
+        self, state: Any, response: LLMResponse, iteration: int, shared_state: dict
+    ) -> bool:
+        """Ask the stop hooks whether the run may finish. True means keep going:
+        the reason has been added to the conversation and an event emitted."""
+        hooks = getattr(self, "hooks", None)
+        if hooks is None or not getattr(hooks, "stop", None):
+            return False
+        if iteration >= self.max_iterations:
+            return False
+        used = int(shared_state.get("stop_continuations", 0) or 0)
+        if used >= self.MAX_STOP_CONTINUATIONS:
+            if not shared_state.get("stop_cap_reported"):
+                shared_state["stop_cap_reported"] = True
+                self.emit(
+                    state,
+                    "stop_unresolved",
+                    "Stop hooks still objected; finishing after the continuation limit",
+                    iteration=iteration,
+                    continuations=used,
+                )
+            return False
+        try:
+            reason = hooks.run_stop(response.content or "")
+        except Exception as exc:  # a broken hook must not break the run
+            self.emit(
+                state,
+                "stop_hook_error",
+                f"Stop hook failed: {type(exc).__name__}",
+                iteration=iteration,
+            )
+            return False
+        if not reason:
+            return False
+        shared_state["stop_continuations"] = used + 1
+        if response.content:
+            state.messages.append(Message(role="assistant", content=response.content))
+        state.messages.append(
+            Message(
+                role="user",
+                content=(
+                    f"Not done yet: {reason}\nKeep working until this is resolved, "
+                    "then give your answer."
+                ),
+                metadata={"internal": True, "kind": "stop_hook"},
+            )
+        )
+        self.emit(
+            state,
+            "stop_blocked",
+            f"Kept going: {reason}",
+            reason=reason,
+            iteration=iteration,
+            continuation=used + 1,
+        )
+        return True
+
     # ── usage ────────────────────────────────────────────────────────────
 
     def track_usage(self, state: Any, response: LLMResponse, iteration: int) -> None:

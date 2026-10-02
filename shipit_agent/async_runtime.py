@@ -1399,6 +1399,9 @@ class AsyncAgentRuntime(RuntimeCore):
             if self.hooks:
                 self.hooks.run_after_llm(response)
 
+            if force_text and response.tool_calls:
+                self.ignore_calls_on_text_step(state, response, iteration)
+
             if response.reasoning_content:
                 self.emit(
                     state,

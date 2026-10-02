@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A model that kept calling a tool after the runtime switched to a text-only
+  step looped to `max_iterations` (16 model calls, ~70k tokens, seen live with
+  a small model). Calls on a text-only step are now ignored and the text is
+  the answer; emits `tool_calls_ignored`.
+
 ### Added
 
 - `StepRouter` (`shipit_agent.routing`): a drop-in LLM that picks the model

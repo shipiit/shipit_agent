@@ -411,6 +411,20 @@ class RuntimeCore:
             return
         shared_state["force_text_after_duplicate"] = True
 
+    def ignore_calls_on_text_step(self, state: Any, response: LLMResponse, iteration: int) -> None:
+        """On a step sent with no tools, a tool call is not an option the model
+        was given. Processing it re-arms the duplicate cycle and loops the run
+        to max_iterations, so the calls are dropped and the text is the answer."""
+        names = sorted({str(call.name) for call in response.tool_calls})
+        response.tool_calls = []
+        self.emit(
+            state,
+            "tool_calls_ignored",
+            "Ignored tool calls on a text-only step",
+            tools=names,
+            iteration=iteration,
+        )
+
     @staticmethod
     def without_withheld(
         schemas: list[Any], shared_state: dict[str, Any]

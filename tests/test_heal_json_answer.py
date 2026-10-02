@@ -32,3 +32,27 @@ def test_a_named_call_to_a_no_argument_tool_still_heals():
     raw = '{"name": "list_documents", "arguments": {}}'
     _, calls = heal_tool_calls(raw, set(SCHEMAS), schemas=SCHEMAS)
     assert [c.name for c in calls] == ["list_documents"]
+
+
+FILE_SCHEMAS = {
+    "write_file": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+                   "required": ["path", "content"]},
+    "read_file": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+    "present_file": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+}
+
+
+def test_the_one_tool_that_declares_every_key_wins_a_tie():
+    """Found live: a text <tool_call> {"path", "content"} fit write_file,
+    read_file and present_file (all declare path), so it was dropped as
+    ambiguous and the file was never written."""
+    text = ('I will create the file.\n<tool_call>\n{"path": "notes.md", "content": "# Notes"}\n'
+            '</tool_call>')
+    _, calls = heal_tool_calls(text, set(FILE_SCHEMAS), schemas=FILE_SCHEMAS)
+    assert [(c.name, c.arguments) for c in calls] == [("write_file", {"path": "notes.md", "content": "# Notes"})]
+
+
+def test_a_real_tie_is_still_left_alone():
+    text = '<tool_call>\n{"path": "notes.md"}\n</tool_call>'
+    _, calls = heal_tool_calls(text, {"read_file", "present_file"}, schemas=FILE_SCHEMAS)
+    assert calls == []

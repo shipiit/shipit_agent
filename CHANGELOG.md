@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `StepRouter` (`shipit_agent.routing`): a drop-in LLM that picks the model
+  per step of a run. Routine steps (reading successful tool results) and
+  summaries run on `fast`; planning a turn, recovering from a failed tool,
+  side calls and the final answer run on `strong`. A fast step's text is
+  buffered: if it calls tools the narration is released, and if it starts
+  answering the step is re-run on `strong`, so the user never reads the small
+  model's answer or sees text twice. Works for sync, async and streaming runs.
+- `max_session_tokens`: a soft token budget across every run of an agent or
+  one chat session, checked between steps; an exhausted session stops before
+  spending. `agent.session_token_usage` and `agent.reset_session_usage()`.
+- Diagnostics report `discarded_tokens`, `session_token_limit` and
+  `session_tokens_used`.
+
+### Changed
+
+- The user's real prompt is tagged `metadata["turn_start"]`, so tools can tell
+  it apart from runtime-injected user messages (reminders, retry nudges).
+- A routed step's discarded call counts toward usage, cost and budgets but not
+  toward context calibration, which is now keyed on the model that ran the step.
+
+### Limitations
+
+- Early abort of a fast step needs an adapter that stops streaming when the
+  text callback returns `False` (OpenAI-compatible and LiteLLM do). The native
+  Anthropic adapter ignores that return value, so there the fast call runs to
+  completion before escalating.
+- Savings depend on the price ratio between the two models and on how often
+  fast steps escalate; they have not yet been measured against live models.
+
 ## [2.1.0] - 2026-09-29
 
 ### Added

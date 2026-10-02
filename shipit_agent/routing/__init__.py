@@ -6,6 +6,8 @@ Public surface:
   - Tier                       — per-tier configuration (llm + approx $/1k tokens)
   - SpendReport                — tallied cost savings after a run
   - DEFAULT_DIFFICULTY_SIGNALS — lightweight heuristics (no LLM call needed)
+  - StepRouter                 — per-STEP routing inside a run: routine steps on a
+                                 fast model, planning/recovery/answers on a strong one
 
 Typical use::
 
@@ -21,19 +23,23 @@ Typical use::
 """
 
 from .cost_router import (
-    CostRouter,
     DEFAULT_DIFFICULTY_SIGNALS,
+    CostRouter,
     DifficultyTier,
     SpendReport,
     Tier,
     classify_difficulty,
 )
+from .step_router import RouteReport, StepRouter, classify_step
 
 __all__ = [
-    "CostRouter",
     "DEFAULT_DIFFICULTY_SIGNALS",
+    "CostRouter",
     "DifficultyTier",
+    "RouteReport",
     "SpendReport",
+    "StepRouter",
     "Tier",
     "classify_difficulty",
+    "classify_step",
 ]

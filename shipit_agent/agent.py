@@ -344,6 +344,9 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     skill_match_limit: int = 3  # max auto-matched
     progressive_skills: bool = False  # metadata-first, model-selected loading
     max_task_tokens: int | None = None  # soft per-run stop between model steps
+    # Soft stop across every run of this agent (or one chat session), checked
+    # between steps. Clones start fresh; reset with reset_session_usage().
+    max_session_tokens: int | None = None
 
     # ── rules (see shipit_agent/rules/) ───────────────────────────────
     # Durable behavioural policy (AGENTS.md house-style), scoped to paths/tools
@@ -413,6 +416,17 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
     async def aclose(self) -> None:
         """Release provider/MCP resources without blocking an event loop."""
         await asyncio.to_thread(self.close)
+
+    @property
+    def session_token_usage(self) -> int:
+        """Tokens spent across every run of this agent's session so far."""
+        return int(self._session_runtime_state.get("session_tokens", 0))
+
+    def reset_session_usage(self) -> None:
+        """Start the session budget over — e.g. for a long-lived server agent
+        at the start of a new billing window."""
+        self._session_runtime_state.pop("session_tokens", None)
+        self._session_runtime_state.pop("session_usage_complete", None)
 
     def clone(self, **changes: Any) -> "Agent":
         """Copy this agent with selected configuration overrides.
@@ -497,6 +511,10 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             type(self.max_task_tokens) is not int or self.max_task_tokens < 1
         ):
             raise ValueError("max_task_tokens must be a positive integer or None")
+        if self.max_session_tokens is not None and (
+            type(self.max_session_tokens) is not int or self.max_session_tokens < 1
+        ):
+            raise ValueError("max_session_tokens must be a positive integer or None")
         if self.stream_join_timeout < 0:
             raise ValueError("stream_join_timeout cannot be negative")
 
@@ -899,6 +917,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
                 "agent_description": self.description,
                 **self.metadata,
                 "max_task_tokens": self.max_task_tokens,
+                "max_session_tokens": self.max_session_tokens,
                 "used_skills": skill_ids,
                 "used_skill_tools": skill_tool_names,
                 "selected_skills": skill_details,

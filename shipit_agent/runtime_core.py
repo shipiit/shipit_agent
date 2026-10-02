@@ -284,6 +284,12 @@ class RuntimeCore:
         self._total_context_input = 0
         self._request_estimates = {"system": 0, "conversation": 0, "tool_results": 0, "schemas": 0}
         self._purpose_usage = {"main": 0, "compaction": 0}
+        # Tokens a routed step spent on a call it then threw away (StepRouter
+        # escalation): real spend, so budgets and totals count it.
+        self._discarded_tokens = 0
+        # Per-model token buckets, so a run served by several models (a
+        # StepRouter) is priced at each model's own rate.
+        self._usage_by_model: dict[str, dict[str, int]] = {}
         self._schema_prefix = ""
         self._prefix_changes = 0
         self._cache_counters_reported = False
@@ -1413,8 +1419,11 @@ class RuntimeCore:
         """Accumulate tokens and emit a running total for the live footer."""
         self._last_finish_reason = response.metadata.get("finish_reason")
         from shipit_agent.llms.usage import input_token_counts, has_complete_token_usage
-        uncached, _, _, total_input = input_token_counts(response)
+        uncached, read, write, total_input = input_token_counts(response)
         self._total_uncached_input += uncached
+        route = response.metadata.get("route") if isinstance(response.metadata, dict) else None
+        self._bucket((route or {}).get("model") or getattr(self.llm, "model", None),
+                     uncached, response.usage.get("completion_tokens", 0), read, write)
         self._total_context_input += total_input
         purpose = "compaction" if response.metadata.get("purpose") == "context_compaction" else "main"
         self._purpose_usage[purpose] += total_input + response.usage.get("completion_tokens", 0)
@@ -1432,6 +1441,14 @@ class RuntimeCore:
             "cache_creation_input_tokens",
         ):
             self._total_usage[key] += response.usage.get(key, 0)
+        spent = total_input + response.usage.get("completion_tokens", 0)
+        discarded = response.metadata.get("discarded_usage")
+        if isinstance(discarded, dict):
+            spent += self._count_discarded(discarded)
+        session = self._session_runtime_state
+        session["session_tokens"] = session.get("session_tokens", 0) + spent
+        if not has_complete_token_usage(response):
+            session["session_usage_complete"] = False
         self.emit(
             state,
             "usage_tick",
@@ -1440,7 +1457,70 @@ class RuntimeCore:
             iteration=iteration,
         )
 
+    def _count_discarded(self, usage: dict[str, Any]) -> int:
+        """Book a routed step's thrown-away call into totals and budgets.
+
+        Deliberately not into calibration: that learns only from the call
+        whose prompt it estimated, and this one was a different model.
+        """
+        from shipit_agent.llms.usage import input_token_counts
+
+        counted = {key: int(value) for key, value in usage.items()
+                   if isinstance(value, int) and not isinstance(value, bool)}
+        uncached, read, write, total_input = input_token_counts(LLMResponse(usage=counted))
+        tokens = total_input + counted.get("completion_tokens", 0)
+        self._total_uncached_input += uncached
+        self._bucket(usage.get("model"), uncached, counted.get("completion_tokens", 0), read, write)
+        self._total_context_input += total_input
+        self._purpose_usage["main"] += tokens
+        self._discarded_tokens += tokens
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens",
+                    "cache_read_input_tokens", "cache_creation_input_tokens"):
+            self._total_usage[key] += counted.get(key, 0)
+        return tokens
+
+    def _bucket(self, model: Any, uncached: int, output: int, read: int, write: int) -> None:
+        if not model:
+            return
+        bucket = self._usage_by_model.setdefault(
+            str(model), {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0})
+        bucket["input"] += uncached
+        bucket["output"] += output
+        bucket["cache_read"] += read
+        bucket["cache_write"] += write
+
+    def budget_stop_message(self) -> str:
+        scope = "session" if str(self.metadata.get("incomplete_reason") or "").startswith(
+            "session") else "task"
+        policy = "session token budget" if scope == "session" else "task token budget policy"
+        return (f"Stopped by the {policy}. Work is incomplete; "
+                "completed tool results remain in the session.")
+
     def task_budget_reached(self, state: Any, iteration: int) -> bool:
+        """Between steps: stop if the run's or the session's budget is spent."""
+        return self._task_budget_hit(state, iteration) or self._session_budget_hit(
+            state, iteration)
+
+    def _session_budget_hit(self, state: Any, iteration: int) -> bool:
+        limit = self.metadata.get("max_session_tokens")
+        if limit is None:
+            return False
+        session = self._session_runtime_state
+        if session.get("session_usage_complete", True) is False:
+            self.metadata["incomplete_reason"] = "session_budget_usage_unavailable"
+            self.emit(state, "budget_unavailable",
+                      "Provider did not report complete usage; stopping the budgeted session",
+                      limit=limit, iteration=iteration, scope="session")
+            return True
+        used = session.get("session_tokens", 0)
+        if used < limit:
+            return False
+        self.metadata["incomplete_reason"] = "session_token_budget"
+        self.emit(state, "budget_exhausted", "Session token budget reached", limit=limit,
+                  used=used, iteration=iteration, enforcement="between_steps", scope="session")
+        return True
+
+    def _task_budget_hit(self, state: Any, iteration: int) -> bool:
         limit = self.metadata.get("max_task_tokens")
         used = self._total_context_input + self._total_usage.get("completion_tokens", 0)
         if limit is not None and self._complete_usage_reports < self._completed_model_calls:
@@ -1476,7 +1556,9 @@ class RuntimeCore:
         actual = input_token_counts(response)[3]
         if actual <= 0:
             return
-        model = getattr(self.llm, "model", None)
+        # A router answers for several models; learn for the one that ran.
+        route = response.metadata.get("route") if isinstance(response.metadata, dict) else None
+        model = (route or {}).get("model") or getattr(self.llm, "model", None)
         estimated = count_messages(sent_messages, model) + self._fixed_prefix_tokens
         self.token_calibrator.observe(model, estimated, actual)
 
@@ -1651,7 +1733,21 @@ class RuntimeCore:
         )
         cost_usd: float | None = None
         model = getattr(self.llm, "model", None)
-        if model:
+        if len(self._usage_by_model) > 1:
+            # Several models served this run: price each at its own rate.
+            try:
+                from shipit_agent.costs.tracker import CostTracker
+
+                tracker = CostTracker()
+                cost_usd = round(sum(
+                    tracker.calculate_cost(name, b["input"], b["output"],
+                                           cache_read_tokens=b["cache_read"],
+                                           cache_write_tokens=b["cache_write"])
+                    for name, b in self._usage_by_model.items()), 6)
+            except (KeyError, TypeError, ValueError):
+                # A malformed pricing entry must not fail the run summary.
+                cost_usd = None
+        elif model:
             try:
                 from shipit_agent.costs.tracker import CostTracker
 
@@ -1691,6 +1787,10 @@ class RuntimeCore:
                 "prefix_changes": self._prefix_changes,
                 "cache_counters_reported": self._cache_counters_reported,
                 "task_token_limit": self.metadata.get("max_task_tokens"),
+                "session_token_limit": self.metadata.get("max_session_tokens"),
+                "session_tokens_used": self._session_runtime_state.get("session_tokens", 0),
+                "discarded_tokens": self._discarded_tokens,
+                "tokens_by_model": {name: dict(b) for name, b in self._usage_by_model.items()},
                 "budget_enforcement": "between_steps",
                 "provider_usage_available": bool(self._usage_reports),
                 "budget_usage_complete": self._complete_usage_reports == self._completed_model_calls,

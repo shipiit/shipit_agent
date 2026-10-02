@@ -126,6 +126,26 @@ WITHHELD_TOOLS_KEY = "withheld_tool_names"
 _EVICT_MIN_CHARS = 1_000
 
 
+def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
+    """Put the reminder last without making it the thing to answer.
+
+    Sent as its own trailing user message, small models answered the
+    reminder ("I am ready for your request") instead of the question. When
+    the request is the last message, the reminder rides on it — the
+    question still leads and nothing separate follows it. After a tool
+    result, the result stays put and the reminder follows, labelled.
+    """
+    note = f"[Reminder — not a new request: {reminder}]"
+    last = messages[-1] if messages else None
+    if (last is not None and last.role == "user" and isinstance(last.content, str)
+            and not (last.metadata or {}).get("internal")):
+        merged = deepcopy(last)
+        merged.content = f"{last.content}\n\n{note}"
+        return [*messages[:-1], merged]
+    return [*messages, Message(role="user", content=note,
+                               metadata={"internal": True, "kind": "reminder"})]
+
+
 def _evicted_notice(message: Message, *, recall_tool_name: str = "") -> str:
     """A compact, factual pointer that does not invite a repeat-call loop."""
     metadata = dict(message.metadata or {})
@@ -682,8 +702,9 @@ class RuntimeCore:
         else:
             reminder = (self.reminder or "").strip() or None
         if reminder:
-            messages = [*messages, Message(role="user", content=reminder)]
+            messages = attach_reminder(messages, reminder)
         return messages, step_schemas
+
 
     # ── parallel safety ──────────────────────────────────────────────────
 

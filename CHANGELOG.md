@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step looped to `max_iterations` (16 model calls, ~70k tokens, seen live with
   a small model). Calls on a text-only step are now ignored and the text is
   the answer; emits `tool_calls_ignored`.
+- The "you have not called any tool yet" reminder was sent as its own trailing
+  user message, and small models answered it ("I am ready for your request")
+  instead of the question, or called a document tool for facts already in the
+  chat. It now rides on the request as a labelled note; after a tool result it
+  still follows, marked internal.
 
 ### Added
 

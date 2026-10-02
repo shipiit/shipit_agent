@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-02
+
 ### Fixed
 
 - A model that kept calling a tool after the runtime switched to a text-only

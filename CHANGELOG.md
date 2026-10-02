@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A text tool call such as `{"path": …, "content": …}` fit several file tools
+  (each declares `path`) and was dropped as ambiguous, so the file was never
+  written. When several tools accept a nameless object, the one tool that
+  declares every key it carries is chosen; a genuine tie is still left alone.
+
 ## [2.2.0] - 2026-10-02
 
 ### Fixed

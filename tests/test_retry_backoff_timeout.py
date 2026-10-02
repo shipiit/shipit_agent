@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 
 from shipit_agent.async_runtime import AsyncAgentRuntime
@@ -59,7 +60,15 @@ def test_retry_policy_backoff_is_exponential_and_capped():
 
 def test_sync_retry_sleeps_with_backoff(monkeypatch):
     sleeps: list[float] = []
-    monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+    caller = threading.get_ident()
+
+    def record(seconds: float) -> None:
+        # time.sleep is process-wide: a background thread left by another
+        # test must not land in this run's list.
+        if threading.get_ident() == caller:
+            sleeps.append(seconds)
+
+    monkeypatch.setattr(time, "sleep", record)
 
     llm = FlakyLLM(failures=2)
     runtime = AgentRuntime(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 from typing import Any
 
 from shipit_agent.llms import citations as _citations
@@ -17,7 +18,7 @@ INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14"
 CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27"
 
 
-def _pump_stream_events(stream: Any, on_text: Any, on_tool_input: Any) -> None:
+def _pump_stream_events(stream: Any, on_text: Any, on_tool_input: Any) -> bool:
     """Forward text and tool-argument deltas from the raw event stream.
 
     The SDK's ``text_stream`` helper only yields text, so streaming a tool
@@ -26,7 +27,8 @@ def _pump_stream_events(stream: Any, on_text: Any, on_tool_input: Any) -> None:
     carries the next fragment of its argument JSON.
 
     A failure here costs a preview, not the turn — the caller still fetches
-    the final message afterwards.
+    the final message afterwards. Returns True when a callback returned
+    ``False`` (a runtime guard asking the generation to stop).
     """
     active: dict[int, tuple[str, str]] = {}
     for event in stream:
@@ -43,19 +45,37 @@ def _pump_stream_events(stream: Any, on_text: Any, on_tool_input: Any) -> None:
             dtype = getattr(delta, "type", "")
             if dtype == "text_delta" and on_text is not None:
                 text = getattr(delta, "text", "") or ""
-                if text:
-                    on_text(text)
+                if text and on_text(text) is False:
+                    return True
             elif dtype == "input_json_delta":
                 found = active.get(getattr(event, "index", -1))
                 if found is not None:
                     fragment = getattr(delta, "partial_json", "") or ""
                     if fragment:
                         try:
-                            on_tool_input(found[0], found[1], fragment)
+                            keep_going = on_tool_input(found[0], found[1], fragment)
                         except Exception:
-                            pass
+                            keep_going = None
+                        if keep_going is False:
+                            return True
         elif etype == "content_block_stop":
             active.pop(getattr(event, "index", -1), None)
+    return False
+
+
+def _stopped_early(snapshot: Any) -> Any:
+    """What a guard-stopped stream produced, minus any half-written tool call.
+
+    A call cut off mid-argument must never run, so tool-use blocks are dropped
+    and only the text so far is kept. There is no stop reason: the provider
+    never finished.
+    """
+    blocks = [
+        block for block in (getattr(snapshot, "content", None) or [])
+        if getattr(block, "type", "") not in ("tool_use", _server_tools.SERVER_TOOL_USE_BLOCK)
+    ]
+    return SimpleNamespace(content=blocks, usage=getattr(snapshot, "usage", None),
+                           stop_reason=None)
 
 
 class AnthropicChatLLM:
@@ -460,17 +480,26 @@ class AnthropicChatLLM:
                 stream_fn = getattr(client.messages, "stream", None)
                 if stream_fn is not None:
                     with stream_fn(**kwargs) as _stream:
+                        stopped = False
                         if tool_input_callback is None:
                             # text_stream is simpler and well-trodden; only
                             # drop to raw events when someone wants tool input.
                             for _text in _stream.text_stream:
-                                if _text:
-                                    text_delta_callback(_text)
+                                if _text and text_delta_callback(_text) is False:
+                                    stopped = True
+                                    break
                         else:
-                            _pump_stream_events(
+                            stopped = _pump_stream_events(
                                 _stream, text_delta_callback, tool_input_callback
                             )
-                        response = _stream.get_final_message()
+                        # A guard said stop. get_final_message() would read —
+                        # and bill — the rest of the stream; take what was
+                        # produced instead. Leaving this block closes it.
+                        response = (
+                            _stopped_early(_stream.current_message_snapshot)
+                            if stopped
+                            else _stream.get_final_message()
+                        )
                 else:  # very old SDK without stream helper
                     response = create(**kwargs)
             else:

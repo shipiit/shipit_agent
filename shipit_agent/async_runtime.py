@@ -1645,6 +1645,10 @@ class AsyncAgentRuntime(RuntimeCore):
                             "Edited code but ran out of steps before verification passed",
                             iteration=iteration,
                         )
+                if self.apply_stop_hooks(state, response, iteration, shared_state):
+                    if response.content:
+                        appended_response_id = id(response)
+                    continue
                 break
 
             tool_call_records = self.assign_tool_call_ids(

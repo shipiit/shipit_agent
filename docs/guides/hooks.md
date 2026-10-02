@@ -44,6 +44,7 @@ result = agent.run("What is the weather in Tokyo?")
 | `after_llm` | `fn(response: LLMResponse)` | After each LLM completion returns |
 | `before_tool` | `fn(name: str, arguments: dict)` | Before a tool is executed |
 | `after_tool` | `fn(name: str, result: ToolResult)` | After a tool returns (success or error) |
+| `stop` | `fn(answer: str)` | When the agent is about to finish; return a reason to keep it working |
 
 ## Registration
 
@@ -117,6 +118,34 @@ def block_dangerous_tools(name, arguments):
     if name in BLOCKED_TOOLS:
         raise PermissionError(f"Tool {name} is blocked by policy")
 ```
+
+## Keep going until it's really done (stop hooks)
+
+A stop hook runs when the agent is about to give its final answer. Return
+`None` to let it finish, or a reason to send it back to work, in the spirit of
+Claude Code's `Stop` hooks:
+
+```python
+hooks = AgentHooks()
+
+@hooks.on_stop
+def must_cite(answer: str):
+    if "http" not in answer:
+        return "Cite at least one source link before answering."
+    return None  # done
+
+agent = Agent(llm=llm, hooks=hooks)
+```
+
+The reason is added to the conversation as `Not done yet: <reason>` and the run
+continues. A hook can also return `{"decision": "block", "reason": "..."}`.
+
+- Each block emits a `stop_blocked` event with the reason.
+- A run is sent back at most `MAX_STOP_CONTINUATIONS` (3) times; after that it
+  finishes and emits `stop_unresolved` once, so a hook that never relents
+  cannot loop a run.
+- A hook that raises lets the run finish and emits `stop_hook_error`.
+- Hooks are not consulted on the last allowed iteration.
 
 ## Via the profile builder
 

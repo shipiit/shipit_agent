@@ -62,6 +62,7 @@ class AgentHooks:
     before_tool: list[Callable[..., Any]] = field(default_factory=list)
     after_tool: list[Callable[..., Any]] = field(default_factory=list)
     user_prompt: list[Callable[..., Any]] = field(default_factory=list)
+    stop: list[Callable[..., Any]] = field(default_factory=list)
 
     # ------------------------------------------------------------------
     # Registration decorators
@@ -123,6 +124,18 @@ class AgentHooks:
         self.user_prompt.append(fn)
         return fn
 
+    def on_stop(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a hook that can keep the agent working when it tries to finish.
+
+        Called with the answer the agent is about to give. Return ``None`` to
+        let it finish, or a reason (a string, or ``{"decision": "block",
+        "reason": "..."}``) to send it back to work with that reason — Claude
+        Code-style ``Stop`` hooks. The runtime caps how often this can happen
+        in one run, so a hook that never relents cannot loop forever.
+        """
+        self.stop.append(fn)
+        return fn
+
     # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------
@@ -180,6 +193,19 @@ class AgentHooks:
             if hasattr(value, "output"):
                 current = value
         return current
+
+    def run_stop(self, answer: str) -> str | None:
+        """The first reason a stop hook gives to keep going, or ``None``."""
+        for fn in self.stop:
+            value = fn(answer)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, dict) and str(value.get("decision", "")).lower() in (
+                "block",
+                "continue",
+            ):
+                return str(value.get("reason") or "The task is not finished yet.").strip()
+        return None
 
     def run_user_prompt(self, prompt: str) -> tuple[str, PermissionResult | None]:
         """Let hooks rewrite or block the user prompt.

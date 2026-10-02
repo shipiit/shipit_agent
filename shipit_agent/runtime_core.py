@@ -431,6 +431,22 @@ class RuntimeCore:
             return
         shared_state["force_text_after_duplicate"] = True
 
+    def apply_user_prompt_hooks(self, state: Any, user_prompt: str) -> tuple[str, str | None]:
+        """Run ``on_user_prompt`` hooks: ``(prompt, None)`` or ``(prompt, refusal)``.
+
+        The hooks were documented (redact or rewrite the incoming prompt, or
+        block it) but no run path called them, so they silently did nothing.
+        """
+        hooks = getattr(self, "hooks", None)
+        if hooks is None or not getattr(hooks, "user_prompt", None) or not isinstance(user_prompt, str):
+            return user_prompt, None
+        rewritten, decision = hooks.run_user_prompt(user_prompt)
+        if decision is not None and decision.denied:
+            reason = decision.reason or "blocked by a prompt hook"
+            self.emit(state, "prompt_blocked", f"Prompt blocked: {reason}", reason=reason)
+            return rewritten, f"Request blocked: {reason}"
+        return rewritten, None
+
     def ignore_calls_on_text_step(self, state: Any, response: LLMResponse, iteration: int) -> None:
         """On a step sent with no tools, a tool call is not an option the model
         was given. Processing it re-arms the duplicate cycle and loops the run

@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of the question, or called a document tool for facts already in the
   chat. It now rides on the request as a labelled note; after a tool result it
   still follows, marked internal.
+- Text-call healing promoted any JSON object to a call of a no-argument tool
+  (its empty schema skipped the key check). A model's JSON *answer* became a
+  phantom `list_documents` call and vanished from the reply, structured-output
+  answers were re-run as tool calls, and genuine nameless calls became
+  ambiguous and were dropped. A nameless object with keys never matches a tool
+  that takes no arguments.
+- `on_user_prompt` hooks were documented but never called; both runtimes now
+  run them before anything else sees the prompt (rewrite, or deny with
+  `prompt_blocked`).
 
 ### Added
 

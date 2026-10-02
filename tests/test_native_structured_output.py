@@ -66,8 +66,7 @@ def _agent(llm, **kw):
         auto_use_skills=False,
         auto_project_memory=False,
         skill_source=None,
-        max_iterations=3,
-        **kw,
+        **{"max_iterations": 3, **kw},
     )
 
 
@@ -76,11 +75,21 @@ def test_response_format_applied_only_when_no_tools_are_sent():
     llm = FormatRecordingLLM(
         [("", [("read_file", {})]), ('{"answer": "done"}', [])]
     )
-    _agent(llm, tools=[ReadTool()]).run("go", output_schema=SCHEMA)
-    # First completion sent tools → response_format must be absent.
+    result = _agent(llm, tools=[ReadTool()]).run("go", output_schema=SCHEMA)
+    # Both completions sent tools, so neither carries the format. (This used
+    # to pass only because the JSON answer was mis-healed into two more
+    # read_file calls, reaching a tool-less step by accident.)
+    assert llm.formats == [None, None]
+    assert '"answer": "done"' in result.output
+
+
+def test_response_format_applied_on_a_tool_less_final_step():
+    llm = FormatRecordingLLM(
+        [("", [("read_file", {})]), ('{"answer": "done"}', [])]
+    )
+    _agent(llm, tools=[ReadTool()], max_iterations=2).run("go", output_schema=SCHEMA)
     assert llm.formats[0] is None
-    # A later tool-less completion carries the native format.
-    assert any(f is not None for f in llm.formats[1:])
+    assert llm.formats[-1] is not None
 
 
 def test_no_tools_agent_gets_format_on_the_only_turn():

@@ -1433,6 +1433,20 @@ detail you were not given and do not say what you will do next."""
             except Exception:  # noqa: BLE001 — a broken gate must never break a run
                 state.verify_gate = None
 
+        # ── on_user_prompt hooks: rewrite or block before anything else sees it ──
+        user_prompt, hook_refusal = self.apply_user_prompt_hooks(state, user_prompt)
+        if hook_refusal is not None:
+            self.emit(
+                state,
+                "run_completed",
+                "Run blocked by a prompt hook",
+                output=hook_refusal,
+                content=hook_refusal,
+                format="markdown",
+                usage={},
+                cancelled=False,
+            )
+            return state, LLMResponse(content=hook_refusal)
         # ── Guardrails: input gate — blocked prompts never reach the LLM ──
         if self.guardrails is not None:
             decision = self.guardrails.check_input(user_prompt)

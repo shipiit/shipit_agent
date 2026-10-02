@@ -1175,7 +1175,8 @@ class AsyncAgentRuntime(RuntimeCore):
                     metadata={"internal": True, "kind": "verified_session_facts"},
                 )
             )
-        state.messages.append(Message(role="user", content=user_content or user_prompt))
+        state.messages.append(Message(role="user", content=user_content or user_prompt,
+                                      metadata={"turn_start": True}))
 
         self.emit(state, "run_started", "Agent run started", prompt=user_prompt)
 
@@ -1290,7 +1291,7 @@ class AsyncAgentRuntime(RuntimeCore):
         appended_response_id: int | None = None
         for iteration in range(1, self.max_iterations + 1):
             if self.task_budget_reached(state, iteration):
-                response = LLMResponse(content="Stopped by the task token budget policy. Work is incomplete; completed tool results remain in the session.")
+                response = LLMResponse(content=self.budget_stop_message())
                 break
             if self._cancel_event.is_set():
                 self.emit(
@@ -1816,7 +1817,7 @@ class AsyncAgentRuntime(RuntimeCore):
         # Summarization if hit iteration cap
         hit_iteration_cap = bool(response.tool_calls) and not response.content
         if hit_iteration_cap and self.task_budget_reached(state, self.max_iterations + 1):
-            response = LLMResponse(content="Stopped by the task token budget policy. Work is incomplete; completed tool results remain in the session.")
+            response = LLMResponse(content=self.budget_stop_message())
             hit_iteration_cap = False
         if hit_iteration_cap:
             self.emit(

@@ -1062,6 +1062,21 @@ class AsyncAgentRuntime(RuntimeCore):
             except Exception:
                 state.verify_gate = None
 
+        # on_user_prompt hooks: rewrite or block before anything else sees it.
+        user_prompt, hook_refusal = self.apply_user_prompt_hooks(state, user_prompt)
+        if hook_refusal is not None:
+            self.emit(
+                state,
+                "run_completed",
+                "Run blocked by a prompt hook",
+                output=hook_refusal,
+                content=hook_refusal,
+                format="markdown",
+                usage={},
+                cancelled=False,
+            )
+            return state, LLMResponse(content=hook_refusal)
+
         # Guardrails: blocked prompts never reach the LLM.
         user_prompt, refusal = self.check_input(state, user_prompt)
         if refusal is not None:
@@ -1398,6 +1413,9 @@ class AsyncAgentRuntime(RuntimeCore):
 
             if self.hooks:
                 self.hooks.run_after_llm(response)
+
+            if force_text and response.tool_calls:
+                self.ignore_calls_on_text_step(state, response, iteration)
 
             if response.reasoning_content:
                 self.emit(

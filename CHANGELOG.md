@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A model that kept calling a tool after the runtime switched to a text-only
+  step looped to `max_iterations` (16 model calls, ~70k tokens, seen live with
+  a small model). Calls on a text-only step are now ignored and the text is
+  the answer; emits `tool_calls_ignored`.
+- The "you have not called any tool yet" reminder was sent as its own trailing
+  user message, and small models answered it ("I am ready for your request")
+  instead of the question, or called a document tool for facts already in the
+  chat. It now rides on the request as a labelled note; after a tool result it
+  still follows, marked internal.
+- Text-call healing promoted any JSON object to a call of a no-argument tool
+  (its empty schema skipped the key check). A model's JSON *answer* became a
+  phantom `list_documents` call and vanished from the reply, structured-output
+  answers were re-run as tool calls, and genuine nameless calls became
+  ambiguous and were dropped. A nameless object with keys never matches a tool
+  that takes no arguments.
+- `on_user_prompt` hooks were documented but never called; both runtimes now
+  run them before anything else sees the prompt (rewrite, or deny with
+  `prompt_blocked`).
+
 ### Added
 
 - Stop hooks: `AgentHooks.on_stop` sees the answer the agent is about to give

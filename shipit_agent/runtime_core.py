@@ -126,6 +126,26 @@ WITHHELD_TOOLS_KEY = "withheld_tool_names"
 _EVICT_MIN_CHARS = 1_000
 
 
+def attach_reminder(messages: list[Message], reminder: str) -> list[Message]:
+    """Put the reminder last without making it the thing to answer.
+
+    Sent as its own trailing user message, small models answered the
+    reminder ("I am ready for your request") instead of the question. When
+    the request is the last message, the reminder rides on it — the
+    question still leads and nothing separate follows it. After a tool
+    result, the result stays put and the reminder follows, labelled.
+    """
+    note = f"[Reminder — not a new request: {reminder}]"
+    last = messages[-1] if messages else None
+    if (last is not None and last.role == "user" and isinstance(last.content, str)
+            and not (last.metadata or {}).get("internal")):
+        merged = deepcopy(last)
+        merged.content = f"{last.content}\n\n{note}"
+        return [*messages[:-1], merged]
+    return [*messages, Message(role="user", content=note,
+                               metadata={"internal": True, "kind": "reminder"})]
+
+
 def _evicted_notice(message: Message, *, recall_tool_name: str = "") -> str:
     """A compact, factual pointer that does not invite a repeat-call loop."""
     metadata = dict(message.metadata or {})
@@ -411,6 +431,36 @@ class RuntimeCore:
             return
         shared_state["force_text_after_duplicate"] = True
 
+    def apply_user_prompt_hooks(self, state: Any, user_prompt: str) -> tuple[str, str | None]:
+        """Run ``on_user_prompt`` hooks: ``(prompt, None)`` or ``(prompt, refusal)``.
+
+        The hooks were documented (redact or rewrite the incoming prompt, or
+        block it) but no run path called them, so they silently did nothing.
+        """
+        hooks = getattr(self, "hooks", None)
+        if hooks is None or not getattr(hooks, "user_prompt", None) or not isinstance(user_prompt, str):
+            return user_prompt, None
+        rewritten, decision = hooks.run_user_prompt(user_prompt)
+        if decision is not None and decision.denied:
+            reason = decision.reason or "blocked by a prompt hook"
+            self.emit(state, "prompt_blocked", f"Prompt blocked: {reason}", reason=reason)
+            return rewritten, f"Request blocked: {reason}"
+        return rewritten, None
+
+    def ignore_calls_on_text_step(self, state: Any, response: LLMResponse, iteration: int) -> None:
+        """On a step sent with no tools, a tool call is not an option the model
+        was given. Processing it re-arms the duplicate cycle and loops the run
+        to max_iterations, so the calls are dropped and the text is the answer."""
+        names = sorted({str(call.name) for call in response.tool_calls})
+        response.tool_calls = []
+        self.emit(
+            state,
+            "tool_calls_ignored",
+            "Ignored tool calls on a text-only step",
+            tools=names,
+            iteration=iteration,
+        )
+
     @staticmethod
     def without_withheld(
         schemas: list[Any], shared_state: dict[str, Any]
@@ -668,8 +718,9 @@ class RuntimeCore:
         else:
             reminder = (self.reminder or "").strip() or None
         if reminder:
-            messages = [*messages, Message(role="user", content=reminder)]
+            messages = attach_reminder(messages, reminder)
         return messages, step_schemas
+
 
     # ── parallel safety ──────────────────────────────────────────────────
 

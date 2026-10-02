@@ -163,3 +163,27 @@ class TestItDoesNotAccumulate:
         assert not any(
             DEPTH_REMINDER in (m.content or "") for m in result.messages
         )
+
+
+class TestTheRequestStaysLast:
+    """Found live: with the grounding reminder sent as its own trailing user
+    message, a small model answered the reminder ("I am ready. Please provide
+    your request.") instead of the question, or obeyed it by calling a
+    document tool for facts already in the chat. The reminder now rides on
+    the request itself, so the question is still what the model reads last."""
+
+    def test_before_any_tool_the_reminder_is_attached_to_the_request(self) -> None:
+        llm = _Recorder([LLMResponse(content="done")])
+        _agent(llm).run("What is 2 + 2?")
+        last = llm.seen[0][-1]
+        text = (last.get("content") if isinstance(last, dict) else last.content) or ""
+        role = last.get("role") if isinstance(last, dict) else last.role
+        assert role == "user"
+        assert text.startswith("What is 2 + 2?")
+        assert "not a new request" in text and GROUNDING_REMINDER in text
+        assert sum(GROUNDING_REMINDER in t for t in llm.texts(0)) == 1
+
+    def test_the_saved_request_has_no_reminder(self) -> None:
+        llm = _Recorder([LLMResponse(content="done")])
+        result = _agent(llm).run("What is 2 + 2?")
+        assert not any(GROUNDING_REMINDER in (m.content or "") for m in result.messages)

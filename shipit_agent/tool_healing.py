@@ -143,6 +143,12 @@ def _arguments_fit_schema(
     required = schema.get("required") or []
     if not arguments:
         return not required
+    if strict_required and not properties:
+        # A nameless object with keys can never be a call to a tool that takes
+        # nothing. Without this every JSON object "fit" a no-argument tool:
+        # a model's JSON answer was promoted to list_documents and removed from
+        # the reply, and real nameless calls became ambiguous and were lost.
+        return False
     if properties and not any(key in properties for key in arguments):
         return False
     if strict_required and not all(key in arguments for key in required):

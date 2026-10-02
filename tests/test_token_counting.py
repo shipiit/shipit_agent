@@ -1,4 +1,6 @@
 """Real per-model token counting, with a safe fall-back."""
+import importlib.util
+
 from shipit_agent.compaction import estimate_tokens
 from shipit_agent.models import Message
 from shipit_agent.token_counting import (
@@ -56,6 +58,8 @@ def test_count_message_tokens_sums():
     assert total >= count_tokens("hello there", "gpt-4o")
 
 
-def test_real_counting_available_is_true_here():
-    # litellm is a dependency in this repo's test env.
-    assert real_counting_available() is True
+def test_real_counting_available_tracks_litellm():
+    # Real counting rides on litellm, an optional extra — it is reported as
+    # available exactly when litellm imports, never assumed.
+    expected = importlib.util.find_spec("litellm") is not None
+    assert real_counting_available() is expected

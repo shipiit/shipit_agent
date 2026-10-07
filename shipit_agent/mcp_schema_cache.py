@@ -144,10 +144,18 @@ def load(
         return None
     try:
         payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            return None
         if payload.get("schema_version") != SCHEMA_VERSION:
             return None
         if not isinstance(payload.get("tools"), list):
             return None
+        for descriptor in payload["tools"]:
+            if not isinstance(descriptor, dict) or not isinstance(descriptor.get("name"), str) or not descriptor["name"]:
+                return None
+            if any(key in descriptor and not isinstance(descriptor[key], dict)
+                   for key in ("input_schema", "output_schema", "annotations", "execution")):
+                return None
         age = time.time() - float(payload.get("saved_at", 0))
         if age < 0 or age > ttl:
             return None

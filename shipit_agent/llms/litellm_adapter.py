@@ -8,6 +8,7 @@ import time
 from typing import Any, Callable
 
 from shipit_agent.llms.base import LLMResponse
+from shipit_agent.llms.usage import normalize_token_usage
 from shipit_agent.llms.bedrock_token import (
     BedrockTokenError,
     existing_bearer_token,
@@ -499,11 +500,7 @@ class LiteLLMChatLLM:
         usage: dict[str, int] = {}
         if hasattr(response, "usage") and response.usage:
             u = response.usage
-            usage = {
-                "prompt_tokens": getattr(u, "prompt_tokens", 0) or 0,
-                "completion_tokens": getattr(u, "completion_tokens", 0) or 0,
-                "total_tokens": getattr(u, "total_tokens", 0) or 0,
-            }
+            usage = normalize_token_usage(u)
             usage.update(_extract_cache_usage(u))
 
         return LLMResponse(
@@ -677,11 +674,7 @@ def _stream_completion(
 
             chunk_usage = getattr(chunk, "usage", None)
             if chunk_usage:
-                usage = {
-                    "prompt_tokens": getattr(chunk_usage, "prompt_tokens", 0) or 0,
-                    "completion_tokens": getattr(chunk_usage, "completion_tokens", 0) or 0,
-                    "total_tokens": getattr(chunk_usage, "total_tokens", 0) or 0,
-                }
+                usage = normalize_token_usage(chunk_usage)
                 usage.update(_extract_cache_usage(chunk_usage))
     except Exception as exc:
         exc_name = type(exc).__name__

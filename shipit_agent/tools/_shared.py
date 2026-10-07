@@ -69,7 +69,7 @@ class Workspace:
         walk out — checking the string first catches neither.
         """
         target = (self.root / Path(path).expanduser()).resolve()
-        if not str(target).startswith(str(self.root)):
+        if not target.is_relative_to(self.root):
             raise ValueError(f"{path} is outside the workspace ({self.root})")
         return target
 

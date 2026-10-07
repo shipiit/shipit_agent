@@ -52,6 +52,8 @@ With skills::
 
 from __future__ import annotations
 
+from contextlib import aclosing, closing
+
 import asyncio
 import logging
 import threading
@@ -1341,8 +1343,9 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         completed = False
         try:
             with self._run_lock:
-                for event in runtime.stream(user_prompt, user_content=user_content):
-                    yield event
+                with closing(runtime.stream(user_prompt, user_content=user_content)) as events:
+                    for event in events:
+                        yield event
             completed = True
         finally:
             self._active_runtime = None
@@ -1395,10 +1398,11 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             sources: list[Any] = []
             completed = False
             try:
-                async for event in runtime.stream(
+                async with aclosing(runtime.stream(
                     user_prompt, user_content=user_content
-                ):
-                    yield event
+                )) as events:
+                    async for event in events:
+                        yield event
                 completed = True
             finally:
                 self._active_runtime = None

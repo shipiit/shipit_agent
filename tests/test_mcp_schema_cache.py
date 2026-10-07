@@ -93,6 +93,24 @@ def test_env_values_are_not_written_to_disk(cache_home):
     assert "hunter2" not in on_disk and "SECRET_TOKEN" not in on_disk
 
 
+@pytest.mark.parametrize("payload", [[], None, "invalid", 42])
+def test_valid_json_with_wrong_root_is_cache_miss(cache_home, payload):
+    import json
+    sc.save("srv", "fp", [{"name": "a"}])
+    sc._path_for("srv", "fp").write_text(json.dumps(payload))
+    assert sc.load("srv", "fp") is None
+
+
+@pytest.mark.parametrize("descriptor", [None, "tool", {}, {"name": 3},
+    {"name": "a", "input_schema": "invalid"}, {"name": "a", "annotations": []}])
+def test_bad_cached_descriptor_falls_back_to_live_discovery(cache_home, descriptor):
+    transport = RecordingTransport()
+    server = _server(transport)
+    sc.save("fake", server._cache_fingerprint(), [descriptor])
+    assert [tool.name for tool in server.discover_tools()] == ["do_thing"]
+    assert "tools/list" in transport.calls
+
+
 def test_fingerprint_is_stable_and_config_sensitive():
     base = dict(name="s", identity="stdio:cmd", protocol_version="2025-11-25",
                 allowed=None, blocked=set(), include_server_in_tool_names=False, env=None)

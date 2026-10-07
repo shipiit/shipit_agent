@@ -28,7 +28,7 @@ def log_tool_start(name, arguments):
 def log_tool_end(name, result):
     print(f"{name} returned {len(result.output)} chars")
 
-agent = Agent.with_builtins(
+agent = Agent(
     llm=OpenAIChatLLM(model="gpt-4o-mini"),
     hooks=hooks,
 )
@@ -44,6 +44,7 @@ result = agent.run("What is the weather in Tokyo?")
 | `after_llm` | `fn(response: LLMResponse)` | After each LLM completion returns |
 | `before_tool` | `fn(name: str, arguments: dict)` | Before a tool is executed |
 | `after_tool` | `fn(name: str, result: ToolResult)` | After a tool returns (success or error) |
+| `user_prompt` | `fn(prompt: str)` | Rewrite or deny the incoming prompt before the model receives it |
 | `stop` | `fn(answer: str)` | When the agent is about to finish; return a reason to keep it working |
 
 ## Registration
@@ -165,6 +166,59 @@ profile = (
 ## Works with async too
 
 `AgentHooks` works identically with `AsyncAgentRuntime`. The hook callbacks themselves are synchronous — the async runtime calls them inline between awaits.
+
+This includes ordinary `Agent.run`, `stream`, `arun`, and `astream`, not only
+the built-in-tools factory. Keep callbacks fast: slow network calls or sleeps
+inside a callback block the async event loop. Returning an awaitable raises
+`TypeError`; an `async def` policy must not be silently treated as approval.
+
+## Custom policies with ordinary Agent
+
+```python
+from shipit_agent import Agent, AgentHooks
+
+hooks = AgentHooks()
+
+@hooks.on_user_prompt
+def check_request(prompt):
+    if len(prompt) > 100_000:
+        return {"decision": "deny", "reason": "Request exceeds this application's limit."}
+
+@hooks.on_before_tool_matching("delete_*|send_*")
+def require_review(name, arguments):
+    return {"decision": "ask", "reason": "This action needs review."}
+
+@hooks.on_after_llm
+def record_usage(response):
+    usage_logger(response.usage)  # your application-owned logging function
+
+agent = Agent(llm=llm, tools=tools, hooks=hooks)
+```
+
+Configure your application's approval handler when using `ask`; a hook does
+not grant approval by itself. No provider-specific hook implementation is needed.
+
+Before-tool hooks run in registration order. Return a decision with
+`updated_arguments` to rewrite the call. Later hooks and the permission engine
+see those rewritten arguments. Deny wins over ask, and ask wins over allow;
+later rewrites do not erase an earlier approval requirement.
+
+### Output transformations and boundaries
+
+Replacing output through a string, output/text dictionary, or `ToolOutput`
+clears a stale `model_text` excerpt. A dictionary or `ToolOutput` can explicitly
+supply a new `model_text` if a separate compact model view is desired.
+
+Post-tool hooks run **after execution**. They cannot undo side effects or retract
+raw output deltas already streamed to subscribers. Do not rely on them alone to
+keep secrets out of logs/UI: redact at the tool source or buffer/filter events
+before forwarding them. Hook code is trusted application Python, not sandboxed.
+Create separately scoped callback state for different users; cloned agents can
+share callback objects. Model hooks are not a durable billing ledger.
+
+Ordinary callback exceptions propagate. Stop-hook exceptions are the documented
+exception: they emit `stop_hook_error` and allow finishing. Stop hooks are quality
+checks, not a security boundary, and their continuations can add token usage.
 
 ## Match and transform tool output
 

@@ -118,6 +118,11 @@ class EditFileTool:
 
         old_text = str(kwargs.get("old_text", ""))
         new_text = str(kwargs.get("new_text", ""))
+        if not old_text:
+            return ToolOutput(
+                text="Edit failed: old_text must be a non-empty exact block from the file.",
+                metadata={"is_error": True, "error": "empty_old_text", "path": str(path)},
+            )
         replace_all = bool(kwargs.get("replace_all", False))
 
         # Read raw bytes and decode strictly. Reading with errors="replace"

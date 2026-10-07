@@ -273,24 +273,27 @@ def authorize_tool(
     import.
     """
     results: list[PermissionResult] = []
+    effective_arguments = arguments
     if hooks is not None:
         hook_decision = hooks.run_before_tool(name, arguments)
         if hook_decision is not None:
             results.append(hook_decision)
+            if hook_decision.updated_arguments is not None:
+                effective_arguments = hook_decision.updated_arguments
     if permissions is not None:
-        results.append(permissions.check(name, arguments, tool))
+        results.append(permissions.check(name, effective_arguments, tool))
     if not results:
         return None
     for result in results:
         if result.denied:
             return result
-    for result in results:
-        if result.needs_approval:
-            return result
     updated: dict[str, Any] | None = None
     for result in results:
         if result.updated_arguments is not None:
             updated = result.updated_arguments
+    for result in results:
+        if result.needs_approval:
+            return PermissionResult(result.decision, result.reason, updated)
     return PermissionResult(PermissionDecision.ALLOW, updated_arguments=updated)
 
 

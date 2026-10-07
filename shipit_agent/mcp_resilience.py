@@ -16,9 +16,9 @@ This module adds two pieces, composed as a transport wrapper:
   special-cased to a long, fixed cooldown — hammering a server that just told us
   to slow down is how a soft limit becomes a ban.
 * **Bounded retry** — a single transient failure (a subprocess that died, a
-  dropped connection) is retried once after a short jittered delay, because the
-  persistent transports reconnect on the next call. Rate-limit errors are never
-  retried.
+  dropped connection) during discovery is retried once after a short jittered
+  delay. Tool execution is not replayed: a lost response does not prove that
+  the server did not already perform the action. Rate limits are never retried.
 
 ``ResilientMCPTransport`` wraps anything with ``.request(method, params)`` /
 ``.close()`` — the transport Protocol — so it composes with every transport
@@ -49,6 +49,13 @@ _RATE_LIMIT_MARKERS = (
     "too many requests",
     "quota exceeded",
 )
+
+# Protocol discovery/read operations only. In particular, never automatically
+# replay tools/call, even after a timeout: its side effects may have committed.
+_RETRY_SAFE_METHODS = frozenset({
+    "ping", "tools/list", "resources/list", "resources/templates/list",
+    "resources/read", "prompts/list", "prompts/get",
+})
 
 
 def is_rate_limited(exc: BaseException) -> bool:
@@ -156,8 +163,12 @@ class ResilientMCPTransport:
                 return result
             except (MCPError, OSError, TimeoutError) as exc:
                 rate_limited = is_rate_limited(exc)
-                # Never retry a rate-limit; back off long and re-raise.
-                if rate_limited or attempt >= self.max_retries:
+                # Never replay ambiguous actions or retry a rate-limit.
+                if (
+                    rate_limited
+                    or method not in _RETRY_SAFE_METHODS
+                    or attempt >= self.max_retries
+                ):
                     self.breaker.record_failure(rate_limited=rate_limited)
                     raise
                 attempt += 1

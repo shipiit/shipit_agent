@@ -91,3 +91,41 @@ def test_fork_session():
     assert forked_record is not None
     assert len(forked_record.messages) == 2
     assert forked_record.metadata["forked_from"] == chat.session_id
+
+
+def test_manager_binds_its_store_without_mutating_agent():
+    from shipit_agent import Agent
+    from shipit_agent.llms import SimpleEchoLLM
+    agent = Agent(llm=SimpleEchoLLM(), auto_use_skills=False)
+    original_store = agent.session_store
+    store = InMemorySessionStore()
+    manager = SessionManager(store)
+    chat = manager.create(agent)
+    chat.send("remember this")
+    resumed = manager.resume(agent, chat.session_id)
+    assert any(m.content == "remember this" for m in resumed.history())
+    assert agent.session_store is original_store
+    assert original_store.load(chat.session_id) is None
+
+
+def test_historical_fork_does_not_inherit_future_facts_or_mutable_messages():
+    store = InMemorySessionStore()
+    manager = SessionManager(store)
+    agent = FakeAgent(store)
+    chat = manager.create(agent)
+    original = store.load(chat.session_id)
+    original.messages = [Message(role="user", content="early"),
+                         Message(role="assistant", content="later secret")]
+    original.metadata.update(verified_facts=[{"value": "later secret"}],
+                             compaction_checkpoint={"summary": "later secret"},
+                             tool_discovery={"schemas": {}},
+                             custom={"labels": ["keep"]})
+    fork = manager.fork(agent, chat.session_id, from_message=1)
+    record = store.load(fork.session_id)
+    assert "verified_facts" not in record.metadata
+    assert "compaction_checkpoint" not in record.metadata
+    assert "tool_discovery" not in record.metadata
+    record.messages[0].content = "changed"
+    record.metadata["custom"]["labels"].append("fork only")
+    assert original.messages[0].content == "early"
+    assert original.metadata["custom"]["labels"] == ["keep"]

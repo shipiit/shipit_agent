@@ -2,9 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import fnmatch
+import inspect
 from typing import Any, Callable
 
 from shipit_agent.permissions import PermissionDecision, PermissionResult
+
+
+def _invoke(fn: Callable[..., Any], *args: Any) -> Any:
+    """Never silently treat an unawaited async policy as approval."""
+    value = fn(*args)
+    if inspect.isawaitable(value):
+        if inspect.iscoroutine(value):
+            value.close()
+        raise TypeError("AgentHooks callbacks must be synchronous; async callbacks are not supported")
+    return value
 
 
 def _coerce_hook_decision(value: Any) -> PermissionResult | None:
@@ -141,11 +152,11 @@ class AgentHooks:
     # ------------------------------------------------------------------
     def run_before_llm(self, messages: list[Any], tools: list[Any]) -> None:
         for fn in self.before_llm:
-            fn(messages, tools)
+            _invoke(fn, messages, tools)
 
     def run_after_llm(self, response: Any) -> None:
         for fn in self.after_llm:
-            fn(response)
+            _invoke(fn, response)
 
     def run_before_tool(
         self, name: str, arguments: dict[str, Any]
@@ -157,37 +168,51 @@ class AgentHooks:
         when every hook is observe-only (backward compatible).
         """
         outcome: PermissionResult | None = None
+        current = dict(arguments)
+        rewritten = False
         for fn in self.before_tool:
-            decision = _coerce_hook_decision(fn(name, arguments))
+            decision = _coerce_hook_decision(_invoke(fn, name, current))
             if decision is None:
                 continue
             if decision.denied:
                 return decision  # short-circuit on the first hard deny
+            if decision.updated_arguments is not None:
+                if not isinstance(decision.updated_arguments, dict):
+                    raise TypeError("updated_arguments must be a dictionary")
+                current = dict(decision.updated_arguments)
+                rewritten = True
             if decision.needs_approval:
                 outcome = decision
             elif outcome is None or not outcome.needs_approval:
                 # ALLOW (possibly with a rewrite) — keep unless an ASK stands.
                 outcome = decision
+        if outcome is not None and rewritten:
+            outcome = PermissionResult(outcome.decision, outcome.reason, current)
         return outcome
 
     def run_after_tool(self, name: str, result: Any) -> Any:
         """Run post-tool hooks, allowing each to replace or sanitize output."""
         current = result
         for fn in self.after_tool:
-            value = fn(name, current)
+            value = _invoke(fn, name, current)
             if value is None:
                 continue
             if isinstance(value, str) and hasattr(current, "output"):
                 current.output = value
+                current.model_text = None
                 continue
             if isinstance(value, dict) and hasattr(current, "output"):
                 if "output" in value or "text" in value:
                     current.output = str(value.get("output", value.get("text", "")))
+                    current.model_text = None
+                if "model_text" in value:
+                    current.model_text = value["model_text"]
                 if isinstance(value.get("metadata"), dict):
                     current.metadata.update(value["metadata"])
                 continue
             if hasattr(value, "text") and hasattr(current, "output"):
                 current.output = str(value.text)
+                current.model_text = getattr(value, "model_text", None)
                 current.metadata.update(dict(getattr(value, "metadata", {}) or {}))
                 continue
             if hasattr(value, "output"):
@@ -197,7 +222,7 @@ class AgentHooks:
     def run_stop(self, answer: str) -> str | None:
         """The first reason a stop hook gives to keep going, or ``None``."""
         for fn in self.stop:
-            value = fn(answer)
+            value = _invoke(fn, answer)
             if isinstance(value, str) and value.strip():
                 return value.strip()
             if isinstance(value, dict) and str(value.get("decision", "")).lower() in (
@@ -216,7 +241,7 @@ class AgentHooks:
         """
         current = prompt
         for fn in self.user_prompt:
-            value = fn(current)
+            value = _invoke(fn, current)
             if isinstance(value, str):
                 current = value
                 continue

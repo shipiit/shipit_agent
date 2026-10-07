@@ -55,7 +55,9 @@ override these defaults.
 
 Optimized project agents also default to durable project-local stores:
 
-- `.shipit/sessions/<session-id>.json` keeps canonical multi-turn history.
+- `.shipit/sessions/~<session-id-sha256>.json` keeps canonical multi-turn history
+  without filename collisions. Use the session store API to resolve IDs; legacy
+  files remain readable after checking their embedded identity.
 - `.shipit/memory.json` keeps facts explicitly persisted by tools.
 
 Recreate the agent and reuse the same session ID to resume after a process

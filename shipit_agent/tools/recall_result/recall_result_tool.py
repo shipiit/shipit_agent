@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Mapping
 
 from shipit_agent.tools.base import ToolOutput
@@ -27,7 +28,8 @@ class RecallToolResult:
     name = "recall_tool_result"
     description = (
         "Recall an exact bounded slice of a large tool result from an earlier "
-        "turn using the call_id shown in conversation history."
+        "turn using the call_id shown in conversation history. Optionally search "
+        "for literal text to retrieve relevant evidence without paging the whole result."
     )
     prompt_instructions = (
         "Use only when the prior assistant answer is insufficient and exact "
@@ -57,6 +59,10 @@ class RecallToolResult:
                             "default": 0,
                             "description": "Character offset into the result.",
                         },
+                        "query": {
+                            "type": "string",
+                            "description": "Optional case-insensitive literal text to find at or after offset. Not a regular expression.",
+                        },
                         "limit": {
                             "type": "integer",
                             "minimum": 256,
@@ -78,6 +84,7 @@ class RecallToolResult:
         call_id: str,
         offset: int = 0,
         limit: int = 8000,
+        query: str = "",
         **_: Any,
     ) -> ToolOutput:
         record = self._results.get(str(call_id))
@@ -90,8 +97,19 @@ class RecallToolResult:
                 ),
                 metadata={"is_error": True, "call_id": call_id},
             )
-        start = max(0, int(offset or 0))
+        start = min(len(record.output), max(0, int(offset or 0)))
         size = min(20_000, max(256, int(limit or 8000)))
+        match_offset = None
+        if query:
+            match = re.compile(re.escape(query), re.IGNORECASE).search(record.output, start)
+            if match is None:
+                return ToolOutput(
+                    text=f"No literal match for {query!r} at or after offset={start} in call_id={record.call_id!r}.",
+                    metadata={"recalled": True, "source_call_id": record.call_id,
+                              "matched": False, "total_chars": len(record.output)},
+                )
+            match_offset = match.start()
+            start = max(start, match_offset - size // 4)
         end = min(len(record.output), start + size)
         excerpt = record.output[start:end]
         more = end < len(record.output)
@@ -110,6 +128,7 @@ class RecallToolResult:
                 "offset": start,
                 "next_offset": end if more else None,
                 "total_chars": len(record.output),
+                **({"matched": True, "match_offset": match_offset} if query else {}),
             },
         )
 

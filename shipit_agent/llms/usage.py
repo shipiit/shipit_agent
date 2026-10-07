@@ -1,6 +1,39 @@
 """Normalize cache accounting without changing provider-reported counters."""
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
+
+def normalize_token_usage(
+    usage: Any,
+    *,
+    input_key: str = "prompt_tokens",
+    output_key: str = "completion_tokens",
+) -> dict[str, int]:
+    """Keep valid provider counters; missing usage is unknown, never zero.
+
+    Accept SDK objects and mapping responses. Do not infer either input or
+    output from totals: cache semantics differ between providers.
+    """
+    result: dict[str, int] = {}
+    for target, source in (
+        ("prompt_tokens", input_key),
+        ("completion_tokens", output_key),
+        ("total_tokens", "total_tokens"),
+    ):
+        value = (
+            usage.get(source) if isinstance(usage, Mapping)
+            else getattr(usage, source, None)
+        )
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            result[target] = value
+    if "total_tokens" not in result and all(
+        key in result for key in ("prompt_tokens", "completion_tokens")
+    ):
+        result["total_tokens"] = result["prompt_tokens"] + result["completion_tokens"]
+    return result
+
 
 def has_complete_token_usage(response) -> bool:
     """Whether normalized input/output counters can enforce a task budget.

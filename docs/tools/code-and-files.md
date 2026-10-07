@@ -110,7 +110,17 @@ result = agent.run(
 
 ### Security notes
 
-⚠️ **`run_code` runs untrusted code in a subprocess.** It's not a security sandbox. The subprocess inherits your environment variables, can access the filesystem under `workspace_root`, and can make network requests.
+⚠️ **`run_code` runs untrusted code in a subprocess.** It's not a security sandbox. The subprocess can access the filesystem and make network requests.
+
+**Environment variables.** `run_code` and `bash` start their child process with a scrubbed environment: only `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LANGUAGE`, `LC_*`, `TERM`, `TZ`, `TMPDIR`/`TMP`/`TEMP`, `PYTHONIOENCODING` (plus the Windows basics) are kept, so host secrets such as API keys or `SECRET_KEY` are not readable by the model. Opt in explicitly when a command needs more:
+
+```python
+BashTool(root_dir=".", env_allowlist=["GITHUB_TOKEN"])      # pass named host vars
+BashTool(root_dir=".", extra_env={"HOME": "/srv/workspace"})  # set explicit values
+CodeExecutionTool(inherit_env=True)                           # old behaviour: full host env
+```
+
+`bash` runs a login shell (`bash -lc`), so `/etc/profile` and `~/.bash_profile` still run and can re-export variables; point `HOME` at a workspace via `extra_env` if that matters for your deployment. With `sandbox=true`, `DOCKER_*` variables are also passed to the `docker` CLI so it can reach its daemon; the container itself never sees host env.
 
 For production deployments where the LLM is exposed to untrusted prompts:
 

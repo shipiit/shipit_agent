@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Browser bridge (`shipit_agent.browser_bridge`) and a Chrome side-panel
+  extension (`extensions/chrome`): ask about the current page from a sidebar.
+  The bridge listens on 127.0.0.1 only, requires a bearer token of at least 24
+  characters, rejects web-page origins, caps request size, treats page text as
+  untrusted evidence, and never logs prompts, page text or tokens.
+
 ## [2.2.0] - 2026-10-02
 
 ### Fixed

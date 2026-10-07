@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shipit · Workspace</title><link rel="stylesheet" href="sidepanel.css"></head>
+<body>
+  <header><div class="brand"><span class="mark">↗</span><span>shipit<span class="badge">WORKSPACE</span></span></div><div class="actions"><button id="new" class="icon" title="New chat" aria-label="New chat">＋</button><button id="settings" class="icon" title="Connection settings" aria-label="Connection settings">⚙</button></div></header>
+  <div class="connection"><span class="dot" id="dot"></span><span id="connection">Connect your agent</span><span class="local">LOCAL BRIDGE</span></div>
+  <main id="messages" aria-label="Conversation" tabindex="0">
+    <section id="welcome"><div class="eyebrow">A LITTLE CONTEXT. A LOT OF CLARITY.</div><h1>Your work,<br>with a second mind.</h1><p>Understand what's open. Find the important details. Turn a busy page into your next step.</p><div class="suggestions"><button data-prompt="Summarize the attached page. Highlight the key facts and anything uncertain."><span>◫</span><strong>Make sense of this page</strong><small>The essentials, without the noise</small><b>↗</b></button><button data-prompt="From the attached page, extract action items, owners and deadlines. Do not invent missing details."><span>☑</span><strong>Find my next steps</strong><small>Actions, owners, and open questions</small><b>↗</b></button><button data-prompt="Help me draft a concise, thoughtful response based on the attached context. Ask if the recipient or intent is unclear."><span>✎</span><strong>Help me write a reply</strong><small>A thoughtful first draft, in your voice</small><b>↗</b></button></div><div class="privacy">◇ &nbsp;You choose what to share.<br><span>Page content stays here until you send it.</span></div></section>
+  </main>
+  <div id="status" role="status" aria-live="polite"></div>
+  <section class="compose-zone">
+    <div id="page-card" hidden><div class="page-heading"><span>◫</span><strong id="page-title"></strong><button id="remove-page" class="icon" aria-label="Remove attached page">×</button></div><small id="page-source"></small><details><summary id="page-summary">Review snapshot</summary><p id="page-limit"></p><pre id="page-preview"></pre></details></div>
+    <form id="composer"><label class="sr-only" for="prompt">Message Shipit</label><textarea id="prompt" placeholder="Ask anything about your work…" rows="3" maxlength="16000"></textarea><div class="compose-footer"><button type="button" id="attach">＋ Attach current page</button><button id="send" type="submit" aria-label="Send message">↑</button><button id="stop" type="button" hidden>Stop</button></div></form>
+    <div class="footnote">Page-aware, only when you ask <span>↵ Send · ⇧↵ New line</span></div>
+  </section>
+  <dialog id="config"><form id="config-form"><div class="eyebrow">YOUR AGENT. YOUR CONNECTION.</div><h2>Connect to Shipit</h2><p>Start the local browser bridge, then paste its bridge token. Your model's API keys stay on the backend.</p><label for="token">Bridge token</label><input id="token" type="password" autocomplete="off" minlength="24" required placeholder="At least 24 characters"><small>Endpoint: http://127.0.0.1:8400<br>Token and chat display are kept only for this browser session.</small><div class="dialog-actions"><button type="button" id="cancel-config">Cancel</button><button type="submit" class="primary">Connect agent ↗</button></div></form></dialog>
+  <script type="module" src="sidepanel.mjs"></script>
+</body></html>

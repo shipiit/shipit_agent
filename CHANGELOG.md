@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `bash` (including background jobs read via `bash_job`) and `run_code`
+  spawned model-written commands with the full host environment, so any
+  secret in the process env (`SECRET_KEY`, DB passwords, API keys loaded by
+  dotenv) was readable with `printenv` / `os.environ`. Their child processes
+  now get a scrubbed environment: `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`,
+  `LANG`, `LANGUAGE`, `LC_*`, `TERM`, `TZ`, `TMPDIR`/`TMP`/`TEMP`,
+  `PYTHONIOENCODING` and the Windows basics. `SSH_AUTH_SOCK` is not kept.
+
+### Changed
+
+- Behaviour change: commands run by `BashTool` and `CodeExecutionTool` no
+  longer see host environment variables outside that list. Opt in with the
+  new keyword arguments on both tools: `env_allowlist=["NAME", ...]` passes
+  named host variables through, `extra_env={...}` sets explicit values (e.g.
+  `{"HOME": workspace}`), and `inherit_env=True` restores the previous
+  full-environment behaviour. `run_code` with `sandbox=true` also passes
+  `DOCKER_*` to the `docker` CLI. `bash` still runs a login shell (`bash
+  -lc`), so profile files can re-export variables; override `HOME` via
+  `extra_env` if that matters.
+
 ## [2.2.0] - 2026-10-02
 
 ### Fixed

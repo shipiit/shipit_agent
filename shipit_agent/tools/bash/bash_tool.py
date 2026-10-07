@@ -10,6 +10,7 @@ from typing import Any
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.formatting import clip_text
+from shipit_agent.tools.subprocess_env import build_tool_env
 
 from .prompt import BASH_PROMPT
 
@@ -58,6 +59,14 @@ class BashTool:
         #: a full shell when the environment is already trusted /
         #: sandboxed. The allowlist and blocked-substring checks still apply.
         unrestricted: bool = False,
+        #: The child shell gets a scrubbed environment (PATH, HOME, locale,
+        #: TERM, TMPDIR and similar) so host secrets are not readable with
+        #: ``printenv``. ``env_allowlist`` passes named host variables through,
+        #: ``extra_env`` sets explicit values (e.g. ``{"HOME": workspace}``),
+        #: and ``inherit_env=True`` restores the full host environment.
+        env_allowlist: list[str] | None = None,
+        extra_env: dict[str, str] | None = None,
+        inherit_env: bool = False,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
         self.name = name
@@ -67,6 +76,9 @@ class BashTool:
         self.default_timeout = default_timeout
         self.max_timeout = max_timeout
         self.unrestricted = unrestricted
+        self.env_allowlist = list(env_allowlist or [])
+        self.extra_env = dict(extra_env or {})
+        self.inherit_env = inherit_env
         #: Live background jobs, id → {process, log_path, command}, for the
         #: companion poll/kill tool.
         self.background_jobs: dict[str, dict[str, Any]] = {}
@@ -336,6 +348,7 @@ class BashTool:
         completed = subprocess.run(
             ["/bin/bash", "-lc", command],
             cwd=str(cwd),
+            env=self._child_env(),
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -366,6 +379,13 @@ class BashTool:
             },
         )
 
+    def _child_env(self) -> dict[str, str]:
+        return build_tool_env(
+            allowlist=self.env_allowlist,
+            extra_env=self.extra_env,
+            inherit=self.inherit_env,
+        )
+
     def _run_background(self, command: str, cwd: Path) -> ToolOutput:
         """Spawn a long-running command detached, log to a file the LLM can tail.
 
@@ -382,6 +402,7 @@ class BashTool:
             process = subprocess.Popen(
                 ["/bin/bash", "-lc", command],
                 cwd=str(cwd),
+                env=self._child_env(),
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import ClassVar
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.formatting import clip_text
+from shipit_agent.tools.subprocess_env import build_tool_env
 from .prompt import CODE_EXECUTION_PROMPT
 from .sandbox import (
     SANDBOX_CMDS as _SANDBOX_CMDS,
@@ -67,6 +69,10 @@ class CodeExecutionTool:
         description: str = "Execute Python or shell code in a local subprocess workspace.",
         prompt: str | None = None,
         timeout_seconds: int = 15,
+        # Scrubbed child environment by default; see BashTool for semantics.
+        env_allowlist: list[str] | None = None,
+        extra_env: dict[str, str] | None = None,
+        inherit_env: bool = False,
     ) -> None:
         self.workspace_root = Path(workspace_root)
         self.name = name
@@ -74,6 +80,9 @@ class CodeExecutionTool:
         self.prompt = prompt or CODE_EXECUTION_PROMPT
         self.prompt_instructions = "Use this for deterministic local execution, transformations, parsing, and script-based validation."
         self.timeout_seconds = timeout_seconds
+        self.env_allowlist = list(env_allowlist or [])
+        self.extra_env = dict(extra_env or {})
+        self.inherit_env = inherit_env
 
     def schema(self) -> dict:
         return {
@@ -200,6 +209,17 @@ class CodeExecutionTool:
             else:
                 command = self._command_for_language(language, script_path)
                 cwd = workspace_root
+            child_env = build_tool_env(
+                allowlist=self.env_allowlist,
+                extra_env=self.extra_env,
+                inherit=self.inherit_env,
+            )
+            if sandbox:
+                # The docker CLI needs these to find its daemon (colima, remote
+                # hosts); the container itself never inherits host env.
+                child_env.update(
+                    (k, v) for k, v in os.environ.items() if k.startswith("DOCKER_")
+                )
 
             try:
                 completed = subprocess.run(
@@ -208,6 +228,7 @@ class CodeExecutionTool:
                     capture_output=True,
                     text=True,
                     timeout=timeout_seconds,
+                    env=child_env,
                     check=False,
                 )
             except FileNotFoundError as err:

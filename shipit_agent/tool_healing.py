@@ -235,6 +235,13 @@ def _match_by_schema(
         if isinstance(schemas.get(name), dict)
         and _arguments_fit_schema(coerced, schemas[name], strict_required=True)
     ]
+    if len(fits) > 1:
+        # Several tools accept the object; the one that declares every key the
+        # model wrote is the call it meant ({"path", "content"} is write_file,
+        # not read_file, which only knows "path"). Still a tie → leave it.
+        complete = [name for name in fits
+                    if set(coerced) <= set((schemas[name].get("properties") or {}))]
+        fits = complete if len(complete) == 1 else fits
     if len(fits) != 1:
         return None
     return ToolCall(name=fits[0], arguments=coerced)

@@ -55,6 +55,20 @@ class MCPError(RuntimeError):
     pass
 
 
+def _http_result(parsed: Any, request_id: int) -> dict[str, Any]:
+    if (
+        not isinstance(parsed, dict)
+        or type(parsed.get("id")) is not int
+        or parsed["id"] != request_id
+    ):
+        raise MCPError("MCP response id does not match the request")
+    if "error" in parsed:
+        raise MCPError(str(parsed["error"]))
+    if not isinstance(parsed.get("result"), dict):
+        raise MCPError("MCP response must contain an object result")
+    return parsed["result"]
+
+
 def _mcp_result_summary(result: dict[str, Any], rendered: str) -> str:
     """Use only a summary the MCP server explicitly supplied.
 
@@ -131,7 +145,7 @@ class MCPRemoteTool:
 
     @property
     def read_only(self) -> bool:
-        return bool(self.annotations.get("readOnlyHint", False))
+        return self.annotations.get("readOnlyHint") is True
 
     prompt: str = "Use this MCP tool when the remote server provides the best capability for the task."
     prompt_instructions: str = (
@@ -181,16 +195,21 @@ class MCPRemoteTool:
                     f"failed: {exc}"
                 ),
                 metadata={
+                    **self.metadata,
                     "server": self.server_name,
                     "ok": False,
+                    "is_error": True,
                     "error": str(exc),
-                    **self.metadata,
                 },
             )
         content = list(result.get("content", []))
         text_parts = _render_mcp_content(content)
         is_error = bool(result.get("isError", False))
         rendered = "\n".join(part for part in text_parts if part).strip()
+        if not rendered and isinstance(result.get("structuredContent"), dict):
+            # Structured-only results are valid evidence, not empty responses.
+            # Do not duplicate the JSON when the server already supplied text.
+            rendered = json.dumps(result["structuredContent"], ensure_ascii=False, separators=(",", ":"))
         if not rendered:
             rendered = (
                 f"MCP tool '{self.name}' returned an error without details."
@@ -223,10 +242,12 @@ class MCPRemoteTool:
         return ToolOutput(
             text=rendered,
             metadata={
+                **self.metadata,
                 **vision_metadata,
                 "server": self.server_name,
                 "ok": not is_error,
                 "is_error": is_error,
+                "error": rendered if is_error else None,
                 "structured_content": result.get("structuredContent"),
                 "content_blocks": content,
                 "output_schema": dict(self.output_schema),
@@ -238,7 +259,6 @@ class MCPRemoteTool:
                     else {}
                 ),
                 **({"summary": summary} if summary else {}),
-                **self.metadata,
             },
         )
 
@@ -497,10 +517,11 @@ class MCPHTTPTransport:
     def request(
         self, method: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
+        request_id = next(self._id_counter)
         payload = json.dumps(
             {
                 "jsonrpc": "2.0",
-                "id": next(self._id_counter),
+                "id": request_id,
                 "method": method,
                 "params": params or {},
             }
@@ -513,10 +534,11 @@ class MCPHTTPTransport:
         )
         with request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
             body = response.read().decode("utf-8")
-        parsed = json.loads(body) if body else {}
-        if "error" in parsed:
-            raise MCPError(str(parsed["error"]))
-        return dict(parsed.get("result", {}))
+        try:
+            parsed = json.loads(body)
+        except (ValueError, TypeError) as exc:
+            raise MCPError("Invalid JSON in MCP response") from exc
+        return _http_result(parsed, request_id)
 
     def close(self) -> None:
         return None
@@ -556,10 +578,11 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
     def request(
         self, method: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
+        request_id = next(self._id_counter)
         payload = json.dumps(
             {
                 "jsonrpc": "2.0",
-                "id": next(self._id_counter),
+                "id": request_id,
                 "method": method,
                 "params": params or {},
             }
@@ -576,17 +599,19 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
         )
         with request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
             session_id = response.headers.get("Mcp-Session-Id")
-            if session_id:
-                self._session_id = session_id
             content_type = (response.headers.get("Content-Type") or "").lower()
             body = response.read().decode("utf-8")
         if "text/event-stream" in content_type:
-            parsed = self._parse_sse(body)
+            parsed = self._parse_sse(body, request_id=request_id)
         else:
-            parsed = json.loads(body) if body else {}
-        if "error" in parsed:
-            raise MCPError(str(parsed["error"]))
-        return dict(parsed.get("result", {}))
+            try:
+                parsed = json.loads(body)
+            except (ValueError, TypeError) as exc:
+                raise MCPError("Invalid JSON in MCP response") from exc
+        result = _http_result(parsed, request_id)
+        if session_id:
+            self._session_id = session_id
+        return result
 
     def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
         """Send a session-affine JSON-RPC notification."""
@@ -628,7 +653,7 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
             return
 
     @staticmethod
-    def _parse_sse(body: str) -> dict[str, Any]:
+    def _parse_sse(body: str, *, request_id: int | None = None) -> dict[str, Any]:
         """Extract the JSON-RPC response from SSE `data:` lines."""
         # HTTP servers commonly use CRLF framing. Splitting the raw body on
         # ``\n\n`` merges every CRLF event into one invalid JSON blob, which
@@ -648,6 +673,10 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
                 continue
             # The response to our request carries an id (notifications don't).
             if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
+                if request_id is not None and (
+                    type(parsed.get("id")) is not int or parsed["id"] != request_id
+                ):
+                    continue
                 return parsed
         raise MCPError("No JSON-RPC response found in SSE stream.")
 
@@ -698,6 +727,8 @@ class RemoteMCPServer(MCPServer):
     cache: bool = False
     #: Warm-start freshness window (seconds). A cache older than this is a miss.
     cache_ttl: float = 24 * 60 * 60
+    #: Bound pagination without silently treating a partial catalog as complete.
+    max_discovery_pages: int = 100
     _discovered: bool = False
     _initialized: bool = False
     _handshook_generation: int = 0
@@ -752,17 +783,24 @@ class RemoteMCPServer(MCPServer):
         """Collect every MCP cursor page and reject looping server cursors."""
         if self.transport is None:
             raise MCPError("RemoteMCPServer requires a transport.")
+        if type(self.max_discovery_pages) is not int or self.max_discovery_pages < 1:
+            raise ValueError("max_discovery_pages must be a positive integer")
         items: list[dict[str, Any]] = []
         cursor: str | None = None
         seen: set[str] = set()
-        while True:
+        for _ in range(self.max_discovery_pages):
             params = {"cursor": cursor} if cursor is not None else {}
             result = self.transport.request(method, params)
-            items.extend(item for item in result.get(key, []) if isinstance(item, dict))
+            if not isinstance(result, dict) or not isinstance(result.get(key), list):
+                raise MCPError(f"Invalid {method} response: expected a {key} list")
+            if any(not isinstance(item, dict) for item in result[key]):
+                raise MCPError(f"Invalid {method} response: list items must be objects")
+            items.extend(result[key])
             next_cursor = result.get("nextCursor")
             if next_cursor in (None, ""):
                 return items
-            next_cursor = str(next_cursor)
+            if not isinstance(next_cursor, str):
+                raise MCPError(f"Invalid {method} response: nextCursor must be a string")
             if next_cursor in seen:
                 raise MCPError(
                     f"MCP server '{self.name}' repeated cursor {next_cursor!r} "
@@ -770,6 +808,10 @@ class RemoteMCPServer(MCPServer):
                 )
             seen.add(next_cursor)
             cursor = next_cursor
+        raise MCPError(
+            f"MCP server '{self.name}' exceeded "
+            f"max_discovery_pages={self.max_discovery_pages} during {method}"
+        )
 
     def invalidate_tools_cache(self) -> None:
         """Force live tool discovery on the next registry construction."""

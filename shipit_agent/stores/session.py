@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -45,14 +46,29 @@ class FileSessionStore:
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
     def _path_for(self, session_id: str) -> Path:
-        safe = session_id.replace("/", "_")
-        return self.root_dir / f"{safe}.json"
+        # Hash every ID: separator replacement collides ("a/b" == "a_b"),
+        # and even simple IDs collide on case-insensitive filesystems.
+        name = "~" + hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+        return self.root_dir / f"{name}.json"
 
     def load(self, session_id: str) -> SessionRecord | None:
         path = self._path_for(session_id)
         if not path.exists():
-            return None
+            # Read legacy separator-normalized files only when their embedded
+            # identity matches. Never return another chat after a collision.
+            legacy_name = session_id.replace("/", "_")
+            if "\\" in legacy_name or len(legacy_name) > 128:
+                return None
+            path = self.root_dir / f"{legacy_name}.json"
+            if not path.exists():
+                return None
         raw = json.loads(path.read_text(encoding="utf-8"))
+        if raw["session_id"] != session_id:
+            return None
+        return self._decode(raw)
+
+    @staticmethod
+    def _decode(raw: dict) -> SessionRecord:
         return SessionRecord(
             session_id=raw["session_id"],
             messages=[
@@ -73,10 +89,15 @@ class FileSessionStore:
 
     def list_all(self) -> list[SessionRecord]:
         records: list[SessionRecord] = []
+        seen: set[str] = set()
         for path in sorted(self.root_dir.glob("*.json")):
-            record = self.load(path.stem)
-            if record is not None:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            # Resolve by stored identity, not encoded filename; prefer the
+            # current file if both a legacy and migrated copy exist.
+            record = self.load(raw["session_id"])
+            if record is not None and record.session_id not in seen:
                 records.append(record)
+                seen.add(record.session_id)
         return records
 
 

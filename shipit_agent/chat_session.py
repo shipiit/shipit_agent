@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from contextlib import aclosing, closing
 from typing import TYPE_CHECKING, Any, Callable
 
 from shipit_agent.models import AgentEvent, AgentResult, Message
@@ -67,17 +68,36 @@ class AgentChatSession:
         return result
 
     def stream(self, user_prompt: str):
-        for event in self._session_agent().stream(user_prompt):
+        with closing(self._session_agent().stream(user_prompt)) as events:
+            for event in events:
+                self._emit_event(event)
+                yield event
+
+    async def asend(self, user_prompt: str) -> AgentResult:
+        """Run a turn through the native async runtime with shared chat state."""
+        result = await self._session_agent().arun(user_prompt)
+        for event in result.events:
             self._emit_event(event)
-            yield event
+        return result
+
+    async def astream(self, user_prompt: str):
+        """Stream a turn; closing this iterator also closes its producer."""
+        async with aclosing(self._session_agent().astream(user_prompt)) as events:
+            async for event in events:
+                self._emit_event(event)
+                yield event
 
     def stream_packets(self, user_prompt: str, *, transport: str = "websocket"):
-        if transport == "sse":
-            for event in self.stream(user_prompt):
-                yield sse_event_packet(event)
-            return
-        for event in self.stream(user_prompt):
-            yield websocket_event_packet(event)
+        packet = sse_event_packet if transport == "sse" else websocket_event_packet
+        with closing(self.stream(user_prompt)) as events:
+            for event in events:
+                yield packet(event)
+
+    async def astream_packets(self, user_prompt: str, *, transport: str = "websocket"):
+        packet = sse_event_packet if transport == "sse" else websocket_event_packet
+        async with aclosing(self.astream(user_prompt)) as events:
+            async for event in events:
+                yield packet(event)
 
     def send_result_packet(
         self, user_prompt: str, *, transport: str = "websocket"

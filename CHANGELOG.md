@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- HTTP MCP transports validate response IDs and object results; streamable HTTP
+  ignores unrelated SSE responses and adopts session headers only after a valid
+  response. Invalid JSON becomes an explicit MCP error.
+- MCP pagination validates page shapes and opaque cursors, with a configurable
+  `max_discovery_pages` limit (100 by default) to bound endless discovery.
+- Custom before-tool hooks validate successive argument rewrites, preserve
+  approval requirements, and pass rewritten arguments to permission checks.
+- Post-tool output replacement clears stale model-facing excerpts; synchronous
+  hook dispatch rejects awaitables instead of silently ignoring async policies.
+- MCP structured-only results are rendered as compact JSON instead of being
+  described as empty; existing text responses are not duplicated. Execution
+  status overrides static metadata, and only boolean `true` is a read-only hint.
+- Malformed schema-cache roots/descriptors trigger live discovery instead of
+  crashing warm startup.
+- Repeated-result suppression compares both raw evidence and model-facing
+  views, so a new relevant excerpt of unchanged evidence is not hidden.
+- Shared core-tool workspaces reject prefix-sibling and symlink escapes using
+  path containment rather than string prefixes.
+- Exact file edits reject empty `old_text`, preventing accidental insertion
+  between every character when `replace_all` is enabled.
+- Session-manager chats use the manager's configured store without mutating
+  the original agent. Historical forks discard derived summaries/facts and
+  deep-copy retained messages so later evidence and edits cannot leak across.
+- Closing agent/chat streams explicitly closes nested runtime iterators;
+  async cleanup is awaited instead of depending on generator finalization.
+- Async streams propagate worker exceptions after draining emitted events;
+  provider failures no longer look like a successful end of stream.
+
+- OpenAI-compatible, LiteLLM (including streaming), and Anthropic usage
+  normalization no longer invents zero counters when providers omit input or
+  output usage. Budget enforcement can now recognize incomplete accounting.
+- MCP resilience retries discovery/read requests, but no longer automatically
+  replays `tools/call` after ambiguous transport failures. A lost response may
+  follow a successful write; silently retrying could duplicate side effects.
+- File session storage uses bounded, collision-resistant filenames, including
+  on case-insensitive filesystems. Legacy files remain readable only when their
+  embedded session identity matches; listing deduplicates migrated records.
+
+- A text tool call such as `{"path": …, "content": …}` fit several file tools
+  (each declares `path`) and was dropped as ambiguous, so the file was never
+  written. When several tools accept a nameless object, the one tool that
+  declares every key it carries is chosen; a genuine tie is still left alone.
+
+### Added
+
+- `recall_tool_result` accepts an optional case-insensitive literal `query`,
+  returning an exact bounded excerpt around a match instead of requiring
+  sequential paging through large historical results.
+- `AgentChatSession.asend()`, `astream()`, and `astream_packets()` use the
+  native async runtime while retaining per-chat history, budgets, and callbacks.
+- Regression coverage for custom hooks across all four agent entrypoints,
+  concurrent 20-turn scripted sessions, real local file-edit/test workflows,
+  provider usage normalization, and MCP protocol/result/cache boundaries.
+- Hook integration guidance and a focused runtime reliability review documenting
+  implemented safeguards and remaining production-validation gaps.
+
+### Validation and limitations
+
+- Offline suite: **4,706 passed, 32 skipped**, with one pytest collection
+  warning (`TestCase` in `shipit_agent/deep/benchmark.py`). Live tests excluded.
+- No live Bedrock quality or billed-token savings claim is made by this update.
+  Cross-worker durable budgets and production OAuth/MCP lifecycle validation
+  remain outstanding. Hook callbacks are synchronous, including in async runs;
+  post-tool hooks cannot retract output already streamed to clients.
+- No Google Workspace extension is included in this update.
+
 ## [2.2.0] - 2026-10-02
 
 ### Fixed

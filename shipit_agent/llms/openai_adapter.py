@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from shipit_agent.llms.base import LLMResponse
+from shipit_agent.llms.usage import normalize_token_usage
 from shipit_agent.models import Message, ToolCall
 from shipit_agent.llms.litellm_adapter import (
     _extract_reasoning,
@@ -92,11 +93,7 @@ def _usage_dict(usage_obj: Any) -> dict[str, int]:
     """
     if not usage_obj:
         return {}
-    out: dict[str, int] = {
-        "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0) or 0,
-        "completion_tokens": getattr(usage_obj, "completion_tokens", 0) or 0,
-        "total_tokens": getattr(usage_obj, "total_tokens", 0) or 0,
-    }
+    out: dict[str, int] = normalize_token_usage(usage_obj)
     try:
         details = getattr(usage_obj, "prompt_tokens_details", None)
         cached = getattr(details, "cached_tokens", None) if details else None

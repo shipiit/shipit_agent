@@ -1124,7 +1124,11 @@ class RuntimeCore:
 
         if seen is not None and len(output) >= _REPEAT_MIN_CHARS:
             key = (name, _arguments_key(arguments))
-            if seen.get(key) == canonical_digest:
+            # A tool can select a new relevant excerpt from unchanged raw
+            # evidence. Suppress only if both the evidence and view match.
+            view_digest = hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()
+            identity = canonical_digest + ":" + view_digest
+            if seen.get(key) == identity:
                 metadata = getattr(tool_result, "metadata", None)
                 if isinstance(metadata, dict):
                     metadata.update(
@@ -1148,7 +1152,7 @@ class RuntimeCore:
                         else "]"
                     )
                 )
-            seen[key] = canonical_digest
+            seen[key] = identity
 
         if has_semantic_output:
             metadata = getattr(tool_result, "metadata", None)

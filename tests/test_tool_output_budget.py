@@ -86,6 +86,23 @@ def run(*, turns=4, tools=None, cap=None):
 
 
 class TestTheCap:
+    def test_changed_semantic_view_is_not_discarded_as_duplicate_raw_output(self):
+        class SemanticDump:
+            name = "dump"
+            description = "Read evidence"
+            calls = 0
+            def schema(self):
+                return {"function": {"name": "dump", "parameters": {"type": "object", "properties": {}}}}
+            def run(self, context, **kwargs):
+                self.calls += 1
+                view = ("first evidence " if self.calls == 1 else "second evidence ") * 200
+                return ToolOutput(text=BIG, model_text=view)
+        result, _ = run(turns=3, tools=SemanticDump())
+        messages = [m.content for m in result.messages if m.role == "tool"]
+        assert "first evidence" in messages[0]
+        assert "second evidence" in messages[1]
+        assert "No new data" in messages[2]
+
     def test_it_is_on_by_default(self) -> None:
         assert Agent(llm=None).max_tool_output_chars == 16_000
 

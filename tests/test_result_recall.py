@@ -41,6 +41,30 @@ def test_unknown_call_id_is_a_recoverable_result() -> None:
     assert "No recallable result" in output.text
 
 
+def test_literal_search_retrieves_small_exact_excerpt_from_large_result():
+    text = "unrelated evidence\n" * 20000 + "Invoice [A-42]: EUR 720" + "\nother" * 20000
+    tool = RecallToolResult(recallable_results([
+        Message(role="tool", name="search", content=text, tool_call_id="large")
+    ], min_chars=1000))
+    output = tool.run(None, call_id="large", query="invoice [a-42]", limit=512)
+    assert "Invoice [A-42]: EUR 720" in output.text
+    assert len(output.text) < 750
+    assert output.metadata["matched"] is True
+    assert output.metadata["match_offset"] == text.index("Invoice")
+    assert output.text.split("\n", 1)[1] == text[output.metadata["offset"]:output.metadata["next_offset"]]
+    absent = tool.run(None, call_id="large", query="not-present")
+    assert absent.metadata["matched"] is False
+
+
+def test_recall_offset_beyond_end_is_clamped():
+    tool = RecallToolResult(recallable_results([
+        Message(role="tool", content=BIG, tool_call_id="large")
+    ], min_chars=1000))
+    output = tool.run(None, call_id="large", offset=999999)
+    assert output.metadata["offset"] == len(BIG)
+    assert output.metadata["next_offset"] is None
+
+
 def test_runtime_installs_recall_only_when_useful() -> None:
     registry = ToolRegistry()
     name = AgentRuntime.install_result_recall(

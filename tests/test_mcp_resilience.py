@@ -105,8 +105,18 @@ def test_fails_fast_when_breaker_open_without_calling_inner():
 def test_retries_one_transient_failure_then_succeeds():
     inner = FakeTransport(script=[MCPError("subprocess died"), None])
     t = ResilientMCPTransport(inner, max_retries=1, base_delay=0, name="s")
-    assert t.request("tools/call")["ok"] is True
+    assert t.request("tools/list")["ok"] is True
     assert inner.calls == 2  # failed once, retried, succeeded
+
+
+@pytest.mark.parametrize("method", ["tools/call", "custom/write"])
+@pytest.mark.parametrize("error", [MCPError("connection lost"), TimeoutError("response lost")])
+def test_ambiguous_execution_is_never_replayed(method, error):
+    inner = FakeTransport(script=[error, None])
+    transport = ResilientMCPTransport(inner, max_retries=3, base_delay=0)
+    with pytest.raises(type(error)):
+        transport.request(method, {"name": "create_ticket"})
+    assert inner.calls == 1
 
 
 def test_never_retries_a_rate_limit():

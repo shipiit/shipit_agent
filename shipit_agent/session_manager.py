@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -56,9 +57,13 @@ class SessionManager:
         fork_name = record.metadata.get("name", session_id)
         new_record = SessionRecord(
             session_id=new_id,
-            messages=messages,
+            messages=deepcopy(messages),
             metadata={
-                **record.metadata,
+                # Derived state may describe turns *after* the fork point.
+                # Rebuild it from the fork's retained transcript instead.
+                **deepcopy({key: value for key, value in record.metadata.items()
+                            if key not in {"compaction_checkpoint", "verified_facts",
+                                           "tool_discovery"}}),
                 "name": f"Fork of {fork_name}",
                 "forked_from": session_id,
                 "forked_at_message": from_message,
@@ -67,8 +72,11 @@ class SessionManager:
         self.session_store.save(new_record)
         return self._chat_session(agent, new_id)
 
-    @staticmethod
-    def _chat_session(agent: Any, session_id: str) -> Any:
+    def _chat_session(self, agent: Any, session_id: str) -> Any:
+        if getattr(agent, "session_store", None) is not self.session_store:
+            if not callable(getattr(agent, "clone", None)):
+                raise ValueError("Agent must use the manager's session store or support clone()")
+            agent = agent.clone(session_store=self.session_store)
         try:
             return agent.chat_session(session_id=session_id)
         except TypeError:

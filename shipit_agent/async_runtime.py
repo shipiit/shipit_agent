@@ -1995,6 +1995,9 @@ class AsyncAgentRuntime(RuntimeCore):
                     await wake.wait()
                     continue
                 yield event_buffer.popleft()
+            # A failed worker is not a successful end-of-stream. Drain its
+            # emitted events, then propagate the original exception to callers.
+            await task
         finally:
             self._event_subscriber = None
             if not task.done() and self.cancel_on_stream_close:

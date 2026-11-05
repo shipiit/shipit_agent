@@ -31,7 +31,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal
 
+from shipit_agent.core.result_subtype import ResultSubtype, result_subtype
+
 __all__ = [
+    "ResultSubtype",
+    "result_subtype",
     "Role",
     "EventType",
     "Message",
@@ -426,6 +430,16 @@ class AgentResult:
     #: constructs ``AgentResult(rag_sources=…)``, works against the merged
     #: (superset) model rather than raising on an unexpected keyword.
     rag_sources: list[Any] = field(default_factory=list)
+
+    @property
+    def subtype(self) -> ResultSubtype:
+        """How the run ended: ``success``, or the ``error_*`` reason it stopped short."""
+        return result_subtype(self.metadata.get("run_summary"))
+
+    @property
+    def is_error(self) -> bool:
+        """True when the run stopped before finishing its task."""
+        return self.subtype != "success"
 
     @property
     def steps(self) -> list[AgentEvent]:

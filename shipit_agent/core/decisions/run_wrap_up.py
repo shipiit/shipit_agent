@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from shipit_agent.core.result_subtype import result_subtype
+
 
 class RunWrapUpMixin:
     """Wrapping up a run: the run summary, surfacing tools that gave up, and closing MCP connections."""
@@ -38,7 +40,7 @@ class RunWrapUpMixin:
             round(cache_read / cache_eligible_input, 4) if cache_eligible_input else 0.0
         )
         cost_str = f", ${cost_usd:.4f}" if cost_usd else ""
-        return {
+        summary: dict[str, Any] = {
             "headline": (
                 f"Run finished: {iterations} iterations, {tool_calls} tool "
                 f"calls, {total:,} tokens{cost_str}"
@@ -93,6 +95,8 @@ class RunWrapUpMixin:
                 for e in events
             ),
         }
+        summary["subtype"] = result_subtype(summary)
+        return summary
 
     def surface_give_up(self, tool_results: list[Any]) -> None:
         """Promote a declared stop from a tool result to run metadata."""

@@ -20,6 +20,11 @@ from shipit_agent.llms.base import (
     accepts_text_delta_callback,
     accepts_tool_input_callback,
 )
+from shipit_agent.llms.throttle import (
+    classify,
+    is_transient_provider_error,
+    retry_after_seconds,
+)
 
 
 class ModelCallMixin:
@@ -192,17 +197,28 @@ class ModelCallMixin:
                     base_prompt=base_prompt,
                     require_tool_call=require_tool_call,
                 )
-            except self.retry_policy.retry_on_exceptions as exc:
-                if attempt >= self.retry_policy.max_llm_retries:
+            except Exception as exc:
+                retryable = isinstance(
+                    exc, self.retry_policy.retry_on_exceptions
+                ) or is_transient_provider_error(exc)
+                if not retryable or attempt >= self.retry_policy.max_llm_retries:
                     raise
                 attempt += 1
                 delay = self.retry_policy.llm_retry_delay(attempt)
+                asked = retry_after_seconds(exc)
+                if asked is not None:
+                    # Resending before the provider's window reopens only
+                    # spends an attempt; the cap keeps one header from
+                    # stalling the run.
+                    delay = max(delay, min(asked, self.retry_policy.llm_retry_max_delay))
                 self.emit(
                     state,
                     "llm_retry",
                     "Retrying LLM completion",
                     attempt=attempt,
                     error=str(exc),
+                    error_type=type(exc).__name__,
+                    reason=classify(exc).value,
                     delay=round(delay, 3),
                 )
                 if delay > 0:

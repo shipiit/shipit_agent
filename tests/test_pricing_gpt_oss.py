@@ -38,3 +38,20 @@ def test_a_budget_run_on_the_default_model_is_not_stopped_for_lack_of_prices() -
 
     result = Agent(llm=_DefaultModel(), max_budget_usd=0.25).run("hi")
     assert result.subtype == "success" and result.total_cost_usd and result.total_cost_usd > 0
+
+
+@pytest.mark.parametrize(
+    "model,key",
+    [("google.gemma-4-31b", "google.gemma-4-31b"), ("bedrock/google.gemma-4-31b", "google.gemma-4-31b"),
+     ("bedrock_mantle/google.gemma-4-31b", "google.gemma-4-31b"),
+     ("google.gemma-4-26b-a4b", "google.gemma-4-26b-a4b"),
+     ("bedrock_mantle/google.gemma-4-26b-a4b", "google.gemma-4-26b-a4b")],
+)
+def test_gemma_4_on_bedrock_mantle_resolves_to_a_price(model: str, key: str) -> None:
+    assert resolve_pricing_key(model, MODEL_PRICING) == key
+
+
+def test_gemma_4_rates_are_the_published_ones() -> None:
+    assert MODEL_PRICING["google.gemma-4-31b"]["input"] == 0.14
+    assert MODEL_PRICING["google.gemma-4-31b"]["output"] == 0.40
+    assert MODEL_PRICING["google.gemma-4-26b-a4b"]["input"] == 0.13

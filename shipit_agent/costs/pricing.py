@@ -181,11 +181,13 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     # reads as *free*, not *unknown*. Keys match after the resolver peels the
     # `bedrock-mantle/` prefix. Verify rates against the Bedrock pricing page;
     # the relative ordering matters most. (No prompt caching on Gemma.)
+    # 31B and 26B: the lower published regional rates, November 2026
+    # (Mumbai, Ireland and Milan list about 20% more).
     "google.gemma-4-31b": {
-        "input": 0.30, "output": 0.50, "cache_read": 0.075, "cache_write": 0.0,
+        "input": 0.14, "output": 0.40, "cache_read": 0.035, "cache_write": 0.0,
     },
     "google.gemma-4-26b-a4b": {
-        "input": 0.12, "output": 0.20, "cache_read": 0.03, "cache_write": 0.0,
+        "input": 0.13, "output": 0.40, "cache_read": 0.0325, "cache_write": 0.0,
     },
     "google.gemma-4-e2b": {
         "input": 0.05, "output": 0.10, "cache_read": 0.0125, "cache_write": 0.0,

@@ -137,6 +137,16 @@ class AgentClient:
         """Each MCP server's state (``connected`` or ``failed``) and its tools."""
         return await asyncio.to_thread(mcp_status, await self._connected())
 
+    async def stop_task(self, task_id: str) -> None:
+        """Stop a background sub-agent task the agent started."""
+        agent = await self._connected()
+        candidates = [*agent.tools, getattr(agent, "_auto_sub_agent", None)]
+        for candidate in candidates:
+            stop = getattr(candidate, "stop_task", None)
+            if callable(stop) and stop(task_id):
+                return
+        raise KeyError(f"no background task {task_id!r}")
+
     async def disconnect(self) -> None:
         """Stop any running turn and end :meth:`receive_messages`."""
         if self._agent is not None and any(not run.done() for run in self._runs):

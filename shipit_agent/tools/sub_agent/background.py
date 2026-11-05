@@ -19,6 +19,26 @@ from .result import (
 class BackgroundTasksMixin:
     """Background delegations: waiting with a timeout, and collecting one or all results."""
 
+    def stop_task(self, task_id: str) -> bool:
+        """Stop a background delegation; ``False`` when no task has that id.
+
+        A task not yet started is cancelled; a running one is asked to stop
+        between its steps, and still returns what it produced, to collect.
+        """
+        with self._lock:
+            future = self._tasks.get(task_id)
+            child = self._children.get(task_id)
+        if future is None:
+            return False
+        if not future.cancel() and child is not None:
+            child.cancel()
+        return True
+
+    def running_tasks(self) -> list[str]:
+        """Ids of background delegations not yet finished."""
+        with self._lock:
+            return sorted(task_id for task_id, future in self._tasks.items() if not future.done())
+
     def _result_with_timeout(self, future: Future[SubAgentResult]) -> SubAgentResult:
         """``future.result()`` bounded by ``self.timeout``.
 

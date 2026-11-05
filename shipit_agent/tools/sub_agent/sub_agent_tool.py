@@ -123,6 +123,7 @@ class SubAgentTool(ChildRunMixin, BackgroundTasksMixin):
         )
         self._tasks: dict[str, Future[SubAgentResult]] = {}
         self._meta: dict[str, dict[str, Any]] = {}
+        self._children: dict[str, Any] = {}
         self._task_ids = count(1)
         self._lock = threading.Lock()
 
@@ -210,6 +211,7 @@ class SubAgentTool(ChildRunMixin, BackgroundTasksMixin):
                     agent_type=agent_type,
                     context=context,
                     depth=depth,
+                    task_id=task_id,
                 )
                 self._meta[task_id] = {"task": task, "agent_type": agent_type or None}
             return ToolOutput(

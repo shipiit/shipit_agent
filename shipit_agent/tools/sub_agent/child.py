@@ -112,6 +112,7 @@ class ChildRunMixin:
         agent_type: str,
         context: ToolContext,
         depth: int,
+        task_id: str | None = None,
     ) -> SubAgentResult:
         result = SubAgentResult(task=task, output="", agent_type=agent_type or None)
         label = agent_type or "sub-agent"
@@ -127,6 +128,10 @@ class ChildRunMixin:
 
         try:
             agent = self._build_agent(context, agent_type, depth)
+            if task_id is not None:
+                # Kept so stop_task can reach a child that is already running.
+                with self._lock:
+                    self._children[task_id] = agent
             brief = task if not task_context else f"{task}\n\nContext:\n{task_context}"
             if sink is None:
                 run = agent.run(brief)
@@ -144,6 +149,10 @@ class ChildRunMixin:
             if hooks is not None:
                 hooks.run_subagent_stop(agent_type or "", task, "", result.error)
             return result
+        finally:
+            if task_id is not None:
+                with self._lock:
+                    self._children.pop(task_id, None)
 
         result.output = output or ""
         if hooks is not None:

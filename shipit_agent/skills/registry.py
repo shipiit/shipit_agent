@@ -278,6 +278,7 @@ def load_markdown_skill(path: str | Path) -> Skill:
         requirements=_list("requirements"),
         prompt_template=body.strip(),
         featured=bool(metadata.get("featured", False)),
+        directory=str(source.parent.resolve()),
     )
 
 

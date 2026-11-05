@@ -71,6 +71,9 @@ class Skill:
     input_type: str = ""
     output_type: str = ""
     requirements: list[str] = field(default_factory=list)
+    #: Folder of a SKILL.md skill, holding any scripts and references it
+    #: bundles. Empty for catalog entries that have no folder.
+    directory: str = ""
 
     # --- ownership ---
     creator_id: str = ""

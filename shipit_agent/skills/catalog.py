@@ -350,7 +350,8 @@ class LoadSkillTool:
             else ""
         )
         return make_output(
-            f"# Skill loaded: {primed.name}\n\n{primed.body}{unlocked}",
+            f"# Skill loaded: {primed.name}\n\n{primed.body}{unlocked}"
+            + _bundle_note(getattr(skill, "directory", "")),
             metadata={
                 "skill_id": primed.id,
                 "skill_trigger": primed.trigger,
@@ -386,3 +387,35 @@ class LoadSkillTool:
             f"No skill with id '{skill_id}'. Use an id exactly as written in "
             "the Skills catalog."
         )
+
+
+#: Bundled files listed when a skill loads; the rest are counted.
+_BUNDLE_LISTING_LIMIT = 30
+
+
+def _bundle_note(directory: str) -> str:
+    """Where a loaded skill lives and the files it bundles, for the model.
+
+    Paths are relative to the base directory, so instructions like "run
+    scripts/fill.py" can be followed from it.
+    """
+    if not directory:
+        return ""
+    from pathlib import Path
+
+    base = Path(directory)
+    if not base.is_dir():
+        return ""
+    files = sorted(
+        str(path.relative_to(base))
+        for path in base.rglob("*")
+        if path.is_file() and path.name != "SKILL.md" and "__pycache__" not in path.parts
+    )
+    note = f"\n\nBase directory: {base}"
+    if files:
+        shown = files[:_BUNDLE_LISTING_LIMIT]
+        more = len(files) - len(shown)
+        note += "\nBundled files (relative to it): " + ", ".join(shown)
+        if more:
+            note += f", and {more} more"
+    return note

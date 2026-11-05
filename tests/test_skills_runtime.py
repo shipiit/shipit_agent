@@ -169,7 +169,8 @@ def test_skill_prompt_text_falls_back_to_metadata_when_template_missing() -> Non
 
 def test_agent_auto_applies_matching_skill_from_registry() -> None:
     llm = PromptCaptureLLM()
-    agent = Agent(llm=llm)
+    # Keyword matching against the catalog is the opt-in, pre-on-demand mode.
+    agent = Agent(llm=llm, progressive_skills=False)
 
     agent.run("Please help me debug this production bug and plan this feature.")
 

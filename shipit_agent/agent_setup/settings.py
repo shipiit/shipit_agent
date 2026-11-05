@@ -253,7 +253,14 @@ class AgentSettings:
     skills: list[SkillLike] = field(default_factory=list)  # always-on skills
     default_skill_ids: list[str] = field(default_factory=list)
     skill_match_limit: int = 3  # max auto-matched
-    progressive_skills: bool = False  # metadata-first, model-selected loading
+    #: Skills load on demand, as in Claude Code: the prompt lists each in one
+    #: line and the model reads one with ``load_skill`` when it needs it.
+    #: False restores keyword matching that injects whole skills.
+    progressive_skills: bool = True
+    #: List the library's packaged skill catalog too. Off by default: the
+    #: catalog lists the project's own SKILL.md files and any registry you
+    #: pass; packaged skills stay usable by id through ``skills=[...]``.
+    advertise_packaged_skills: bool = False
     max_task_tokens: int | None = None  # soft per-run stop between model steps
     #: Stop a run, between steps, once its estimated cost reaches this many
     #: US dollars. Needs pricing data for the model; without it the run stops

@@ -5,27 +5,15 @@ from __future__ import annotations
 from typing import Any
 
 from shipit_agent.agent_setup.builtins import get_builtin_tool_map
-from shipit_agent.skills import Skill, apply_skill, find_relevant_skills
+from shipit_agent.agent_setup.skill_selection import SkillSelectionMixin
+from shipit_agent.skills import Skill, apply_skill
 from shipit_agent.skills.tool_bundles import tool_names_for_skills
 
 SkillLike = str | Skill
 
 
-class AgentPreparationMixin:
+class AgentPreparationMixin(SkillSelectionMixin):
     """Build the effective prompt, tools, skills, and permissions for a run."""
-
-    def _resolve_skill_ref(self, skill_ref: SkillLike) -> Skill:
-        if isinstance(skill_ref, Skill):
-            return skill_ref
-        if self.skill_registry is None:
-            raise ValueError(
-                f"Cannot resolve skill '{skill_ref}' because no skill registry "
-                "is configured."
-            )
-        skill = self.skill_registry.get(skill_ref)
-        if skill is None:
-            raise ValueError(f"Unknown skill id: {skill_ref}")
-        return skill
 
     def _resolve_skill_refs(self, skill_refs: list[SkillLike]) -> list[Skill]:
         resolved: list[Skill] = []
@@ -51,25 +39,6 @@ class AgentPreparationMixin:
             self.skills.append(resolved)
         return resolved
 
-    def _selected_skills(self, user_prompt: str) -> list[Skill]:
-        selected: list[Skill] = []
-        seen: set[str] = set()
-        candidates = [*self.skills]
-        candidates.extend(self._resolve_skill_ref(i) for i in self.default_skill_ids)
-        if self.auto_use_skills and not self.progressive_skills and self.skill_registry is not None:
-            candidates.extend(
-                find_relevant_skills(
-                    self.skill_registry,
-                    user_prompt,
-                    max_skills=self.skill_match_limit,
-                )
-            )
-        for skill in candidates:
-            if skill.id not in seen:
-                selected.append(skill)
-                seen.add(skill.id)
-        return selected
-
     def _effective_prompt(
         self, user_prompt: str, *, selected_skills: list[Skill] | None = None
     ) -> str:
@@ -87,16 +56,6 @@ class AgentPreparationMixin:
             effective += "\n".join(f"- {entry.id}: {entry.description}" for entry in catalog)
         rules = self._rules_block()
         return f"{effective}\n\n{rules}" if rules and rules not in effective else effective
-
-    def _progressive_skill_catalog(self, selected_skills):
-        if not self.progressive_skills or self.skill_registry is None:
-            return []
-        from shipit_agent.skills.catalog import build_catalog
-        return build_catalog(
-            (skill for skill in self.skill_registry.list()
-             if skill.is_visible and skill.is_admin_enabled and skill.is_user_enabled),
-            exclude=[skill.id for skill in selected_skills],
-        )
 
     def _rules_block(self) -> str:
         from shipit_agent.rules import RuleSet, collect_tool_rules
@@ -184,14 +143,6 @@ class AgentPreparationMixin:
         if self.verifier is not None and hasattr(self.verifier, "wrap_tools"):
             tools = self.verifier.wrap_tools(tools)
         return tools
-
-    def _skill_tool_names(self, selected_skills: list[Skill]) -> list[str]:
-        available = {getattr(tool, "name", None) for tool in self.tools}
-        names: list[str] = []
-        for name in tool_names_for_skills(selected_skills):
-            if name not in available and name not in names:
-                names.append(name)
-        return names
 
     def _runtime_skill_metadata(
         self, selected_skills: list[Skill]

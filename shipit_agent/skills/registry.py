@@ -171,6 +171,11 @@ class FileSkillRegistry(SkillRegistry):
     is overridden.
     """
 
+    @property
+    def path(self) -> Path:
+        """The JSON file this registry was loaded from."""
+        return self._path
+
     def __init__(self, path: str | Path) -> None:
         super().__init__()
         self._path = Path(path)

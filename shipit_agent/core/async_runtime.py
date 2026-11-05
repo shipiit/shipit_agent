@@ -45,6 +45,7 @@ from shipit_agent.core.narration import (
     _looks_like_prose,
     _result_failed,
 )
+from shipit_agent.core.turn import Turn
 from shipit_agent.core.state import (
     RuntimeState,
     _isolated_tool_state,
@@ -1085,6 +1086,24 @@ class AsyncAgentRuntime(RuntimeCore):
         *,
         user_content: list[dict[str, Any]] | None = None,
     ) -> tuple[RuntimeState, LLMResponse]:
+        turn = await self._begin_turn(user_prompt, user_content=user_content)
+        if not isinstance(turn, Turn):
+            # A prompt hook or guardrail refused the turn before the model ran.
+            return turn
+        await self._run_steps(turn)
+        return await self._finish_turn(turn)
+
+    async def _begin_turn(
+        self,
+        user_prompt: str,
+        *,
+        user_content: list[dict[str, Any]] | None = None,
+    ) -> Turn | tuple[RuntimeState, LLMResponse]:
+        """Prepare a turn: hooks and guardrails, tools, system prompt, prior history.
+
+        Returns the :class:`Turn` the steps run on, or a finished ``(state,
+        response)`` when a prompt hook or guardrail refuses the turn outright.
+        """
         state = RuntimeState()
 
         if self.verify_before_stop:
@@ -1342,6 +1361,33 @@ class AsyncAgentRuntime(RuntimeCore):
             shared_state=shared_state,
             tool_runner=tool_runner,
         )
+
+        return Turn(
+            user_prompt=user_prompt,
+            state=state,
+            registry=registry,
+            tool_runner=tool_runner,
+            tool_schemas=tool_schemas,
+            base_prompt=base_prompt,
+            shared_state=shared_state,
+            existing_session=existing_session,
+            fact_ledger=fact_ledger,
+            original_prior=original_prior,
+        )
+
+    async def _run_steps(self, turn: Turn) -> None:
+        """Call the model and run its tools, step by step, until it answers.
+
+        Stops at a final answer, a cancellation, the task budget or the
+        iteration limit, and leaves the last response on ``turn.response``.
+        """
+        user_prompt = turn.user_prompt
+        state = turn.state
+        registry = turn.registry
+        tool_runner = turn.tool_runner
+        tool_schemas = turn.tool_schemas
+        base_prompt = turn.base_prompt
+        shared_state = turn.shared_state
 
         response = LLMResponse(content="")
         # id() of the response already appended as an assistant message in the
@@ -1880,6 +1926,20 @@ class AsyncAgentRuntime(RuntimeCore):
                     shared_state=shared_state,
                     tool_runner=tool_runner,
                 )
+
+
+        turn.response = response
+        turn.appended_response_id = appended_response_id
+
+    async def _finish_turn(self, turn: Turn) -> tuple[RuntimeState, LLMResponse]:
+        """Close a turn: settle the final answer, save the session, report the result."""
+        state = turn.state
+        base_prompt = turn.base_prompt
+        existing_session = turn.existing_session
+        fact_ledger = turn.fact_ledger
+        original_prior = turn.original_prior
+        response = turn.response
+        appended_response_id = turn.appended_response_id
 
         # Summarization if hit iteration cap
         hit_iteration_cap = bool(response.tool_calls) and not response.content

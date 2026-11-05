@@ -26,8 +26,10 @@ from shipit_agent.core.loop.tool_outcome import ToolOutcomeMixin
 from shipit_agent.core.loop.tool_step import ToolStepMixin
 from shipit_agent.core.loop.turn import Turn
 from shipit_agent.core.loop.turn_finish import TurnFinishMixin
+from shipit_agent.core.loop.turn_history import TurnHistoryMixin
 from shipit_agent.core.loop.turn_setup import TurnSetupMixin
 from shipit_agent.core.loop.turn_steps import TurnStepsMixin
+from shipit_agent.core.loop.turn_tools import TurnToolsMixin
 from shipit_agent.core.models import AgentEvent, Message
 from shipit_agent.core.policies import RetryPolicy, RouterPolicy
 from shipit_agent.core.registry import ToolRegistry
@@ -66,6 +68,8 @@ class AsyncAgentRuntime(
     ToolAttemptsMixin,
     ToolOutcomeMixin,
     TurnSetupMixin,
+    TurnHistoryMixin,
+    TurnToolsMixin,
     TurnStepsMixin,
     AnswerStepMixin,
     ToolStepMixin,

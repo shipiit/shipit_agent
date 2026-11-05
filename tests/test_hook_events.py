@@ -147,3 +147,23 @@ def test_a_call_a_request_hook_settles_does_not_notify() -> None:
     hooks.on_notification(lambda message, kind: notes.append(kind))
     _run(_CallsOnce("note_create", text="x"), hooks, **ASKS)
     assert notes == []
+
+
+# -- post_tool_use ------------------------------------------------------------------
+
+
+def test_a_post_tool_use_hook_sees_the_calls_arguments_and_result() -> None:
+    seen: list[tuple[str, dict[str, Any], str]] = []
+    hooks = AgentHooks()
+    hooks.on_post_tool_use(lambda name, arguments, result: seen.append((name, arguments, result.output)))
+    _run(_CallsOnce("note_create", text="x"), hooks)
+    assert seen == [("note_create", {"text": "x"}, "noted:x")]
+
+
+def test_a_post_tool_use_hook_can_replace_or_add_to_the_output() -> None:
+    hooks = AgentHooks()
+    hooks.on_post_tool_use(lambda *_: {"updated_output": "replaced"})
+    hooks.on_post_tool_use(lambda *_: "and a note")
+    llm = _CallsOnce("note_create", text="x")
+    result = _run(llm, hooks)
+    assert result.tool_results[0].output == "replaced\n\nand a note"

@@ -48,8 +48,24 @@ class HookDispatchMixin:
                 outcome = decision
         return outcome
 
-    def run_after_tool(self, name: str, result: Any) -> Any:
+    def run_after_tool(
+        self, name: str, result: Any, arguments: dict[str, Any] | None = None
+    ) -> Any:
         """Run post-tool hooks, allowing each to replace or sanitize output."""
+        current = self._run_after_tool_hooks(name, result)
+        for fn in self.post_tool_use:
+            value = fn(name, dict(arguments or {}), current)
+            if isinstance(value, str):
+                value = {"additional_context": value}
+            if not isinstance(value, dict) or not hasattr(current, "output"):
+                continue
+            if value.get("updated_output") is not None:
+                current.output = str(value["updated_output"])
+            if str(value.get("additional_context") or "").strip():
+                current.output = f"{current.output}\n\n{str(value['additional_context']).strip()}"
+        return current
+
+    def _run_after_tool_hooks(self, name: str, result: Any) -> Any:
         current = result
         for fn in self.after_tool:
             value = fn(name, current)

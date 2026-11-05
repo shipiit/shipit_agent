@@ -41,7 +41,9 @@ class ToolOutcomeMixin:
         prompt injection and redact secrets before the model reads anything.
         """
         if self.hooks:
-            tool_result = self.hooks.run_after_tool(tool_call.name, tool_result)
+            tool_result = self.hooks.run_after_tool(
+                tool_call.name, tool_result, dict(tool_call.arguments)
+            )
             if tool_result.is_error:
                 note = self.hooks.run_post_tool_failure(
                     tool_call.name, dict(tool_call.arguments), str(tool_result.output)

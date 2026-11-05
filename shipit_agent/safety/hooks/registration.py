@@ -109,6 +109,17 @@ class HookRegistrationMixin:
         self.pre_compact.append(fn)
         return fn
 
+    def on_post_tool_use(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a hook called with ``(name, arguments, result)`` after each tool call.
+
+        Like the SDK's ``PostToolUse``: return ``{"updated_output": text}`` to
+        replace what the model reads, ``{"additional_context": text}`` (or
+        just a string) to add to it, or ``None`` to change nothing. It runs
+        after the ``on_after_tool`` hooks, for successes and failures.
+        """
+        self.post_tool_use.append(fn)
+        return fn
+
     def on_post_tool_failure(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a hook called with ``(name, arguments, error)`` when a tool fails.
 

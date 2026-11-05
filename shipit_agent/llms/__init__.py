@@ -44,7 +44,8 @@ from .litellm_adapter import (
     TogetherChatLLM,
     VertexAIChatLLM,
 )
-from .openai_adapter import BedrockGemmaChatLLM, OpenAIChatLLM
+from .bedrock_gemma import BedrockGemmaChatLLM
+from .openai_adapter import OpenAIChatLLM
 from .simple import ShipitLLM, SimpleEchoLLM
 
 __all__ = [

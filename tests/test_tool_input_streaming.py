@@ -39,7 +39,13 @@ def _shipped_adapters():
     import inspect
 
     found = []
-    for module in ("anthropic_adapter", "openai_adapter", "litellm_adapter", "simple"):
+    for module in (
+        "anthropic_adapter",
+        "openai_adapter",
+        "bedrock_gemma",
+        "litellm_adapter",
+        "simple",
+    ):
         mod = importlib.import_module(f"shipit_agent.llms.{module}")
         for name, obj in vars(mod).items():
             if (

@@ -13,7 +13,14 @@ Modes:
 - ``plan``        — read-only gate: only known read-only tools run; every
                     mutating/unknown tool is denied so the agent must produce a
                     plan instead of acting.
-- ``bypass``      — allow everything (escape hatch; use with care).
+- ``bypass``      — allow everything not denied or asked (``bypassPermissions``
+                    is accepted too, the Claude Agent SDK's name).
+- ``dontAsk``     — never ask: anything not pre-approved by an allow rule or the
+                    callback is refused.
+
+Rules are applied in the Claude Agent SDK's order: deny rules, then ask rules,
+then the mode, then allow rules, then the callback. An ask rule is a request
+for a human, so no mode or broad allow pattern overrides it.
 
 A check returns a :class:`PermissionResult` with a decision and, optionally,
 ``updated_arguments`` to **rewrite** the tool call (e.g. redact a secret, scope
@@ -27,7 +34,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Literal, Sequence
 
-PermissionMode = Literal["default", "acceptEdits", "plan", "bypass"]
+PermissionMode = Literal[
+    "default", "acceptEdits", "plan", "bypass", "bypassPermissions", "dontAsk"
+]
 
 
 class PermissionDecision(str, Enum):
@@ -87,8 +96,8 @@ class PermissionEngine:
     """Rule-based gate for tool calls.
 
     ``allow`` / ``deny`` / ``ask`` are lists of tool-name globs (``fnmatch``).
-    Precedence: ``deny`` > mode logic > ``allow`` > ``ask`` > ``callback`` >
-    ``default_decision``.
+    Precedence, as in the Claude Agent SDK: ``deny`` > ``ask`` > mode logic >
+    ``allow`` > ``callback`` > ``default_decision``.
 
     Because ``deny`` outranks ``allow``, ``deny=["*"]`` denies **everything**,
     including anything you allow-listed — it is not "deny the rest". To mean
@@ -111,6 +120,10 @@ class PermissionEngine:
     # canUseTool-style callback: (name, args) -> PermissionResult | None.
     # Returning None defers to the default decision.
     callback: Callable[[str, dict[str, Any]], PermissionResult | None] | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode == "bypassPermissions":
+            self.mode = "bypass"
 
     # ------------------------------------------------------------------
     # Classification
@@ -206,7 +219,14 @@ class PermissionEngine:
                     reason=spec.reason(tool_name),
                 )
 
-        # 2. Mode logic.
+        # 2. Ask rules: a request for a human, which no mode or allow overrides.
+        if _matches_any(tool_name, self.ask):
+            asked = self._consult_callback(tool_name, arguments)
+            if asked is not None:
+                return asked
+            return self._ask_or_refuse(f"'{tool_name}' requires approval (ask rule).")
+
+        # 3. Mode logic.
         if self.mode == "bypass":
             return PermissionResult(PermissionDecision.ALLOW, reason="bypass mode")
 
@@ -236,28 +256,32 @@ class PermissionEngine:
                 PermissionDecision.ALLOW, reason="auto-approved edit (acceptEdits)"
             )
 
-        # 3. Explicit allow / ask rules.
+        # 4. Allow rules.
         if _matches_any(tool_name, self.allow):
             return PermissionResult(PermissionDecision.ALLOW, reason="allow rule")
-        if _matches_any(tool_name, self.ask):
-            asked = self._consult_callback(tool_name, arguments)
-            if asked is not None:
-                return asked
-            return PermissionResult(
-                PermissionDecision.ASK,
-                reason=f"'{tool_name}' requires approval (ask rule).",
-            )
 
-        # 4. Callback (canUseTool) as a catch-all, then the default.
+        # 5. Callback (canUseTool) as a catch-all, then the default.
         asked = self._consult_callback(tool_name, arguments)
         if asked is not None:
             return asked
         if risk:
+            return self._ask_or_refuse(
+                f"'{tool_name}' needs approval because " + "; ".join(risk)
+            )
+        if self.mode == "dontAsk":
             return PermissionResult(
-                PermissionDecision.ASK,
-                reason=f"'{tool_name}' needs approval because " + "; ".join(risk),
+                PermissionDecision.DENY,
+                reason=f"'{tool_name}' is not pre-approved (dontAsk mode).",
             )
         return PermissionResult(self.default_decision, reason="default")
+
+    def _ask_or_refuse(self, reason: str) -> PermissionResult:
+        """Ask a human, or in ``dontAsk`` mode refuse instead."""
+        if self.mode == "dontAsk":
+            return PermissionResult(
+                PermissionDecision.DENY, reason=f"{reason} Not pre-approved (dontAsk mode)."
+            )
+        return PermissionResult(PermissionDecision.ASK, reason=reason)
 
     def _consult_callback(
         self, tool_name: str, arguments: dict[str, Any]

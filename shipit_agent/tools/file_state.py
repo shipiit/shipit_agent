@@ -9,6 +9,7 @@ writing one, because the agent then knows its exact contents.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 READ_FILES_KEY = "read_files"
@@ -49,3 +50,26 @@ def changed_on_disk(state: Any, path: Path) -> bool:
         return path.stat().st_mtime_ns != recorded
     except OSError:
         return False
+
+
+#: read_file's line-number gutter: optional spaces, digits, a colon, a space.
+_GUTTER = re.compile(r"^\s*\d+: ", re.MULTILINE)
+
+
+def missing_text_hint(old_text: str, content: str) -> str:
+    """Why *old_text* may be missing from *content*, as one sentence, or ``""``.
+
+    Names the commonest cause: line numbers copied from read_file's output.
+    """
+    if _GUTTER.search(old_text):
+        stripped = _GUTTER.sub("", old_text)
+        if stripped and stripped in content:
+            return (
+                " old_text includes read_file's line-number prefixes (like "
+                "'  12: '); copy only the text after them."
+            )
+        return (
+            " old_text looks like it includes read_file's line-number "
+            "prefixes (like '  12: '); copy only the text after them."
+        )
+    return ""

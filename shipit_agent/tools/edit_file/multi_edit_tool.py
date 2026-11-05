@@ -14,7 +14,7 @@ import difflib
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
-from shipit_agent.tools.file_state import changed_on_disk
+from shipit_agent.tools.file_state import changed_on_disk, missing_text_hint
 
 
 class MultiEditTool:
@@ -161,8 +161,12 @@ class MultiEditTool:
             if count == 0:
                 return ToolOutput(
                     text=f"multi_edit failed at edit #{index}: old_text not found "
-                    "(no changes written). It may have been altered by an earlier "
-                    "edit in this batch, or never existed.",
+                    "(no changes written)."
+                    + (
+                        missing_text_hint(old_text, working)
+                        or " It may have been altered by an earlier edit in this "
+                        "batch, or never existed."
+                    ),
                     metadata={"path": str(path), "failed_edit": index, "is_error": True},
                 )
             if count > 1 and not replace_all:

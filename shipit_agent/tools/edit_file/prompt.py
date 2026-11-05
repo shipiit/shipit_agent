@@ -20,8 +20,10 @@ Apply an exact text replacement patch to an existing file. Safer and more precis
 4. File does not exist yet? → use `write_file` instead
 
 **Rules:**
-- **Read the file first** with `read_file` — edits on unread files are rejected
+- **Read the file first** with `read_file` — edits on unread files are rejected. A file you just wrote with `write_file` counts as read.
 - `old_text` must match the current file contents **exactly** (whitespace, indentation, newlines)
+- Never include `read_file`'s line-number prefix (`  12: `) in `old_text` — copy only the text after it
+- If the file changed since you read it, the edit still applies when `old_text` is intact; you are asked to re-read only when it is not
 - Use the smallest uniquely identifying block that is still stable across minor changes
 - When `old_text` appears multiple times and you want all replaced, set `replace_all=true`
 - When `old_text` appears multiple times and you want only one, include more surrounding context to make it unique

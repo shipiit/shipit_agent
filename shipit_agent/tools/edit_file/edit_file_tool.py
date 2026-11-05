@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
-from shipit_agent.tools.file_state import changed_on_disk
+from shipit_agent.tools.file_state import changed_on_disk, missing_text_hint
 
 from .prompt import EDIT_FILE_PROMPT
 
@@ -148,9 +148,13 @@ class EditFileTool:
             )
         if occurrences == 0:
             return ToolOutput.error(
-                f"Edit failed: old_text was not found in {path.name}. Re-read the file "
-                "and copy the exact text to replace, including whitespace and "
-                "indentation. No changes were made.",
+                f"Edit failed: old_text was not found in {path.name}."
+                + (
+                    missing_text_hint(old_text, content)
+                    or " Re-read the file and copy the exact text to replace, "
+                    "including whitespace and indentation."
+                )
+                + " No changes were made.",
                 path=str(path), error="old_text_not_found",
             )
         if occurrences > 1 and not replace_all:

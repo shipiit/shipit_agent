@@ -9,12 +9,12 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from shipit_agent.core.loop.turn import Turn
 from shipit_agent.core.models import Message
 from shipit_agent.core.state import (
     _isolated_tool_state,
     _merge_tool_state,
 )
-from shipit_agent.core.turn import Turn
 from shipit_agent.llms.base import (
     LLMResponse,
 )

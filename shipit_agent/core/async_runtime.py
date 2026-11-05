@@ -13,13 +13,20 @@ import threading
 from typing import Any, Callable
 from uuid import uuid4
 
-from shipit_agent.core.answer_step import AnswerStepMixin
-from shipit_agent.core.code_mode import CodeModeMixin
 from shipit_agent.core.construction import construct_tool_registry
-from shipit_agent.core.event_stream import EventStreamMixin
-from shipit_agent.core.model_call import ModelCallMixin
+from shipit_agent.core.loop.answer_step import AnswerStepMixin
+from shipit_agent.core.loop.code_mode import CodeModeMixin
+from shipit_agent.core.loop.event_stream import EventStreamMixin
+from shipit_agent.core.loop.model_call import ModelCallMixin
+from shipit_agent.core.loop.planning import PlanningMixin
+from shipit_agent.core.loop.step_narration import StepNarrationMixin
+from shipit_agent.core.loop.tool_exec import ToolExecutionMixin
+from shipit_agent.core.loop.tool_step import ToolStepMixin
+from shipit_agent.core.loop.turn import Turn
+from shipit_agent.core.loop.turn_finish import TurnFinishMixin
+from shipit_agent.core.loop.turn_setup import TurnSetupMixin
+from shipit_agent.core.loop.turn_steps import TurnStepsMixin
 from shipit_agent.core.models import AgentEvent, Message
-from shipit_agent.core.planning import PlanningMixin
 from shipit_agent.core.policies import RetryPolicy, RouterPolicy
 from shipit_agent.core.registry import ToolRegistry
 from shipit_agent.core.runtime_core import (
@@ -28,13 +35,6 @@ from shipit_agent.core.runtime_core import (
 from shipit_agent.core.state import (
     RuntimeState,
 )
-from shipit_agent.core.step_narration import StepNarrationMixin
-from shipit_agent.core.tool_exec import ToolExecutionMixin
-from shipit_agent.core.tool_step import ToolStepMixin
-from shipit_agent.core.turn import Turn
-from shipit_agent.core.turn_finish import TurnFinishMixin
-from shipit_agent.core.turn_setup import TurnSetupMixin
-from shipit_agent.core.turn_steps import TurnStepsMixin
 from shipit_agent.integrations import CredentialStore
 from shipit_agent.llms.base import (
     LLM,

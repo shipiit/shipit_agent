@@ -17,19 +17,24 @@ import inspect
 import pytest
 
 from shipit_agent.core.async_runtime import AsyncAgentRuntime
-from shipit_agent.llms.base import LLMResponse
-from shipit_agent.safety.lockdown import LockdownState
 from shipit_agent.core.models import ToolCall
-from shipit_agent.safety.permissions import PermissionEngine
 from shipit_agent.core.runtime import AgentRuntime
 from shipit_agent.core.runtime_core import RuntimeCore
+from shipit_agent.llms.base import LLMResponse
+from shipit_agent.safety.lockdown import LockdownState
+from shipit_agent.safety.permissions import PermissionEngine
 from shipit_agent.tools.base import ToolOutput
 
-SHARED = [
-    name
-    for name in vars(RuntimeCore)
-    if not name.startswith("__") and name != "_init_core"
-]
+# RuntimeCore's decisions live on it and on the mixins it is built from.
+SHARED = sorted(
+    {
+        name
+        for klass in RuntimeCore.__mro__
+        if klass is not object
+        for name in vars(klass)
+        if not name.startswith("__") and name != "_init_core"
+    }
+)
 
 
 def tool(name, *, output="ok", sensitive=False, calls=None):
@@ -325,12 +330,8 @@ class TestSharedStateIsActuallyShared:
 
         core = pathlib.Path("shipit_agent") / "core"
         # The loop is spread across the runtime and its phase modules.
-        loop = "".join(
-            (core / name).read_text()
-            for name in (
-                "async_runtime.py", "turn_setup.py", "turn_steps.py",
-                "answer_step.py", "tool_step.py", "tool_exec.py", "turn_finish.py",
-            )
+        loop = (core / "async_runtime.py").read_text() + "".join(
+            path.read_text() for path in sorted((core / "loop").glob("*.py"))
         )
         assert "build_shared_state(registry" in loop, "the loop must use the core"
         assert (

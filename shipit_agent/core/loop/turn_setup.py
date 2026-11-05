@@ -10,6 +10,7 @@ import asyncio
 from typing import Any
 
 from shipit_agent.context.session_facts import FactLedger
+from shipit_agent.core.loop.turn import Turn
 from shipit_agent.core.models import Message
 from shipit_agent.core.runtime_core import (
     evict_prior_tool_outputs,
@@ -18,7 +19,6 @@ from shipit_agent.core.state import (
     RuntimeState,
 )
 from shipit_agent.core.tool_runner import ToolRunner
-from shipit_agent.core.turn import Turn
 from shipit_agent.llms.base import (
     LLMResponse,
 )

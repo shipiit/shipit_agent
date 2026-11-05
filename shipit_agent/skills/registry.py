@@ -227,10 +227,13 @@ def _frontmatter_value(value: str) -> str | list[str] | bool:
     return stripped.strip("\"'")
 
 
-def load_markdown_skill(path: str | Path) -> Skill:
-    """Load a Codex/Claude-style ``SKILL.md`` into a runtime Skill."""
-    source = Path(path)
-    text = source.read_text(encoding="utf-8")
+def split_frontmatter(text: str) -> tuple[dict[str, object], str]:
+    """Split a Markdown file's ``---`` header from its body.
+
+    Keys are normalised (``allowed-tools`` becomes ``allowed_tools``); values
+    are strings, booleans, or lists for ``[a, b]``. A file without a header
+    is all body.
+    """
     metadata: dict[str, object] = {}
     body = text
     if text.startswith("---\n"):
@@ -243,6 +246,13 @@ def load_markdown_skill(path: str | Path) -> Skill:
                     continue
                 key, value = line.split(":", 1)
                 metadata[key.strip().replace("-", "_")] = _frontmatter_value(value)
+    return metadata, body
+
+
+def load_markdown_skill(path: str | Path) -> Skill:
+    """Load a Codex/Claude-style ``SKILL.md`` into a runtime Skill."""
+    source = Path(path)
+    metadata, body = split_frontmatter(source.read_text(encoding="utf-8"))
 
     def _list(name: str) -> list[str]:
         value = metadata.get(name, [])

@@ -261,6 +261,12 @@ class AgentSettings:
     #: catalog lists the project's own SKILL.md files and any registry you
     #: pass; packaged skills stay usable by id through ``skills=[...]``.
     advertise_packaged_skills: bool = False
+    #: Named sub-agents, as in the Claude Agent SDK: ``{"reviewer": {
+    #: "description": ..., "prompt": ..., "tools": [...], "model": ...}}``.
+    #: Defining any gives the agent a ``sub_agent`` tool that lists them.
+    agents: dict[str, Any] = field(default_factory=dict)
+    #: Also read sub-agents from ``.shipit/agents/*.md`` and ``.claude/agents/*.md``.
+    auto_project_agents: bool = True
     max_task_tokens: int | None = None  # soft per-run stop between model steps
     #: Stop a run, between steps, once its estimated cost reaches this many
     #: US dollars. Needs pricing data for the model; without it the run stops

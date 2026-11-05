@@ -35,7 +35,7 @@ def _schema_name(schema: dict) -> str:
 #: The tools that stay resident under ``deferred_tools="auto"``, most
 #: important first: Claude Code's working set. Files (read, edit, write,
 #: find, search), the shell, the web (search, fetch), the todo list and the
-#: human, the skill loader, then the batch editor and memory.
+#: human, the skill loader and sub-agents, then the batch editor and memory.
 CORE_ORDER: tuple[str, ...] = (
     "read_file",
     "edit_file",
@@ -48,12 +48,13 @@ CORE_ORDER: tuple[str, ...] = (
     "todo",
     "ask_user",
     "load_skill",
+    "sub_agent",
     "multi_edit",
     "memory",
 )
 
 #: Most tools kept resident besides the discovery tool itself.
-RESIDENT_LIMIT = 13
+RESIDENT_LIMIT = 14
 
 
 def resolve_deferred_names(

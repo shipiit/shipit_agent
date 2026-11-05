@@ -69,6 +69,16 @@ class AgentPreparationMixin(SkillSelectionMixin):
         names = frozenset(str(getattr(t, "name", "") or "") for t in self.tools)
         return merged.render(tools=names)
 
+    def _subagent_definitions(self) -> dict[str, Any]:
+        """Sub-agents from the project's agent files, then ``agents=`` (which wins)."""
+        from shipit_agent.agents.subagent_definitions import (
+            coerce_subagents,
+            load_subagent_files,
+        )
+
+        found = load_subagent_files(self.project_root) if self.auto_project_agents else {}
+        return {**found, **coerce_subagents(self.agents)}
+
     def _delegation_policy(self) -> Any:
         from shipit_agent.agents.delegation import coerce_delegation
 
@@ -115,6 +125,18 @@ class AgentPreparationMixin(SkillSelectionMixin):
                 )
             if self._auto_sub_agent is not None:
                 effective["sub_agent"] = self._auto_sub_agent
+
+        defined = self._subagent_definitions()
+        if defined:
+            existing = effective.get("sub_agent")
+            if existing is None:
+                if self._auto_sub_agent is None:
+                    from shipit_agent.tools.sub_agent import SubAgentTool
+
+                    self._auto_sub_agent = SubAgentTool(self.llm)
+                existing = effective["sub_agent"] = self._auto_sub_agent
+            if hasattr(existing, "agents"):
+                existing.agents = {**defined, **existing.agents}
 
         missing_skill_tools = [
             name for name in tool_names_for_skills(selected_skills)

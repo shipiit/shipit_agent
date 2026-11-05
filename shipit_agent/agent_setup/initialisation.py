@@ -61,6 +61,11 @@ class AgentInitMixin:
             type(self.max_budget_usd) not in (int, float) or self.max_budget_usd <= 0
         ):
             raise ValueError("max_budget_usd must be a positive number or None")
+        if self.agents:
+            from shipit_agent.agents.subagent_definitions import coerce_subagents
+
+            # Refuse a malformed definition now, not on the run that uses it.
+            coerce_subagents(self.agents)
         if self.stream_join_timeout < 0:
             raise ValueError("stream_join_timeout cannot be negative")
 

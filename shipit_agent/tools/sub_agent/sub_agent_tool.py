@@ -32,9 +32,11 @@ from dataclasses import dataclass, field
 from itertools import count
 from typing import Any
 
+from shipit_agent.agents.subagent_definitions import SubagentDefinition
 from shipit_agent.llms.base import LLM
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
+from .defined import describe_agents, llm_for, tools_for
 from .prompt import SUB_AGENT_SYSTEM_PROMPT
 
 __all__ = [
@@ -154,8 +156,11 @@ class SubAgentTool:
         #: deadline, and a hung non-daemon worker also wedges interpreter
         #: exit. ``None`` keeps the old unbounded behaviour.
         timeout: float | None = None,
+        #: Named sub-agents the parent may pick with ``agent_type``.
+        agents: dict[str, SubagentDefinition] | None = None,
     ) -> None:
         self.llm = llm
+        self.agents = dict(agents or {})
         self.timeout = timeout
         self.name = name
         self.description = description
@@ -194,6 +199,10 @@ class SubAgentTool:
         self._meta: dict[str, dict[str, Any]] = {}
         self._task_ids = count(1)
         self._lock = threading.Lock()
+
+    def llm_for(self, definition: SubagentDefinition) -> Any:
+        """The model a defined sub-agent runs with."""
+        return llm_for(self.llm, definition)
 
     def close(self) -> None:
         """Release the thread pool, cancelling anything still queued."""
@@ -257,10 +266,7 @@ class SubAgentTool:
                         },
                         "agent_type": {
                             "type": "string",
-                            "description": (
-                                "A specialist role, e.g. 'researcher', "
-                                "'code-reviewer'. Omit for general-purpose."
-                            ),
+                            "description": describe_agents(self.agents),
                         },
                         "background": {
                             "type": "boolean",
@@ -332,6 +338,19 @@ class SubAgentTool:
             "guardrails": parent.get("guardrails"),
             "project_root": parent.get("project_root", "."),
         }
+
+        definition = self.agents.get(agent_type.lower()) if agent_type else None
+        if definition is not None:
+            child = Agent(
+                **{
+                    **kwargs,
+                    "llm": llm_for(self.llm, definition),
+                    "tools": tools_for(definition, tools),
+                    "prompt": definition.prompt,
+                }
+            )
+            child.metadata = {**child.metadata, DEPTH_STATE_KEY: depth + 1}
+            return child
 
         agent = None
         if agent_type:

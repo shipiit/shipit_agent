@@ -1,3 +1,6 @@
+"""The ``github`` tool: work with GitHub issues, pull requests, file contents, and Actions workflow runs via the REST API.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -38,6 +41,8 @@ _ACTIONS = [
 
 
 class GitHubTool(HTTPConnectorToolBase):
+    """The ``github`` tool: work with GitHub issues, pull requests, file contents, and Actions workflow runs via the REST API.
+    """
     provider = "github"
 
     def __init__(

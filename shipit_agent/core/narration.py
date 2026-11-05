@@ -8,6 +8,7 @@ from shipit_agent.core.models import ToolResult
 
 
 def join_clauses(parts: list[str]) -> str:
+    """Join non-empty phrases into one readable clause list."""
     parts = [part for part in parts if part]
     if not parts:
         return ""
@@ -27,6 +28,7 @@ def arguments_by_name(tool_calls: list[Any] | None) -> dict[str, dict]:
 
 
 def bounded(value: Any, limit: int) -> str:
+    """*value* as one line of text, cut to *limit* characters."""
     text = " ".join(str(value or "").split())
     return text if len(text) <= limit else text[:limit].rstrip() + "…"
 
@@ -94,6 +96,7 @@ def describe_result(result: ToolResult) -> str:
 
 
 def result_failed(result: ToolResult) -> bool:
+    """True when a tool result reports failure."""
     metadata = result.metadata or {}
     return bool(metadata.get("error")) or metadata.get("ok") is False
 

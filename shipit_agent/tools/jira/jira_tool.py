@@ -1,3 +1,5 @@
+"""The ``jira`` tool: search Jira issues and create Jira issues."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,7 @@ from .prompt import JIRA_PROMPT
 
 
 class JiraTool(HTTPConnectorToolBase):
+    """The ``jira`` tool: search Jira issues and create Jira issues."""
     provider = "jira"
 
     def __init__(

@@ -1,3 +1,13 @@
+"""The synchronous agent loop.
+
+:class:`AgentRuntime` drives one run: it sends the conversation to the model,
+executes the tool calls it returns (in parallel for read-only tools when
+enabled), feeds the results back, and repeats until the model answers without
+a tool call or a limit is reached. Shared step logic lives in
+:mod:`shipit_agent.core.runtime_core`; the awaitable twin is
+:mod:`shipit_agent.core.async_runtime`.
+"""
+
 from __future__ import annotations
 
 import contextvars
@@ -61,6 +71,12 @@ from shipit_agent.observability.tracing import InMemoryTraceStore, TraceStore
 
 
 class AgentRuntime(RuntimeCore):
+    """Run one agent turn: call the model, run its tool calls, repeat.
+
+    Most callers use :class:`shipit_agent.Agent`, which builds a runtime
+    per run. Use :meth:`run` for a result or :meth:`stream` for live
+    events.
+    """
     def __init__(
         self,
         *,

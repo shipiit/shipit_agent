@@ -38,6 +38,7 @@ def schema_tokens(schema: dict, model: str | None = None) -> int:
 
 
 def schema_fingerprint(schema: dict) -> str:
+    """A stable hash of a tool schema, to notice when it changes."""
     return hashlib.sha256(json.dumps(schema, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 

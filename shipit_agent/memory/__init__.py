@@ -1,3 +1,6 @@
+"""Agent memory: conversation history, facts recalled by meaning, and tracked entities.
+"""
+
 from .agent_memory import AgentMemory
 from .consolidator import ConsolidationResult, DistilledFact, MemoryConsolidator
 from .conversation import ConversationMemory

@@ -1,3 +1,5 @@
+"""The ``google_calendar`` tool: search and list Google Calendar events."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,7 @@ from .prompt import GOOGLE_CALENDAR_PROMPT
 
 
 class GoogleCalendarTool(ConnectorToolBase):
+    """The ``google_calendar`` tool: search and list Google Calendar events."""
     provider = "google_calendar"
 
     def __init__(

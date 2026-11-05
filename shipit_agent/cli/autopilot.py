@@ -37,6 +37,7 @@ from shipit_agent.scheduling.daemon import SchedulerDaemon
 
 
 def run_autopilot_cli(argv: list[str]) -> int:
+    """``shipit autopilot``: run an objective until its success criteria are met."""
     p = argparse.ArgumentParser(
         prog="shipit autopilot", description="Run a long-running Autopilot goal."
     )
@@ -106,6 +107,7 @@ def run_autopilot_cli(argv: list[str]) -> int:
 
 
 def run_daemon_cli(argv: list[str]) -> int:
+    """``shipit daemon``: keep processing the autopilot queue in the background."""
     p = argparse.ArgumentParser(
         prog="shipit daemon", description="Run the Autopilot goal queue daemon."
     )
@@ -204,6 +206,7 @@ def run_answer_cli(argv: list[str]) -> int:
 
 
 def run_queue_cli(argv: list[str]) -> int:
+    """``shipit queue``: add to, list and manage the autopilot queue."""
     p = argparse.ArgumentParser(
         prog="shipit queue", description="Manage the Autopilot goal queue."
     )

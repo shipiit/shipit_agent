@@ -13,6 +13,8 @@ __all__ = ["GrepTool"]
 
 
 class GrepTool(ToolBase):
+    """The ``grep`` tool: search file contents with a regular expression, grouped by file.
+    """
     name = "grep"
     description = DESCRIPTION
     prompt_instructions = INSTRUCTIONS

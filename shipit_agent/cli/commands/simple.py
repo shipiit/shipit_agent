@@ -26,6 +26,7 @@ def _agent_options(parser: argparse.ArgumentParser) -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    """``shipit run``: answer one prompt, showing tool calls live (or as JSON)."""
     agent = build_agent(args)
     if args.json:
         result = agent.run(args.prompt)
@@ -92,6 +93,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_version(_args: argparse.Namespace) -> int:
+    """``shipit version``: print the installed version."""
     import shipit_agent
 
     print(getattr(shipit_agent, "__version__", "unknown"))
@@ -99,6 +101,7 @@ def cmd_version(_args: argparse.Namespace) -> int:
 
 
 def register(sub: Any) -> None:
+    """Add the ``run`` and ``version`` sub-commands to the CLI."""
     run_p = sub.add_parser("run", help="One-shot prompt with live tool cards")
     run_p.add_argument("prompt")
     run_p.add_argument("--style", choices=["modern", "rich", "plain"],

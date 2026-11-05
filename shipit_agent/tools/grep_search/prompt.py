@@ -1,3 +1,5 @@
+"""What the model is told about the grep search tool: when to use it and how."""
+
 from __future__ import annotations
 
 GREP_SEARCH_PROMPT = """

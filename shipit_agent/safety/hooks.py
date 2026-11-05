@@ -1,3 +1,6 @@
+"""Lifecycle hooks that can observe a run, and block or rewrite prompts and tool calls.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

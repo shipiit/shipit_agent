@@ -1,3 +1,6 @@
+"""The ``grep_files`` tool: search file contents in the local project using ripgrep when available.
+"""
+
 from __future__ import annotations
 
 import re
@@ -11,6 +14,8 @@ from .prompt import GREP_SEARCH_PROMPT
 
 
 class GrepSearchTool:
+    """The ``grep_files`` tool: search file contents in the local project using ripgrep when available.
+    """
     def __init__(
         self,
         *,

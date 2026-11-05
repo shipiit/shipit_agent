@@ -47,6 +47,7 @@ from shipit_agent.deep.goal_agent import Goal
 
 @dataclass(slots=True)
 class QueueEntry:
+    """One queued autopilot run: its objective, success criteria and status."""
     run_id: str
     objective: str
     success_criteria: list[str] = field(default_factory=list)

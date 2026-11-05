@@ -1,3 +1,6 @@
+"""The ``stripe`` tool: read Stripe customers, charges, subscriptions, invoices and products.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -36,6 +39,8 @@ _ACTIONS = _READ_ACTIONS + _WRITE_ACTIONS
 
 
 class StripeTool(HTTPConnectorToolBase):
+    """The ``stripe`` tool: read-heavy Stripe data: customers, charges, subscriptions, invoices, products.
+    """
     provider = "stripe"
 
     def __init__(

@@ -1,3 +1,6 @@
+"""The ``salesforce`` tool: search Salesforce records; query SOQL/SOSL; read accounts/opportunities/contacts; log activities.
+"""
+
 from __future__ import annotations
 
 import json
@@ -25,6 +28,8 @@ _ACTIONS = [
 
 
 class SalesforceTool(HTTPConnectorToolBase):
+    """The ``salesforce`` tool: search Salesforce records; query SOQL/SOSL; read accounts/opportunities/contacts; log activities.
+    """
     provider = "salesforce"
 
     def __init__(

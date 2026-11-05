@@ -1,3 +1,5 @@
+"""What the model is told about the dashboard render tool: when to use it and how."""
+
 from __future__ import annotations
 
 DASHBOARD_RENDER_PROMPT = """

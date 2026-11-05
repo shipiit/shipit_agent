@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator, Sequence
 
 from shipit_agent.core.graph import AgentGraph, RunSpec
-from shipit_agent.core.models import AgentEvent, ToolResult
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.observability.usage import Purpose, UsageLedger
 
 logger = logging.getLogger(__name__)

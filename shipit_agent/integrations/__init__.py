@@ -1,3 +1,6 @@
+"""Credentials and OAuth for tools that act on a user's behalf in third-party services.
+"""
+
 from .credentials import (
     CredentialRecord,
     CredentialStore,

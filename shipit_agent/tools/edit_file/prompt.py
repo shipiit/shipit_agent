@@ -1,3 +1,5 @@
+"""What the model is told about the edit file tool: when to use it and how."""
+
 from __future__ import annotations
 
 EDIT_FILE_PROMPT = """

@@ -8,7 +8,6 @@ from __future__ import annotations
 from shipit_agent.core.models import Message
 from shipit_agent.prompts.reminders import (
     REANNOUNCE_DAMPER,
-    build_reminder,
     is_reannouncing,
 )
 

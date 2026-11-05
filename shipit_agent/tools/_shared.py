@@ -30,6 +30,8 @@ IGNORED_DIRS = frozenset(
 
 
 def is_ignored(path: Path, root: Path) -> bool:
+    """True when *path* is inside a directory that searches skip, such as ``.git`` or ``node_modules``.
+    """
     try:
         parts = path.relative_to(root).parts
     except ValueError:

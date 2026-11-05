@@ -1,3 +1,5 @@
+"""What the model is told about the evidence synthesis tool: when to use it and how."""
+
 from __future__ import annotations
 
 EVIDENCE_SYNTHESIS_PROMPT = """

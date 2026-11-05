@@ -35,6 +35,8 @@ class _Source:
 
 
 class ResearchBriefTool:
+    """The ``research_brief`` tool: search the web for a topic, skim top pages, return a structured brief with sources.
+    """
     name = "research_brief"
     description = "Search the web for a topic, skim top pages, return a structured brief with sources."
     prompt_instructions = (

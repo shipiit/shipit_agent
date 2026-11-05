@@ -1,3 +1,6 @@
+"""Named, reusable agent configurations and a builder for them.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,6 +18,8 @@ from shipit_agent.observability.tracing import TraceStore
 
 @dataclass(slots=True)
 class AgentProfile:
+    """A named agent configuration: prompt, tools and settings to build an agent from.
+    """
     name: str
     prompt: str = DEFAULT_AGENT_PROMPT
     description: str = ""
@@ -32,6 +37,7 @@ class AgentProfile:
 
 
 class AgentProfileBuilder:
+    """Build an :class:`AgentProfile` step by step with chained calls."""
     def __init__(self, name: str):
         self._name = name
         self._prompt = DEFAULT_AGENT_PROMPT

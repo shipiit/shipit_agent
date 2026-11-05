@@ -1,3 +1,6 @@
+"""Scheduled agent runs: job definitions, a SQLite job store and the runner that executes due jobs.
+"""
+
 from __future__ import annotations
 
 import datetime as _dt

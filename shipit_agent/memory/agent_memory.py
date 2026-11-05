@@ -1,3 +1,5 @@
+"""One memory object that combines conversation, semantic and entity memory."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

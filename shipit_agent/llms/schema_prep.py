@@ -405,6 +405,7 @@ def prepare_tool_schema(
 
 
 def clear_schema_cache() -> None:
+    """Empty the prepared-schema cache and reset its hit counters."""
     global _HITS, _MISSES
     _CACHE.clear()
     _HITS = _MISSES = 0

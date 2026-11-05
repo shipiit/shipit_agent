@@ -41,6 +41,7 @@ def channel_dir() -> Path:
 
 
 def channel_file(run_id: str) -> Path:
+    """The file that holds *run_id*'s pending questions."""
     return channel_dir() / f"{_safe(run_id)}.json"
 
 
@@ -86,6 +87,7 @@ class AskChannel:
 
 
 def load(run_id: str) -> AskChannel:
+    """*run_id*'s question channel, or an empty one when none was saved."""
     path = channel_file(run_id)
     if not path.exists():
         return AskChannel(run_id=run_id)
@@ -96,6 +98,7 @@ def load(run_id: str) -> AskChannel:
 
 
 def save(channel: AskChannel) -> None:
+    """Write *channel* to disk atomically."""
     path = channel_file(channel.run_id)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(channel.to_dict(), indent=2))
@@ -153,6 +156,7 @@ def pending_questions(run_id: str) -> list[AskEntry]:
 
 
 def all_entries(run_id: str) -> list[AskEntry]:
+    """Every question and answer recorded for *run_id*."""
     return load(run_id).entries
 
 

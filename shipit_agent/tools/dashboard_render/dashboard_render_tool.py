@@ -22,6 +22,8 @@ from .renderer import render_dashboard
 
 
 class DashboardRenderTool:
+    """The ``render_dashboard`` tool: render a rich HTML dashboard (metrics, timeline, bars, cards, phases, chart, verdict) from a structured spec.
+    """
     def __init__(
         self,
         *,

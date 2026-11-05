@@ -1,3 +1,6 @@
+"""The ``build_artifact`` tool: create a named artifact such as a report, markdown document, JSON blob, or code file.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,6 +10,8 @@ from .prompt import ARTIFACT_BUILDER_PROMPT
 
 
 class ArtifactBuilderTool:
+    """The ``build_artifact`` tool: create a named artifact such as a report, markdown document, JSON blob, or code file.
+    """
     def __init__(
         self,
         *,

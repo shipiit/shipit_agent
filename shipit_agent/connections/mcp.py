@@ -56,6 +56,7 @@ __all__ = [
 
 
 class Transport(str, Enum):
+    """How an MCP server is reached: a stdio subprocess or HTTP."""
     STDIO = "stdio"   # a subprocess speaking JSON-RPC on stdin/stdout
     HTTP = "http"     # a plain HTTP endpoint
     SSE = "sse"       # HTTP with a server-sent-events response channel
@@ -75,6 +76,8 @@ class MCPAuthKind(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class MCPAuth:
+    """How this process presents a credential to an MCP server: none, bearer token, header, basic auth or OAuth.
+    """
     kind: MCPAuthKind = MCPAuthKind.NONE
     env: str = ""
     user_env: str = ""
@@ -111,6 +114,7 @@ class MCPAuth:
 
 @dataclass(frozen=True, slots=True)
 class MCPConnectorStatus:
+    """Whether an MCP connector is ready, missing credentials or missing its command."""
     name: str
     state: str          # ready | missing_credentials | missing_binary | misconfigured | disabled
     advice: str = ""

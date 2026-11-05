@@ -1,3 +1,6 @@
+"""The ``memory`` tool: store and retrieve structured memory facts for the current agent.
+"""
+
 from __future__ import annotations
 
 from shipit_agent.stores import MemoryFact
@@ -6,6 +9,8 @@ from .prompt import MEMORY_TOOL_PROMPT
 
 
 class MemoryTool:
+    """The ``memory`` tool: store and retrieve structured memory facts for the current agent.
+    """
     def __init__(
         self,
         *,

@@ -1,3 +1,11 @@
+"""Model adapters: one interface, many providers.
+
+Every adapter implements :class:`LLM` (a ``complete()`` method returning
+:class:`LLMResponse`). Use :func:`build_llm_from_env` to pick one from
+environment settings, or construct an adapter such as
+:class:`AnthropicChatLLM` or :class:`OpenAIChatLLM` directly.
+"""
+
 from .base import LLM, LLMResponse
 from .anthropic_adapter import AnthropicChatLLM
 from .bedrock_token import (

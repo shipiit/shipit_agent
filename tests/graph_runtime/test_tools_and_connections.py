@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 from shipit_agent.connections.mcp import (
     MCP_CATALOG,

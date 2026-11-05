@@ -20,6 +20,7 @@ from shipit_agent.cli.llm import build_llm
 
 
 def cmd_browse(args: argparse.Namespace) -> int:
+    """``shipit browse``: let an agent drive a real browser or desktop."""
     from shipit_agent.narrate import NarratorRenderer
     from shipit_agent.computer_use import (
         ComputerUseAgent,
@@ -74,6 +75,7 @@ def cmd_browse(args: argparse.Namespace) -> int:
 
 
 def register(sub: Any) -> None:
+    """Add the ``browse`` sub-command to the CLI."""
     parser = sub.add_parser(
         "browse", help="Computer use: drive a real browser toward a goal"
     )

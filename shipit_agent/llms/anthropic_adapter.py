@@ -1,3 +1,5 @@
+"""Anthropic Messages API adapter, with prompt caching, thinking and server tools."""
+
 from __future__ import annotations
 
 import os

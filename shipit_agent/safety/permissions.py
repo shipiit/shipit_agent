@@ -31,6 +31,7 @@ PermissionMode = Literal["default", "acceptEdits", "plan", "bypass"]
 
 
 class PermissionDecision(str, Enum):
+    """What a permission rule decides about a tool call: allow, deny or ask."""
     ALLOW = "allow"
     DENY = "deny"
     ASK = "ask"

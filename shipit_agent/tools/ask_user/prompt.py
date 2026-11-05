@@ -1,3 +1,5 @@
+"""What the model is told about the ask user tool: when to use it and how."""
+
 from __future__ import annotations
 
 ASK_USER_PROMPT = """

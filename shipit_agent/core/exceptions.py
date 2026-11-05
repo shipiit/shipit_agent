@@ -1,3 +1,6 @@
+"""Exceptions raised by shipit-agent itself.
+"""
+
 class ShipitAgentError(Exception):
     """Base package exception."""
 

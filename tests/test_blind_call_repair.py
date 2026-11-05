@@ -86,7 +86,7 @@ def test_blind_call_error_carries_the_signature():
 
 def test_blind_call_then_recovers_and_runs():
     tool = ClassifyTool()
-    result = Agent(llm=_BlindThenCorrectLLM(), tools=[tool], auto_use_skills=False).run("go")
+    Agent(llm=_BlindThenCorrectLLM(), tools=[tool], auto_use_skills=False).run("go")
     # First call bounced (not run); the corrected second call ran once.
     assert tool.runs == 1
 

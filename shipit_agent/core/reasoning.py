@@ -1,3 +1,6 @@
+"""Structured reasoning runs: decompose a problem, weigh options and synthesise evidence with the reasoning tools.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,6 +14,7 @@ from shipit_agent.tools import ToolContext
 
 @dataclass(slots=True)
 class ReasoningResult:
+    """What a reasoning run produced: each reasoning tool's output and the events."""
     prompt: str
     outputs: dict[str, ToolResult] = field(default_factory=dict)
     events: list[AgentEvent] = field(default_factory=list)
@@ -26,6 +30,8 @@ class ReasoningResult:
 
 
 class ReasoningRuntime:
+    """Run an agent's reasoning tools (decompose, weigh options, synthesise) on one prompt.
+    """
     def __init__(self, agent) -> None:
         self.agent = agent
 

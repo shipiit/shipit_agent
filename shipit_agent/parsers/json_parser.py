@@ -1,3 +1,5 @@
+"""Extract JSON from a model's answer, tolerating code fences and surrounding prose."""
+
 from __future__ import annotations
 
 import json

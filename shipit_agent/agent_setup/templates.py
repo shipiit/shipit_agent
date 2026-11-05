@@ -1,3 +1,6 @@
+"""Prompt templates with named placeholders.
+"""
+
 from __future__ import annotations
 
 import re

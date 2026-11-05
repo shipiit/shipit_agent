@@ -1,3 +1,6 @@
+"""The ``build_prompt`` tool: build or refine a system prompt from goals, constraints, and style instructions.
+"""
+
 from __future__ import annotations
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -5,6 +8,8 @@ from .prompt import PROMPT_TOOL_PROMPT
 
 
 class PromptTool:
+    """The ``build_prompt`` tool: build or refine a system prompt from goals, constraints, and style instructions.
+    """
     def __init__(
         self,
         *,

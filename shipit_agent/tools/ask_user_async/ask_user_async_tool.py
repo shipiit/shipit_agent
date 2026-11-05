@@ -22,6 +22,8 @@ from .prompt import ASK_USER_ASYNC_PROMPT
 
 
 class AskUserAsyncTool:
+    """The ``ask_user_async`` tool: pause an Autopilot run to ask the user a clarifying question — non-blocking; the run halts into awaiting_user and resumes once the user answers via `shipit answer <run_id> "..."`.
+    """
     name = "ask_user_async"
     description = (
         "Pause an Autopilot run to ask the user a clarifying question — "

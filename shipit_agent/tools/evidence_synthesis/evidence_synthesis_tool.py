@@ -1,3 +1,6 @@
+"""The ``synthesize_evidence`` tool: turn raw observations into facts, inferences, gaps, and recommendations.
+"""
+
 from __future__ import annotations
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -5,6 +8,8 @@ from .prompt import EVIDENCE_SYNTHESIS_PROMPT
 
 
 class EvidenceSynthesisTool:
+    """The ``synthesize_evidence`` tool: turn raw observations into facts, inferences, gaps, and recommendations.
+    """
     def __init__(
         self,
         *,

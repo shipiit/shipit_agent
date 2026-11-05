@@ -60,6 +60,7 @@ _permission_prompt.always = set()  # type: ignore[attr-defined]
 
 
 def cmd_code(args: argparse.Namespace) -> int:
+    """``shipit code``: a coding agent rooted in the current directory."""
     from shipit_agent import Agent, Guardrails
     from shipit_agent.cli.llm import build_llm
 
@@ -211,6 +212,7 @@ def _write_share(path: str, events: list[Any], answer: str, agent: Any) -> None:
 
 
 def register(sub: Any) -> None:
+    """Add the ``code`` sub-command to the CLI."""
     parser = sub.add_parser(
         "code", help="Coding agent rooted in the current repo"
     )

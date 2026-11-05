@@ -1,3 +1,5 @@
+"""Semantic memory: store text with embeddings and find it again by meaning."""
+
 from __future__ import annotations
 
 import math

@@ -1,3 +1,6 @@
+"""Helpers for structured output: detect pydantic models, build the response format and parse the model's answer.
+"""
+
 from __future__ import annotations
 
 import json

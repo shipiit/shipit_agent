@@ -1,3 +1,5 @@
+"""What the model is told about the decision matrix tool: when to use it and how."""
+
 from __future__ import annotations
 
 DECISION_MATRIX_PROMPT = """

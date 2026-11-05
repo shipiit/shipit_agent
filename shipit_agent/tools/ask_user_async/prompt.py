@@ -1,3 +1,5 @@
+"""What the model is told about the ask user async tool: when to use it and how."""
+
 ASK_USER_ASYNC_PROMPT = """Use `ask_user_async` when you need a clarification
 from the user DURING an Autopilot run — but the run is long (minutes or
 hours) and you can't wait for a synchronous reply.

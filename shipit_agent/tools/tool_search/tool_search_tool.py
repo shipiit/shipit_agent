@@ -1,3 +1,6 @@
+"""The ``tool_search`` tool: search the current agent's available tools and return a ranked shortlist of the best matches for a task.
+"""
+
 from __future__ import annotations
 
 import math

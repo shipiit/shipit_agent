@@ -17,6 +17,10 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 class PresentPlanTool:
     #: Read-only: it produces a plan, it does not act. So it is allowed to
     #: run in plan mode (it is the one write-shaped thing plan mode needs).
+    """The ``present_plan`` tool: show the user a plan before acting on it.
+
+    Read-only, so it is the one plan-shaped tool allowed in plan mode.
+    """
     read_only = True
 
     def __init__(self, *, name: str = "present_plan") -> None:

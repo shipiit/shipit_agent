@@ -1,3 +1,5 @@
+"""The default system prompt for a general-purpose agent."""
+
 from __future__ import annotations
 
 DEFAULT_AGENT_PROMPT = """

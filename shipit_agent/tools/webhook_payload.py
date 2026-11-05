@@ -1,3 +1,5 @@
+"""The ``webhook_payload`` tool: let an agent read the webhook that started its run."""
+
 from __future__ import annotations
 
 import json

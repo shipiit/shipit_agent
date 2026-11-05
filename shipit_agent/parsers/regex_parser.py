@@ -1,3 +1,5 @@
+"""Pull named fields out of a model's answer with regular expressions."""
+
 from __future__ import annotations
 
 import re

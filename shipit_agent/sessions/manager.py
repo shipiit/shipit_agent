@@ -1,3 +1,6 @@
+"""Creating, loading and listing conversation sessions over a session store.
+"""
+
 from __future__ import annotations
 
 import uuid

@@ -1,3 +1,5 @@
+"""What the model is told about the file write tool: when to use it and how."""
+
 from __future__ import annotations
 
 FILE_WRITE_PROMPT = """

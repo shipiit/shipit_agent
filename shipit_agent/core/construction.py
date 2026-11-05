@@ -1,3 +1,6 @@
+"""Building the tool registry for a run and the schemas sent to the model.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -19,6 +22,7 @@ def construct_tool_registry(
     web_search_api_key: str | None = None,
     web_search_config: dict[str, Any] | None = None,
 ) -> ToolRegistry:
+    """Build the registry of tools a run can call, including MCP tools."""
     resolved_tools = list(tools or [])
     if include_builtins:
         resolved_tools = [
@@ -35,4 +39,5 @@ def construct_tool_registry(
 
 
 def build_tool_schemas(registry: ToolRegistry) -> list[dict[str, Any]]:
+    """The JSON schemas for every tool in *registry*, as sent to the model."""
     return registry.schemas()

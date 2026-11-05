@@ -59,6 +59,7 @@ class RepetitionGuard:
 
 
 def is_degenerate_repetition(text: str | None) -> bool:
+    """True when *text* has collapsed into repeating the same phrase."""
     guard = RepetitionGuard(window=8192)
     return guard.add(text or "")
 

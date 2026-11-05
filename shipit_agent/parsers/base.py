@@ -1,3 +1,5 @@
+"""The parser contract and the error raised when parsing fails."""
+
 from __future__ import annotations
 
 from typing import Any, Protocol

@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-import pytest
 
 from shipit_agent.core.bridge import MAPPING, NOT_YET_MAPPED, spec_from_agent, unmapped
 from shipit_agent.core.graph import AgentGraph

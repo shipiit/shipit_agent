@@ -1,3 +1,5 @@
+"""The ``write_file`` tool: create or overwrite a file in the local project."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,6 +9,7 @@ from .prompt import FILE_WRITE_PROMPT
 
 
 class FileWriteTool:
+    """The ``write_file`` tool: create or overwrite a file in the local project."""
     def __init__(
         self,
         *,

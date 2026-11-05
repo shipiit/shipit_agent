@@ -1,3 +1,5 @@
+"""OpenAI Chat Completions adapter, also used for OpenAI-compatible endpoints."""
+
 from __future__ import annotations
 
 import re
@@ -117,6 +119,7 @@ def _usage_dict(usage_obj: Any) -> dict[str, int]:
 
 
 class OpenAIChatLLM:
+    """A model adapter for OpenAI and OpenAI-compatible chat completion APIs."""
     def __init__(
         self,
         model: str,

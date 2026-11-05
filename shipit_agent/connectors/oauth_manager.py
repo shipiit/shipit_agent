@@ -43,6 +43,7 @@ class NeedsReconnect(Exception):
 
 
 class OAuthCredentialManager:
+    """Get, store and refresh users' OAuth tokens for connectors."""
     def __init__(self, store: TokenStore | None = None) -> None:
         self.store: TokenStore = store or InMemoryTokenStore()
         self._helpers: dict[str, OAuthHelper] = {}

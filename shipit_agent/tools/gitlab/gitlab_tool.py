@@ -1,3 +1,6 @@
+"""The ``gitlab`` tool: search GitLab issues, manage merge requests, read files, and control CI pipelines.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -13,6 +16,8 @@ from .prompt import GITLAB_PROMPT
 
 
 class GitLabTool(HTTPConnectorToolBase):
+    """The ``gitlab`` tool: search GitLab issues, manage merge requests, read files, and control CI pipelines.
+    """
     provider = "gitlab"
 
     def __init__(

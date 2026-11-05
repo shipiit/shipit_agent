@@ -1,3 +1,5 @@
+"""The ``open_url`` tool: fetch a URL and return a clean text excerpt."""
+
 from __future__ import annotations
 
 import ipaddress

@@ -24,6 +24,8 @@ PALETTE = {
 
 
 def supports_color() -> bool:
+    """True when the terminal should get colour (honours ``NO_COLOR`` and ``FORCE_COLOR``).
+    """
     if os.environ.get("NO_COLOR"):
         return False
     if os.environ.get("FORCE_COLOR"):
@@ -35,6 +37,7 @@ def supports_color() -> bool:
 
 
 def style(text: str, name: str) -> str:
+    """*text* wrapped in the named colour style, or unchanged when colour is off."""
     if not supports_color():
         return text
     return f"\033[{PALETTE.get(name, '0')}m{text}\033[0m"
@@ -49,6 +52,7 @@ def out(text: str = "") -> None:
 
 
 def rule(width: int = 56) -> None:
+    """Print a dim horizontal line."""
     out(style("─" * width, "dim"))
 
 
@@ -63,9 +67,11 @@ def banner(title: str, rows: list[tuple[str, str]], *, emoji: str = "🚀") -> N
 
 
 def section(title: str) -> None:
+    """Print a section title."""
     out()
     out(style(title, "accent"))
 
 
 def kv(label: str, value: str, *, tone: str = "bold") -> None:
+    """Print one aligned ``label  value`` line."""
     out(f"  {style(label, 'dim'):<34} {style(value, tone)}")

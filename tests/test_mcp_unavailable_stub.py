@@ -7,7 +7,6 @@ construction, taking every unrelated tool with it.
 
 from __future__ import annotations
 
-import pytest
 
 from shipit_agent.core.registry import ToolRegistry, UnavailableTool
 from shipit_agent.tools.base import ToolOutput

@@ -1,3 +1,6 @@
+"""Tracking how full the context window is during a run.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

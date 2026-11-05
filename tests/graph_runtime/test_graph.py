@@ -27,7 +27,7 @@ from shipit_agent.toolkit.contracts import (
     truncate_output,
     value_shape,
 )
-from shipit_agent.observability.usage import Purpose, UsageLedger
+from shipit_agent.observability.usage import UsageLedger
 
 
 # --------------------------------------------------------------------------- #

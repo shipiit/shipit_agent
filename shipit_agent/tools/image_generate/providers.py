@@ -23,6 +23,8 @@ _PREFERENCE = ("openai", "litellm", "fal", "openrouter")
 
 @runtime_checkable
 class ImageProvider(Protocol):
+    """An image-generation backend: says whether it is usable and turns a prompt into PNG bytes.
+    """
     name: str
 
     def is_available(self) -> bool:

@@ -43,6 +43,8 @@ MODEL_CATALOG: dict[str, list[tuple[str, str]]] = {
 
 
 def build_llm(provider: str | None = None, model: str | None = None) -> Any:
+    """Construct the model adapter for *provider* and *model*, falling back to environment settings.
+    """
     provider = (provider or os.environ.get("SHIPIT_LLM_PROVIDER") or "echo").lower()
     model = model or os.environ.get("SHIPIT_MODEL") or DEFAULT_MODELS.get(provider, "")
     if provider == "echo":

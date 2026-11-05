@@ -1,3 +1,6 @@
+"""Trace records for a run and the stores that keep them (in memory or on disk).
+"""
+
 from __future__ import annotations
 
 import json
@@ -10,12 +13,14 @@ from shipit_agent.core.models import AgentEvent
 
 @dataclass(slots=True)
 class TraceRecord:
+    """Every event recorded for one trace, with its metadata."""
     trace_id: str
     metadata: dict[str, Any] = field(default_factory=dict)
     events: list[AgentEvent] = field(default_factory=list)
 
 
 class TraceStore(Protocol):
+    """Where run events are recorded and read back by trace id."""
     def append_event(
         self, trace_id: str, event: AgentEvent, metadata: dict[str, Any] | None = None
     ) -> None: ...
@@ -24,6 +29,7 @@ class TraceStore(Protocol):
 
 
 class InMemoryTraceStore:
+    """A trace store that lives for the life of the process."""
     def __init__(self) -> None:
         self._records: dict[str, TraceRecord] = {}
 
@@ -42,6 +48,7 @@ class InMemoryTraceStore:
 
 
 class FileTraceStore:
+    """A trace store that writes one JSON file per trace in a folder."""
     def __init__(self, root_dir: str | Path) -> None:
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)

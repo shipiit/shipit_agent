@@ -1,3 +1,5 @@
+"""The ``linear`` tool: search Linear issues and create Linear issues."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,7 @@ from .prompt import LINEAR_PROMPT
 
 
 class LinearTool(HTTPConnectorToolBase):
+    """The ``linear`` tool: search Linear issues and create Linear issues."""
     provider = "linear"
 
     def __init__(

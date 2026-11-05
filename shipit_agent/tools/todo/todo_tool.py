@@ -1,3 +1,6 @@
+"""The ``todo`` tool: maintain a live, replace-on-write checklist of tasks for a multi-step job so progress is observable.
+"""
+
 from __future__ import annotations
 
 from typing import Any

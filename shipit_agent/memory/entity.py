@@ -1,3 +1,5 @@
+"""Entity memory: what the agent knows about people, projects and concepts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -62,6 +62,7 @@ class Purpose(str, Enum):
 
 
 class ServiceTier(str, Enum):
+    """The provider service tier a request ran on, which affects latency and price."""
     PRIORITY = "priority"   # lower latency, premium price
     STANDARD = "standard"   # default
     FLEX = "flex"           # discounted, higher latency

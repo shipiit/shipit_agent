@@ -1,3 +1,6 @@
+"""Agents for longer, harder work: goals, reflection, supervision, persistence, adaptation and benchmarks.
+"""
+
 from .goal_agent import GoalAgent, Goal, GoalResult
 from .reflective_agent import ReflectiveAgent, ReflectionResult
 from .adaptive_agent import AdaptiveAgent

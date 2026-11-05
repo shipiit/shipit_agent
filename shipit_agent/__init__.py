@@ -1,3 +1,19 @@
+"""shipit-agent: build tool-using AI agents on any model provider.
+
+The usual entry point is :class:`Agent`::
+
+    from shipit_agent import Agent
+
+    agent = Agent(llm=my_llm, tools=[...])
+    result = agent.run("Summarise the open issues")
+
+Everything listed in ``__all__`` is the public API. Sub-packages group
+the internals by job: ``core`` (the run loop), ``context`` (what goes
+into each request), ``safety`` (permissions, hooks, guardrails),
+``observability`` (streams, tracing, usage), ``tools``, ``llms``,
+``skills`` and more; each has a README.
+"""
+
 try:
     from importlib.metadata import version as _pkg_version
 
@@ -695,7 +711,6 @@ __all__ = [
     "BatchRuntime",
     "MessageBatchRunner",
 ]
-
 
 # Modules that moved into sub-packages stay reachable under their old names,
 # so ``shipit_agent.runtime`` and friends keep working as attributes too.

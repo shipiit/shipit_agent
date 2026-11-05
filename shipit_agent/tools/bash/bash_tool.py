@@ -1,3 +1,6 @@
+"""The ``bash`` tool: run a shell command inside the local project root with basic safety checks.
+"""
+
 from __future__ import annotations
 
 import re
@@ -40,6 +43,8 @@ def _is_long_running(command: str) -> bool:
 
 
 class BashTool:
+    """The ``bash`` tool: run a shell command inside the local project root with basic safety checks.
+    """
     def __init__(
         self,
         *,

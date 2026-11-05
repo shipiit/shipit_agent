@@ -1,3 +1,5 @@
+"""The ``custom_api`` tool: call a configured custom HTTP API."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,7 @@ from .prompt import CUSTOM_API_PROMPT
 
 
 class CustomAPITool(HTTPConnectorToolBase):
+    """The ``custom_api`` tool: call a configured custom HTTP API."""
     provider = "custom_api"
 
     def __init__(

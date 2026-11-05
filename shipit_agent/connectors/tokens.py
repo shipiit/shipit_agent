@@ -23,6 +23,7 @@ Token = dict[str, Any]
 
 @runtime_checkable
 class TokenStore(Protocol):
+    """Where OAuth tokens are kept, per user and connector."""
     def get(self, user: str, connector: str) -> Token | None: ...
 
     def set(self, user: str, connector: str, token: Token) -> None: ...

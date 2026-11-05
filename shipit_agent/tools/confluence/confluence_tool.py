@@ -1,3 +1,5 @@
+"""The ``confluence`` tool: search and create Confluence pages."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,7 @@ from .prompt import CONFLUENCE_PROMPT
 
 
 class ConfluenceTool(HTTPConnectorToolBase):
+    """The ``confluence`` tool: search and create Confluence pages."""
     provider = "confluence"
 
     def __init__(

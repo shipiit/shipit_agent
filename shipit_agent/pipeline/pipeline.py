@@ -1,3 +1,5 @@
+"""Pipelines: run agents and functions in a fixed order, passing results along."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

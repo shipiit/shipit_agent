@@ -1,3 +1,5 @@
+"""The ``glob_files`` tool: find files in the local project by glob pattern."""
+
 from __future__ import annotations
 
 import glob
@@ -8,6 +10,7 @@ from .prompt import GLOB_SEARCH_PROMPT
 
 
 class GlobSearchTool:
+    """The ``glob_files`` tool: find files in the local project by glob pattern."""
     def __init__(
         self,
         *,

@@ -1,3 +1,5 @@
+"""What the model is told about the code execution tool: when to use it and how."""
+
 from __future__ import annotations
 
 CODE_EXECUTION_PROMPT = """

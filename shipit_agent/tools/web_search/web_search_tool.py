@@ -1,3 +1,5 @@
+"""The ``web_search`` tool: search the web and return structured search results."""
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,6 +13,7 @@ from .prompt import WEB_SEARCH_PROMPT
 
 
 class WebSearchTool:
+    """The ``web_search`` tool: search the web and return structured search results."""
     def __init__(
         self,
         *,

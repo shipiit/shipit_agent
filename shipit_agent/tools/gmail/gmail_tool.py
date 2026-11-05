@@ -1,3 +1,6 @@
+"""The ``gmail_search`` tool: search, read, draft, and send Gmail messages from a configured Google account.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -10,6 +13,8 @@ from .prompt import GMAIL_PROMPT
 
 
 class GmailTool:
+    """The ``gmail_search`` tool: search, read, draft, and send Gmail messages from a configured Google account.
+    """
     def __init__(
         self,
         *,

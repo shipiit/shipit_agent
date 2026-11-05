@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-import pytest
 
 from shipit_agent.core.agent_mixin import UpgradeMixin
 from shipit_agent.core.models import ToolCall

@@ -26,6 +26,7 @@ from shipit_agent.safety.permissions import PermissionDecision, PermissionResult
 
 
 def format_call_preview(name: str, arguments: dict[str, Any], limit: int = 100) -> str:
+    """A one-line preview of a tool call for an approval prompt."""
     preview = ", ".join(
         f"{k}={str(v)[:40]!r}" for k, v in list(arguments.items())[:4]
     )

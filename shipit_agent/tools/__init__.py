@@ -1,3 +1,11 @@
+"""Built-in tools and the building blocks for writing your own.
+
+A tool has a ``name``, a ``description``, a JSON ``schema()`` and a
+``run(context, **arguments)`` method; see :class:`Tool`. Wrap a plain
+function with :class:`FunctionTool`, or another agent with
+:class:`AgentTool`.
+"""
+
 from .agent_tool import AgentTool
 from .ask_user import AskUserTool
 from .ask_user_async import AskUserAsyncTool

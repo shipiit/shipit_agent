@@ -30,7 +30,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Iterable, Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ class SkillParseError(ValueError):
 
 
 def skill_id_from_name(name: str) -> str:
+    """A URL-safe skill id derived from a skill's name."""
     return _ID_SAFE.sub("-", name.strip().lower()).strip("-") or "skill"
 
 

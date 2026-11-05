@@ -29,6 +29,8 @@ _PREFERENCE = ("fal", "replicate")
 
 @runtime_checkable
 class VideoProvider(Protocol):
+    """A video-generation backend: says whether it is usable and turns a prompt into a video.
+    """
     name: str
 
     def is_available(self) -> bool:

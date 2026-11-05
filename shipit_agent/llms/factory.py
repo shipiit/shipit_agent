@@ -1,3 +1,5 @@
+"""Building a model adapter from settings or environment variables."""
+
 from __future__ import annotations
 
 import os
@@ -41,6 +43,7 @@ def _discover_env_file() -> Path | None:
 
 
 def load_env_file(path: str | Path | None = None) -> dict[str, str]:
+    """Read ``KEY=value`` pairs from a ``.env`` file, returning what was loaded."""
     env_path = Path(path) if path else _discover_env_file()
     loaded: dict[str, str] = {}
     if env_path is None or not env_path.exists():
@@ -139,6 +142,8 @@ def build_llm_from_settings(
     provider: str | None = None,
     load_env: bool = True,
 ):
+    """Construct the model adapter named by *provider* or the settings, with its credentials.
+    """
     if load_env:
         load_env_file()
 
@@ -371,4 +376,5 @@ def build_llm_from_settings(
 
 
 def build_llm_from_env(provider: str | None = None):
+    """Construct a model adapter from environment variables (and a ``.env`` file)."""
     return build_llm_from_settings(provider=provider)

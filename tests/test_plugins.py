@@ -20,7 +20,6 @@ from shipit_agent.plugins import (
     activate,
     apply_to_hooks,
     get_plugin,
-    list_plugins,
     merge_plugins,
     parse_manifest,
     plugin_names,
@@ -206,7 +205,8 @@ def test_user_dir_overrides_bundled(tmp_path, monkeypatch):
         assert get_plugin("word-count").description == "MY override"
         assert reg.PLUGIN_DIAGNOSTICS == []
     finally:
-        reg._REGISTRY.clear(); reg._REGISTRY.update(saved[0])
+        reg._REGISTRY.clear()
+        reg._REGISTRY.update(saved[0])
         reg.PLUGIN_DIAGNOSTICS[:] = saved[1]
         monkeypatch.setattr(reg, "_loaded", saved[2])
 
@@ -234,7 +234,8 @@ def test_entry_point_plugins_are_discovered_when_opted_in(monkeypatch):
         assert get_plugin("third-party-pack").description == "from a pip package"
         assert any("broken-ep" in src for src, _e in reg.PLUGIN_DIAGNOSTICS)
     finally:
-        reg._REGISTRY.clear(); reg._REGISTRY.update(saved[0])
+        reg._REGISTRY.clear()
+        reg._REGISTRY.update(saved[0])
         reg.PLUGIN_DIAGNOSTICS[:] = saved[1]
         monkeypatch.setattr(reg, "_loaded", saved[2])
 
@@ -261,7 +262,8 @@ def test_entry_point_plugins_are_off_by_default(monkeypatch):
         assert get_plugin("sneaky") is None
         assert loaded == []  # the entry point was never even loaded
     finally:
-        reg._REGISTRY.clear(); reg._REGISTRY.update(saved[0])
+        reg._REGISTRY.clear()
+        reg._REGISTRY.update(saved[0])
         reg.PLUGIN_DIAGNOSTICS[:] = saved[1]
         monkeypatch.setattr(reg, "_loaded", saved[2])
 
@@ -283,7 +285,8 @@ def test_invalid_plugin_is_skipped_with_diagnostic(tmp_path, monkeypatch):
         assert "good" in names and "broken" not in names
         assert any("broken" in src for src, _err in reg.PLUGIN_DIAGNOSTICS)
     finally:
-        reg._REGISTRY.clear(); reg._REGISTRY.update(saved[0])
+        reg._REGISTRY.clear()
+        reg._REGISTRY.update(saved[0])
         reg.PLUGIN_DIAGNOSTICS[:] = saved[1]
         monkeypatch.setattr(reg, "_loaded", saved[2])
 

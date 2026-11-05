@@ -1,3 +1,9 @@
+"""Retry and model-routing policies for a run.
+
+:class:`RetryPolicy` decides which failures are retried and how long to wait
+between attempts; :class:`RouterPolicy` chooses which model handles a step.
+"""
+
 from __future__ import annotations
 
 import random
@@ -6,6 +12,11 @@ from dataclasses import dataclass, field
 
 @dataclass(slots=True)
 class RetryPolicy:
+    """Which failures are retried, how many times, and how long to wait.
+
+    Model calls back off exponentially with jitter, so parallel agents
+    don't retry in lockstep against the same rate limit.
+    """
     max_llm_retries: int = 2
     max_tool_retries: int = 1
     retry_on_exceptions: tuple[type[Exception], ...] = field(
@@ -41,6 +52,7 @@ class RetryPolicy:
 
 @dataclass(slots=True)
 class RouterPolicy:
+    """When a run plans first: automatic planning and the words that trigger it."""
     auto_plan: bool = True
     plan_keywords: tuple[str, ...] = (
         "plan",

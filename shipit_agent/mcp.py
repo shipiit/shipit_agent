@@ -1,3 +1,11 @@
+"""Model Context Protocol (MCP) client: connect to MCP servers and use their tools.
+
+:class:`MCPServer` holds local tools; :class:`RemoteMCPServer` talks to a
+real MCP server through a transport (stdio subprocess, persistent
+subprocess, HTTP or streamable HTTP) and exposes the server's tools,
+resources and prompts to an agent.
+"""
+
 from __future__ import annotations
 
 import json
@@ -42,6 +50,7 @@ def _namespaced_mcp_tool_name(server_name: str, tool_name: str) -> str:
 
 
 class MCPTransport(Protocol):
+    """How a client sends JSON-RPC requests and notifications to an MCP server."""
     def request(
         self, method: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
@@ -52,6 +61,7 @@ class MCPTransport(Protocol):
 
 
 class MCPError(RuntimeError):
+    """An MCP server returned an error, timed out, or could not be reached."""
     pass
 
 
@@ -75,6 +85,7 @@ def _mcp_result_summary(result: dict[str, Any], rendered: str) -> str:
 
 @dataclass(slots=True)
 class MCPTool:
+    """A tool implemented in this process and served through an :class:`MCPServer`."""
     name: str
     description: str
     handler: Callable[..., Any]
@@ -108,6 +119,7 @@ class MCPTool:
 
 @dataclass(slots=True)
 class MCPRemoteTool:
+    """A tool that lives on a remote MCP server and is called through its transport."""
     server_name: str
     transport: MCPTransport
     name: str
@@ -276,6 +288,7 @@ def _render_mcp_content(content: list[Any]) -> list[str]:
 
 @dataclass(slots=True)
 class MCPServer:
+    """A named group of MCP tools that can be attached to an agent."""
     name: str
     tools: list[MCPTool | MCPRemoteTool] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -298,6 +311,11 @@ _MCP_DEFAULT_TIMEOUT = 60.0
 
 
 class MCPSubprocessTransport:
+    """Talk to an MCP server over stdio, starting a fresh process for each request.
+
+    Simple and isolated, but slow for chatty servers; prefer
+    :class:`PersistentMCPSubprocessTransport` for repeated calls.
+    """
     def __init__(
         self,
         command: list[str],
@@ -351,6 +369,7 @@ class MCPSubprocessTransport:
 
 
 class PersistentMCPSubprocessTransport:
+    """Talk to an MCP server over stdio, keeping one process alive across requests."""
     def __init__(
         self,
         command: list[str],
@@ -479,6 +498,7 @@ class PersistentMCPSubprocessTransport:
 
 
 class MCPHTTPTransport:
+    """Talk to an MCP server over HTTP with JSON-RPC POST requests."""
     def __init__(
         self,
         endpoint: str,
@@ -673,6 +693,11 @@ class MCPPrompt:
 
 @dataclass(slots=True)
 class RemoteMCPServer(MCPServer):
+    """An MCP server reached through a transport.
+
+    Discovers the server's tools (filtered by ``allowed_tools`` and
+    ``blocked_tools``) and makes them callable by an agent.
+    """
     transport: MCPTransport | None = None
     protocol_version: str = MCP_PROTOCOL_VERSION
     allowed_tools: set[str] | None = None
@@ -1051,6 +1076,7 @@ class RemoteMCPServer(MCPServer):
 
 
 def discover_mcp_tools(server: MCPServer) -> list[MCPTool | MCPRemoteTool]:
+    """The tools *server* offers."""
     return server.discover_tools()
 
 

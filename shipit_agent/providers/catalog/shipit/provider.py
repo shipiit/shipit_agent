@@ -12,6 +12,7 @@ from shipit_agent.providers.base import ProviderProfile
 
 
 def build(profile: ProviderProfile, config: dict[str, Any], env: Mapping[str, str]) -> Any:
+    """Construct the built-in development model stub."""
     from shipit_agent.llms.simple import ShipitLLM, SimpleEchoLLM
 
     # The name the caller asked for wins (the profile is shared by both aliases).

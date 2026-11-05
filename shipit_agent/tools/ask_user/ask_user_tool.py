@@ -1,3 +1,6 @@
+"""The ``ask_user`` tool: request structured user input as part of a human-in-the-loop flow.
+"""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +10,8 @@ from .prompt import ASK_USER_PROMPT
 
 
 class AskUserTool:
+    """The ``ask_user`` tool: request structured user input as part of a human-in-the-loop flow.
+    """
     def __init__(
         self,
         *,

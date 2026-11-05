@@ -23,6 +23,7 @@ __all__ = ["main", "build_parser", "build_llm"]
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The ``shipit`` command-line parser with every sub-command registered."""
     from .commands import browse, catalog, code, jobs, serve_cmd, simple
 
     parser = argparse.ArgumentParser(
@@ -48,6 +49,7 @@ def _interactive_terminal() -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Entry point for the ``shipit`` command; returns the process exit code."""
     argv = list(sys.argv[1:] if argv is None else argv)
 
     # Bare `shipit` on a real terminal opens the full interactive REPL —

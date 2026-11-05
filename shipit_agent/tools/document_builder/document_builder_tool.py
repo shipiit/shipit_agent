@@ -33,6 +33,8 @@ _SECTION_SCHEMA = {
 
 
 class DocumentBuilderTool:
+    """The ``build_document`` tool: create a polished PDF report, Excel workbook, Word document, PowerPoint deck, or styled HTML page from structured content.
+    """
     KINDS: ClassVar[dict[str, tuple[str, Callable[..., None]]]] = {
         "pdf": (".pdf", render_pdf),
         "xlsx": (".xlsx", render_xlsx),

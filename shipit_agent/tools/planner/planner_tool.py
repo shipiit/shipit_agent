@@ -1,3 +1,6 @@
+"""The ``plan_task`` tool: generate a concrete execution plan with ordered steps, risks, and checkpoints.
+"""
+
 from __future__ import annotations
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -5,6 +8,8 @@ from .prompt import PLANNER_PROMPT
 
 
 class PlannerTool:
+    """The ``plan_task`` tool: generate a concrete execution plan with ordered steps, risks, and checkpoints.
+    """
     def __init__(
         self,
         *,

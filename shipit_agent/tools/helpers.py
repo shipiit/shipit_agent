@@ -1,3 +1,6 @@
+"""Describing tools to the model: capability families and the tools section of the system prompt.
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -201,6 +204,7 @@ def build_tools_prompt(
     mcps: Iterable[Any] = (),
     supports_parallel_tool_calls: bool = True,
 ) -> str:
+    """Render the tools section of the system prompt, grouped by capability family."""
     if not tools:
         return ""
 

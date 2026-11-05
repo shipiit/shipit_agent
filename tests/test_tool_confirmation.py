@@ -6,7 +6,6 @@ and a `when` predicate makes confirmation conditional on the call's arguments.
 
 from __future__ import annotations
 
-import pytest
 
 from shipit_agent.safety.permissions import PermissionDecision, PermissionEngine
 from shipit_agent.tools.confirmation import (

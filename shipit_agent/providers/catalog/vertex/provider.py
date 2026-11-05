@@ -30,6 +30,8 @@ def _require(config: Mapping[str, Any], env: Mapping[str, str], *names: str) -> 
 
 
 def build(profile: ProviderProfile, config: dict[str, Any], env: Mapping[str, str]) -> Any:
+    """Construct the Google Vertex AI model adapter from *profile*, *config* and *env*.
+    """
     from shipit_agent.llms.litellm_adapter import VertexAIChatLLM
 
     _require(config, env, "GOOGLE_APPLICATION_CREDENTIALS", "SHIPIT_VERTEX_CREDENTIALS_FILE")

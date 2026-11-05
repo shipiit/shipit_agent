@@ -1,3 +1,6 @@
+"""The tool contract: what a tool receives, what it returns, and the protocol it implements.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,6 +11,12 @@ from typing import Any, Protocol, TypeAlias
 
 @dataclass(slots=True)
 class ToolContext:
+    """What a tool can see while it runs.
+
+    ``state`` is the run's shared, mutable tool state (for example which
+    files have been read); ``metadata`` carries run details such as the
+    connection registry.
+    """
     prompt: str
     system_prompt: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -29,6 +38,7 @@ class ToolOutput:
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
     model_text: str | None = None
+
 
     @classmethod
     def from_records(
@@ -77,6 +87,12 @@ ToolRunOutput: TypeAlias = ToolOutput | Iterable[ToolOutputChunk | ToolOutput | 
 
 
 class Tool(Protocol):
+    """The protocol every tool implements.
+
+    ``schema()`` returns the JSON schema the model sees; ``run()`` receives
+    the validated arguments and returns a :class:`ToolOutput`, a string,
+    or a stream of :class:`ToolOutputChunk`.
+    """
     name: str
     description: str
     prompt_instructions: str

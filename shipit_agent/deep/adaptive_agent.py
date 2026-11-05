@@ -1,3 +1,5 @@
+"""An agent that writes new tools for itself while it works."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

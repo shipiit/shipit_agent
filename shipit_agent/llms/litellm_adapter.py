@@ -1,3 +1,6 @@
+"""Adapters for providers reached through LiteLLM: Bedrock, Gemini, Vertex AI, Groq, Together, Ollama and more.
+"""
+
 from __future__ import annotations
 
 import json
@@ -295,6 +298,7 @@ def _apply_prompt_caching(
 
 
 class LiteLLMChatLLM:
+    """A model adapter that calls any LiteLLM-supported provider."""
     def __init__(
         self, model: str, *, prompt_caching: bool = True, **completion_kwargs: Any
     ) -> None:
@@ -831,6 +835,7 @@ def _litellm_supports_bedrock_mantle() -> bool:
 
 
 class BedrockChatLLM(LiteLLMChatLLM):
+    """Models hosted on Amazon Bedrock, called through LiteLLM."""
     def __init__(
         self, model: str = "bedrock/openai.gpt-oss-120b-1:0", **completion_kwargs: Any
     ) -> None:
@@ -975,6 +980,7 @@ class BedrockChatLLM(LiteLLMChatLLM):
 
 
 class GeminiChatLLM(LiteLLMChatLLM):
+    """Google Gemini models through the Gemini API."""
     def __init__(
         self, model: str = "gemini/gemini-1.5-pro", **completion_kwargs: Any
     ) -> None:
@@ -1079,6 +1085,7 @@ class LiteLLMProxyChatLLM(LiteLLMChatLLM):
 
 
 class GroqChatLLM(LiteLLMChatLLM):
+    """Models served by Groq."""
     def __init__(
         self, model: str = "groq/llama-3.3-70b-versatile", **completion_kwargs: Any
     ) -> None:
@@ -1086,6 +1093,7 @@ class GroqChatLLM(LiteLLMChatLLM):
 
 
 class TogetherChatLLM(LiteLLMChatLLM):
+    """Models served by Together AI."""
     def __init__(
         self,
         model: str = "together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo",
@@ -1095,6 +1103,7 @@ class TogetherChatLLM(LiteLLMChatLLM):
 
 
 class OllamaChatLLM(LiteLLMChatLLM):
+    """Local models served by Ollama."""
     def __init__(
         self, model: str = "ollama/llama3.1", **completion_kwargs: Any
     ) -> None:

@@ -1,3 +1,5 @@
+"""OAuth 2.0 helpers: build the authorization URL, exchange the code, refresh tokens."""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +12,7 @@ from urllib import parse, request
 
 @dataclass(slots=True)
 class OAuthClientConfig:
+    """An OAuth client's endpoints, client id and secret, scopes and redirect URI."""
     client_id: str
     client_secret: str
     redirect_uri: str
@@ -20,6 +23,7 @@ class OAuthClientConfig:
 
 
 class OAuthStateStore(Protocol):
+    """Where pending OAuth ``state`` values are kept between redirect and callback."""
     def save(self, state: str, payload: dict[str, Any]) -> None: ...
 
     def load(self, state: str) -> dict[str, Any] | None: ...
@@ -28,6 +32,7 @@ class OAuthStateStore(Protocol):
 
 
 class InMemoryOAuthStateStore:
+    """An OAuth state store that lives for the life of the process."""
     def __init__(self) -> None:
         self._items: dict[str, dict[str, Any]] = {}
 
@@ -42,6 +47,7 @@ class InMemoryOAuthStateStore:
 
 
 class FileOAuthStateStore:
+    """An OAuth state store kept in a JSON file, for flows that span processes."""
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,6 +73,11 @@ class FileOAuthStateStore:
 
 
 class OAuthHelper:
+    """Run the OAuth authorization-code flow for one provider.
+
+    :meth:`create_authorization_url` starts the flow, :meth:`exchange_code`
+    finishes it and :meth:`refresh_token` renews an expired access token.
+    """
     def __init__(
         self, config: OAuthClientConfig, *, state_store: OAuthStateStore | None = None
     ) -> None:
@@ -208,6 +219,7 @@ def token_is_expired(token: dict[str, Any], *, skew_seconds: int = 120) -> bool:
 
 
 class GoogleOAuthHelper(OAuthHelper):
+    """OAuth helper preconfigured for Google accounts."""
     def __init__(
         self,
         client_id: str,
@@ -232,6 +244,7 @@ class GoogleOAuthHelper(OAuthHelper):
 
 
 class SlackOAuthHelper(OAuthHelper):
+    """OAuth helper preconfigured for Slack workspaces."""
     def __init__(
         self,
         client_id: str,

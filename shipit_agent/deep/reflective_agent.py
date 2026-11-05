@@ -1,3 +1,5 @@
+"""An agent that critiques its own answer and revises it until it is good enough."""
+
 from __future__ import annotations
 
 import json

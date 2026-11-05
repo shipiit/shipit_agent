@@ -1,3 +1,5 @@
+"""The ``web_search`` tool and the search providers it can use."""
+
 from .providers import (
     BraveSearchProvider,
     DuckDuckGoSearchProvider,

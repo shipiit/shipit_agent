@@ -16,6 +16,8 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 
 
 class MultiEditTool:
+    """The ``multi_edit`` tool: apply several exact string-replacement edits to ONE file atomically.
+    """
     read_only = False
 
     def __init__(

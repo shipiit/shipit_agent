@@ -1,3 +1,11 @@
+"""The awaitable agent loop.
+
+:class:`AsyncAgentRuntime` runs the same loop as
+:class:`~shipit_agent.core.runtime.AgentRuntime` without blocking an event
+loop. Both share their step logic through
+:class:`~shipit_agent.core.runtime_core.RuntimeCore`.
+"""
+
 from __future__ import annotations
 
 import asyncio

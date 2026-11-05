@@ -9,6 +9,7 @@ from typing import Any, Iterable, Mapping
 
 @dataclass(frozen=True, slots=True)
 class VerifiedFact:
+    """A fact a tool established, with the tool that established it."""
     key: str
     value: str
     source_tool: str

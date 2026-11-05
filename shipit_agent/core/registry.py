@@ -1,3 +1,6 @@
+"""The set of tools a run can call, including tools discovered from MCP servers.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -107,6 +110,8 @@ class UnavailableTool:
 
 @dataclass(slots=True)
 class ToolRegistry:
+    """The tools a run can call, by name, including tools discovered from MCP servers.
+    """
     tools: dict[str, Tool] = field(default_factory=dict)
 
     @classmethod

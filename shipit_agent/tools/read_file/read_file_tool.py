@@ -11,6 +11,8 @@ __all__ = ["ReadFileTool"]
 
 
 class ReadFileTool(ToolBase):
+    """The ``read_file`` tool: read a file with line numbers, recording it so a later edit can check freshness.
+    """
     name = "read_file"
     description = DESCRIPTION
     prompt_instructions = INSTRUCTIONS

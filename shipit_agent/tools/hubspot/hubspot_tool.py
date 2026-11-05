@@ -29,6 +29,8 @@ API = "https://api.hubapi.com"
 
 
 class HubspotTool:
+    """The ``hubspot_ops`` tool: hubSpot CRM v3 — search/get/create contacts, companies, deals; attach notes.
+    """
     name = "hubspot_ops"
     description = (
         "HubSpot CRM v3 — search/get/create contacts, companies, deals; attach notes."
@@ -224,4 +226,5 @@ class HubspotTool:
 
 
 class HubspotError(RuntimeError):
+    """A HubSpot API call failed."""
     pass

@@ -21,6 +21,7 @@ def _audit_path() -> str:
 
 
 def register(reg: Any) -> None:
+    """Install the audit-log plugin: log every tool call after it runs."""
     def after_tool(name: str, result: Any) -> None:
         line = f"{datetime.now(timezone.utc).isoformat()}\t{name}\n"
         try:

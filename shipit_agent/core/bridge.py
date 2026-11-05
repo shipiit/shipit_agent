@@ -22,8 +22,7 @@ discovery process.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable
 
 from shipit_agent.core.graph import RunSpec
 from shipit_agent.mcp_bridge import MCPBridge

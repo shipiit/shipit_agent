@@ -1,3 +1,6 @@
+"""Health checks for an agent's configuration: model credentials, tools, MCP servers and settings.
+"""
+
 from __future__ import annotations
 
 import os
@@ -10,6 +13,7 @@ CheckStatus = str
 
 @dataclass(slots=True)
 class DoctorCheck:
+    """The outcome of one health check: its name, status and a message."""
     name: str
     status: CheckStatus
     message: str
@@ -18,6 +22,7 @@ class DoctorCheck:
 
 @dataclass(slots=True)
 class DoctorReport:
+    """Every check from one doctor run, with whether the agent passed overall."""
     checks: list[DoctorCheck] = field(default_factory=list)
 
     @property
@@ -75,6 +80,7 @@ class DoctorReport:
 
 
 class AgentDoctor:
+    """Inspect an agent's configuration and report what is missing or misconfigured."""
     def __init__(self, *, env: dict[str, str] | None = None) -> None:
         self.env = dict(os.environ if env is None else env)
 

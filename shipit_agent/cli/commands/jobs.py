@@ -28,6 +28,7 @@ def _store(args: argparse.Namespace):
 
 
 def cmd_add(args: argparse.Namespace) -> int:
+    """``shipit jobs add``: save a scheduled agent job."""
     from shipit_agent.scheduling.schedule import ScheduledAgentConfig, ScheduledJob
 
     if not (args.every or args.at or args.cron):
@@ -84,6 +85,7 @@ def cmd_add(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
+    """``shipit jobs list``: show saved jobs and their schedules."""
     store = _store(args)
     try:
         jobs = store.load_all()
@@ -131,6 +133,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_remove(args: argparse.Namespace) -> int:
+    """``shipit jobs remove``: delete a saved job."""
     store = _store(args)
     try:
         if store.load(args.name) is None:
@@ -144,6 +147,7 @@ def cmd_remove(args: argparse.Namespace) -> int:
 
 
 def cmd_toggle(args: argparse.Namespace) -> int:
+    """``shipit jobs toggle``: enable or disable a saved job."""
     store = _store(args)
     try:
         job = store.load(args.name)
@@ -178,6 +182,7 @@ def build_scheduled_agent(config, defaults: argparse.Namespace):
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    """``shipit jobs start``: run the scheduler so due jobs execute."""
     from shipit_agent import AgentScheduler, SQLiteJobStore
 
     store = SQLiteJobStore(args.db)
@@ -216,6 +221,7 @@ def cmd_start(args: argparse.Namespace) -> int:
 
 
 def register(sub: Any) -> None:
+    """Add the ``jobs`` sub-commands to the CLI."""
     jobs = sub.add_parser("jobs", help="Durable scheduled agent jobs (cron)")
     jsub = jobs.add_subparsers(dest="jobs_command")
 

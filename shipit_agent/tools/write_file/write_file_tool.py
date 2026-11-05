@@ -11,6 +11,7 @@ __all__ = ["WriteFileTool"]
 
 
 class WriteFileTool(ToolBase):
+    """The ``write_file`` tool: create a new file; refuses if it already exists."""
     name = "write_file"
     description = DESCRIPTION
     prompt_instructions = INSTRUCTIONS

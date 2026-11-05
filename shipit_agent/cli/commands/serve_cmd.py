@@ -11,6 +11,7 @@ from shipit_agent.cli.llm import build_agent
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
+    """``shipit serve``: expose an agent as an OpenAI-compatible HTTP API."""
     from shipit_agent.cli.serve import AgentServer
 
     agent = build_agent(args)
@@ -33,6 +34,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def register(sub: Any) -> None:
+    """Add the ``serve`` sub-command to the CLI."""
     parser = sub.add_parser(
         "serve", help="Expose the agent as an OpenAI-compatible API")
     parser.add_argument("--host", default="127.0.0.1")

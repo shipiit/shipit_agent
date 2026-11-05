@@ -1,3 +1,6 @@
+"""Executing tool calls: argument checks, safe event metadata and collected results.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -95,11 +98,13 @@ def _missing_argument_message(name: str, missing: str, required: list[str]) -> s
 
 @dataclass(slots=True)
 class ToolRunnerResult:
+    """The results of a batch of tool calls, and any tools that were not found."""
     results: list[ToolResult] = field(default_factory=list)
     missing_tools: list[str] = field(default_factory=list)
 
 
 class ToolRunner:
+    """Execute tool calls against a registry and collect their results."""
     def __init__(self, registry: ToolRegistry) -> None:
         self.registry = registry
 

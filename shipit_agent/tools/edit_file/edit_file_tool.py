@@ -1,3 +1,6 @@
+"""The ``edit_file`` tool: apply an exact string replacement patch to an existing file.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,6 +11,8 @@ from .prompt import EDIT_FILE_PROMPT
 
 
 class EditFileTool:
+    """The ``edit_file`` tool: apply an exact string replacement patch to an existing file.
+    """
     def __init__(
         self,
         *,

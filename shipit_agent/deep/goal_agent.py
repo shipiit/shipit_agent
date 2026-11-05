@@ -1,3 +1,6 @@
+"""An agent that breaks a goal into steps, checks success criteria and corrects course.
+"""
+
 from __future__ import annotations
 
 import json

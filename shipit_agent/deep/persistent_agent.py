@@ -1,3 +1,5 @@
+"""An agent that saves checkpoints so a long task can stop and resume later."""
+
 from __future__ import annotations
 
 import json

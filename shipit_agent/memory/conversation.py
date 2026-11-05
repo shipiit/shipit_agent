@@ -1,3 +1,6 @@
+"""Conversation memory: keep every message, a recent window, a token budget, or a running summary.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

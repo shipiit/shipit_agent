@@ -8,7 +8,6 @@ from shipit_agent.llms.parameters import (
     HOST_PARAMS,
     WIRE_PARAMS,
     canonical_name,
-    coerce_numeric,
     normalize_parameters,
     resolve_parameters,
 )

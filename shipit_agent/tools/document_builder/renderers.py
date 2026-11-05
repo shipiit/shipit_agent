@@ -27,6 +27,7 @@ def _need(module: str, pip_name: str):
 
 
 def render_pdf(title: str, sections: list[dict[str, Any]], path: Path) -> None:
+    """Write *sections* under *title* as a PDF at *path* (requires ``reportlab``)."""
     _need("reportlab", "reportlab")
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -87,6 +88,7 @@ def render_pdf(title: str, sections: list[dict[str, Any]], path: Path) -> None:
 
 
 def render_xlsx(title: str, sheets: list[dict[str, Any]], path: Path) -> None:
+    """Write *sections* under *title* as an Excel workbook at *path*."""
     _need("openpyxl", "openpyxl")
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -121,6 +123,7 @@ def render_xlsx(title: str, sheets: list[dict[str, Any]], path: Path) -> None:
 
 
 def render_docx(title: str, sections: list[dict[str, Any]], path: Path) -> None:
+    """Write *sections* under *title* as a Word document at *path*."""
     _need("docx", "python-docx")
     import docx
 
@@ -154,6 +157,7 @@ def render_docx(title: str, sections: list[dict[str, Any]], path: Path) -> None:
 
 
 def render_pptx(title: str, sections: list[dict[str, Any]], path: Path) -> None:
+    """Write *sections* under *title* as a PowerPoint deck at *path*."""
     _need("pptx", "python-pptx")
     from pptx import Presentation
     from pptx.dml.color import RGBColor

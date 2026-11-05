@@ -1,3 +1,5 @@
+"""What the model is told about the document builder tool: when to use it and how."""
+
 DOCUMENT_BUILDER_PROMPT = """
 Create polished, ready-to-share documents: PDF reports, Excel workbooks,
 Word documents, PowerPoint decks, and styled HTML.

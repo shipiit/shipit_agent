@@ -1,3 +1,6 @@
+"""A team of agents coordinated by a model that routes each round to the right member.
+"""
+
 from __future__ import annotations
 
 import json

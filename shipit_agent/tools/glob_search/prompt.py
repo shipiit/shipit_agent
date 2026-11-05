@@ -1,3 +1,5 @@
+"""What the model is told about the glob search tool: when to use it and how."""
+
 from __future__ import annotations
 
 GLOB_SEARCH_PROMPT = """

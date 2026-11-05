@@ -32,6 +32,8 @@ _GATED_ACTIONS = {"push", "reset"}
 
 
 class GitOpsTool:
+    """The ``git_ops`` tool: structured git operations: status, diff, log, show, blame, branch, add, commit, checkout, stash (push/reset are disabled by default).
+    """
     name = "git_ops"
     description = (
         "Structured git operations: status, diff, log, show, blame, branch, "

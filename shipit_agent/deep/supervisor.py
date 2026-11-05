@@ -1,3 +1,6 @@
+"""A supervisor agent that plans, delegates to worker agents, reviews and combines their results.
+"""
+
 from __future__ import annotations
 
 import json

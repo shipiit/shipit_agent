@@ -13,11 +13,10 @@ from shipit_agent.context.discovery import (
     filter_schemas,
     score_match,
 )
-from shipit_agent.core.graph import AgentGraph, RunSpec
+from shipit_agent.core.graph import AgentGraph
 from shipit_agent.mcp_bridge import (
     MCP_DELIMITER,
     MCPBridge,
-    MCPToolDescriptor,
     namespaced,
     split_namespaced,
 )

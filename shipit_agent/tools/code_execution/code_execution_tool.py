@@ -1,3 +1,6 @@
+"""The ``run_code`` tool: execute Python or shell code in a local subprocess workspace.
+"""
+
 from __future__ import annotations
 
 import os
@@ -19,6 +22,8 @@ from .sandbox import (
 
 
 class CodeExecutionTool:
+    """The ``run_code`` tool: execute Python or shell code in a local subprocess workspace.
+    """
     LANGUAGE_ALIASES: ClassVar[dict[str, str]] = {
         "python3": "python",
         "py": "python",

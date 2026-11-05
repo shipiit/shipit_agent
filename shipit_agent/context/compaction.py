@@ -208,6 +208,7 @@ def estimate_tokens(text: Any) -> int:
 
 
 def messages_tokens(messages: Sequence[Message]) -> int:
+    """Estimated token count of *messages*."""
     return sum(estimate_tokens(m.content or "") for m in messages)
 
 

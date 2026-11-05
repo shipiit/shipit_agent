@@ -11,6 +11,7 @@ __all__ = ["GlobTool"]
 
 
 class GlobTool(ToolBase):
+    """The ``glob`` tool: find files by name pattern, most recently modified first."""
     name = "glob"
     description = DESCRIPTION
     prompt_instructions = INSTRUCTIONS

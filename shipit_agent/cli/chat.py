@@ -90,38 +90,47 @@ def _ansi(text: str, code: str) -> str:
 
 
 def dim(t: str) -> str:
+    """*text* in the terminal's dim style."""
     return _ansi(t, "2")
 
 
 def bold(t: str) -> str:
+    """*text* in bold."""
     return _ansi(t, "1")
 
 
 def cyan(t: str) -> str:
+    """*text* in cyan."""
     return _ansi(t, "36")
 
 
 def green(t: str) -> str:
+    """*text* in green."""
     return _ansi(t, "32")
 
 
 def yellow(t: str) -> str:
+    """*text* in yellow."""
     return _ansi(t, "33")
 
 
 def red(t: str) -> str:
+    """*text* in red."""
     return _ansi(t, "31")
 
 
 def magenta(t: str) -> str:
+    """*text* in magenta."""
     return _ansi(t, "35")
 
 
 def blue(t: str) -> str:
+    """*text* in blue."""
     return _ansi(t, "34")
 
 
 def banner(title: str, subtitle: str = "") -> str:
+    """A boxed title (and optional subtitle) for the top of the chat."""
     width = max(len(title), len(subtitle)) + 4
     top = "╭" + "─" * (width - 2) + "╮"
     bot = "╰" + "─" * (width - 2) + "╯"
@@ -158,6 +167,7 @@ EVENT_STYLE: dict[str, tuple[str, str]] = {
 
 
 def format_event(event: Any) -> str:
+    """One run event as a single styled terminal line."""
     etype = getattr(event, "type", "event")
     icon, color = EVENT_STYLE.get(etype, ("·", "2"))
     msg = getattr(event, "message", "") or ""
@@ -279,10 +289,12 @@ PROVIDER_NAMES = tuple(PROVIDER_MODEL_ENV.keys())
 
 
 def current_provider_name(explicit: str | None = None) -> str:
+    """The model provider in use: *explicit*, else the environment, else the default."""
     return (explicit or os.getenv("SHIPIT_LLM_PROVIDER", "bedrock")).strip().lower()
 
 
 def current_model_name(provider: str) -> str:
+    """The model configured for *provider* in the environment, or its default."""
     env_var, default = PROVIDER_MODEL_ENV.get(provider, ("", ""))
     if not env_var:
         return "(n/a)"
@@ -295,6 +307,7 @@ def current_model_name(provider: str) -> str:
 
 
 def build_llm(provider: str | None = None) -> Any:
+    """Construct the model adapter for *provider* from environment settings."""
     try:
         from examples.run_multi_tool_agent import build_llm_from_env
 
@@ -423,6 +436,7 @@ def stream_any_agent(agent: Any, user_text: str):
 
 
 def run_any_agent(agent: Any, user_text: str) -> Any:
+    """Run *agent* on *user_text*, whichever agent type it is."""
     if hasattr(agent, "run"):
         try:
             return agent.run(user_text)
@@ -432,6 +446,7 @@ def run_any_agent(agent: Any, user_text: str) -> Any:
 
 
 def agent_tools(agent: Any) -> list[Any]:
+    """The tools *agent* has, whichever agent type it is."""
     if hasattr(agent, "tools"):
         return list(agent.tools)
     if hasattr(agent, "agent") and hasattr(agent.agent, "tools"):
@@ -1266,6 +1281,7 @@ class ChatREPL:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The ``shipit-chat`` command-line parser."""
     parser = argparse.ArgumentParser(
         prog="shipit-chat",
         description="Modern interactive chat with any Shipit agent type.",
@@ -1357,6 +1373,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Entry point for ``shipit-chat``, the interactive chat; returns the exit code."""
     parser = build_parser()
     args = parser.parse_args(argv)
 

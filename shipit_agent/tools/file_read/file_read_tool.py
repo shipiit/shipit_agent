@@ -1,3 +1,5 @@
+"""The ``read_file`` tool: read a file from the local project."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,6 +9,7 @@ from .prompt import FILE_READ_PROMPT
 
 
 class FileReadTool:
+    """The ``read_file`` tool: read a file from the local project."""
     def __init__(
         self,
         *,

@@ -34,6 +34,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Literal, Sequence
 
+from shipit_agent.safety.permission_rules import (
+    RuleBehavior,
+    is_scoped,
+    rule_matches,
+    rule_names_tool,
+)
+
 PermissionMode = Literal[
     "default", "acceptEdits", "plan", "bypass", "bypassPermissions", "dontAsk"
 ]
@@ -99,7 +106,10 @@ def _matches_any(name: str, patterns: tuple[str, ...] | list[str]) -> bool:
 class PermissionEngine:
     """Rule-based gate for tool calls.
 
-    ``allow`` / ``deny`` / ``ask`` are lists of tool-name globs (``fnmatch``).
+    ``allow`` / ``deny`` / ``ask`` are lists of rules: a tool-name glob, or a
+    scoped rule such as ``Bash(rm *)`` or ``Edit(src/**)`` (see
+    :mod:`shipit_agent.safety.permission_rules`). A deny refuses matching
+    calls in every mode, ``bypass`` included; ``hidden`` removes tools.
     Precedence, as in the Claude Agent SDK: ``deny`` > ``ask`` > mode logic >
     ``allow`` > ``callback`` > ``default_decision``.
 
@@ -126,6 +136,12 @@ class PermissionEngine:
     callback: Callable[[str, dict[str, Any]], PermissionResult | None] | None = None
     #: Calls approved for the session (see ``PermissionResult.scope``).
     session_grants: set[str] = field(default_factory=set)
+    #: Anchors relative path rules; the working directory when ``None``.
+    root: str | None = None
+    #: Tool-name rules whose tools are taken out of the run altogether, so the
+    #: model never sees them (the Agent's ``disallowed_tools`` bare names). A
+    #: bare ``deny`` rule alone keeps the tool and refuses each call.
+    hidden: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.mode == "bypassPermissions":
@@ -170,23 +186,29 @@ class PermissionEngine:
     # ------------------------------------------------------------------
     # Decision
     # ------------------------------------------------------------------
+    def removes(self, tool_name: str) -> bool:
+        """Whether this tool is taken out of the run entirely (see ``hidden``)."""
+        return any(rule_names_tool(rule, tool_name) for rule in self.hidden)
+
     def discoverable(self, tool_name: str, tool: Any = None) -> bool:
         """Static catalog visibility, without invoking argument callbacks.
 
         Discovery is not authorization. Conditional callbacks and approvals
         are evaluated only when real arguments are available at execution.
         """
-        if _matches_any(tool_name, self.deny):
+        if self.removes(tool_name) or any(
+            not is_scoped(rule) and rule_names_tool(rule, tool_name) for rule in self.deny
+        ):
             return False
         if self.mode == "bypass":
             return True
         if self.mode == "plan":
-            return (tool_name == "present_plan" or _matches_any(tool_name, self.allow)
+            return (tool_name == "present_plan" or self._names(self.allow, tool_name)
                     or self.is_read_only(tool_name, tool))
         if self.mode == "acceptEdits" and self.is_edit(tool_name):
             return True
-        return (self.callback is not None or _matches_any(tool_name, self.allow)
-                or _matches_any(tool_name, self.ask)
+        return (self.callback is not None or self._names(self.allow, tool_name)
+                or self._names(self.ask, tool_name)
                 or self.default_decision != PermissionDecision.DENY)
 
     def check(
@@ -201,10 +223,11 @@ class PermissionEngine:
         (a shell command that deletes, say): an allow rule or bypass mode
         still allows it, otherwise only a yes from the callback does."""
         # 1. Hard deny rules always win.
-        if _matches_any(tool_name, self.deny):
+        denied_by = self._first_hit(self.deny, tool_name, arguments, "deny")
+        if denied_by is not None:
             return PermissionResult(
                 PermissionDecision.DENY,
-                reason=f"'{tool_name}' is on the deny list.",
+                reason=f"'{tool_name}' is denied by the rule {denied_by!r}.",
             )
 
         # 1b. A tool decorated with @requires_confirmation is a per-tool floor:
@@ -226,7 +249,7 @@ class PermissionEngine:
                 )
 
         # 2. Ask rules: a request for a human, which no mode or allow overrides.
-        if _matches_any(tool_name, self.ask):
+        if self._first_hit(self.ask, tool_name, arguments, "ask") is not None:
             asked = self._consult_callback(tool_name, arguments)
             if asked is not None:
                 return asked
@@ -242,7 +265,7 @@ class PermissionEngine:
             # is the thing plan mode is building toward.
             if (
                 tool_name == "present_plan"
-                or _matches_any(tool_name, self.allow)
+                or self._first_hit(self.allow, tool_name, arguments, "allow") is not None
                 or self.is_read_only(tool_name, tool)
             ):
                 return PermissionResult(
@@ -263,7 +286,7 @@ class PermissionEngine:
             )
 
         # 4. Allow rules.
-        if _matches_any(tool_name, self.allow):
+        if self._first_hit(self.allow, tool_name, arguments, "allow") is not None:
             return PermissionResult(PermissionDecision.ALLOW, reason="allow rule")
 
         # 5. Callback (canUseTool) as a catch-all, then the default.
@@ -280,6 +303,23 @@ class PermissionEngine:
                 reason=f"'{tool_name}' is not pre-approved (dontAsk mode).",
             )
         return PermissionResult(self.default_decision, reason="default")
+
+    def _first_hit(
+        self,
+        rules: list[str],
+        tool_name: str,
+        arguments: dict[str, Any],
+        behavior: RuleBehavior,
+    ) -> str | None:
+        """The first of *rules* that covers this call, or ``None``."""
+        for rule in rules:
+            if rule_matches(rule, tool_name, arguments, root=self.root, behavior=behavior):
+                return rule
+        return None
+
+    @staticmethod
+    def _names(rules: list[str], tool_name: str) -> bool:
+        return any(rule_names_tool(rule, tool_name) for rule in rules)
 
     def _ask_or_refuse(self, reason: str) -> PermissionResult:
         """Ask a human, or in ``dontAsk`` mode refuse instead."""

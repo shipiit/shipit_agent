@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-__all__ = ["CommandVerdict", "assess_command"]
+__all__ = ["CommandVerdict", "assess_command", "command_segments"]
 
 RiskLevel = Literal["safe", "risky", "blocked"]
 
@@ -99,6 +99,11 @@ _WRITERS = frozenset(
 )
 _SEGMENT_SPLIT = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
 _REDIRECT_TARGET = re.compile(r"(?<![<>&\d])>>?\s*([^\s;&|]+)")
+
+
+def command_segments(command: str) -> list[str]:
+    """The simple commands in *command*, split at ``&&``, ``||``, ``;``, ``|`` and newlines."""
+    return [segment for segment in _SEGMENT_SPLIT.split(command.strip()) if segment]
 
 
 def assess_command(command: str, *, root: Path) -> CommandVerdict:

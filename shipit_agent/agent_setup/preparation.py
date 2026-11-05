@@ -212,11 +212,15 @@ class AgentPreparationMixin(SkillSelectionMixin):
         return self.max_iterations
 
     def _effective_permissions(self) -> Any:
+        from shipit_agent.safety.permission_rules import is_scoped
         from shipit_agent.safety.permissions import PermissionEngine, coerce_permissions
 
         engine = coerce_permissions(self.permissions)
         if engine is None and (
-            self.permission_mode != "default" or self.permission_callback is not None
+            self.permission_mode != "default"
+            or self.permission_callback is not None
+            or self.allowed_tools
+            or self.disallowed_tools
         ):
             # Kept for the agent's session, so "approve for the session"
             # grants survive from one run to the next.
@@ -232,4 +236,17 @@ class AgentPreparationMixin(SkillSelectionMixin):
             and engine.callback is None
         ):
             engine.callback = self.permission_callback
+        if engine is not None:
+            engine.allow = _merged(engine.allow, self.allowed_tools)
+            engine.deny = _merged(engine.deny, self.disallowed_tools)
+            engine.hidden = _merged(
+                engine.hidden, [rule for rule in self.disallowed_tools if not is_scoped(rule)]
+            )
+            if engine.root is None:
+                engine.root = str(self.project_root)
         return engine
+
+
+def _merged(rules: list[str], extra: list[str]) -> list[str]:
+    """*rules* plus each of *extra* not already there, in order."""
+    return [*rules, *(rule for rule in extra if rule not in rules)]

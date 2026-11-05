@@ -213,7 +213,12 @@ class AsyncAgentRuntime(
         self._event_sequence = 0
 
     def registry(self) -> ToolRegistry:
-        return construct_tool_registry(tools=self.tools, mcps=self.mcps)
+        """The run's tools, less any a bare deny rule removes (MCP tools included)."""
+        registry = construct_tool_registry(tools=self.tools, mcps=self.mcps)
+        if self.permissions is not None:
+            for name in [n for n in registry.tools if self.permissions.removes(n)]:
+                del registry.tools[name]
+        return registry
 
     def emit(
         self, state: RuntimeState, event_type: str, message: str, **payload: Any

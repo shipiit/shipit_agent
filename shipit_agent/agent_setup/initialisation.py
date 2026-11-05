@@ -53,6 +53,12 @@ class AgentInitMixin:
             type(self.max_session_tokens) is not int or self.max_session_tokens < 1
         ):
             raise ValueError("max_session_tokens must be a positive integer or None")
+        if self.max_turns is not None:
+            if type(self.max_turns) is not int or self.max_turns < 1:
+                raise ValueError("max_turns must be a positive integer or None")
+            if self.max_iterations not in (None, self.max_turns):
+                raise ValueError("max_turns and max_iterations name the same limit; set one")
+            self.max_iterations = self.max_turns
         if self.max_iterations is not None and (
             type(self.max_iterations) is not int or self.max_iterations < 1
         ):

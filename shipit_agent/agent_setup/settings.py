@@ -111,6 +111,8 @@ class AgentSettings:
     #: Claude Agent SDK. Any fixed count cuts some real task off mid-way; cap
     #: spend with ``max_budget_usd`` instead, or set a number here.
     max_iterations: int | None = None
+    #: The Claude Agent SDK's name for ``max_iterations``; set either one.
+    max_turns: int | None = None
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
     #: Run a response's tool calls concurrently when every one is read-only.
@@ -175,6 +177,12 @@ class AgentSettings:
     permission_mode: str = "default"
     permissions: Any = None
     permission_callback: Any = None
+    #: Pre-approved calls, as SDK rules: ``"Read"``, ``"Bash(npm test *)"``.
+    #: They approve; they do not restrict the other tools.
+    allowed_tools: list[str] = field(default_factory=list)
+    #: A bare name removes the tool from the run; a scoped rule such as
+    #: ``"Bash(rm *)"`` denies matching calls in every permission mode.
+    disallowed_tools: list[str] = field(default_factory=list)
 
     # ── guardrails (content-level protection) ─────────────────────────
     # A ``Guardrails`` instance: blocks prompt-injection inputs, redacts

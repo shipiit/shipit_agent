@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from types import SimpleNamespace
 from typing import Any
 
+from shipit_agent.core.models import Message, ToolCall
 from shipit_agent.llms import citations as _citations
 from shipit_agent.llms import server_tools as _server_tools
 from shipit_agent.llms.base import LLMResponse, coerce_message
-from shipit_agent.core.models import Message, ToolCall
+from shipit_agent.llms.claude_models import NON_STREAMING_OUTPUT_CAP, claude_model
 
 # Beta header for interleaved thinking (verified in
 # anthropic.types.anthropic_beta_param, SDK 0.79.0).
 INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14"
+
+logger = logging.getLogger(__name__)
+
+#: ``output_config.effort`` levels the Messages API accepts.
+_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 # Beta header + request param for server-side context editing (verified:
 # beta value "context-management-2025-06-27"; request param "context_management"
 # exists only on client.beta.messages.create in 0.79.0).
@@ -93,8 +100,10 @@ class AnthropicChatLLM:
         self,
         model: str,
         api_key: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int | None = None,
         *,
+        thinking: str | dict[str, Any] | None = None,
+        effort: str | None = None,
         thinking_budget_tokens: int | None = None,
         prompt_caching: bool = True,
         interleaved_thinking: bool = False,
@@ -104,9 +113,19 @@ class AnthropicChatLLM:
     ) -> None:
         self.model = model
         self.api_key = api_key
+        self.facts = claude_model(model)
+        #: ``None`` sends the model's limit, capped for a non-streaming call.
         self.max_tokens = max_tokens
-        # When set, Anthropic extended thinking is enabled for every call.
-        # Example: AnthropicChatLLM("claude-opus-4-1", thinking_budget_tokens=2048)
+        #: ``"adaptive"``, a full ``thinking`` dict, or ``None`` for the
+        #: model's own default. Thinking depth is set with ``effort``.
+        if thinking is not None and not (thinking == "adaptive" or isinstance(thinking, dict)):
+            raise ValueError("thinking must be 'adaptive', a thinking dict, or None")
+        self.thinking = thinking
+        if effort is not None and effort not in _EFFORTS:
+            raise ValueError(f"effort must be one of {sorted(_EFFORTS)} or None")
+        self.effort = effort
+        # The pre-adaptive way to think. Kept for older models; on models that
+        # reject a budget it is sent as adaptive thinking instead of a 400.
         self.thinking_budget_tokens = thinking_budget_tokens
         # Interleaved thinking (#10): when on AND thinking is enabled, attach the
         # ``interleaved-thinking-2025-05-14`` beta header so the model can think
@@ -336,24 +355,26 @@ class AnthropicChatLLM:
 
         kwargs: dict[str, Any] = {
             "model": self.model,
-            "max_tokens": self.max_tokens,
+            "max_tokens": self.max_tokens
+            or min(self.facts.max_output_tokens, NON_STREAMING_OUTPUT_CAP),
             "system": system,
             "messages": converted_messages,
         }
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools
-        if self.thinking_budget_tokens:
-            kwargs["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": self.thinking_budget_tokens,
-            }
+        thinking = self._thinking_param()
+        if thinking is not None:
+            kwargs["thinking"] = thinking
+        if self.effort:
+            kwargs["output_config"] = {"effort": self.effort}
 
         # Assemble beta headers required by opt-in features. Empty list ->
         # the request stays on the GA endpoint and is identical to legacy.
         betas: list[str] = list(_server_tools.required_betas(tools))
+        # Adaptive thinking interleaves on its own; the beta is for budgets.
         if (
             self.interleaved_thinking
-            and self.thinking_budget_tokens
+            and (thinking or {}).get("type") == "enabled"
             and INTERLEAVED_THINKING_BETA not in betas
         ):
             betas.append(INTERLEAVED_THINKING_BETA)
@@ -364,6 +385,33 @@ class AnthropicChatLLM:
         if betas:
             kwargs["betas"] = betas
         return kwargs
+
+    def _thinking_param(self) -> dict[str, Any] | None:
+        """The ``thinking`` request field for this model, or ``None`` to omit it."""
+        if isinstance(self.thinking, dict):
+            return dict(self.thinking)
+        if self.thinking == "adaptive":
+            return {"type": "adaptive"}
+        if not self.thinking_budget_tokens:
+            return None
+        if self.facts.rejects_thinking_budget:
+            logger.info(
+                "%s rejects thinking budgets; sending adaptive thinking instead "
+                "(set effort to control depth)",
+                self.model,
+            )
+            return {"type": "adaptive"}
+        return {"type": "enabled", "budget_tokens": self.thinking_budget_tokens}
+
+    def _tool_choice_for(self, *, require_tool_call: bool) -> dict[str, Any] | None:
+        """Force a tool call where the model allows it.
+
+        Models that reject forced ``tool_choice`` are left on ``auto``; the
+        loop's required-tool instruction and retry still apply.
+        """
+        if require_tool_call and self.facts.accepts_forced_tool_choice:
+            return {"type": "any"}
+        return None
 
     @staticmethod
     def _mark_message_prefix_cached(messages: list[dict[str, Any]]) -> None:
@@ -452,8 +500,9 @@ class AnthropicChatLLM:
             system_prompt=system_prompt,
             documents=documents,
         )
-        if tools and require_tool_call:
-            kwargs["tool_choice"] = {"type": "any"}
+        tool_choice = self._tool_choice_for(require_tool_call=require_tool_call)
+        if tools and tool_choice:
+            kwargs["tool_choice"] = tool_choice
 
         # Route to the beta endpoint only when an opt-in feature needs a beta
         # header / beta-only param (``betas`` / ``context_management``). With

@@ -30,6 +30,10 @@ from shipit_agent.llms.base import LLMResponse
 
 T = TypeVar("T")
 
+
+class _StreamDone:
+    """Marks the end of a stream's event queue."""
+
 __all__ = [
     "AgentRuntime",
     "RuntimeState",
@@ -106,11 +110,12 @@ class AgentRuntime(AsyncAgentRuntime):
         is set. The queue is bounded by ``stream_queue_maxsize``.
         """
         loop = self
-        events: queue.Queue[AgentEvent | object] = queue.Queue(maxsize=loop.stream_queue_maxsize)
-        finished = object()
+        events: queue.Queue[AgentEvent | _StreamDone] = queue.Queue(
+            maxsize=loop.stream_queue_maxsize
+        )
         completed = threading.Event()
 
-        def _put(item: AgentEvent | object) -> None:
+        def _put(item: AgentEvent | _StreamDone) -> None:
             while True:
                 try:
                     events.put(item, timeout=0.1)
@@ -140,7 +145,7 @@ class AgentRuntime(AsyncAgentRuntime):
                 )
             finally:
                 completed.set()
-                _put(finished)
+                _put(_StreamDone())
 
         loop._event_subscriber = _subscriber
         # Caller-owned context variables (tenant, user, tracing) must reach the
@@ -155,9 +160,9 @@ class AgentRuntime(AsyncAgentRuntime):
         try:
             while True:
                 item = events.get()
-                if item is finished:
+                if isinstance(item, _StreamDone):
                     break
-                yield item  # type: ignore[misc]
+                yield item
         finally:
             if not completed.is_set() and loop.cancel_on_stream_close:
                 loop.cancel()

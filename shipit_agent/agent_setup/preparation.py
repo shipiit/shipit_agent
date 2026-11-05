@@ -218,7 +218,14 @@ class AgentPreparationMixin(SkillSelectionMixin):
         if engine is None and (
             self.permission_mode != "default" or self.permission_callback is not None
         ):
-            engine = PermissionEngine(mode=self.permission_mode)  # type: ignore[arg-type]
+            # Kept for the agent's session, so "approve for the session"
+            # grants survive from one run to the next.
+            cached = self._session_runtime_state.get("permission_engine")
+            if cached is not None and cached.mode == self.permission_mode:
+                engine = cached
+            else:
+                engine = PermissionEngine(mode=self.permission_mode)  # type: ignore[arg-type]
+                self._session_runtime_state["permission_engine"] = engine
         if (
             engine is not None
             and self.permission_callback is not None

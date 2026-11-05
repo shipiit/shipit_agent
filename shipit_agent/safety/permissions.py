@@ -57,6 +57,10 @@ class PermissionResult:
     decision: PermissionDecision
     reason: str = ""
     updated_arguments: dict[str, Any] | None = None
+    #: For an ALLOW from the callback: ``"session"`` approves this exact call
+    #: (tool and arguments) for the rest of the session, like Claude Code's
+    #: "don't ask again"; ``"once"`` approves just this call.
+    scope: Literal["once", "session"] = "once"
 
     @property
     def allowed(self) -> bool:
@@ -120,6 +124,8 @@ class PermissionEngine:
     # canUseTool-style callback: (name, args) -> PermissionResult | None.
     # Returning None defers to the default decision.
     callback: Callable[[str, dict[str, Any]], PermissionResult | None] | None = None
+    #: Calls approved for the session (see ``PermissionResult.scope``).
+    session_grants: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         if self.mode == "bypassPermissions":
@@ -286,13 +292,29 @@ class PermissionEngine:
     def _consult_callback(
         self, tool_name: str, arguments: dict[str, Any]
     ) -> PermissionResult | None:
+        key = _grant_key(tool_name, arguments)
+        if key in self.session_grants:
+            return PermissionResult(
+                PermissionDecision.ALLOW, reason="approved earlier for this session"
+            )
         if self.callback is None:
             return None
         try:
             result = self.callback(tool_name, dict(arguments))
         except Exception:
             return None
-        return result if isinstance(result, PermissionResult) else None
+        if not isinstance(result, PermissionResult):
+            return None
+        if result.allowed and result.scope == "session":
+            self.session_grants.add(key)
+        return result
+
+
+def _grant_key(tool_name: str, arguments: dict[str, Any]) -> str:
+    """One call's identity for a session grant: the tool and its exact arguments."""
+    import json
+
+    return f"{tool_name}\0{json.dumps(arguments, sort_keys=True, default=str)}"
 
 
 def authorize_tool(

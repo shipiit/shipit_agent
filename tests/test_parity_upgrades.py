@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from shipit_agent.agent import Agent
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
-from shipit_agent.runtime import AgentRuntime
-from shipit_agent.runtime_core import RuntimeCore
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.runtime import AgentRuntime
+from shipit_agent.core.runtime_core import RuntimeCore
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.edit_file import EditFileTool
 from shipit_agent.tools.file_read import FileReadTool
@@ -119,7 +119,7 @@ def test_run_summary_event_is_emitted_with_accounting():
 
 
 def test_run_summary_is_canonical_for_reconnecting_clients():
-    from shipit_agent.streaming import Durability, classify
+    from shipit_agent.observability.streaming import Durability, classify
 
     assert classify("run_summary") is Durability.CANONICAL
 
@@ -128,7 +128,7 @@ def test_run_summary_is_canonical_for_reconnecting_clients():
 
 
 def test_compaction_regrounds_recent_files(tmp_path):
-    from shipit_agent.runtime_core import RuntimeCore
+    from shipit_agent.core.runtime_core import RuntimeCore
 
     f = tmp_path / "mod.py"
     f.write_text("def current(): return 42\n")

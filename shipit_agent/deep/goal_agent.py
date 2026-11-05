@@ -135,7 +135,7 @@ class GoalAgent:
     def _save_to_memory(self, role: str, content: str) -> None:
         """Store a message in memory if memory is attached."""
         if self.memory and hasattr(self.memory, "add_message"):
-            from shipit_agent.models import Message
+            from shipit_agent.core.models import Message
 
             self.memory.add_message(Message(role=role, content=content))
 
@@ -153,7 +153,7 @@ class GoalAgent:
         return cls(llm=llm, goal=goal, mcps=mcps, use_builtins=True, rag=rag, **kwargs)
 
     def _llm_call(self, prompt: str) -> str:
-        from shipit_agent.models import Message
+        from shipit_agent.core.models import Message
 
         response = self.llm.complete(messages=[Message(role="user", content=prompt)])
         return response.content
@@ -291,7 +291,7 @@ class GoalAgent:
             for event in goal_agent.stream():
                 print(f"[{event.type}] {event.message}")
         """
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         yield AgentEvent(
             type="run_started",

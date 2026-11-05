@@ -9,8 +9,8 @@ import time
 
 from shipit_agent import Agent, FunctionTool, StreamRenderer
 from shipit_agent.llms.base import LLMResponse, ToolCall
-from shipit_agent.models import AgentEvent, Message
-from shipit_agent.runtime import AgentRuntime, RuntimeState
+from shipit_agent.core.models import AgentEvent, Message
+from shipit_agent.core.runtime import AgentRuntime, RuntimeState
 from shipit_agent.tools.base import ToolContext
 from shipit_agent.tools.edit_file import EditFileTool
 from shipit_agent.tools.file_read import FileReadTool
@@ -202,7 +202,7 @@ class TestRichRendering:
 
 class TestCLIPermissionPrompt:
     def _repl(self, answers):
-        from shipit_agent.chat_cli import ChatREPL
+        from shipit_agent.cli.chat import ChatREPL
 
         class L:
             def complete(self, **_kw):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from shipit_agent import Agent
-from shipit_agent.delegation import (
+from shipit_agent.agents.delegation import (
     DelegationPolicy,
     ModelAssessor,
     StructuralAssessor,
@@ -382,7 +382,7 @@ class TestBreadth:
     """
 
     def assess(self, prompt: str):
-        from shipit_agent.delegation import StructuralAssessor
+        from shipit_agent.agents.delegation import StructuralAssessor
 
         return StructuralAssessor().assess(prompt)
 

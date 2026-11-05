@@ -9,7 +9,7 @@ import tempfile
 
 from shipit_agent import Agent
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 # ---------------------------------------------------------------------------

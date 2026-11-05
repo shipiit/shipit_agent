@@ -10,7 +10,7 @@ import pytest
 
 from shipit_agent import Agent
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.serve import AgentServer
+from shipit_agent.cli.serve import AgentServer
 
 
 class EchoBackLLM:

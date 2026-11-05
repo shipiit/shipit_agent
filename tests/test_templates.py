@@ -1,4 +1,4 @@
-from shipit_agent.templates import PromptTemplate
+from shipit_agent.agent_setup.templates import PromptTemplate
 
 
 def test_render_simple_variable():

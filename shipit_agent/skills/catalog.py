@@ -111,7 +111,7 @@ def build_catalog(
     Returns ``SkillCatalogEntry`` values from :mod:`prefix`; imported lazily so
     this module stays usable on its own.
     """
-    from shipit_agent.prefix import SkillCatalogEntry  # local import: avoids a hard cycle
+    from shipit_agent.context.prefix import SkillCatalogEntry  # local import: avoids a hard cycle
 
     caps = caps or SkillCaps()
     skipped = set(exclude)
@@ -319,7 +319,7 @@ class LoadSkillTool:
         }
 
     def run(self, context: Any = None, **kwargs: Any) -> Any:
-        from shipit_agent.tools_compat import make_output  # tiny shim, see module docstring
+        from shipit_agent.core.tools_compat import make_output  # tiny shim, see module docstring
 
         skill_id = str(kwargs.get("skill_id", "")).strip()
         if not skill_id:

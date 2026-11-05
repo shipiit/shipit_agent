@@ -69,7 +69,7 @@ def test_sandbox_root_blocks_escape(tmp_path):
 def test_runtime_artifact_tracker_reads_the_path(tmp_path):
     # The download machinery relies on `_declared_paths` seeing `path` on an
     # existing file — assert that contract holds for present_file's metadata.
-    from shipit_agent.runtime_core import _declared_paths
+    from shipit_agent.core.runtime_core import _declared_paths
 
     f = tmp_path / "deliverable.csv"
     f.write_text("a,b\n1,2\n", encoding="utf-8")

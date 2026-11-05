@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.core.models import Message, ToolCall
 from shipit_agent.routing import StepRouter, classify_step
 from shipit_agent.routing.step_router import TURN_START
 
@@ -224,7 +224,7 @@ def test_async_prefers_the_adapters_native_acomplete():
 def test_model_is_the_one_with_the_tighter_window():
     router = StepRouter(fast=Plain("gpt-4o-mini"), strong=Plain("claude-opus-4"))
     assert router.model in {"gpt-4o-mini", "claude-opus-4"}
-    from shipit_agent.compaction import get_model_limits
+    from shipit_agent.context.compaction import get_model_limits
 
     windows = {m: get_model_limits(m).context_window for m in ("gpt-4o-mini", "claude-opus-4")}
     assert get_model_limits(router.model).context_window == min(windows.values())

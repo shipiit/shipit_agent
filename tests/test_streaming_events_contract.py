@@ -9,10 +9,10 @@ from __future__ import annotations
 from shipit_agent import MCPServer, MCPTool
 from shipit_agent.agent import Agent
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.tools.base import ToolOutput
 from shipit_agent.tools.tool_search import ToolSearchTool
-from shipit_agent.live import PacketKind, to_packets
+from shipit_agent.observability.live import PacketKind, to_packets
 
 
 class StreamingLLM:

@@ -26,7 +26,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
 from .prompt import VISION_PROMPT

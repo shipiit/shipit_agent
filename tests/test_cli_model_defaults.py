@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.chat_cli import PROVIDER_MODEL_ENV
+from shipit_agent.cli.chat import PROVIDER_MODEL_ENV
 from shipit_agent.cli.llm import DEFAULT_MODELS, MODEL_CATALOG
 
 

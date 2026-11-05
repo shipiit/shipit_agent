@@ -16,13 +16,13 @@ import inspect
 
 import pytest
 
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.lockdown import LockdownState
-from shipit_agent.models import ToolCall
-from shipit_agent.permissions import PermissionEngine
-from shipit_agent.runtime import AgentRuntime
-from shipit_agent.runtime_core import RuntimeCore
+from shipit_agent.safety.lockdown import LockdownState
+from shipit_agent.core.models import ToolCall
+from shipit_agent.safety.permissions import PermissionEngine
+from shipit_agent.core.runtime import AgentRuntime
+from shipit_agent.core.runtime_core import RuntimeCore
 from shipit_agent.tools.base import ToolOutput
 
 SHARED = [
@@ -324,7 +324,7 @@ class TestSharedStateIsActuallyShared:
         import pathlib
 
         for name in ("runtime.py", "async_runtime.py"):
-            src = pathlib.Path("shipit_agent") / name
+            src = pathlib.Path("shipit_agent") / "core" / name
             text = src.read_text()
             assert "build_shared_state(registry" in text, f"{name} must use the core"
             assert (
@@ -367,14 +367,14 @@ class TestBothLoopsSpendTokensTheSameWay:
     """
 
     def test_neither_loop_writes_its_own_step_request(self) -> None:
-        from shipit_agent.async_runtime import AsyncAgentRuntime
-        from shipit_agent.runtime import AgentRuntime
+        from shipit_agent.core.async_runtime import AsyncAgentRuntime
+        from shipit_agent.core.runtime import AgentRuntime
 
         for cls in (AgentRuntime, AsyncAgentRuntime):
             assert "step_request" not in vars(cls)
 
     def test_the_shared_helper_withholds_tools_on_the_last_step(self) -> None:
-        from shipit_agent.runtime_core import RuntimeCore
+        from shipit_agent.core.runtime_core import RuntimeCore
 
         core = RuntimeCore.__new__(RuntimeCore)
         core._init_core()
@@ -385,7 +385,7 @@ class TestBothLoopsSpendTokensTheSameWay:
         assert schemas == []
 
     def test_the_shared_helper_keeps_tools_for_a_single_step_run(self) -> None:
-        from shipit_agent.runtime_core import RuntimeCore
+        from shipit_agent.core.runtime_core import RuntimeCore
 
         core = RuntimeCore.__new__(RuntimeCore)
         core._init_core()
@@ -398,8 +398,8 @@ class TestBothLoopsSpendTokensTheSameWay:
     def test_the_shared_helper_does_not_mutate_the_caller_list(self) -> None:
         """The reminder is rebuilt each step; stacking it would grow the
         context every iteration."""
-        from shipit_agent.models import Message
-        from shipit_agent.runtime_core import RuntimeCore
+        from shipit_agent.core.models import Message
+        from shipit_agent.core.runtime_core import RuntimeCore
 
         core = RuntimeCore.__new__(RuntimeCore)
         core._init_core()

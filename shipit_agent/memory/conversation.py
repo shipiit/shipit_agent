@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 @dataclass(slots=True)

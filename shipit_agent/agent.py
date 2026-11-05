@@ -60,20 +60,20 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from shipit_agent.agent_preparation import AgentPreparationMixin
-from shipit_agent.builtins import get_builtin_tools
+from shipit_agent.agent_setup.preparation import AgentPreparationMixin
+from shipit_agent.agent_setup.builtins import get_builtin_tools
 from shipit_agent.chat_session import AgentChatSession
-from shipit_agent.doctor import AgentDoctor, DoctorReport
+from shipit_agent.agent_setup.doctor import AgentDoctor, DoctorReport
 from shipit_agent.integrations import CredentialStore
-from shipit_agent.models import AgentResult, Message
-from shipit_agent.policies import RetryPolicy, RouterPolicy
+from shipit_agent.core.models import AgentResult, Message
+from shipit_agent.core.policies import RetryPolicy, RouterPolicy
 from shipit_agent.prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
-from shipit_agent.reasoning import ReasoningResult, ReasoningRuntime
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.reasoning import ReasoningResult, ReasoningRuntime
+from shipit_agent.core.runtime import AgentRuntime
 from shipit_agent.skills import FileSkillRegistry, Skill, SkillRegistry
 from shipit_agent.stores import MemoryStore, SessionStore
-from shipit_agent.tracing import TraceStore
-from shipit_agent.agent_mixin import UpgradeMixin
+from shipit_agent.observability.tracing import TraceStore
+from shipit_agent.core.agent_mixin import UpgradeMixin
 
 logger = logging.getLogger(__name__)
 
@@ -659,7 +659,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             if tool_name:
                 merged[tool_name] = tool
         if optimized:
-            from shipit_agent.compaction import get_model_limits
+            from shipit_agent.context.compaction import get_model_limits
 
             kwargs.setdefault("code_mode", True)
             kwargs.setdefault(
@@ -764,7 +764,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         Unknown role ids raise ``ValueError`` listing close matches.
         """
         from shipit_agent.agents.registry import AgentRegistry
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         reg = registry or AgentRegistry.default()
         definition = reg.get(role)
@@ -818,7 +818,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         """
         import dataclasses
 
-        from shipit_agent.permissions import PermissionEngine
+        from shipit_agent.safety.permissions import PermissionEngine
 
         planner = dataclasses.replace(
             self,
@@ -997,7 +997,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         effective_user_prompt = user_prompt
         response_format: dict[str, Any] | None = None
         if output_schema:
-            from shipit_agent.structured import (
+            from shipit_agent.core.structured import (
                 build_schema_prompt,
                 schema_to_response_format,
             )
@@ -1049,7 +1049,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         # Cheap fix-it round trip; only fires when the first parse fails.
         parsed = None
         if output_schema and response.content:
-            from shipit_agent.structured_output import validate_with_retry
+            from shipit_agent.core.structured_output import validate_with_retry
 
             parsed, retry_text, attempts, attempt_log = validate_with_retry(
                 llm=self.llm,
@@ -1111,7 +1111,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         max_validation_retries: int = 2,
     ) -> AgentResult:
         """Async equivalent of :meth:`run` using the complete Agent pipeline."""
-        from shipit_agent.async_runtime import AsyncAgentRuntime
+        from shipit_agent.core.async_runtime import AsyncAgentRuntime
 
         async with self._async_run_lock:
             user_prompt = self._delegated_prompt(
@@ -1120,7 +1120,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             effective_user_prompt = user_prompt
             response_format: dict[str, Any] | None = None
             if output_schema:
-                from shipit_agent.structured import (
+                from shipit_agent.core.structured import (
                     build_schema_prompt,
                     schema_to_response_format,
                 )
@@ -1160,7 +1160,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
 
             parsed = None
             if output_schema and response.content:
-                from shipit_agent.structured_output import validate_with_retry
+                from shipit_agent.core.structured_output import validate_with_retry
 
                 parsed, retry_text, attempts, attempt_log = await asyncio.to_thread(
                     validate_with_retry,
@@ -1266,7 +1266,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
                 file=file, model=getattr(self.llm, "model", None)
             )
         else:
-            from shipit_agent.activity import StreamRenderer
+            from shipit_agent.observability.activity import StreamRenderer
 
             renderer = StreamRenderer(file=file, style=style)
         output = ""
@@ -1349,7 +1349,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
             if self.rag is not None:
                 sources = self.rag.end_run()
         if completed and sources:
-            from shipit_agent.models import AgentEvent
+            from shipit_agent.core.models import AgentEvent
 
             yield AgentEvent(
                 type="rag_sources",
@@ -1365,8 +1365,8 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         files: list[str] | None = None,
     ):
         """Feature-complete async counterpart to :meth:`stream`."""
-        from shipit_agent.async_runtime import AsyncAgentRuntime
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.async_runtime import AsyncAgentRuntime
+        from shipit_agent.core.models import AgentEvent
 
         async with self._async_run_lock:
             user_prompt = self._delegated_prompt(
@@ -1455,7 +1455,7 @@ class Agent(AgentPreparationMixin, UpgradeMixin):
         reconnecting client knows whether to keep what it already drew, and
         closes with ``[DONE]``. See :mod:`shipit_agent.streaming`.
         """
-        from shipit_agent.streaming import hello_frame, sse
+        from shipit_agent.observability.streaming import hello_frame, sse
 
         yield sse(hello_frame())
         sequence = 0

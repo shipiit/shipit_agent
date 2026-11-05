@@ -5,8 +5,8 @@ import sqlite3
 
 import pytest
 
-from shipit_agent.models import AgentEvent
-from shipit_agent.schedule import (
+from shipit_agent.core.models import AgentEvent
+from shipit_agent.scheduling.schedule import (
     AgentScheduler,
     ScheduledAgentConfig,
     ScheduledJob,
@@ -338,7 +338,7 @@ def test_a_permanently_broken_job_is_paused_rather_than_retried_forever():
     Counting that and doing nothing means it runs for as long as the
     daemon lives, burning quota and filling the log with one line.
     """
-    from shipit_agent.schedule import AgentScheduler
+    from shipit_agent.scheduling.schedule import AgentScheduler
 
     clock = {"now": 0.0}
     scheduler = AgentScheduler(
@@ -363,7 +363,7 @@ def test_a_permanently_broken_job_is_paused_rather_than_retried_forever():
 def test_resuming_a_fixed_job_clears_the_history_that_paused_it():
     """Otherwise the very next failure pauses it again, on a count that
     belonged to the problem somebody just fixed."""
-    from shipit_agent.schedule import AgentScheduler
+    from shipit_agent.scheduling.schedule import AgentScheduler
 
     scheduler = AgentScheduler(agent=_ExplodingAgent(),
                                max_consecutive_failures=2)
@@ -377,7 +377,7 @@ def test_resuming_a_fixed_job_clears_the_history_that_paused_it():
 
 def test_the_behaviour_can_be_switched_off():
     """A caller who would rather watch it fail is entitled to."""
-    from shipit_agent.schedule import AgentScheduler
+    from shipit_agent.scheduling.schedule import AgentScheduler
 
     clock = {"now": 0.0}
     scheduler = AgentScheduler(agent=_ExplodingAgent(),

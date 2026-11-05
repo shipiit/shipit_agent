@@ -6,7 +6,7 @@ from shipit_agent import (
     Skill,
     SkillRegistry,
 )
-from shipit_agent.doctor import DoctorReport
+from shipit_agent.agent_setup.doctor import DoctorReport
 from shipit_agent.llms import OpenAIChatLLM, SimpleEchoLLM
 from shipit_agent.tools import FunctionTool, GmailTool
 

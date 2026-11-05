@@ -7,7 +7,7 @@ from typing import Any
 from shipit_agent import Agent, FunctionTool, format_activity, format_event_line
 from shipit_agent.llms.base import LLMResponse, ToolCall
 from shipit_agent.mcp import MCPError, MCPRemoteTool
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.tools.base import ToolContext
 
 

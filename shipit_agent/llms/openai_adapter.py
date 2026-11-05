@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.core.models import Message, ToolCall
 from shipit_agent.llms.litellm_adapter import (
     _extract_reasoning,
     _iter_with_deadline,

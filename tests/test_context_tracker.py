@@ -1,5 +1,5 @@
-from shipit_agent.context_tracker import ContextTracker
-from shipit_agent.models import Message
+from shipit_agent.context.tracker import ContextTracker
+from shipit_agent.core.models import Message
 
 
 def test_snapshot_basic():

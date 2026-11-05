@@ -22,7 +22,7 @@ pure Python — no extra deps.
 Quick start::
 
     from shipit_agent.replay import TraceReplayer
-    from shipit_agent.tracing import FileTraceStore
+    from shipit_agent.observability.tracing import FileTraceStore
 
     store = FileTraceStore('./traces')
     replayer = TraceReplayer.from_store(store, trace_id='run-2026-05-09-abc')

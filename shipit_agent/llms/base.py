@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.core.models import Message, ToolCall
 
 
 def coerce_message(message: Any) -> Message:

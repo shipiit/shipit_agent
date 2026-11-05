@@ -7,7 +7,7 @@ from typing import Any
 from shipit_agent.llms import citations as _citations
 from shipit_agent.llms import server_tools as _server_tools
 from shipit_agent.llms.base import LLMResponse, coerce_message
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.core.models import Message, ToolCall
 
 # Beta header for interleaved thinking (verified in
 # anthropic.types.anthropic_beta_param, SDK 0.79.0).

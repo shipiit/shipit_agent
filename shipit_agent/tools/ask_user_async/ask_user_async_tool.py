@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from shipit_agent.askuser_channel import ask_question
+from shipit_agent.safety.askuser_channel import ask_question
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
 from .prompt import ASK_USER_ASYNC_PROMPT

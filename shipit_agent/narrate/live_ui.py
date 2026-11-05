@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 
 from .grouping import (
     ApprovalRow,

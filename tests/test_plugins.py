@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.hooks import AgentHooks
+from shipit_agent.safety.hooks import AgentHooks
 from shipit_agent.plugins import (
     HOOK_POINTS,
     Plugin,
@@ -338,7 +338,7 @@ def test_chat_and_clone_do_not_reactivate_plugins():
 def test_plugin_mcp_and_policy_compose_in_stream(deny_remote):
     from shipit_agent import Agent, FunctionTool, MCPServer, MCPTool
     from shipit_agent.llms.base import LLMResponse
-    from shipit_agent.models import ToolCall
+    from shipit_agent.core.models import ToolCall
 
     executions = []
     observed = []

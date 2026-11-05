@@ -24,9 +24,9 @@ from shipit_agent import (
 )
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
 from shipit_agent.llms.base import LLMResponse as BaseLLMResponse
-from shipit_agent.models import Message, ToolCall
-from shipit_agent.policies import RetryPolicy as RP
-from shipit_agent.runtime import AgentRuntime, RuntimeState
+from shipit_agent.core.models import Message, ToolCall
+from shipit_agent.core.policies import RetryPolicy as RP
+from shipit_agent.core.runtime import AgentRuntime, RuntimeState
 from shipit_agent.stores import InMemoryMemoryStore
 from shipit_agent.tools import ToolOutput
 

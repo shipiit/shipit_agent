@@ -87,7 +87,7 @@ class TestGatedActions:
         assert (repo / "a.txt").read_text() == "one\n"
 
     def test_in_builtin_catalogue(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         names = [t.name for t in get_builtin_tools(project_root=".")]
         assert "git_ops" in names

@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from shipit_agent.agent_mixin import UpgradeMixin
-from shipit_agent.models import ToolCall
+from shipit_agent.core.agent_mixin import UpgradeMixin
+from shipit_agent.core.models import ToolCall
 from shipit_agent.tests.test_bridge import FakeRule, FakeSkill, LegacyAgent
 from shipit_agent.tests.test_graph import EchoTool, Reply, ScriptedLLM
 from shipit_agent.tests.test_mcp_and_skills import FakeMCPServer, FakeMCPTool
@@ -115,7 +115,7 @@ def test_two_runs_do_not_leak_into_each_other():
 
 
 def test_history_is_carried_when_the_agent_has_it():
-    from shipit_agent.models import Message
+    from shipit_agent.core.models import Message
 
     a = agent(history=[Message(role="user", content="earlier")])
     assert [m.text for m in a.run_v2("now").messages][:2] == ["earlier", "now"]

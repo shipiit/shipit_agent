@@ -7,16 +7,16 @@ from typing import Any
 
 import pytest
 
-from shipit_agent.checkpoint import (
+from shipit_agent.core.checkpoint import (
     FileCheckpointStore,
     InMemoryCheckpointStore,
     PendingApproval,
     RunCheckpoint,
 )
-from shipit_agent.config import DEFAULTS, deep_merge, load_config
-from shipit_agent.live import Packet, PacketAccumulator, PacketKind, to_packets
+from shipit_agent.agent_setup.config import DEFAULTS, deep_merge, load_config
+from shipit_agent.observability.live import Packet, PacketAccumulator, PacketKind, to_packets
 from shipit_agent.llms.throttle import ThrottleKind
-from shipit_agent.prefix import (
+from shipit_agent.context.prefix import (
     SkillCatalogEntry,
     build_prefix,
     sort_tool_definitions,
@@ -27,7 +27,7 @@ from shipit_agent.skills.catalog import (
     SkillSession,
     build_catalog,
 )
-from shipit_agent.usage import (
+from shipit_agent.observability.usage import (
     DEFAULT_TIER_POLICY,
     Purpose,
     ServiceTier,

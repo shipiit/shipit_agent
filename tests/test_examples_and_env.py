@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from shipit_agent.llms import LLMResponse, LiteLLMChatLLM, ShipitLLM, VertexAIChatLLM
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 
 ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE_PATH = ROOT / "examples" / "run_multi_tool_agent.py"

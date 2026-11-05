@@ -37,7 +37,7 @@ import os
 import sys
 from typing import Any
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 
 from .grouping import (
     ApprovalRow,

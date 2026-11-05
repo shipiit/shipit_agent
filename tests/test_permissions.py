@@ -13,8 +13,8 @@ from shipit_agent import (
     PermissionResult,
 )
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
-from shipit_agent.permissions import authorize_tool, coerce_permissions
+from shipit_agent.core.models import ToolCall
+from shipit_agent.safety.permissions import authorize_tool, coerce_permissions
 
 
 # ---------------------------------------------------------------------------

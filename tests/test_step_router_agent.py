@@ -8,7 +8,7 @@ import pytest
 
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.routing import StepRouter
 
 USAGE = {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
@@ -132,8 +132,8 @@ def test_a_streamed_run_never_exposes_the_fast_draft():
 
 
 def test_routing_survives_a_compaction_of_the_turns_opening():
-    from shipit_agent.compaction import CompactionCheckpoint
-    from shipit_agent.models import Message
+    from shipit_agent.context.compaction import CompactionCheckpoint
+    from shipit_agent.core.models import Message
     from shipit_agent.routing import classify_step
 
     history = [Message(role="system", content="sys"),

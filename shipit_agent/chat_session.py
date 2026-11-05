@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
-from shipit_agent.models import AgentEvent, AgentResult, Message
-from shipit_agent.packets import (
+from shipit_agent.core.models import AgentEvent, AgentResult, Message
+from shipit_agent.core.packets import (
     event_packet,
     sse_event_packet,
     sse_result_packet,

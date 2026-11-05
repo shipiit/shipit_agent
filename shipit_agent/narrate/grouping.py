@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 
 from .verbs import (
     SEARCH,

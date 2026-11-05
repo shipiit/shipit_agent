@@ -611,7 +611,7 @@ def is_read_only(name: str, tool: Any = None) -> bool:
     known = _OVERRIDES.get(name) or VERBS.get(name)
     if known is not None:
         return known.read_only
-    from shipit_agent.permissions import PermissionEngine
+    from shipit_agent.safety.permissions import PermissionEngine
 
     return PermissionEngine().is_read_only(name, tool)
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from shipit_agent import Agent, TodoTool
-from shipit_agent.builtins import get_builtin_tool_map
+from shipit_agent.agent_setup.builtins import get_builtin_tool_map
 from shipit_agent.llms import SimpleEchoLLM
 from shipit_agent.tools.base import ToolContext
 

@@ -406,7 +406,7 @@ class SubAgentTool:
         agent: Any, brief: str, *, sink: Any, label: str, task: str
     ) -> tuple[str, dict[str, Any], dict[str, Any]]:
         """Run the child, forwarding its events to the parent's sink."""
-        from shipit_agent.models import AgentResult
+        from shipit_agent.core.models import AgentResult
 
         events: list[Any] = []
         output = ""

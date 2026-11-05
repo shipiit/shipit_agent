@@ -293,7 +293,7 @@ class ShipCoordinator:
         which agent, reviews outputs, and can request revisions
         before moving on.
         """
-        from shipit_agent.models import Message
+        from shipit_agent.core.models import Message
 
         outputs: dict[str, str] = {}
         remaining = set(self.tasks.keys())
@@ -447,7 +447,7 @@ class ShipCoordinator:
         Emits events for: ``crew_started``, ``task_started``,
         ``task_completed``, ``task_failed``, ``crew_completed``.
         """
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         yield AgentEvent(
             type="run_started",

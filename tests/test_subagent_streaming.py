@@ -7,7 +7,7 @@ import time
 
 from shipit_agent import Agent, SubAgentTool
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import AgentEvent, ToolCall
+from shipit_agent.core.models import AgentEvent, ToolCall
 from shipit_agent.narrate.grouping import SubAgentRow, WorkRow, build_transcript
 from shipit_agent.narrate.renderer import NarratorRenderer
 from shipit_agent.tools.base import ToolOutput

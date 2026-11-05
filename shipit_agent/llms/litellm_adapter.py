@@ -13,7 +13,7 @@ from shipit_agent.llms.bedrock_token import (
     existing_bearer_token,
     generate_bearer_token,
 )
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.core.models import Message, ToolCall
 
 
 def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:

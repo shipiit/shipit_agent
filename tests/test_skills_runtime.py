@@ -17,9 +17,9 @@ from shipit_agent import (
     skill_id_from_name,
 )
 from shipit_agent.agent import DEFAULT_SKILLS_PATH
-from shipit_agent.builtins import get_builtin_tool_map
+from shipit_agent.agent_setup.builtins import get_builtin_tool_map
 from shipit_agent.llms import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.skills.tool_bundles import validate_tool_bundles
 
 

@@ -6,7 +6,7 @@ import io
 
 import pytest
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.narrate.renderer import LiveRegion, NarratorRenderer, render_transcript
 
 

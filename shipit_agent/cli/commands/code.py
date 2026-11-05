@@ -35,7 +35,7 @@ Playbook:
 
 
 def _permission_prompt(name: str, arguments: dict[str, Any]) -> Any:
-    from shipit_agent.permissions import PermissionDecision, PermissionResult
+    from shipit_agent.safety.permissions import PermissionDecision, PermissionResult
 
     preview = ", ".join(f"{k}={str(v)[:40]!r}" for k, v in list(arguments.items())[:3])
     sys.stdout.write(
@@ -66,7 +66,7 @@ def cmd_code(args: argparse.Namespace) -> int:
     root = os.getcwd()
     mode = "plan" if args.plan else ("acceptEdits" if args.yes else "default")
 
-    from shipit_agent.hitl import console_permission_prompt
+    from shipit_agent.safety.hitl import console_permission_prompt
 
     gated_prompt = console_permission_prompt(
         always_allowed=_permission_prompt.always  # type: ignore[attr-defined]
@@ -79,7 +79,7 @@ def cmd_code(args: argparse.Namespace) -> int:
         for name in [n.strip() for n in args.mcp.split(",") if n.strip()]:
             mcps.append(connect_mcp(name))
 
-    from shipit_agent.hitl import ConsoleAskUserTool
+    from shipit_agent.safety.hitl import ConsoleAskUserTool
 
     from shipit_agent import ApprovalQueue
 
@@ -139,7 +139,7 @@ def _run(agent: Any, args: argparse.Namespace, events: list[Any]) -> str:
 
         renderer: Any = NarratorRenderer(model=getattr(agent.llm, "model", None))
     else:
-        from shipit_agent.activity import StreamRenderer
+        from shipit_agent.observability.activity import StreamRenderer
 
         renderer = StreamRenderer(style=style)
 

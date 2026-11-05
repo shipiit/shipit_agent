@@ -18,7 +18,7 @@ from collections import Counter
 
 from shipit_agent import Agent, FunctionTool, MCPServer, MCPTool
 from shipit_agent.deferral import DiscoveryPolicy
-from shipit_agent.policies import RetryPolicy
+from shipit_agent.core.policies import RetryPolicy
 from shipit_agent.tools.base import ToolOutput
 
 

@@ -16,7 +16,7 @@ from shipit_agent import (
     WorkspaceFilesTool,
 )
 from shipit_agent.connections import Connection, ConnectionState
-from shipit_agent.builtins import get_builtin_tools
+from shipit_agent.agent_setup.builtins import get_builtin_tools
 from shipit_agent.llms import SimpleEchoLLM
 from shipit_agent.mcp import MCPTool
 from shipit_agent.tools.artifact_builder import ARTIFACT_BUILDER_PROMPT

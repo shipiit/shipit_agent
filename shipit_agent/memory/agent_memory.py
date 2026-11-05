@@ -10,7 +10,7 @@ from shipit_agent.memory.semantic import (
     SearchResult,
     SemanticMemory,
 )
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 @dataclass(slots=True)

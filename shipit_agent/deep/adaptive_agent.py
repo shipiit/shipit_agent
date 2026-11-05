@@ -120,7 +120,7 @@ class AdaptiveAgent:
     def stream(self, task: str):
         """Run the adaptive agent and yield events."""
         from shipit_agent.agent import Agent
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         yield AgentEvent(
             type="run_started",

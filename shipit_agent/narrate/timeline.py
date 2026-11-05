@@ -42,7 +42,7 @@ from __future__ import annotations
 import json
 from typing import Any, Iterable, Iterator
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 
 from .verbs import summarize
 

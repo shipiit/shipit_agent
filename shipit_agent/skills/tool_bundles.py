@@ -300,7 +300,7 @@ def validate_tool_bundles(builtin_names: set[str]) -> list[str]:
 
     Usage::
 
-        from shipit_agent.builtins import get_builtin_tool_map
+        from shipit_agent.agent_setup.builtins import get_builtin_tool_map
         from shipit_agent.skills.tool_bundles import validate_tool_bundles
         errors = validate_tool_bundles(set(get_builtin_tool_map().keys()))
     """

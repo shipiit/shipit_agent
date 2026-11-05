@@ -10,8 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from shipit_agent.models import AgentEvent
-from shipit_agent.tracing import TraceRecord
+from shipit_agent.core.models import AgentEvent
+from shipit_agent.observability.tracing import TraceRecord
 
 logger = logging.getLogger(__name__)
 

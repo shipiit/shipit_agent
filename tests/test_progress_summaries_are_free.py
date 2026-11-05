@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from shipit_agent import Agent
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.tools.base import ToolOutput
 
 
@@ -236,14 +236,14 @@ class TestWhatItSays:
 
 class TestTheClauseJoiner:
     def test_it_reads_as_english(self) -> None:
-        from shipit_agent.runtime import _join_clauses
+        from shipit_agent.core.runtime import _join_clauses
 
         assert _join_clauses(["a"]) == "a"
         assert _join_clauses(["a", "b"]) == "a and b"
         assert _join_clauses(["a", "b", "c"]) == "a, b and c"
 
     def test_it_drops_empties_rather_than_leaving_gaps(self) -> None:
-        from shipit_agent.runtime import _join_clauses
+        from shipit_agent.core.runtime import _join_clauses
 
         assert _join_clauses(["a", "", "c"]) == "a and c"
         assert _join_clauses([]) == ""
@@ -259,13 +259,13 @@ class TestTheModelsTextIsChecked:
     """
 
     def test_real_prose_is_used(self) -> None:
-        from shipit_agent.runtime import _looks_like_prose
+        from shipit_agent.core.runtime import _looks_like_prose
 
         assert _looks_like_prose("Searching the dark-web index for Qilin.")
         assert _looks_like_prose("I have what I need. I'll build the PDF.")
 
     def test_a_leaked_call_fragment_is_refused(self) -> None:
-        from shipit_agent.runtime import _looks_like_prose
+        from shipit_agent.core.runtime import _looks_like_prose
 
         assert not _looks_like_prose(
             'off,name":"} // ERROR in thought process, fixing to: rl_gr'
@@ -274,7 +274,7 @@ class TestTheModelsTextIsChecked:
         assert not _looks_like_prose('{"name": "rl_search"}')
 
     def test_nothing_is_not_prose(self) -> None:
-        from shipit_agent.runtime import _looks_like_prose
+        from shipit_agent.core.runtime import _looks_like_prose
 
         assert not _looks_like_prose("")
         assert not _looks_like_prose("ok")

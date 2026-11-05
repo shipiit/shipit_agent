@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.narrate.share import (
     render_transcript_html,
     transcript_json,
@@ -203,7 +203,7 @@ class TestRobustness:
 
 def test_write_transcript_forwards_the_prompt(tmp_path) -> None:
     """It accepted `title` and `model` but silently dropped `prompt`."""
-    from shipit_agent.models import AgentEvent
+    from shipit_agent.core.models import AgentEvent
     from shipit_agent.narrate.share import write_transcript
 
     events = [AgentEvent(type="run_completed", message="", payload={"output": "hi"})]

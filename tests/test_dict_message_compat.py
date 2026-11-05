@@ -17,7 +17,7 @@ from shipit_agent.llms import ShipitLLM
 from shipit_agent.llms.anthropic_adapter import AnthropicChatLLM
 from shipit_agent.llms.base import coerce_message, coerce_messages
 from shipit_agent.llms.litellm_adapter import _normalize_content, _serialize_message
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 # The exact shapes ComputerUseAgent builds.

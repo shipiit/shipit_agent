@@ -91,7 +91,7 @@ class LLMReranker:
     ) -> list[tuple[Chunk, float]]:
         if not chunks:
             return []
-        from shipit_agent.models import Message
+        from shipit_agent.core.models import Message
 
         scored: list[tuple[Chunk, float]] = []
         for start in range(0, len(chunks), self.batch_size):

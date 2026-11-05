@@ -54,18 +54,18 @@ def main(argv: list[str] | None = None) -> int:
     # bottom-pinned input, slash commands, live tool cards — like Claude
     # Code. Pipes/CI (non-TTY) keep the help text so scripts don't hang.
     if not argv and _interactive_terminal():
-        from shipit_agent.chat_cli import main as chat_main
+        from shipit_agent.cli.chat import main as chat_main
 
         return chat_main([])
 
     # Full flag passthrough for the interactive/long-running families —
     # unknown flags are forwarded untouched to their dedicated CLIs.
     if argv and argv[0] == "chat":
-        from shipit_agent.chat_cli import main as chat_main
+        from shipit_agent.cli.chat import main as chat_main
 
         return chat_main(argv[1:])
     if argv and argv[0] in ("autopilot", "daemon", "queue", "answer"):
-        from shipit_agent.cli_autopilot import (
+        from shipit_agent.cli.autopilot import (
             run_answer_cli,
             run_autopilot_cli,
             run_daemon_cli,

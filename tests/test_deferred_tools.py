@@ -16,7 +16,7 @@ import json
 import pytest
 
 from shipit_agent.agent import Agent
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from shipit_agent.deferral import (
     DEFAULT_CORE_TOOLS,
     deferred_index,
@@ -25,8 +25,8 @@ from shipit_agent.deferral import (
     signature_line,
 )
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.runtime import AgentRuntime
 from shipit_agent.tools.base import ToolOutput
 from shipit_agent.tools.tool_search import ToolSearchTool
 

@@ -18,8 +18,8 @@ import pytest
 
 from shipit_agent import Agent, AsyncAgentRuntime, FunctionTool
 from shipit_agent.llms.base import LLMResponse, accepts_text_delta_callback
-from shipit_agent.models import ToolCall
-from shipit_agent.runtime import (
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.runtime import (
     AgentRuntime,
     _isolated_tool_state,
     _merge_tool_state,

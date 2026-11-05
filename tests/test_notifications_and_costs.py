@@ -30,7 +30,7 @@ from shipit_agent.costs.tracker import (
     _extract_model,
     _extract_usage,
 )
-from shipit_agent.hooks import AgentHooks
+from shipit_agent.safety.hooks import AgentHooks
 from shipit_agent.notifications.base import SEVERITY_ORDER, Notification
 from shipit_agent.notifications.discord import DiscordNotifier
 from shipit_agent.notifications.discord import _SEVERITY_COLOURS as DISCORD_COLOURS

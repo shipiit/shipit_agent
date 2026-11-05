@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from shipit_agent.models import Message
-from shipit_agent.registry import ToolRegistry
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.models import Message
+from shipit_agent.core.registry import ToolRegistry
+from shipit_agent.core.runtime import AgentRuntime
 from shipit_agent.tools.recall_result import RecallToolResult
 from shipit_agent.tools.recall_result.recall_result_tool import recallable_results
 

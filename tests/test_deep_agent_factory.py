@@ -12,7 +12,7 @@ from shipit_agent.deep import (
 from shipit_agent.deep.deep_agent.toolset import deep_tool_set, merge_tools
 from shipit_agent.deep.deep_agent.verification import verify_text
 from shipit_agent.llms import SimpleEchoLLM
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 from shipit_agent.stores import FileMemoryStore, FileSessionStore, InMemorySessionStore
 from shipit_agent.tools.base import Tool, ToolContext, ToolOutput
 

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from shipit_agent import MCPServer, MCPTool
 from shipit_agent.agent import Agent
-from shipit_agent.policies import RetryPolicy
+from shipit_agent.core.policies import RetryPolicy
 from shipit_agent.tools.ask_user.ask_user_tool import AskUserTool
 from shipit_agent.tools.base import ToolOutput
 from shipit_agent.tools.tool_search import ToolSearchTool

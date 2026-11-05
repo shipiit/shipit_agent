@@ -7,8 +7,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from shipit_agent.models import AgentEvent, Message
-from shipit_agent.tracing import TraceRecord
+from shipit_agent.core.models import AgentEvent, Message
+from shipit_agent.observability.tracing import TraceRecord
 
 from .models import ForkPoint, ReplayCheckpoint
 

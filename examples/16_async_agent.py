@@ -15,7 +15,7 @@ import asyncio
 
 from shipit_agent import AsyncAgentRuntime, FunctionTool
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 
 
 class _ScriptedLLM:

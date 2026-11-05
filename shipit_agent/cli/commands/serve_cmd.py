@@ -11,7 +11,7 @@ from shipit_agent.cli.llm import build_agent
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    from shipit_agent.serve import AgentServer
+    from shipit_agent.cli.serve import AgentServer
 
     agent = build_agent(args)
     server = AgentServer(agent, model_name=args.name, api_key=args.api_key)

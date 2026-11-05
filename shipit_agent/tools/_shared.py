@@ -93,7 +93,7 @@ class ToolBase:
     # -- results -----------------------------------------------------------
 
     def ok(self, text: str, hint: str = "", **metadata: Any) -> Any:
-        from shipit_agent.tools_compat import make_output
+        from shipit_agent.core.tools_compat import make_output
 
         bounded, cut = truncate_output(
             text, limit=self.workspace.max_output_chars, recovery_hint=hint
@@ -103,7 +103,7 @@ class ToolBase:
     def fail(self, text: str, **metadata: Any) -> Any:
         """An error the model can act on. Never an exception: a tool that raises
         ends a run the model could have recovered from in one turn."""
-        from shipit_agent.tools_compat import make_output
+        from shipit_agent.core.tools_compat import make_output
 
         return make_output(text, metadata={**metadata, "is_error": True})
 

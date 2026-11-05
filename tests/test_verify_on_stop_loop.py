@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from shipit_agent.llms.base import LLMResponse, ToolCall
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.runtime import AgentRuntime
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
 

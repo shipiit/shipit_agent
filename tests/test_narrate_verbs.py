@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.builtins import get_builtin_tools
+from shipit_agent.agent_setup.builtins import get_builtin_tools
 from shipit_agent.narrate.verbs import (
     VERBS,
     describe_count,

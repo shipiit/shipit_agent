@@ -14,7 +14,7 @@ from shipit_agent.mcp import (
     MCPStreamableHTTPTransport,
     RemoteMCPServer,
 )
-from shipit_agent.schedule import AgentScheduler
+from shipit_agent.scheduling.schedule import AgentScheduler
 from shipit_agent.tools.base import ToolContext
 from shipit_agent.tools.sub_agent import SubAgentTool
 
@@ -212,7 +212,7 @@ class TestDurableScheduler:
 
     def test_store_delete(self, tmp_path) -> None:
         store = SQLiteJobStore(str(tmp_path / "jobs.db"))
-        from shipit_agent.schedule import ScheduledJob
+        from shipit_agent.scheduling.schedule import ScheduledJob
 
         store.save(ScheduledJob(name="x", prompt="p", next_run=5.0))
         assert store.load("x") is not None

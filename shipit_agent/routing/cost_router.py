@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Iterable
 
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 class DifficultyTier(str, Enum):

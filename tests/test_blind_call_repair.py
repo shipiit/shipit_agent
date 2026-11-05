@@ -92,7 +92,7 @@ def test_blind_call_then_recovers_and_runs():
 
 
 def test_signature_hint_is_robust_to_a_broken_schema():
-    from shipit_agent.runtime_core import RuntimeCore
+    from shipit_agent.core.runtime_core import RuntimeCore
 
     class Broken:
         name = "x"

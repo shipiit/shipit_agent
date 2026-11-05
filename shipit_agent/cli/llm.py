@@ -93,7 +93,7 @@ def build_agent(args: Any) -> Any:
 
         for name in [n.strip() for n in raw_mcp.split(",") if n.strip()]:
             mcps.append(connect_mcp(name))
-    from shipit_agent.hitl import ConsoleAskUserTool
+    from shipit_agent.safety.hitl import ConsoleAskUserTool
 
     # CLI runs have a human at the terminal: swap the event-only ask_user
     # for the variant that actually prompts and returns the answer.

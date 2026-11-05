@@ -41,7 +41,7 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol, Sequenc
 
 from shipit_agent.llms.capabilities import capabilities_for
 from shipit_agent.llms.schema_prep import prepare_schema
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 
 logger = logging.getLogger(__name__)
 

@@ -360,7 +360,7 @@ def _from_heuristics(name: str, tool: Any) -> ToolContract:
     it looks read-only, otherwise an untagged action, which is the safe
     reading (untagged means it can never be auto-approved).
     """
-    from shipit_agent.permissions import PermissionEngine
+    from shipit_agent.safety.permissions import PermissionEngine
 
     if PermissionEngine().is_read_only(name, tool):
         return OBSERVE

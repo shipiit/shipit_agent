@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import threading
 
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 from shipit_agent.stores.memory import FileMemoryStore, MemoryFact
 from shipit_agent.stores.session import FileSessionStore, SessionRecord
 

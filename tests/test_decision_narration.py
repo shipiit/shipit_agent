@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 
 
 def _echo(query: str) -> str:
@@ -183,7 +183,7 @@ class TestThePromptStaysSmall:
 
 
 def test_a_drafted_answer_keeps_its_headings_tables_and_line_breaks():
-    from shipit_agent.runtime_narration import first_sentences
+    from shipit_agent.core.narration import first_sentences
 
     text = ("I am retrieving the details for cases A and B now.\n\n"
             "### Case A: Brief\n**Brief:**   fetching.\n\n| a | b |\n|---|---|")
@@ -193,7 +193,7 @@ def test_a_drafted_answer_keeps_its_headings_tables_and_line_breaks():
 
 
 def test_plain_prose_is_still_trimmed_at_a_sentence():
-    from shipit_agent.runtime_narration import first_sentences
+    from shipit_agent.core.narration import first_sentences
 
     long = ("This sentence is long enough to matter. " * 15).strip()
     spoken = first_sentences(long)
@@ -201,7 +201,7 @@ def test_plain_prose_is_still_trimmed_at_a_sentence():
 
 
 def test_soft_wrapped_prose_still_reads_as_one_line():
-    from shipit_agent.runtime_narration import first_sentences
+    from shipit_agent.core.narration import first_sentences
 
     assert first_sentences("I will open the\ncase file first.") == "I will open the case file first."
     assert first_sentences("") == ""

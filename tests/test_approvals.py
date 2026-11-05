@@ -356,8 +356,8 @@ class TestRuntimeIntegration:
     def _agent(queue, script, tools=None):
         from shipit_agent import Agent
         from shipit_agent.llms.base import LLMResponse
-        from shipit_agent.models import ToolCall
-        from shipit_agent.permissions import PermissionEngine
+        from shipit_agent.core.models import ToolCall
+        from shipit_agent.safety.permissions import PermissionEngine
 
         class ScriptedLLM:
             model = "test-model"
@@ -523,7 +523,7 @@ class TestRuntimeIntegration:
             tools=[self._tool("read_file", output="contents", calls=ran)],
         )
         # Only the action is gated; the read is allowed by policy.
-        from shipit_agent.permissions import PermissionEngine
+        from shipit_agent.safety.permissions import PermissionEngine
 
         agent.permissions = PermissionEngine(ask=["slack"], allow=["read_file"])
         result = agent.run("Read it.")

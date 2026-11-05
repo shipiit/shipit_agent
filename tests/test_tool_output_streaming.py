@@ -15,12 +15,12 @@ from shipit_agent import (
     ToolOutput,
     ToolOutputChunk,
 )
-from shipit_agent.activity import StreamRenderer
+from shipit_agent.observability.activity import StreamRenderer
 from shipit_agent.llms import LLMResponse
 from shipit_agent.mcp import MCPServer, MCPTool
-from shipit_agent.models import ToolCall
-from shipit_agent.registry import ToolRegistry
-from shipit_agent.tool_runner import ToolRunner
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.registry import ToolRegistry
+from shipit_agent.core.tool_runner import ToolRunner
 from shipit_agent.tools import ToolContext
 
 

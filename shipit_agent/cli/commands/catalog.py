@@ -40,7 +40,7 @@ def cmd_mcp(_args: argparse.Namespace) -> int:
 
 
 def cmd_tools(_args: argparse.Namespace) -> int:
-    from shipit_agent.builtins import get_builtin_tools
+    from shipit_agent.agent_setup.builtins import get_builtin_tools
 
     tools = get_builtin_tools(project_root=os.getcwd())
     for tool in sorted(tools, key=lambda t: t.name):

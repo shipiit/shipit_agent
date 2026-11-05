@@ -5,7 +5,7 @@ from shipit_agent.llms import (
     SimpleEchoLLM,
     VertexAIChatLLM,
 )
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.tools import FunctionTool, ToolContext
 
 

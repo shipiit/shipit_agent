@@ -236,7 +236,7 @@ class TestBuildBindings:
         assert build_bindings([Nameless()]) == {}
 
     def test_every_builtin_binds(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         tools = get_builtin_tools(llm=None, project_root=".")
         bindings = build_bindings(tools)
@@ -413,7 +413,7 @@ class TestDescribeBindingTool:
         assert contract_for("describe_binding").read_only
 
     def test_registered_as_a_builtin(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         names = {getattr(t, "name", "") for t in get_builtin_tools(llm=None, project_root=".")}
         assert "describe_binding" in names
@@ -424,7 +424,7 @@ class TestPromptCollapse:
         """The reason code mode exists, pinned as a test."""
         import json
 
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         tools = get_builtin_tools(llm=None, project_root=".")
         full = len(json.dumps([t.schema() for t in tools]))
@@ -444,7 +444,7 @@ class TestPromptCollapse:
         )
 
     def test_describing_one_binding_is_cheap(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         bindings = build_bindings(get_builtin_tools(llm=None, project_root="."))
         # Paid once, on demand — not every call, forever.

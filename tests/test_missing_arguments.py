@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.models import ToolCall
-from shipit_agent.registry import ToolRegistry
-from shipit_agent.tool_runner import ToolRunner
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.registry import ToolRegistry
+from shipit_agent.core.tool_runner import ToolRunner
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
 
@@ -156,7 +156,7 @@ class TestTheOriginalReport:
         ("open_url", {}),
     ])
     def test_every_tool_with_this_shape_is_covered(self, name, arguments) -> None:
-        from shipit_agent.builtins import get_builtin_tool_map
+        from shipit_agent.agent_setup.builtins import get_builtin_tool_map
 
         tool = get_builtin_tool_map(llm=None, project_root=".")[name]
         result = run(tool, **arguments)

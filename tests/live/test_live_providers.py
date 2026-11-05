@@ -18,7 +18,7 @@ import os
 import pytest
 
 from shipit_agent.agent import Agent
-from shipit_agent.policies import RetryPolicy
+from shipit_agent.core.policies import RetryPolicy
 from shipit_agent.tools.base import ToolOutput
 from shipit_agent.tools.tool_search import ToolSearchTool
 

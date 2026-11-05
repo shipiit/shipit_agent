@@ -34,8 +34,8 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from shipit_agent.models import AgentEvent
-from shipit_agent.tracing import TraceRecord
+from shipit_agent.core.models import AgentEvent
+from shipit_agent.observability.tracing import TraceRecord
 
 logger = logging.getLogger(__name__)
 

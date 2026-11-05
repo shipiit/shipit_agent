@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 @dataclass(slots=True)

@@ -28,7 +28,7 @@ def _store(args: argparse.Namespace):
 
 
 def cmd_add(args: argparse.Namespace) -> int:
-    from shipit_agent.schedule import ScheduledAgentConfig, ScheduledJob
+    from shipit_agent.scheduling.schedule import ScheduledAgentConfig, ScheduledJob
 
     if not (args.every or args.at or args.cron):
         ui.out(

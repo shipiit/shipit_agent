@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from shipit_agent.bridge import MAPPING, NOT_YET_MAPPED, spec_from_agent, unmapped
-from shipit_agent.graph import AgentGraph
+from shipit_agent.core.bridge import MAPPING, NOT_YET_MAPPED, spec_from_agent, unmapped
+from shipit_agent.core.graph import AgentGraph
 from shipit_agent.tests.test_graph import EchoTool, Reply, ScriptedLLM
 from shipit_agent.tests.test_mcp_and_skills import FakeMCPServer, FakeMCPTool
 
@@ -219,7 +219,7 @@ def test_a_non_iterable_skill_registry_does_not_break_the_bridge():
 def test_a_legacy_agent_config_drives_the_new_loop_end_to_end():
     tool = EchoTool()
     llm = ScriptedLLM(
-        Reply(tool_calls=[__import__("shipit_agent.models", fromlist=["ToolCall"]).ToolCall(
+        Reply(tool_calls=[__import__("shipit_agent.core.models", fromlist=["ToolCall"]).ToolCall(
             name="echo", arguments={"text": "hi"}
         )]),
         Reply(content="finished"),

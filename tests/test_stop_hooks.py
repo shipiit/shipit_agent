@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 
-from shipit_agent.async_runtime import AsyncAgentRuntime
-from shipit_agent.hooks import AgentHooks
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
+from shipit_agent.safety.hooks import AgentHooks
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.runtime import AgentRuntime
 
 
 class ScriptedLLM:

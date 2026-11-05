@@ -4,7 +4,7 @@ import builtins
 
 from shipit_agent.llms import build_llm_from_settings
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 def test_build_llm_from_settings_supports_bedrock(monkeypatch) -> None:

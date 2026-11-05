@@ -15,7 +15,7 @@ from shipit_agent.connections.mcp import (
     MCPConnectorRegistry,
     Transport,
 )
-from shipit_agent.prefix_rules import collect_tool_rules, render_rules
+from shipit_agent.context.prefix_rules import collect_tool_rules, render_rules
 from shipit_agent.tools import core_tools, specialist_tools
 from shipit_agent.tools.fetch_url import html_to_text
 from shipit_agent.tools.memory import MemoryStore, MemoryTool

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from shipit_agent.schedule import ScheduleResult, ScheduleRunner
+from shipit_agent.scheduling.schedule import ScheduleResult, ScheduleRunner
 
 
 @dataclass
@@ -53,7 +53,7 @@ def test_execute_with_session():
 
 
 def test_execute_stream():
-    from shipit_agent.models import AgentEvent
+    from shipit_agent.core.models import AgentEvent
 
     events = [
         AgentEvent(type="run_started", message="start", payload={}),

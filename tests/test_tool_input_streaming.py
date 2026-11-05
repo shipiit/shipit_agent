@@ -8,7 +8,7 @@ import json
 import pytest
 
 from shipit_agent.llms.base import accepts_tool_input_callback
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.narrate.grouping import WorkRunAccumulator
 from shipit_agent.narrate.renderer import NarratorRenderer
 
@@ -165,7 +165,7 @@ class TestRuntimeIntegration:
         """End to end: raw argument JSON in, decoded field out as events."""
         from shipit_agent import Agent
         from shipit_agent.llms.base import LLMResponse
-        from shipit_agent.models import ToolCall
+        from shipit_agent.core.models import ToolCall
         from shipit_agent.tools.base import ToolOutput
 
         payload = json.dumps({"path": "app.py", "content": "def main():\n    pass\n"})

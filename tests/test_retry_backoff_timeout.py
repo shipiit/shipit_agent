@@ -6,10 +6,10 @@ import asyncio
 import threading
 import time
 
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.policies import RetryPolicy
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.policies import RetryPolicy
+from shipit_agent.core.runtime import AgentRuntime
 
 
 class FlakyLLM:

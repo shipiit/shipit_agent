@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from shipit_agent import SubAgentTool
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.sub_agent.sub_agent_tool import (
     DEPTH_STATE_KEY,
@@ -168,7 +168,7 @@ class TestInheritance:
 
     def test_it_inherits_the_permission_engine(self) -> None:
         """Delegation must not be a way around the parent's policy."""
-        from shipit_agent.permissions import PermissionEngine
+        from shipit_agent.safety.permissions import PermissionEngine
 
         calls: list = []
         out = SubAgentTool(llm=ScriptedLLM([
@@ -186,7 +186,7 @@ class TestInheritance:
 
     def test_it_inherits_the_approval_queue(self) -> None:
         from shipit_agent import ApprovalQueue
-        from shipit_agent.permissions import PermissionEngine
+        from shipit_agent.safety.permissions import PermissionEngine
 
         calls: list = []
         queue = ApprovalQueue()
@@ -310,7 +310,7 @@ class TestArgumentNaming:
         they collide with the positional ToolContext. The original tool named
         this parameter `context`, so supporting context never arrived.
         """
-        from shipit_agent.tool_runner import ToolRunner
+        from shipit_agent.core.tool_runner import ToolRunner
 
         params = SubAgentTool(llm=ScriptedLLM([]))\
             .schema()["function"]["parameters"]["properties"]
@@ -318,9 +318,9 @@ class TestArgumentNaming:
         assert not set(params) & ToolRunner._RESERVED_ARG_NAMES
 
     def test_details_survive_the_tool_runner(self) -> None:
-        from shipit_agent.registry import ToolRegistry
-        from shipit_agent.tool_runner import ToolRunner
-        from shipit_agent.models import ToolCall
+        from shipit_agent.core.registry import ToolRegistry
+        from shipit_agent.core.tool_runner import ToolRunner
+        from shipit_agent.core.models import ToolCall
 
         seen: list = []
 
@@ -366,7 +366,7 @@ class TestMetadataKeyCollisions:
 
     def test_a_sub_agent_result_serializes_for_litellm(self) -> None:
         from shipit_agent.llms.litellm_adapter import _serialize_message
-        from shipit_agent.models import Message
+        from shipit_agent.core.models import Message
 
         out = SubAgentTool(llm=ScriptedLLM([("done", [])])).run(
             parent_context(), task="go"
@@ -381,7 +381,7 @@ class TestMetadataKeyCollisions:
     def test_a_non_list_under_the_key_is_ignored_not_fatal(self) -> None:
         # Any tool can land a value there; it must never break the request.
         from shipit_agent.llms.litellm_adapter import _serialize_message
-        from shipit_agent.models import Message
+        from shipit_agent.core.models import Message
 
         for value in (3, "x", {"a": 1}, None):
             payload = _serialize_message(
@@ -412,7 +412,7 @@ class TestSchemaIsUnambiguous:
 
     def test_no_builtin_has_parameters_but_nothing_required(self) -> None:
         """Unless it handles an empty call sensibly, which the exceptions do."""
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         handles_empty = {
             "connections",   # defaults to action="list"

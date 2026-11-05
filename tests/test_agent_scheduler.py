@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as _dt
 
-from shipit_agent.schedule import AgentScheduler, ScheduledJob
+from shipit_agent.scheduling.schedule import AgentScheduler, ScheduledJob
 
 
 class FakeClock:

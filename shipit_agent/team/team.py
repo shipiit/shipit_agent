@@ -116,7 +116,7 @@ class AgentTeam:
         return "\n".join(lines)
 
     def _ask_coordinator(self, task: str, rounds: list[TeamRound]) -> dict[str, Any]:
-        from shipit_agent.models import Message
+        from shipit_agent.core.models import Message
 
         prompt = COORDINATOR_PROMPT.format(
             agent_descriptions=self._build_agent_descriptions(),
@@ -191,7 +191,7 @@ class AgentTeam:
             for event in team.stream("Write a guide"):
                 print(f"[{event.payload.get('agent', 'coordinator')}] {event.message}")
         """
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         yield AgentEvent(
             type="run_started",

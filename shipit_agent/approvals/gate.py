@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from shipit_agent.models import Message, ToolResult
+from shipit_agent.core.models import Message, ToolResult
 
 __all__ = ["DeferralOutcome", "defer_tool_call"]
 

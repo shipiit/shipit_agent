@@ -15,7 +15,7 @@ from shipit_agent import (
 )
 from shipit_agent.llms import ShipitLLM
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.stores import FileMemoryStore, FileSessionStore
 
 

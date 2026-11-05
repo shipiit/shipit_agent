@@ -12,7 +12,7 @@ import json
 
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 
 
 class ReplayLLM:

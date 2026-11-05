@@ -9,7 +9,7 @@ from shipit_agent import (
     WorkspaceFilesTool,
 )
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 
 
 def test_session_store_persists_messages_between_runs() -> None:
@@ -112,7 +112,7 @@ def test_file_session_store_persists_records(tmp_path) -> None:
 
 
 def test_file_session_store_preserves_tool_call_pairing(tmp_path) -> None:
-    from shipit_agent.models import ToolCall, pair_calls_and_results
+    from shipit_agent.core.models import ToolCall, pair_calls_and_results
     from shipit_agent.stores.session import SessionRecord
 
     store = FileSessionStore(tmp_path / "sessions")

@@ -33,8 +33,8 @@ from shipit_agent.llms.anthropic_adapter import AnthropicChatLLM
 from shipit_agent.llms.litellm_adapter import BedrockChatLLM, LiteLLMChatLLM
 from shipit_agent.llms.openai_adapter import OpenAIChatLLM
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import Message
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.models import Message
+from shipit_agent.core.runtime import AgentRuntime
 
 
 # ----------------------------------------------------------------------

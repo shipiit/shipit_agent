@@ -204,7 +204,7 @@ class TestGemmaAgentic:
         _fake_bearer_key(monkeypatch)
         _install_fake_openai(monkeypatch, _tool_call_response("add", '{"a": 2, "b": 3}'))
         llm = BedrockChatLLM(model="google.gemma-4-31b", region="us-east-1")
-        from shipit_agent.models import Message
+        from shipit_agent.core.models import Message
 
         resp = llm.complete(
             messages=[Message(role="user", content="add 2 and 3")],

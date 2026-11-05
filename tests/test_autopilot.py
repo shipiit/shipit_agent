@@ -22,8 +22,8 @@ from shipit_agent.autopilot import (
     coerce_event,
 )
 from shipit_agent.deep.goal_agent import Goal
-from shipit_agent.scheduler_daemon import SchedulerDaemon
-from shipit_agent.live_renderer import render_stream
+from shipit_agent.scheduling.daemon import SchedulerDaemon
+from shipit_agent.observability.live_renderer import render_stream
 
 
 # ─────────────────────── stubs ───────────────────────

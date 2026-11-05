@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.permissions import PermissionDecision, PermissionEngine
+from shipit_agent.safety.permissions import PermissionDecision, PermissionEngine
 from shipit_agent.tools.confirmation import (
     ToolConfirmation,
     confirmation_spec,
@@ -135,7 +135,7 @@ def test_gate_undecorated_tool_is_unaffected():
 
 
 def test_gate_uses_the_ask_callback_when_present():
-    from shipit_agent.permissions import PermissionResult
+    from shipit_agent.safety.permissions import PermissionResult
 
     @requires_confirmation("Careful.")
     class Danger:

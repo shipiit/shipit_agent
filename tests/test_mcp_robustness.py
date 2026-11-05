@@ -14,7 +14,7 @@ from shipit_agent.mcp import (
     RemoteMCPServer,
     _sanitize_tool_name,
 )
-from shipit_agent.registry import ToolRegistry
+from shipit_agent.core.registry import ToolRegistry
 
 
 class FakeTransport:

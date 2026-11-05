@@ -7,15 +7,15 @@ from typing import Any
 
 import pytest
 
-from shipit_agent.graph import AgentGraph, RunSpec, StopReason, run_to_result
-from shipit_agent.models import (
+from shipit_agent.core.graph import AgentGraph, RunSpec, StopReason, run_to_result
+from shipit_agent.core.models import (
     Message,
     ToolCall,
     ToolResult,
     new_tool_call_id,
     pair_calls_and_results,
 )
-from shipit_agent.subagents import READ_ONLY_TOOLS, SubagentSpec, SubagentTool
+from shipit_agent.agents.subagents import READ_ONLY_TOOLS, SubagentSpec, SubagentTool
 from shipit_agent.toolkit.contracts import (
     MatchError,
     ReadTracker,
@@ -27,7 +27,7 @@ from shipit_agent.toolkit.contracts import (
     truncate_output,
     value_shape,
 )
-from shipit_agent.usage import Purpose, UsageLedger
+from shipit_agent.observability.usage import Purpose, UsageLedger
 
 
 # --------------------------------------------------------------------------- #
@@ -554,7 +554,7 @@ def test_a_tools_own_metadata_reaches_the_result():
 
     class Annotating(EchoTool):
         def run(self, context=None, **kwargs):
-            from shipit_agent.tools_compat import make_output
+            from shipit_agent.core.tools_compat import make_output
 
             return make_output("done", metadata={"skill_id": "review", "count": 3})
 
@@ -570,7 +570,7 @@ def test_a_tools_own_metadata_reaches_the_result():
 def test_a_tool_reporting_its_own_error_is_recorded_as_an_error():
     class Failing(EchoTool):
         def run(self, context=None, **kwargs):
-            from shipit_agent.tools_compat import make_output
+            from shipit_agent.core.tools_compat import make_output
 
             return make_output("could not do it", metadata={"is_error": True})
 

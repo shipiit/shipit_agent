@@ -7,13 +7,13 @@ from typing import Any
 
 import pytest
 
-from shipit_agent.discovery import (
+from shipit_agent.context.discovery import (
     DiscoveryState,
     ToolSearchTool,
     filter_schemas,
     score_match,
 )
-from shipit_agent.graph import AgentGraph, RunSpec
+from shipit_agent.core.graph import AgentGraph, RunSpec
 from shipit_agent.mcp_bridge import (
     MCP_DELIMITER,
     MCPBridge,
@@ -21,7 +21,7 @@ from shipit_agent.mcp_bridge import (
     namespaced,
     split_namespaced,
 )
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.skills.markdown import (
     Skill,
     SkillParseError,

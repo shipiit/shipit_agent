@@ -47,7 +47,7 @@ class WorkspaceSettings:
             self.allow or self.deny or self.ask
         ):
             return None
-        from shipit_agent.permissions import PermissionEngine
+        from shipit_agent.safety.permissions import PermissionEngine
 
         return PermissionEngine(
             mode=self.permission_mode,  # type: ignore[arg-type]

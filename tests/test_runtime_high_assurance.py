@@ -8,12 +8,12 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from shipit_agent import Agent
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.mcp import MCPError, RemoteMCPServer
-from shipit_agent.models import ToolCall
-from shipit_agent.runtime import AgentRuntime
-from shipit_agent.runtime_state import RuntimeState
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.runtime import AgentRuntime
+from shipit_agent.core.state import RuntimeState
 from shipit_agent.stores import InMemorySessionStore, SessionRecord
 from shipit_agent.tools import ToolOutput
 

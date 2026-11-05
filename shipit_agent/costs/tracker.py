@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 
-from shipit_agent.hooks import AgentHooks
+from shipit_agent.safety.hooks import AgentHooks
 
 from .budget import Budget, BudgetExceededError
 from .pricing import MODEL_ALIASES, MODEL_PRICING, resolve_pricing_key

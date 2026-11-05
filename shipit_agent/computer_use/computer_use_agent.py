@@ -133,7 +133,7 @@ class ComputerUseAgent:
         """
         import time as _time
 
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         history: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},

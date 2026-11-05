@@ -393,7 +393,7 @@ def test_bedrock_soak_for_requested_duration(tmp_path: Path) -> None:
         pytest.skip("litellm not installed")
 
     from shipit_agent.llms import build_llm_from_settings
-    from shipit_agent.models import Message
+    from shipit_agent.core.models import Message
 
     model = os.environ.get(
         "SHIPIT_AUTOPILOT_SOAK_MODEL",

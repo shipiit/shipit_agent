@@ -50,7 +50,7 @@ from shipit_agent.autopilot import (
     Critic,
 )
 from shipit_agent.deep.goal_agent import Goal
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 # ─────────────────────── gating ───────────────────────

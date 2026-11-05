@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from shipit_agent.models import ToolCall, ToolResult
+from shipit_agent.core.models import ToolCall, ToolResult
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@
 from __future__ import annotations
 
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.runtime import AgentRuntime
 from shipit_agent.tools.base import ToolContext
 from shipit_agent.tools.slack.slack_tool import SlackTool
 

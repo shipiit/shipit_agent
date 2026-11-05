@@ -8,8 +8,8 @@ import json
 from shipit_agent import Agent, ApprovalQueue
 from shipit_agent.codemode import CORE_TOOLS, binding_index, build_bindings
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
-from shipit_agent.permissions import PermissionEngine
+from shipit_agent.core.models import ToolCall
+from shipit_agent.safety.permissions import PermissionEngine
 from shipit_agent.tools.base import ToolOutput
 
 
@@ -102,7 +102,7 @@ class TestToolCatalogue:
         assert "execute_code" in coded.llm.seen_tools[0]
 
     def test_core_tools_survive(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         agent = Agent(
             llm=ScriptedLLM([("done", [])]),
@@ -122,7 +122,7 @@ class TestToolCatalogue:
         block in the system prompt. Filtering only the schemas leaves the
         larger half untouched.
         """
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         tools = get_builtin_tools(llm=None, project_root=".")
 
@@ -143,7 +143,7 @@ class TestToolCatalogue:
         assert coded < plain * 0.6, f"code mode {coded} vs {plain}"
 
     def test_the_tools_prompt_shrinks_too_not_just_the_schemas(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         tools = get_builtin_tools(llm=None, project_root=".")
         plain = Agent(llm=ScriptedLLM([("d", [])]), tools=tools, auto_use_skills=False,
@@ -196,7 +196,7 @@ class TestSystemPrompt:
         assert binding_index({}) == ""
 
     def test_a_core_only_agent_gets_no_index(self) -> None:
-        from shipit_agent.builtins import get_builtin_tool_map
+        from shipit_agent.agent_setup.builtins import get_builtin_tool_map
 
         core = [t for n, t in get_builtin_tool_map(llm=None, project_root=".").items()
                 if n in CORE_TOOLS]

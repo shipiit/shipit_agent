@@ -87,7 +87,7 @@ class Pipeline:
             for event in pipe.stream(topic="AI"):
                 print(f"[{event.type}] {event.message}")
         """
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         context: dict[str, StepResult] = {}
         for key, value in inputs.items():

@@ -11,10 +11,6 @@ from shipit_agent.llms.parameters import (
     normalize_parameters,
     resolve_parameters,
 )
-from shipit_agent.core.graph import AgentGraph
-from graph_runtime.test_bridge import LegacyAgent
-from graph_runtime.test_graph import Reply, ScriptedLLM
-from shipit_agent.core.bridge import spec_from_agent
 
 GEMMA = "google.gemma-4-31b"
 
@@ -193,60 +189,3 @@ def test_explain_names_every_decision():
     assert "used locally:" in text
     assert "blocked for this model:" in text
     assert "not numeric, ignored:" in text
-
-
-# --------------------------------------------------------------------------- #
-# Through the bridge
-# --------------------------------------------------------------------------- #
-
-
-def _run(llm, **agent_fields):
-    agent = LegacyAgent(llm=llm, model=GEMMA, **agent_fields)
-    list(AgentGraph(spec_from_agent(agent)).run("hi"))
-    return llm.calls[0]
-
-
-def test_parameters_reach_the_model_through_the_bridge():
-    sent = _run(
-        ScriptedLLM(Reply(content="ok")),
-        model_parameters={"temperature": 0.2, "max_tokens": 256},
-    )
-    assert sent["temperature"] == 0.2
-    assert sent["max_tokens"] == 256
-
-
-def test_a_zero_is_passed_through_not_treated_as_unset():
-    assert _run(ScriptedLLM(Reply(content="ok")), model_parameters={"temperature": 0})[
-        "temperature"
-    ] == 0
-
-
-def test_camel_case_from_a_config_file_still_works():
-    sent = _run(
-        ScriptedLLM(Reply(content="ok")),
-        model_parameters={"topP": 0.8, "maxTokens": "128"},
-    )
-    assert sent["top_p"] == 0.8
-    assert sent["max_tokens"] == 128
-
-
-def test_max_context_tokens_does_not_reach_the_model():
-    sent = _run(ScriptedLLM(Reply(content="ok")), model_parameters={"max_context_tokens": 64_000})
-    assert "max_context_tokens" not in sent
-
-
-def test_host_parameters_change_the_loop_not_the_request():
-    sent = _run(
-        ScriptedLLM(*[Reply(content="ok") for _ in range(5)]),
-        model_parameters={"max_iterations": 3},
-    )
-    assert "max_iterations" not in sent
-
-
-def test_the_run_summary_records_the_parameter_decisions():
-    agent = LegacyAgent(llm=ScriptedLLM(Reply(content="ok")), model=GEMMA,
-                        model_parameters={"temperature": 0.3, "top_k": 40})
-    events = list(AgentGraph(spec_from_agent(agent)).run("hi"))
-    summary = next(e for e in events if e.type == "run_summary")
-    assert "temperature" in summary.payload["parameters"]
-    assert "top_k" in summary.payload["parameters"]

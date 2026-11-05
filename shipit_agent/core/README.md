@@ -4,13 +4,11 @@ The run loop and the values that move through it.
 
 | Module | What it does |
 |---|---|
-| `agent_mixin.py` | Adding the new machinery to the existing ``Agent`` without replacing it |
+| `agent_mixin.py` | `preflight()`, `describe_tools_v2()`, and the `*_v2` names, all on the one loop |
 | `async_runtime.py` | The agent loop: construction, events, `run()` and `stream()`; the phases live in `loop/` |
-| `bridge.py` | Letting the existing ``Agent`` drive the new run loop |
 | `checkpoint.py` | Enough state to stop a run and start it again somewhere else |
 | `construction.py` | Building the tool registry for a run and the schemas sent to the model |
 | `exceptions.py` | Exceptions raised by shipit-agent itself |
-| `graph.py` | The run loop, as an explicit graph that yields everything as it happens |
 | `models.py` | The values that move through a run |
 | `narration.py` | Small, factual helpers used to narrate runtime progress |
 | `packets.py` | Serialising run events and results for HTTP, WebSocket and SSE clients |

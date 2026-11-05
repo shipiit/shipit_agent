@@ -1,83 +1,52 @@
-"""Adding the new machinery to the existing ``Agent`` without replacing it.
+"""Inspection and the ``*_v2`` entry points, all on the one agent loop.
 
-``Agent`` keeps every field and every method it has. This mixin adds new ones
-beside them, so adoption is two lines and a rollback is deleting those two
-lines::
+These began as the way into a second, graph-shaped loop. That loop has been
+retired: everything it did now lives in the one loop, so the ``*_v2`` names
+remain only for compatibility and run the same loop as ``run`` and
+``stream``::
 
-    from shipit_agent.core.agent_mixin import UpgradeMixin
-
-    @dataclass
-    class Agent(UpgradeMixin):        # ← the only change
-        ...
-
-Then, incrementally:
-
-    agent.preflight()          # what would go wrong, before spending a token
-    agent.upgrade_report()     # which features the new loop does not yet cover
-    agent.run_v2("...")        # the new loop, same Agent, same fields
-    agent.stream_v2("...")     # live events, tool output included
-
-``run`` and ``stream`` are untouched. Both loops read the same configuration —
-``bridge.spec_from_agent`` maps the fields — so the two can be compared on real
-work rather than argued about, and the old one stays until it is not needed.
-
-Nothing here is silent. ``upgrade_report()`` names every configured feature the
-new loop does not reproduce, because a migration that quietly loses a feature is
-worse than one that refuses to start.
+    agent.preflight()        # what would go wrong, before spending a token
+    agent.describe_tools_v2()  # which tools are loaded, which wait for a search
+    agent.run_v2("...")      # == agent.run("...")
+    agent.packets_v2("...")  # agent.stream(...) as typed packets for a UI
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Iterator
 
-from shipit_agent.core.bridge import spec_from_agent, unmapped
-from shipit_agent.core.graph import AgentGraph
 from shipit_agent.core.models import AgentEvent, AgentResult
 from shipit_agent.llms.capabilities import capabilities_for, describe
 from shipit_agent.observability.live import Packet, to_packets
-from shipit_agent.observability.usage import UsageLedger
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["UpgradeMixin"]
+#: Share of the input budget the fixed prefix may use before preflight warns.
+_PREFIX_WARNING_SHARE = 0.25
 
 
 class UpgradeMixin:
-    """New capabilities for an existing ``Agent``. Adds; never overrides."""
+    """Inspection, and the ``*_v2`` names for the one loop's ``run`` and ``stream``."""
 
     # -- running -----------------------------------------------------------
 
     def stream_v2(self, user_prompt: str, **kwargs: Any) -> Iterator[AgentEvent]:
-        """The new loop, yielding every moment as it happens.
-
-        Text deltas, streamed tool arguments, live tool output, skill loads,
-        tool discovery, sub-agent activity and compaction all arrive here on one
-        channel. The result is assembled from the same events, so ``run_v2`` and
-        this cannot disagree.
-        """
-        graph = self._build_graph_v2(user_prompt, **kwargs)
-        self._last_graph_v2 = graph
-
-        answer = ""
-        for event in graph.run(user_prompt):
-            if event.type in ("final_answer", "run_completed"):
-                answer = str(event.payload.get("text") or answer)
-            yield event
-
-        self._last_result_v2 = graph.result(answer)
+        """Same as :meth:`stream`; kept for code written against the retired v2 loop."""
+        _ignore_v2_arguments(kwargs)
+        yield from self.stream(user_prompt)
 
     def run_v2(self, user_prompt: str, **kwargs: Any) -> AgentResult:
-        """The new loop, returning a result. The stream, drained."""
-        for _ in self.stream_v2(user_prompt, **kwargs):
-            pass
-        return self._last_result_v2
+        """Same as :meth:`run`; kept for code written against the retired v2 loop."""
+        _ignore_v2_arguments(kwargs)
+        return self.run(user_prompt)
 
     def packets_v2(self, user_prompt: str, **kwargs: Any) -> Iterator[Packet]:
         """The stream as typed packets, for a UI or an SSE endpoint.
 
-        Every packet carries ``tool_call_id``, so parallel tool calls render as
-        separate live panes instead of interleaved text.
+        Every tool packet carries ``tool_call_id``, so parallel tool calls
+        render as separate live panes; the last packet is terminal.
         """
         yield from to_packets(self.stream_v2(user_prompt, **kwargs))
 
@@ -86,74 +55,77 @@ class UpgradeMixin:
     def preflight(self) -> dict[str, Any]:
         """A cheap self-check before any token is spent.
 
-        Most agent misconfiguration is visible without calling a model: a server
-        that will not start, a parameter this family rejects, a prompt already
-        occupying a quarter of the context window. Finding those at startup
-        costs nothing; finding them mid-run costs the run.
+        Most misconfiguration is visible without calling a model: an MCP
+        server that will not start, a parameter this model family rejects, a
+        fixed prompt already using a large share of the context window.
         """
-        graph = self._build_graph_v2("")
-        caps = capabilities_for(graph.spec.model)
-        prefix_tokens = graph.prefix.approx_tokens()
-        budget = caps.input_budget()
+        from shipit_agent.context.compaction import estimate_tokens, get_model_limits
+        from shipit_agent.llms.parameters import resolve_parameters
+
+        model = self._model_v2()
+        caps = capabilities_for(model)
+        limits = get_model_limits(model)
+        tools, deferred = self._tool_split()
+        resident = [tool for tool in tools if getattr(tool, "name", "") not in deferred]
+        schemas = [tool.schema() for tool in resident if hasattr(tool, "schema")]
+        prompt = self._effective_prompt("")
+        prefix_tokens = estimate_tokens(prompt) + estimate_tokens(
+            json.dumps(schemas, default=str)
+        )
+        budget = limits.input_budget
+        parameters = resolve_parameters(model, self._llm_parameters())
 
         report: dict[str, Any] = {
-            "model": graph.spec.model,
+            "model": model,
             "schema_dialect": caps.schema_dialect,
-            "context_window": caps.context_window,
+            "context_window": limits.context_window,
             "prefix_tokens": prefix_tokens,
             "prefix_share": round(prefix_tokens / budget, 3) if budget else None,
-            "tools_bound": len(graph.prefix.tool_definitions),
-            "tools_deferred": len(graph.discovery.deferred),
-            "skills": len(graph.spec.skills),
-            "parameters": graph.parameters.explain(),
+            "tools_bound": len(resident),
+            "tools_deferred": len(deferred),
+            "skills": len(self._listed_skills()) + len(self.skills),
+            "parameters": parameters.explain(),
             "warnings": [],
         }
 
-        if graph.spec.mcp is not None:
-            summary = graph.spec.mcp.summary()
-            report["mcp"] = summary
-            for server, error in summary["failed"].items():
-                report["warnings"].append(f"MCP server {server} unavailable: {error}")
-
-        if graph.parameters.dropped:
+        failed = self._unreachable_mcps()
+        if self.mcps:
+            report["mcp"] = {"servers": [m.name for m in self.mcps], "failed": failed}
+        for server, error in failed.items():
+            report["warnings"].append(f"MCP server {server} unavailable: {error}")
+        if parameters.dropped:
             report["warnings"].append(
                 "Blocked for this model and not sent: "
-                + ", ".join(sorted(graph.parameters.dropped))
+                + ", ".join(sorted(parameters.dropped))
             )
-        if graph.parameters.rejected:
+        if parameters.rejected:
             report["warnings"].append(
-                "Not numeric and ignored: " + ", ".join(sorted(graph.parameters.rejected))
+                "Not numeric and ignored: " + ", ".join(sorted(parameters.rejected))
             )
-        if budget and prefix_tokens > budget * 0.25:
+        if budget and prefix_tokens > budget * _PREFIX_WARNING_SHARE:
             report["warnings"].append(
                 f"The fixed prefix is {report['prefix_share']:.0%} of the input "
                 "budget before any conversation. Defer more tools or trim rules."
             )
-        if not caps.context_window:
+        if not caps.context_window and limits.context_window == _default_window():
             report["warnings"].append(
-                f"No context window known for {graph.spec.model!r}; compaction "
-                "will use a default that may be far from correct."
+                f"No context window known for {model!r}; compaction will use a "
+                "default that may be far from correct."
             )
-
-        gaps = self.upgrade_report()
-        if gaps:
-            report["not_yet_in_v2"] = sorted(gaps)
-
         return report
 
     def describe_tools_v2(self) -> list[dict[str, Any]]:
-        """Every reachable tool: which are bound now, which wait for a search."""
-        graph = self._build_graph_v2("")
-        bound = {d["function"]["name"] for d in graph.prefix.tool_definitions}
+        """Every reachable tool: which are loaded now, which wait for a search."""
+        tools, deferred = self._tool_split()
         return sorted(
             (
                 {
-                    "name": name,
-                    "bound": name in bound,
-                    "deferred": graph.discovery.is_deferred(name),
+                    "name": getattr(tool, "name", ""),
+                    "bound": getattr(tool, "name", "") not in deferred,
+                    "deferred": getattr(tool, "name", "") in deferred,
                     "description": str(getattr(tool, "description", ""))[:120],
                 }
-                for name, tool in graph._tools.items()
+                for tool in tools
             ),
             key=lambda row: row["name"],
         )
@@ -163,17 +135,15 @@ class UpgradeMixin:
         return describe([self._model_v2()])[0]
 
     def upgrade_report(self) -> dict[str, str]:
-        """Configured features the new loop does not yet reproduce.
+        """Configured features the loop does not reproduce: none, since there is one loop."""
+        return {}
 
-        Only features actually enabled are listed — an agent that never turned
-        on ``code_mode`` should not be told it is missing.
-        """
-        return unmapped(self)
+    @property
+    def last_ledger_v2(self) -> None:
+        """Retired with the v2 loop: a run's accounting is in ``result.metadata["run_summary"]``."""
+        return None
 
     # -- internals ---------------------------------------------------------
-
-    _last_graph_v2: Any = None
-    _last_result_v2: Any = None
 
     def _model_v2(self) -> str:
         return str(
@@ -181,29 +151,44 @@ class UpgradeMixin:
             or getattr(getattr(self, "llm", None), "model", "")
         )
 
-    def _build_graph_v2(self, prompt: str, **kwargs: Any) -> AgentGraph:
-        """One graph per run: private skill session, discovery state and ledger.
+    def _tool_split(self) -> tuple[list[Any], set[str]]:
+        """The tools a run would have, and the names deferral would hold back."""
+        from shipit_agent.core.registry import ToolRegistry
+        from shipit_agent.deferral.core import resolve_deferred_names
 
-        Built fresh each time rather than cached on the agent, so two runs of one
-        agent cannot leak into each other — an agent is reusable, a run is not.
-        """
-        spec = spec_from_agent(
-            self,
-            prompt,
-            ledger=UsageLedger(),
-            model=kwargs.pop("model", "") or self._model_v2(),
-            compact=kwargs.pop("compact", None),
+        tools = list(
+            ToolRegistry.build(tools=self._effective_tools(""), mcps=self.mcps).values()
         )
-        if kwargs:
-            logger.debug("Ignoring unsupported v2 arguments: %s", ", ".join(kwargs))
+        return tools, resolve_deferred_names(tools, self.deferred_tools)
 
-        graph = AgentGraph(spec)
-        history = list(getattr(self, "history", None) or [])
-        if history:
-            graph.messages.extend(history)
-        return graph
+    def _unreachable_mcps(self) -> dict[str, str]:
+        failed: dict[str, str] = {}
+        for mcp in self.mcps:
+            try:
+                mcp.discover_tools()
+            except Exception as error:  # a broken server is the finding, not a crash
+                failed[str(getattr(mcp, "name", "mcp"))] = (
+                    f"{type(error).__name__}: {error}"
+                )
+        return failed
 
-    @property
-    def last_ledger_v2(self) -> UsageLedger | None:
-        """The token and cost accounting from the most recent ``run_v2``."""
-        return getattr(self._last_graph_v2, "ledger", None)
+    def _llm_parameters(self) -> dict[str, Any]:
+        """The sampling and limit parameters the model adapter will send."""
+        llm = getattr(self, "llm", None)
+        params = dict(getattr(llm, "completion_kwargs", None) or {})
+        for name in ("max_tokens", "temperature", "reasoning_effort"):
+            value = getattr(llm, name, None)
+            if value is not None:
+                params.setdefault(name, value)
+        return params
+
+
+def _ignore_v2_arguments(kwargs: dict[str, Any]) -> None:
+    if kwargs:
+        logger.debug("Ignoring v2-only arguments: %s", ", ".join(sorted(kwargs)))
+
+
+def _default_window() -> int:
+    from shipit_agent.context.compaction import DEFAULT_CONTEXT_WINDOW
+
+    return DEFAULT_CONTEXT_WINDOW

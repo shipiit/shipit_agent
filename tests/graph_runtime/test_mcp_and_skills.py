@@ -13,14 +13,12 @@ from shipit_agent.context.discovery import (
     filter_schemas,
     score_match,
 )
-from shipit_agent.core.graph import AgentGraph
 from shipit_agent.mcp_bridge import (
     MCP_DELIMITER,
     MCPBridge,
     namespaced,
     split_namespaced,
 )
-from shipit_agent.core.models import ToolCall
 from shipit_agent.skills.markdown import (
     Skill,
     SkillParseError,
@@ -29,8 +27,6 @@ from shipit_agent.skills.markdown import (
     parse_skill_markdown,
     write_skill,
 )
-from graph_runtime.test_graph import Reply, ScriptedLLM, spec
-
 
 # --------------------------------------------------------------------------- #
 # Doubles
@@ -118,17 +114,6 @@ def test_a_broken_server_degrades_itself_not_the_run():
     assert bridge.summary()["healthy"] == 1
 
 
-def test_server_instructions_reach_the_prefix():
-    server = FakeMCPServer(
-        "jira",
-        [FakeMCPTool("create", "Create an issue")],
-        instructions="Always call list_projects before create.",
-    )
-    bridge = MCPBridge([server])
-    bridge.attach()
-
-    graph = AgentGraph(spec(ScriptedLLM(Reply(content="ok")), mcp=bridge))
-    assert "list_projects before create" in graph.prefix.system_text
 
 
 def test_a_server_without_instructions_adds_nothing():
@@ -288,62 +273,12 @@ def test_discovery_state_round_trips_for_resume():
 # --------------------------------------------------------------------------- #
 
 
-def test_deferred_mcp_tools_are_absent_until_searched():
-    server = FakeMCPServer("jira", [FakeMCPTool(f"t{i}", f"tool {i}") for i in range(20)])
-    bridge = MCPBridge([server], max_eager_tools=5)
-    bridge.attach()
-
-    graph = AgentGraph(spec(ScriptedLLM(Reply(content="ok")), mcp=bridge))
-    bound = {d["function"]["name"] for d in graph.prefix.tool_definitions}
-    assert "t0__mcp__jira" not in bound
-    assert "tool_search" in bound
 
 
-def test_calling_a_deferred_tool_directly_is_a_recoverable_result():
-    server = FakeMCPServer("jira", [FakeMCPTool(f"t{i}") for i in range(20)])
-    bridge = MCPBridge([server], max_eager_tools=1)
-    bridge.attach()
-
-    llm = ScriptedLLM(
-        Reply(tool_calls=[ToolCall(name="t0__mcp__jira", arguments={})]),
-        Reply(content="recovered"),
-    )
-    graph = AgentGraph(spec(llm, mcp=bridge))
-    list(graph.run("go"))
-
-    assert graph.tool_results[0].is_error
-    assert "tool_search" in graph.tool_results[0].output
 
 
-def test_search_then_call_works_in_one_run():
-    server = FakeMCPServer("jira", [FakeMCPTool("create_issue", "Create a bug report")])
-    bridge = MCPBridge([server], deferred_servers=["jira"])
-    bridge.attach()
-    bridge.connect = lambda name: FakeConnection(name)  # type: ignore[attr-defined]
-
-    llm = ScriptedLLM(
-        Reply(tool_calls=[ToolCall(name="tool_search", arguments={"query": "file a bug"})]),
-        Reply(tool_calls=[ToolCall(name="create_issue__mcp__jira", arguments={"title": "x"})]),
-        Reply(content="filed"),
-    )
-    graph = AgentGraph(spec(llm, mcp=bridge))
-    kinds = [e.type for e in graph.run("file a bug")]
-
-    assert "tools_discovered" in kinds
-    assert "tools_rebound" in kinds
-    assert graph.result().output == "filed"
-    assert not graph.tool_results[-1].is_error
 
 
-def test_the_prefix_is_rebuilt_only_when_capability_actually_changed():
-    server = FakeMCPServer("jira", [FakeMCPTool("a", "x")])
-    bridge = MCPBridge([server])
-    bridge.attach()
-    llm = ScriptedLLM(Reply(content="ok"))
-    graph = AgentGraph(spec(llm, mcp=bridge))
-    before = graph.prefix.fingerprint()
-    list(graph.run("hi"))
-    assert graph.prefix.fingerprint() == before
 
 
 # --------------------------------------------------------------------------- #
@@ -455,13 +390,3 @@ def test_a_skill_round_trips_through_disk(tmp_path):
     assert "Read the log" in restored.body
 
 
-def test_a_skill_folder_drops_straight_into_a_run(tmp_path):
-    directory = tmp_path / "invoice"
-    directory.mkdir()
-    (directory / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
-
-    graph = AgentGraph(
-        spec(ScriptedLLM(Reply(content="ok")), skills=discover_skills(tmp_path))
-    )
-    assert "invoice-processing" in graph.prefix.system_text
-    assert "VAT edge cases" not in graph.prefix.system_text   # body stays out

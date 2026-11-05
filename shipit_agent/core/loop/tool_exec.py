@@ -208,51 +208,14 @@ class ToolExecutionMixin:
                 return queued
 
         if decision is not None and not decision.allowed:
-            reason = decision.reason or "not permitted"
-            error_kind = (
-                "permission_denied" if decision.denied else "permission_required"
-            )
-            self.emit(
+            return self._deny_tool_call(
                 state,
-                "tool_denied",
-                f"Tool blocked: {tool_call.name}",
-                # Renderers pair outcomes to calls by (tool, call_id); the
-                # gate can fire before `tool_called`.
-                tool=tool_call.name,
+                tool_call=tool_call,
                 call_id=tool_call_record["id"],
                 group_id=group_id,
-                reason=reason,
-                decision=decision.decision.value,
+                decision=decision,
                 iteration=iteration,
             )
-            self._permission_denials.append(
-                {
-                    "tool_name": tool_call.name,
-                    "tool_use_id": tool_call_record["id"],
-                    "tool_input": dict(tool_call.arguments),
-                }
-            )
-            content = (
-                # A denial is FINAL — say so, or the model retries the same call
-                # and re-prompts the human on every loop (reference-K.2 style).
-                f"Tool '{tool_call.name}' was DENIED and was NOT run "
-                f"— {reason}. This decision is final: do NOT retry it, rephrase "
-                "it, or pursue the same goal another way. Silence is not consent. "
-                "Stop and tell the user the action was declined."
-                if decision.denied
-                else f"Tool '{tool_call.name}' requires human approval — {reason}"
-            )
-            msg = Message(
-                role="tool",
-                name=tool_call.name,
-                content=content,
-                metadata={
-                    "tool_call_id": tool_call_record["id"],
-                    "error": error_kind,
-                    "decision": decision.decision.value,
-                },
-            )
-            return None, msg
         if decision is not None and decision.updated_arguments is not None:
             tool_call = type(
                 "RewrittenToolCall",

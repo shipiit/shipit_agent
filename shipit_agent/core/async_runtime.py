@@ -22,6 +22,7 @@ from shipit_agent.core.loop.model_call import ModelCallMixin
 from shipit_agent.core.loop.planning import PlanningMixin
 from shipit_agent.core.loop.step_narration import StepNarrationMixin
 from shipit_agent.core.loop.tool_attempts import ToolAttemptsMixin
+from shipit_agent.core.loop.tool_denial import ToolDenialMixin
 from shipit_agent.core.loop.tool_exec import ToolExecutionMixin
 from shipit_agent.core.loop.tool_outcome import ToolOutcomeMixin
 from shipit_agent.core.loop.tool_step import ToolStepMixin
@@ -68,6 +69,7 @@ class AsyncAgentRuntime(
     ModelCallMixin,
     StepNarrationMixin,
     ToolExecutionMixin,
+    ToolDenialMixin,
     ToolAttemptsMixin,
     ToolOutcomeMixin,
     TurnSetupMixin,

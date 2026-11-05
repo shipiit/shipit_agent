@@ -108,3 +108,12 @@ def test_denials_do_not_carry_into_the_next_run() -> None:
     agent = Agent(llm=llm, tools=[ECHO], permissions={"deny": ["echo"]})
     assert len(agent.run("one").permission_denials) == 1
     assert agent.run("two").permission_denials == []
+
+
+def test_a_denied_calls_long_input_is_shortened_in_the_summary() -> None:
+    # Varied text: a long run of one character is refused earlier, as degenerate output.
+    long_text = " ".join(f"line {i}" for i in range(700))
+    llm = _Scripted(_call("echo", text=long_text))
+    result = Agent(llm=llm, tools=[ECHO], permissions={"deny": ["echo"]}).run("go")
+    text = result.permission_denials[0]["tool_input"]["text"]
+    assert len(text) < 600 and text.startswith(long_text[:500]) and f"{len(long_text)} chars" in text

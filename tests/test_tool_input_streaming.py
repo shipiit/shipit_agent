@@ -43,6 +43,8 @@ def _shipped_adapters():
         "anthropic_adapter",
         "openai_adapter",
         "bedrock_gemma",
+        "litellm_base",
+        "litellm_bedrock",
         "litellm_adapter",
         "simple",
     ):

@@ -15,7 +15,8 @@ from typing import Any
 
 import pytest
 
-import shipit_agent.llms.litellm_adapter as adapter
+# BedrockChatLLM looks its helpers up in its own module, so patches go there.
+import shipit_agent.llms.litellm_bedrock as adapter
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms import BedrockChatLLM, BedrockGemmaChatLLM
 from shipit_agent.llms.bedrock_token import BEARER_ENV_VARS, BedrockTokenError
@@ -185,7 +186,7 @@ def _text_response(text: str):
 def _force_shim_path(monkeypatch) -> None:
     """Pin these tests to the OpenAI-adapter fallback, which must keep
     working on LiteLLM installs without the native bedrock_mantle provider."""
-    import shipit_agent.llms.litellm_adapter as adapter
+    import shipit_agent.llms.litellm_bedrock as adapter
 
     monkeypatch.setattr(adapter, "_litellm_supports_bedrock_mantle", lambda: False)
 

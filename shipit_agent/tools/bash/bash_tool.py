@@ -48,14 +48,22 @@ def _is_long_running(command: str) -> bool:
 
 
 class BashTool:
-    """The ``bash`` tool: run a shell command inside the local project root with basic safety checks.
+    """The ``bash`` tool: run any shell command in the project root.
+
+    What may run without approval is decided per command by
+    :mod:`.command_risk` at the permission gate; a command still running at
+    its timeout continues as a background job (see :mod:`.runner`).
     """
     def __init__(
         self,
         *,
         root_dir: str | Path = "/tmp",
         name: str = "bash",
-        description: str = "Run a shell command inside the local project root with basic safety checks.",
+        description: str = (
+            "Run a shell command in the project root: tests, builds, git, package "
+            "managers, scripts. Risky commands (deleting, publishing, writing "
+            "outside the project) need approval."
+        ),
         prompt: str | None = None,
         # Two minutes, as in Claude Code; a command still running then keeps
         # going in the background instead of being killed.
@@ -216,6 +224,11 @@ class BashTool:
                 "bundle",
             ]
         )
+        #: Patterns refused outright. The defaults guard the conservative
+        #: mode; the full shell checks the classifier's "blocked" level
+        #: instead, so the tool and the permission gate agree. A caller's own
+        #: list applies in both modes.
+        self._custom_blocklist = blocked_substrings is not None
         self.blocked_substrings = list(
             blocked_substrings
             or [
@@ -247,7 +260,10 @@ class BashTool:
                         },
                         "timeout": {
                             "type": "number",
-                            "description": "Timeout in seconds",
+                            "description": (
+                                "Seconds to wait before moving the command to the "
+                                "background (default 120, max 600)"
+                            ),
                         },
                         "working_directory": {
                             "type": "string",
@@ -282,9 +298,14 @@ class BashTool:
         if not normalized:
             raise ValueError("Command must not be empty")
         lowered = normalized.lower()
-        for blocked in self.blocked_substrings:
-            if blocked in lowered:
-                raise ValueError(f"Blocked shell command pattern: {blocked}")
+        if self.unrestricted:
+            verdict = assess_command(normalized, root=self.root_dir)
+            if verdict.level == "blocked":
+                raise ValueError("; ".join(verdict.reasons))
+        if self._custom_blocklist or not self.unrestricted:
+            for blocked in self.blocked_substrings:
+                if blocked in lowered:
+                    raise ValueError(f"Blocked shell command pattern: {blocked}")
 
         # The allowlist below only inspects the first token of each
         # `;`/`&&`/`||`/`|` segment, so any construct that runs an arbitrary

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator
 from typing import Any
 
 from .build import build_agent, llm_for_model
@@ -60,9 +60,18 @@ class AgentClient:
         if prompt is not None:
             await self.query(prompt)
 
-    async def query(self, prompt: str) -> None:
-        """Start a turn; its messages arrive through :meth:`receive_response`."""
+    async def query(self, prompt: str | AsyncIterable[dict[str, Any]]) -> None:
+        """Start a turn; its messages arrive through :meth:`receive_response`.
+
+        An async iterable of SDK user messages starts one turn per message.
+        """
         await self.connect()
+        if not isinstance(prompt, str):
+            from .query import user_text
+
+            async for item in prompt:
+                await self.query(user_text(item))
+            return
         message_id = str(uuid.uuid4())
         if self._checkpoints is not None:
             self._checkpoints.begin_turn(message_id)

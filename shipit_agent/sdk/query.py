@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator
 from typing import Any
 
 from .build import build_agent
@@ -21,11 +21,39 @@ from .types import Message, ResultMessage
 __all__ = ["query", "run_messages"]
 
 
-async def query(*, prompt: str, options: AgentOptions | None = None) -> AsyncIterator[Message]:
-    """Run *prompt* with a new agent built from *options*; yield each message."""
+async def query(
+    *, prompt: str | AsyncIterable[dict[str, Any]], options: AgentOptions | None = None
+) -> AsyncIterator[Message]:
+    """Run *prompt* with a new agent built from *options*; yield each message.
+
+    *prompt* is a string, or (streaming input) an async iterable of SDK user
+    messages, ``{"type": "user", "message": {"role": "user", "content": ...}}``,
+    each run as a turn of one conversation.
+    """
     options = options or AgentOptions()
-    async for message in run_messages(build_agent(options), prompt, options):
-        yield message
+    if isinstance(prompt, str):
+        async for message in run_messages(build_agent(options), prompt, options):
+            yield message
+        return
+    from .client import AgentClient
+
+    async with AgentClient(options) as client:
+        async for item in prompt:
+            await client.query(user_text(item))
+            async for message in client.receive_response():
+                yield message
+
+
+def user_text(item: Any) -> str:
+    """The text of an SDK user message (or of a plain string)."""
+    if isinstance(item, str):
+        return item
+    message = item.get("message", item) if isinstance(item, dict) else {}
+    content = message.get("content", "") if isinstance(message, dict) else ""
+    if isinstance(content, list):
+        return "\n".join(str(block.get("text", "")) for block in content
+                         if isinstance(block, dict) and block.get("type") == "text")
+    return str(content)
 
 
 async def run_messages(agent: Any, prompt: str, options: AgentOptions) -> AsyncIterator[Message]:

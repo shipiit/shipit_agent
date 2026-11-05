@@ -238,3 +238,16 @@ def test_matchers_follow_claude_code_syntax() -> None:
     assert _matches("mcp__memory__.*", "memory__create")
     assert not _matches("mcp__memory__.*", "github__create")
     assert not _matches("[unclosed", "bash")
+
+
+def test_read_only_calls_never_reach_can_use_tool() -> None:
+    asked: list[str] = []
+
+    def can_use_tool(name: str, *_: Any) -> Any:
+        asked.append(name)
+        return PermissionResultAllow()
+
+    read = FunctionTool.from_callable(lambda path="": "contents", name="read_notes")
+    llm = _Calls(("read_notes", {"path": "a"}), ("note_create", {"text": "x"}))
+    _run(llm, tools=[read, NOTE], can_use_tool=can_use_tool)
+    assert asked == ["note_create"]

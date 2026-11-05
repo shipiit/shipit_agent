@@ -148,7 +148,9 @@ class ToolExecutionMixin:
                 "tool_arguments_rejected",
                 f"Tool call missing arguments: {tool_call.name}",
                 tool=tool_call.name,
+                call_id=tool_call_record["id"],
                 arguments=dict(tool_call.arguments or {}),
+                reason=argument_error,
                 iteration=iteration,
             )
             return None, Message(

@@ -53,7 +53,7 @@ class MessageStream:
             return [SystemMessage("init", {**self.init, "session_id": self.session_id})]
         if kind == "assistant_message":
             return [self._assistant(payload)]
-        if kind in ("tool_completed", "tool_failed", "tool_denied"):
+        if kind in ("tool_completed", "tool_failed", "tool_denied", "tool_arguments_rejected"):
             return [self._tool_result(kind, payload)]
         if kind == "text_delta" and self.partial:
             return [self._delta(payload)]
@@ -95,7 +95,7 @@ class MessageStream:
 
     def _tool_result(self, kind: str, payload: dict[str, Any]) -> UserMessage:
         call_id = str(payload.get("call_id") or payload.get("tool_call_id") or "")
-        if kind == "tool_denied":
+        if kind in ("tool_denied", "tool_arguments_rejected"):
             block = ToolResultBlock(call_id, str(payload.get("reason") or "not permitted"), True)
         else:
             failed = kind == "tool_failed" or bool(payload.get("error"))

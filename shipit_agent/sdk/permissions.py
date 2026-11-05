@@ -5,8 +5,10 @@
             return PermissionResultDeny(message="No deploys from the agent.")
         return PermissionResultAllow(updated_input=input_data)
 
-The callback runs only for calls no rule, mode or hook has settled, as in
-the SDK. An ``addRules`` allow in ``updated_permissions`` approves this call
+The callback runs only for calls no rule, mode or hook has settled and
+that need approval, as in the SDK: read-only calls (reads, searches) are
+approved without it, and a clarifying question reaches it once, as
+``"AskUserQuestion"``. An ``addRules`` allow in ``updated_permissions`` approves this call
 for the rest of the session; other update types are accepted and ignored.
 ``interrupt=True`` refuses the call; it does not end the session.
 """
@@ -61,7 +63,15 @@ def permission_callback(
 ) -> Callable[[str, dict[str, Any]], PermissionResult | None]:
     """Wrap an SDK-style ``can_use_tool`` as a shipit ``permission_callback``."""
 
+    from shipit_agent.safety.permissions import PermissionEngine
+
+    classifier = PermissionEngine()
+
     def callback(name: str, arguments: dict[str, Any]) -> PermissionResult | None:
+        # As in the SDK, calls that need no approval never reach can_use_tool:
+        # reads, searches, and questions (AskUserQuestion asks it itself).
+        if classifier.is_read_only(name):
+            return PermissionResult(PermissionDecision.ALLOW, reason="read-only")
         try:
             answer = run_maybe_async(can_use_tool, name, dict(arguments), ToolPermissionContext())
         except Exception as error:

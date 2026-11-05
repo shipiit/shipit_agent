@@ -144,6 +144,38 @@ async def can_use_tool(tool_name, input_data, context):
 
 `updated_input` rewrites the call. An `addRules` allow in `updated_permissions` approves this call for the rest of the session.
 
+Calls that need no approval, such as reads and searches, are approved without calling `can_use_tool`, as in the SDK.
+
+## Clarifying questions
+
+When the model asks the user something, `can_use_tool` is called with `tool_name == "AskUserQuestion"`. The input holds `questions`, each with `question`, `header`, `options` (a `label` and a `description` each) and `multiSelect`. Answer by echoing the questions with an `answers` map from question text to the chosen label (a list for multi-select), or with a free-form `response`:
+
+```python
+async def can_use_tool(tool_name, input_data, context):
+    if tool_name == "AskUserQuestion":
+        first = input_data["questions"][0]
+        return PermissionResultAllow(updated_input={
+            "questions": input_data["questions"],
+            "answers": {first["question"]: first["options"][0]["label"]},
+        })
+    return PermissionResultAllow(updated_input=input_data)
+```
+
+A denial, or a run with no `can_use_tool`, tells the model to state its assumption and carry on.
+
+## Streaming input
+
+`query()` and `client.query()` also take an async iterable of SDK user messages. Each message runs as a turn of the same conversation:
+
+```python
+async def messages():
+    yield {"type": "user", "message": {"role": "user", "content": "Read app.py"}}
+    yield {"type": "user", "message": {"role": "user", "content": "Now add tests for it"}}
+
+async for message in query(prompt=messages(), options=options):
+    ...
+```
+
 ## Hooks
 
 ```python

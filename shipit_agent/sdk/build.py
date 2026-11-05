@@ -32,7 +32,7 @@ def build_agent(options: AgentOptions) -> Any:
     settings: dict[str, Any] = {
         "llm": llm,
         "prompt": system_prompt(options.system_prompt),
-        "tools": tools_for(options.tools, llm=llm, root=root),
+        "tools": _with_sdk_questions(tools_for(options.tools, llm=llm, root=root), options.can_use_tool),
         "mcps": mcp_servers(options.mcp_servers),
         "project_root": root,
         "permission_mode": options.permission_mode,
@@ -121,6 +121,15 @@ def tools_for(spec: list[Any] | str | None, *, llm: Any, root: Path) -> list[Any
             raise ValueError(f"no built-in tool is named {item!r}")
         chosen.extend(tool for tool in matches if tool not in chosen)
     return chosen
+
+
+def _with_sdk_questions(tools: list[Any], can_use_tool: Any) -> list[Any]:
+    """The built-in ask_user, as the SDK's AskUserQuestion answered by *can_use_tool*."""
+    from shipit_agent.tools import AskUserTool
+
+    from .ask_user import AskUserQuestionTool
+
+    return [AskUserQuestionTool(can_use_tool) if isinstance(tool, AskUserTool) else tool for tool in tools]
 
 
 def mcp_servers(spec: dict[str, Any] | list[Any]) -> list[Any]:

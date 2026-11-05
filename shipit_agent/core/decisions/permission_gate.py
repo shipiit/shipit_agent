@@ -58,9 +58,17 @@ class PermissionGateMixin:
                     decision=PermissionDecision.DENY, reason="; ".join(verdict.reasons)
                 )
             risk = tuple(verdict.reasons) if verdict.level == "risky" else ()
-        return authorize_tool(
+        decision = authorize_tool(
             self.hooks, self.permissions, name, arguments, tool, risk=risk
         )
+        if decision is not None and decision.needs_approval and self.hooks:
+            settled = self.hooks.run_permission_request(name, arguments, decision.reason)
+            if settled is not None:
+                return settled
+            self.hooks.run_notification(
+                f"'{name}' needs approval: {decision.reason}", "permission_prompt"
+            )
+        return decision
 
     def note_lockdown(
         self,

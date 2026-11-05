@@ -136,3 +136,26 @@ class HookDispatchMixin:
             if decision is not None and decision.denied:
                 return current, decision
         return current, None
+
+    def run_post_tool_failure(self, name: str, arguments: dict[str, Any], error: str) -> str:
+        """Run failure hooks; the context they return, joined."""
+        notes: list[str] = []
+        for fn in self.post_tool_failure:
+            value = fn(name, dict(arguments), error)
+            if isinstance(value, str) and value.strip():
+                notes.append(value.strip())
+        return "\n".join(notes)
+
+    def run_permission_request(
+        self, name: str, arguments: dict[str, Any], reason: str
+    ) -> PermissionResult | None:
+        """The first allow or deny a request hook gives, or ``None`` to keep waiting."""
+        for fn in self.permission_request:
+            decision = _coerce_hook_decision(fn(name, dict(arguments), reason))
+            if decision is not None and not decision.needs_approval:
+                return decision
+        return None
+
+    def run_notification(self, message: str, notification_type: str) -> None:
+        for fn in self.notification:
+            fn(message, notification_type)

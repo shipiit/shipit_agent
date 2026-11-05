@@ -108,3 +108,35 @@ class HookRegistrationMixin:
         """
         self.pre_compact.append(fn)
         return fn
+
+    def on_post_tool_failure(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a hook called with ``(name, arguments, error)`` when a tool fails.
+
+        Like the SDK's ``PostToolUseFailure``: return text to add to what the
+        model reads with the failed result (how to recover, say), or ``None``.
+        After-tool hooks still run for the failure too.
+        """
+        self.post_tool_failure.append(fn)
+        return fn
+
+    def on_permission_request(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a hook that settles a call which would wait for approval.
+
+        Called with ``(name, arguments, reason)`` once rules, mode and the
+        permission callback have left the call needing a human, like the SDK's
+        ``PermissionRequest``. Return ``{"decision": "allow"}`` (or a
+        ``PermissionResult``, which may carry ``updated_arguments``) to run it,
+        ``{"decision": "deny", "reason": ...}`` or ``False`` to refuse it, or
+        ``None`` to leave it waiting.
+        """
+        self.permission_request.append(fn)
+        return fn
+
+    def on_notification(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a hook called with ``(message, notification_type)``.
+
+        Fires with ``"permission_prompt"`` when a call is left waiting for a
+        human's approval, so a host can page someone. It only observes.
+        """
+        self.notification.append(fn)
+        return fn

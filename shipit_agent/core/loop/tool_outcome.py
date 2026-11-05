@@ -42,6 +42,12 @@ class ToolOutcomeMixin:
         """
         if self.hooks:
             tool_result = self.hooks.run_after_tool(tool_call.name, tool_result)
+            if tool_result.is_error:
+                note = self.hooks.run_post_tool_failure(
+                    tool_call.name, dict(tool_call.arguments), str(tool_result.output)
+                )
+                if note:
+                    tool_result.output = f"{tool_result.output}\n\n{note}"
 
         tool_result.output, redacted_secret = self.sanitize_tool_output(
             state, tool_call.name, tool_result.output

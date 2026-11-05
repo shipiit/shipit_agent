@@ -42,3 +42,6 @@ class AgentHooks(HookRegistrationMixin, HookDispatchMixin):
     pre_compact: list[Callable[..., Any]] = field(default_factory=list)
     subagent_start: list[Callable[..., Any]] = field(default_factory=list)
     subagent_stop: list[Callable[..., Any]] = field(default_factory=list)
+    post_tool_failure: list[Callable[..., Any]] = field(default_factory=list)
+    permission_request: list[Callable[..., Any]] = field(default_factory=list)
+    notification: list[Callable[..., Any]] = field(default_factory=list)

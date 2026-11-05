@@ -304,7 +304,8 @@ class TestAgentIntegration:
             "read_file",
             "edit_file",
         ]
-        assert any(event.type == "planning_completed" for event in result.events)
+        # Automatic planning is opt-in (RouterPolicy.auto_plan); none ran here.
+        assert not any(event.type == "planning_completed" for event in result.events)
         assert result.output == "Created, read, and patched live.txt."
         assert agent.code_mode is True
         assert agent.context_window_tokens == 128_000

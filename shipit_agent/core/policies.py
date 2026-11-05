@@ -58,7 +58,9 @@ class RetryPolicy:
 @dataclass(slots=True)
 class RouterPolicy:
     """When a run plans first: automatic planning and the words that trigger it."""
-    auto_plan: bool = True
+    #: Run the planner tool before the first step. Off by default, as in the
+    #: Claude Agent SDK: the model calls ``plan_task`` itself when a plan helps.
+    auto_plan: bool = False
     plan_keywords: tuple[str, ...] = (
         "plan",
         "build",

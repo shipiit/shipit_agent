@@ -30,7 +30,7 @@ from shipit_agent.skills.markdown import (
     parse_skill_markdown,
     write_skill,
 )
-from shipit_agent.tests.test_graph import Reply, ScriptedLLM, spec
+from graph_runtime.test_graph import Reply, ScriptedLLM, spec
 
 
 # --------------------------------------------------------------------------- #

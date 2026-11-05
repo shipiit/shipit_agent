@@ -9,9 +9,9 @@ import pytest
 
 from shipit_agent.core.agent_mixin import UpgradeMixin
 from shipit_agent.core.models import ToolCall
-from shipit_agent.tests.test_bridge import FakeRule, FakeSkill, LegacyAgent
-from shipit_agent.tests.test_graph import EchoTool, Reply, ScriptedLLM
-from shipit_agent.tests.test_mcp_and_skills import FakeMCPServer, FakeMCPTool
+from graph_runtime.test_bridge import FakeRule, FakeSkill, LegacyAgent
+from graph_runtime.test_graph import EchoTool, Reply, ScriptedLLM
+from graph_runtime.test_mcp_and_skills import FakeMCPServer, FakeMCPTool
 
 
 @dataclass

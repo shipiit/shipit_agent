@@ -9,8 +9,8 @@ import pytest
 
 from shipit_agent.core.bridge import MAPPING, NOT_YET_MAPPED, spec_from_agent, unmapped
 from shipit_agent.core.graph import AgentGraph
-from shipit_agent.tests.test_graph import EchoTool, Reply, ScriptedLLM
-from shipit_agent.tests.test_mcp_and_skills import FakeMCPServer, FakeMCPTool
+from graph_runtime.test_graph import EchoTool, Reply, ScriptedLLM
+from graph_runtime.test_mcp_and_skills import FakeMCPServer, FakeMCPTool
 
 
 @dataclass

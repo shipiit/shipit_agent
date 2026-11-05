@@ -1,5 +1,5 @@
 """Everything at once: skills, MCP, deferred tools, live output, subagent, usage."""
-import sys, textwrap; sys.path.insert(0, '.')
+import sys, textwrap; sys.path[:0] = ['.', 'tests']
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -7,9 +7,9 @@ from shipit_agent.agent_mixin import UpgradeMixin
 from shipit_agent.models import ToolCall
 from shipit_agent.skills.markdown import discover_skills
 from shipit_agent.tools import core_tools
-from shipit_agent.tests.test_graph import Reply, ScriptedLLM
-from shipit_agent.tests.test_bridge import LegacyAgent
-from shipit_agent.tests.test_mcp_and_skills import FakeMCPServer, FakeMCPTool, FakeConnection
+from graph_runtime.test_graph import Reply, ScriptedLLM
+from graph_runtime.test_bridge import LegacyAgent
+from graph_runtime.test_mcp_and_skills import FakeMCPServer, FakeMCPTool, FakeConnection
 
 @dataclass
 class Agent(UpgradeMixin, LegacyAgent):

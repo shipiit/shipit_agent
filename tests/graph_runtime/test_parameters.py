@@ -13,8 +13,8 @@ from shipit_agent.llms.parameters import (
     resolve_parameters,
 )
 from shipit_agent.core.graph import AgentGraph
-from shipit_agent.tests.test_bridge import LegacyAgent
-from shipit_agent.tests.test_graph import Reply, ScriptedLLM
+from graph_runtime.test_bridge import LegacyAgent
+from graph_runtime.test_graph import Reply, ScriptedLLM
 from shipit_agent.core.bridge import spec_from_agent
 
 GEMMA = "google.gemma-4-31b"

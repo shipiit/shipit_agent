@@ -13,6 +13,7 @@ for ``PreToolUse`` and ``PermissionRequest``.
 from __future__ import annotations
 
 import concurrent.futures
+import contextvars
 import logging
 import re
 from dataclasses import dataclass, field
@@ -143,9 +144,15 @@ def _invoke(cb: Callable[..., Any], payload: dict[str, Any], tool_use_id: str | 
         if matcher.timeout is None:
             output = run_maybe_async(cb, payload, tool_use_id, context)
         else:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(run_maybe_async, cb, payload, tool_use_id, context)
+            # Not a `with` block: leaving one waits for the callback, which is
+            # exactly what the timeout is there to stop.
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            try:
+                future = pool.submit(contextvars.copy_context().run, run_maybe_async,
+                                     cb, payload, tool_use_id, context)
                 output = future.result(timeout=matcher.timeout)
+            finally:
+                pool.shutdown(wait=False)
     except Exception:
         logger.warning("hook %s failed for %s", getattr(cb, "__name__", cb),
                        payload.get("hook_event_name"), exc_info=True)

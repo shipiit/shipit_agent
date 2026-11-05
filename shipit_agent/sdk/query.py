@@ -15,6 +15,7 @@ from typing import Any
 from .build import build_agent
 from .convert import MessageStream, error_result
 from .options import AgentOptions
+from .tools import HOME_LOOP
 from .types import Message, ResultMessage
 
 __all__ = ["query", "run_messages"]
@@ -42,7 +43,7 @@ async def run_messages(agent: Any, prompt: str, options: AgentOptions) -> AsyncI
     stream = MessageStream(init=_init_data(agent, options), partial=options.include_partial_messages)
     started = time.monotonic()
     try:
-        async for event in agent.astream(text):
+        async for event in _events(agent, text):
             for message in stream.feed(event):
                 if isinstance(message, ResultMessage) and schema is not None:
                     await _parse_structured(agent, message, schema)
@@ -51,6 +52,41 @@ async def run_messages(agent: Any, prompt: str, options: AgentOptions) -> AsyncI
         yield error_result(
             error, session_id=stream.session_id, duration_ms=int((time.monotonic() - started) * 1000)
         )
+
+
+async def _events(agent: Any, prompt: str) -> AsyncIterator[Any]:
+    """The run's events, with the run on a worker thread.
+
+    The caller's loop stays free, so async callbacks, hooks and tools can
+    await work that loop does; :data:`HOME_LOOP` sends their coroutines here.
+    """
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    done = object()
+
+    def produce() -> None:
+        try:
+            for event in agent.stream(prompt):
+                loop.call_soon_threadsafe(queue.put_nowait, event)
+        except BaseException as error:
+            loop.call_soon_threadsafe(queue.put_nowait, error)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, done)
+
+    token = HOME_LOOP.set(loop)
+    try:
+        worker = asyncio.ensure_future(asyncio.to_thread(produce))
+    finally:
+        HOME_LOOP.reset(token)
+    try:
+        while (item := await queue.get()) is not done:
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        if not worker.done():
+            agent.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
 
 
 def _init_data(agent: Any, options: AgentOptions) -> dict[str, Any]:

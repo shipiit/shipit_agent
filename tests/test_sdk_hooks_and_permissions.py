@@ -141,13 +141,19 @@ def test_a_stop_hook_can_keep_the_agent_going() -> None:
 
 def test_a_hook_that_times_out_blocks_only_when_set_to() -> None:
     def slow(*_: Any) -> dict[str, Any]:
-        time.sleep(0.5)
+        time.sleep(2)
         return {}
 
+    _run(_Calls())  # warm imports, so the timings below measure the hook alone
+    started = time.monotonic()
     blocking = HookMatcher(None, [slow], timeout=0.05, on_failure="block")
     assert _first_result(_run(_Calls(("note_create", {"text": "x"})), hooks={"PreToolUse": [blocking]})).is_error
+    # The timeout bounds the wait: the run does not sit out the 2 s callback.
+    assert time.monotonic() - started < 1.5
+    started = time.monotonic()
     lenient = HookMatcher(None, [slow], timeout=0.05)
     assert _first_result(_run(_Calls(("note_create", {"text": "x"})), hooks={"PreToolUse": [lenient]})).content == "noted:x"
+    assert time.monotonic() - started < 1.5
 
 
 def test_an_unknown_hook_event_is_refused() -> None:

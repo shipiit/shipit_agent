@@ -13,6 +13,7 @@ for the rest of the session; other update types are accepted and ignored.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal
 
@@ -26,6 +27,8 @@ __all__ = [
     "ToolPermissionContext",
     "permission_callback",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -59,7 +62,14 @@ def permission_callback(
     """Wrap an SDK-style ``can_use_tool`` as a shipit ``permission_callback``."""
 
     def callback(name: str, arguments: dict[str, Any]) -> PermissionResult | None:
-        answer = run_maybe_async(can_use_tool, name, dict(arguments), ToolPermissionContext())
+        try:
+            answer = run_maybe_async(can_use_tool, name, dict(arguments), ToolPermissionContext())
+        except Exception as error:
+            # Fail closed: a broken approval check must not become "allow".
+            logger.warning("can_use_tool failed for %s; denying the call", name, exc_info=True)
+            return PermissionResult(
+                PermissionDecision.DENY, reason=f"can_use_tool failed: {type(error).__name__}: {error}"
+            )
         if isinstance(answer, PermissionResultDeny) or _behavior(answer) == "deny":
             message = getattr(answer, "message", None) or _get(answer, "message") or "denied by can_use_tool"
             return PermissionResult(PermissionDecision.DENY, reason=str(message))

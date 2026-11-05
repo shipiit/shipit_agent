@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextvars
 import inspect
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -22,7 +23,14 @@ from typing import Any, Awaitable, Callable
 from shipit_agent.mcp import MCPServer, MCPTool
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
-__all__ = ["SdkMcpTool", "create_sdk_mcp_server", "run_maybe_async", "tool"]
+__all__ = ["HOME_LOOP", "SdkMcpTool", "create_sdk_mcp_server", "run_maybe_async", "tool"]
+
+#: The event loop of the code that started the run. Callbacks, hooks and tools
+#: run on the agent's worker threads; their coroutines are handed back to this
+#: loop, so they can await what the app's own loop delivers (an approval click).
+HOME_LOOP: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = contextvars.ContextVar(
+    "shipit_sdk_home_loop", default=None
+)
 
 _JSON_TYPES = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array", dict: "object"}
 
@@ -102,9 +110,10 @@ def _to_output(result: Any) -> ToolOutput:
 def run_maybe_async(fn: Callable[..., Any], *args: Any) -> Any:
     """Call *fn*; if it returns a coroutine, run it to completion.
 
-    Tools and permission checks run in plain functions, sometimes on a thread
-    whose event loop is already running, so a coroutine then runs on a
-    short-lived thread of its own.
+    Off the run's :data:`HOME_LOOP`, the coroutine runs on that loop while
+    this thread waits. With no home loop (direct use, outside a query) it
+    runs on a loop of its own, on a short-lived thread when this thread's
+    loop is already running.
     """
     value = fn(*args)
     if not inspect.isawaitable(value):
@@ -113,9 +122,14 @@ def run_maybe_async(fn: Callable[..., Any], *args: Any) -> Any:
     async def _await() -> Any:
         return await value
 
+    home = HOME_LOOP.get()
     try:
-        asyncio.get_running_loop()
+        running: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
     except RuntimeError:
+        running = None
+    if home is not None and home is not running and home.is_running():
+        return asyncio.run_coroutine_threadsafe(_await(), home).result()
+    if running is None:
         return asyncio.run(_await())
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(asyncio.run, _await()).result()

@@ -419,6 +419,8 @@ class Compactor:
         )
         self._on_summary_failure = on_summary_failure
         self.checkpoints: list[CompactionCheckpoint] = []
+        # Host instructions for the summary in progress (see compact()).
+        self._instructions = ""
         # Usage of the most recent summarizer call, for the caller's cost
         # accounting — a summary is a real completion and its tokens count.
         self.last_summary_usage: dict[str, int] = {}
@@ -452,9 +454,14 @@ class Compactor:
     # ── compaction ───────────────────────────────────────────────────────
 
     def compact(
-        self, messages: Sequence[Message], *, force: bool = False
+        self, messages: Sequence[Message], *, force: bool = False, instructions: str = ""
     ) -> CompactionCheckpoint | None:
-        """Compact if needed; return the checkpoint, or ``None`` if nothing to do."""
+        """Compact if needed; return the checkpoint, or ``None`` if nothing to do.
+
+        *instructions* come from the host (a pre-compact hook) and are added to
+        the summarizer's own, unlike the transcript, which is only data.
+        """
+        self._instructions = instructions
         if not force and not self.needs_compaction(messages):
             return None
 
@@ -582,7 +589,12 @@ class Compactor:
                         )
                     ],
                     tools=[],
-                    system_prompt=COMPACTION_SYSTEM_PROMPT,
+                    system_prompt=(
+                        f"{COMPACTION_SYSTEM_PROMPT}\n\nThe host also asks the handoff "
+                        f"to keep:\n{self._instructions}"
+                        if self._instructions
+                        else COMPACTION_SYSTEM_PROMPT
+                    ),
                     metadata={"purpose": "context_compaction"},
                 )
                 self.last_summary_usage = dict(getattr(response, "usage", None) or {})

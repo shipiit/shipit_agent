@@ -155,7 +155,19 @@ class ContextFitMixin:
             budget_tokens=compactor.limits.input_budget,
             iteration=iteration,
         )
-        checkpoint = compactor.compact(messages)
+        instructions = (
+            self.hooks.run_pre_compact(
+                messages,
+                {
+                    "trigger": "auto",
+                    "estimated_tokens": compactor.estimated_prompt_tokens(messages),
+                    "budget_tokens": compactor.limits.input_budget,
+                },
+            )
+            if self.hooks is not None
+            else ""
+        )
+        checkpoint = compactor.compact(messages, instructions=instructions)
         if checkpoint is None:
             return latest.replay(messages) if latest is not None else messages
         self._reset_read_gate(shared_state)

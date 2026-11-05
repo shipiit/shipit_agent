@@ -66,6 +66,7 @@ class AgentHooks:
     after_tool: list[Callable[..., Any]] = field(default_factory=list)
     user_prompt: list[Callable[..., Any]] = field(default_factory=list)
     stop: list[Callable[..., Any]] = field(default_factory=list)
+    pre_compact: list[Callable[..., Any]] = field(default_factory=list)
 
     # ------------------------------------------------------------------
     # Registration decorators
@@ -139,6 +140,17 @@ class AgentHooks:
         self.stop.append(fn)
         return fn
 
+    def on_pre_compact(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a hook that runs just before older turns are summarized.
+
+        Called with a copy of the messages and ``{"trigger", "estimated_tokens",
+        "budget_tokens"}``, like Claude's ``PreCompact`` hook: archive the full
+        transcript, or return text to add to the summarizer's instructions
+        (what the handoff must keep). Return ``None`` to change nothing.
+        """
+        self.pre_compact.append(fn)
+        return fn
+
     # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------
@@ -209,6 +221,15 @@ class AgentHooks:
             ):
                 return str(value.get("reason") or "The task is not finished yet.").strip()
         return None
+
+    def run_pre_compact(self, messages: list[Any], info: dict[str, Any]) -> str:
+        """Run pre-compact hooks; the instructions they return, joined."""
+        notes: list[str] = []
+        for fn in self.pre_compact:
+            value = fn(list(messages), dict(info))
+            if isinstance(value, str) and value.strip():
+                notes.append(value.strip())
+        return "\n".join(notes)
 
     def run_user_prompt(self, prompt: str) -> tuple[str, PermissionResult | None]:
         """Let hooks rewrite or block the user prompt.

@@ -393,6 +393,14 @@ class SubAgentTool:
         result = SubAgentResult(task=task, output="", agent_type=agent_type or None)
         label = agent_type or "sub-agent"
         sink = _state(context, "state").get(EVENT_SINK_KEY)
+        hooks = (_state(context, "state").get(PARENT_STATE_KEY) or {}).get("hooks")
+        if hooks is not None:
+            allowed, refusal, extra = hooks.run_subagent_start(agent_type or "", task)
+            if not allowed:
+                result.error = f"Delegation refused: {refusal}"
+                return result
+            if extra:
+                task_context = f"{task_context}\n\n{extra}".strip()
 
         try:
             agent = self._build_agent(context, agent_type, depth)
@@ -410,9 +418,13 @@ class SubAgentTool:
                 )
         except Exception as exc:  # noqa: BLE001 — reported to the parent as data
             result.error = f"{type(exc).__name__}: {exc}"
+            if hooks is not None:
+                hooks.run_subagent_stop(agent_type or "", task, "", result.error)
             return result
 
         result.output = output or ""
+        if hooks is not None:
+            hooks.run_subagent_stop(agent_type or "", task, result.output, "")
         result.iterations = int(summary.get("iterations") or 0)
         result.tool_calls = int(summary.get("tool_calls") or 0)
         result.usage = dict(summary.get("usage") or {})

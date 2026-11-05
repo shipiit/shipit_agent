@@ -130,6 +130,7 @@ class SharedToolStateMixin:
                 "permissions": self.permissions,
                 "approvals": self.approvals,
                 "guardrails": self.guardrails,
+                "hooks": self.hooks,
                 "project_root": self.metadata.get("project_root", "."),
             },
             DEPTH_STATE_KEY: self.metadata.get(DEPTH_STATE_KEY, 0),

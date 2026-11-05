@@ -67,6 +67,8 @@ class AgentHooks:
     user_prompt: list[Callable[..., Any]] = field(default_factory=list)
     stop: list[Callable[..., Any]] = field(default_factory=list)
     pre_compact: list[Callable[..., Any]] = field(default_factory=list)
+    subagent_start: list[Callable[..., Any]] = field(default_factory=list)
+    subagent_stop: list[Callable[..., Any]] = field(default_factory=list)
 
     # ------------------------------------------------------------------
     # Registration decorators
@@ -138,6 +140,21 @@ class AgentHooks:
         in one run, so a hook that never relents cannot loop forever.
         """
         self.stop.append(fn)
+        return fn
+
+    def on_subagent_start(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a hook that runs before a sub-agent is started.
+
+        Called with ``(agent_type, task)``. Return ``False`` or a deny decision
+        to refuse the delegation, text to add to the sub-agent's brief, or
+        ``None`` to let it run as asked.
+        """
+        self.subagent_start.append(fn)
+        return fn
+
+    def on_subagent_stop(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a hook called with ``(agent_type, task, output, error)`` when a sub-agent ends."""
+        self.subagent_stop.append(fn)
         return fn
 
     def on_pre_compact(self, fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -221,6 +238,27 @@ class AgentHooks:
             ):
                 return str(value.get("reason") or "The task is not finished yet.").strip()
         return None
+
+    def run_subagent_start(self, agent_type: str, task: str) -> tuple[bool, str, str]:
+        """Run start hooks: ``(allowed, refusal_reason, extra_context)``."""
+        notes: list[str] = []
+        for fn in self.subagent_start:
+            value = fn(agent_type, task)
+            if value is False:
+                return False, "a sub-agent start hook refused it", ""
+            if isinstance(value, str):
+                if value.strip():
+                    notes.append(value.strip())
+                continue
+            decision = _coerce_hook_decision(value)
+            if decision is not None and decision.denied:
+                return False, decision.reason or "a sub-agent start hook refused it", ""
+        return True, "", "\n".join(notes)
+
+    def run_subagent_stop(self, agent_type: str, task: str, output: str, error: str) -> None:
+        """Run stop hooks; they observe and cannot change the result."""
+        for fn in self.subagent_stop:
+            fn(agent_type, task, output, error)
 
     def run_pre_compact(self, messages: list[Any], info: dict[str, Any]) -> str:
         """Run pre-compact hooks; the instructions they return, joined."""

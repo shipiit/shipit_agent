@@ -144,6 +144,7 @@ nav:
       - With Tools: agent/with-tools.md
       - Memory: agent/memory.md
       - Sessions & Memory: agent/sessions.md
+      - Claude Agent SDK API: guides/agent-sdk.md
   - Build with SHIPIT:
       # Core concepts
       - Streaming Events: guides/streaming.md

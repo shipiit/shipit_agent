@@ -63,7 +63,17 @@ class FileWriteTool:
         return candidate
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
-        path = self._resolve(str(kwargs["path"]))
+        try:
+            path = self._resolve(str(kwargs["path"]))
+        except ValueError:
+            return ToolOutput.error(
+                f"Not written: {kwargs['path']} is outside the project. Write "
+                f"files inside the project ({self.root_dir}), using a path "
+                "relative to it.",
+                path=str(kwargs["path"]),
+                error="outside_project",
+            )
+        existed = path.exists()
         path.parent.mkdir(parents=True, exist_ok=True)
         content = str(kwargs.get("content", ""))
         mode = str(kwargs.get("mode", "overwrite"))
@@ -76,7 +86,18 @@ class FileWriteTool:
             # edit next without re-reading. An append does not: what was
             # already in the file is still unseen.
             record_file_seen(getattr(context, "state", None), path)
+        try:
+            shown = path.relative_to(self.root_dir)
+        except ValueError:
+            shown = path
+        lines = content.count("\n") + (0 if content.endswith("\n") or not content else 1)
+        verb = "Appended to" if mode == "append" else "Overwrote" if existed else "Created"
         return ToolOutput(
-            text=f"File updated: {path}",
-            metadata={"path": str(path), "mode": mode, "size": path.stat().st_size},
+            text=f"{verb} {shown} ({lines} line{'s' if lines != 1 else ''}).",
+            metadata={
+                "path": str(path),
+                "mode": mode,
+                "created": not existed,
+                "size": path.stat().st_size,
+            },
         )

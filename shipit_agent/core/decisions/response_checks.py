@@ -6,6 +6,8 @@ the methods run on the runtime instance.
 
 from __future__ import annotations
 
+from collections import Counter
+
 from typing import Any, Sequence
 
 from shipit_agent.core.models import Message
@@ -154,6 +156,40 @@ class ResponseChecksMixin:
             "an attempted action; that repeated text was not executed."
             f"{detail} No additional result is verified. Please retry this request."
         )
+
+    def missing_answer_content(self, state: Any, *, reached_step_limit: bool) -> str:
+        """The answer to give when the model left none: why, what ran, how to go on.
+
+        Records the reason in ``incomplete_reason`` (unless a budget already
+        did), so callers can tell a cut-short run from a finished one.
+        """
+        reason = "max_iterations" if reached_step_limit else "empty_response"
+        if not self.metadata.get("incomplete_reason"):
+            self.metadata["incomplete_reason"] = reason
+        self.emit(
+            state,
+            "model_output_recovered",
+            "Run ended without a final answer",
+            reason=reason,
+        )
+        counts = Counter(result.name for result in state.tool_results)
+        work = (
+            "Tools run: "
+            + ", ".join(
+                f"{name} ({count} calls)" if count > 1 else name
+                for name, count in counts.items()
+            )
+            + "."
+            if counts
+            else "No tools ran."
+        )
+        if reached_step_limit:
+            return (
+                f"I reached the step limit ({self.max_iterations} steps) before "
+                f"writing a final answer. {work} Ask me to continue, or raise "
+                "max_iterations for longer tasks."
+            )
+        return f"The model returned no final answer. {work} Please retry the request."
 
     def apply_stop_hooks(
         self, state: Any, response: LLMResponse, iteration: int, shared_state: dict

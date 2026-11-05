@@ -35,6 +35,7 @@ class TurnFinishMixin:
 
         # Summarization if hit iteration cap
         hit_iteration_cap = bool(response.tool_calls) and not response.content
+        reached_step_limit = hit_iteration_cap
         if hit_iteration_cap and self.task_budget_reached(
             state, self.max_iterations + 1
         ):
@@ -64,7 +65,27 @@ class TurnFinishMixin:
             except Exception:
                 pass
 
+        if reached_step_limit and not self.metadata.get("incomplete_reason"):
+            # A summary may rescue the answer, but the task still stopped short.
+            self.metadata["incomplete_reason"] = "max_iterations"
         response.content = self.stable_final_content(state, response.content)
+        if not (response.content or "").strip() and not self._cancel_event.is_set():
+            steps_taken = max(
+                (
+                    event.payload.get("iteration", 0)
+                    for event in state.events
+                    if event.type == "step_started"
+                    and event.payload.get("iteration", 0) <= self.max_iterations
+                ),
+                default=0,
+            )
+            # The last step withholds tools to force an answer; an empty
+            # reply there is still the step limit, not a silent model.
+            response.content = self.missing_answer_content(
+                state,
+                reached_step_limit=reached_step_limit
+                or steps_taken >= self.max_iterations,
+            )
 
         # Skip if this exact response was already appended in the loop.
         if response.content and id(response) != appended_response_id:

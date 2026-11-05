@@ -21,11 +21,31 @@ class TurnToolsMixin:
 
     def _tools_prompt(self, tools: Iterable[Any], *, with_mcps: bool = True) -> str:
         """The tools section of the system prompt for *tools*."""
-        return build_tools_prompt(
+        section = build_tools_prompt(
             tools,
             connections=self.connections.all(),
             mcps=self.mcps if with_mcps else (),
             supports_parallel_tool_calls=self.model_supports_parallel_tool_calls(),
+        )
+        guidance = self._mcp_instructions() if with_mcps else ""
+        return "\n\n".join(part for part in (section, guidance) if part)
+
+    def _mcp_instructions(self) -> str:
+        """Usage guidance the attached MCP servers sent when they connected.
+
+        Labelled per server: it is the server's advice about its own tools,
+        not an instruction from whoever configured the agent.
+        """
+        blocks = [
+            f"### {mcp.name}\n{str(mcp.instructions).strip()}"
+            for mcp in self.mcps
+            if str(getattr(mcp, "instructions", "") or "").strip()
+        ]
+        if not blocks:
+            return ""
+        return (
+            "## Instructions from MCP servers\n"
+            "Each server's own guidance for using its tools.\n\n" + "\n\n".join(blocks)
         )
 
     def _system_prompt(self, *sections: str) -> str:

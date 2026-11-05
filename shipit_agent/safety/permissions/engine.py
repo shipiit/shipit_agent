@@ -1,38 +1,9 @@
-"""Permission engine — a fast, rule-based control plane for tool calls.
-
-A rule-based permission layer: every proposed tool call is
-checked against declarative **allow / deny / ask** rules and a **mode** before
-it runs — no LLM required (unlike :mod:`shipit_agent.verifier`, which is an
-*LLM* veto and complements this). The two can run together: the permission
-engine is the cheap first gate; the verifier is the smart second opinion.
-
-Modes:
-
-- ``default``     — apply rules; unmatched tools fall back to ``default_decision``.
-- ``acceptEdits`` — auto-allow file edit/write tools; everything else via rules.
-- ``plan``        — read-only gate: only known read-only tools run; every
-                    mutating/unknown tool is denied so the agent must produce a
-                    plan instead of acting.
-- ``bypass``      — allow everything not denied or asked (``bypassPermissions``
-                    is accepted too, the Claude Agent SDK's name).
-- ``dontAsk``     — never ask: anything not pre-approved by an allow rule or the
-                    callback is refused.
-
-Rules are applied in the Claude Agent SDK's order: deny rules, then ask rules,
-then the mode, then allow rules, then the callback. An ask rule is a request
-for a human, so no mode or broad allow pattern overrides it.
-
-A check returns a :class:`PermissionResult` with a decision and, optionally,
-``updated_arguments`` to **rewrite** the tool call (e.g. redact a secret, scope
-a path) before it executes.
-"""
+"""The permission engine: deny, ask, mode, allow, then the callback."""
 
 from __future__ import annotations
 
-import fnmatch
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable, Literal, Sequence
+from typing import Any, Callable, Sequence
 
 from shipit_agent.safety.permission_rules import (
     RuleBehavior,
@@ -41,65 +12,8 @@ from shipit_agent.safety.permission_rules import (
     rule_names_tool,
 )
 
-PermissionMode = Literal[
-    "default", "acceptEdits", "plan", "bypass", "bypassPermissions", "dontAsk"
-]
-
-
-class PermissionDecision(str, Enum):
-    """What a permission rule decides about a tool call: allow, deny or ask."""
-    ALLOW = "allow"
-    DENY = "deny"
-    ASK = "ask"
-
-
-@dataclass(slots=True)
-class PermissionResult:
-    """The outcome of a permission check.
-
-    ``updated_arguments`` lets a rule/hook **rewrite** the call before it runs
-    (an argument rewrite). ``None`` means "use the original args".
-    """
-
-    decision: PermissionDecision
-    reason: str = ""
-    updated_arguments: dict[str, Any] | None = None
-    #: For an ALLOW from the callback: ``"session"`` approves this exact call
-    #: (tool and arguments) for the rest of the session, like Claude Code's
-    #: "don't ask again"; ``"once"`` approves just this call.
-    scope: Literal["once", "session"] = "once"
-
-    @property
-    def allowed(self) -> bool:
-        return self.decision == PermissionDecision.ALLOW
-
-    @property
-    def denied(self) -> bool:
-        return self.decision == PermissionDecision.DENY
-
-    @property
-    def needs_approval(self) -> bool:
-        return self.decision == PermissionDecision.ASK
-
-
-# Default name heuristics. Overridable per-engine, and a tool may declare its
-# own ``read_only: bool`` attribute which always wins over these.
-_DEFAULT_READ_ONLY: tuple[str, ...] = (
-    "read*", "*read*", "view*", "list*", "glob*", "grep*", "search*",
-    "web_search", "open_url", "get_*", "fetch*", "*_get", "*_list",
-    "*_search", "plan*", "decompose*", "synthesize*", "decision*",
-    "verify*", "build_prompt", "tool_search", "ask_user", "human_review",
-)
-_DEFAULT_MUTATING: tuple[str, ...] = (
-    "write*", "edit*", "*write*", "bash", "run_code", "code_execution",
-    "*_create", "*_update", "*_delete", "*send*", "*_post", "sql",
-    "build_artifact", "*_patch",
-)
-_EDIT_TOOLS: tuple[str, ...] = ("write*", "edit*", "*write*", "build_artifact")
-
-
-def _matches_any(name: str, patterns: tuple[str, ...] | list[str]) -> bool:
-    return any(fnmatch.fnmatch(name, p) for p in patterns)
+from .tool_kinds import _DEFAULT_MUTATING, _DEFAULT_READ_ONLY, _EDIT_TOOLS, _matches_any
+from .values import PermissionDecision, PermissionMode, PermissionResult
 
 
 @dataclass
@@ -197,19 +111,26 @@ class PermissionEngine:
         are evaluated only when real arguments are available at execution.
         """
         if self.removes(tool_name) or any(
-            not is_scoped(rule) and rule_names_tool(rule, tool_name) for rule in self.deny
+            not is_scoped(rule) and rule_names_tool(rule, tool_name)
+            for rule in self.deny
         ):
             return False
         if self.mode == "bypass":
             return True
         if self.mode == "plan":
-            return (tool_name == "present_plan" or self._names(self.allow, tool_name)
-                    or self.is_read_only(tool_name, tool))
+            return (
+                tool_name == "present_plan"
+                or self._names(self.allow, tool_name)
+                or self.is_read_only(tool_name, tool)
+            )
         if self.mode == "acceptEdits" and self.is_edit(tool_name):
             return True
-        return (self.callback is not None or self._names(self.allow, tool_name)
-                or self._names(self.ask, tool_name)
-                or self.default_decision != PermissionDecision.DENY)
+        return (
+            self.callback is not None
+            or self._names(self.allow, tool_name)
+            or self._names(self.ask, tool_name)
+            or self.default_decision != PermissionDecision.DENY
+        )
 
     def check(
         self,
@@ -265,7 +186,8 @@ class PermissionEngine:
             # is the thing plan mode is building toward.
             if (
                 tool_name == "present_plan"
-                or self._first_hit(self.allow, tool_name, arguments, "allow") is not None
+                or self._first_hit(self.allow, tool_name, arguments, "allow")
+                is not None
                 or self.is_read_only(tool_name, tool)
             ):
                 return PermissionResult(
@@ -313,7 +235,9 @@ class PermissionEngine:
     ) -> str | None:
         """The first of *rules* that covers this call, or ``None``."""
         for rule in rules:
-            if rule_matches(rule, tool_name, arguments, root=self.root, behavior=behavior):
+            if rule_matches(
+                rule, tool_name, arguments, root=self.root, behavior=behavior
+            ):
                 return rule
         return None
 
@@ -325,7 +249,8 @@ class PermissionEngine:
         """Ask a human, or in ``dontAsk`` mode refuse instead."""
         if self.mode == "dontAsk":
             return PermissionResult(
-                PermissionDecision.DENY, reason=f"{reason} Not pre-approved (dontAsk mode)."
+                PermissionDecision.DENY,
+                reason=f"{reason} Not pre-approved (dontAsk mode).",
             )
         return PermissionResult(PermissionDecision.ASK, reason=reason)
 
@@ -355,65 +280,3 @@ def _grant_key(tool_name: str, arguments: dict[str, Any]) -> str:
     import json
 
     return f"{tool_name}\0{json.dumps(arguments, sort_keys=True, default=str)}"
-
-
-def authorize_tool(
-    hooks: Any,
-    permissions: "PermissionEngine | None",
-    name: str,
-    arguments: dict[str, Any],
-    tool: Any = None,
-    *,
-    risk: Sequence[str] = (),
-) -> PermissionResult | None:
-    """Fold blocking hooks + the permission engine into one decision.
-
-    A call with *risk* is always judged by an engine (a default one when
-    none is configured), so it cannot slip through the permissive default.
-
-    Precedence: DENY wins, then ASK, otherwise ALLOW (carrying the last
-    argument rewrite). Returns ``None`` when neither has an opinion — the
-    historical fully-permissive default. Shared by the sync and async runtimes.
-    ``hooks`` is duck-typed (``run_before_tool(name, args)``) to avoid a circular
-    import.
-    """
-    results: list[PermissionResult] = []
-    if hooks is not None:
-        hook_decision = hooks.run_before_tool(name, arguments)
-        if hook_decision is not None:
-            results.append(hook_decision)
-    if permissions is None and risk:
-        permissions = PermissionEngine()
-    if permissions is not None:
-        results.append(permissions.check(name, arguments, tool, risk=risk))
-    if not results:
-        return None
-    for result in results:
-        if result.denied:
-            return result
-    for result in results:
-        if result.needs_approval:
-            return result
-    updated: dict[str, Any] | None = None
-    for result in results:
-        if result.updated_arguments is not None:
-            updated = result.updated_arguments
-    return PermissionResult(PermissionDecision.ALLOW, updated_arguments=updated)
-
-
-def coerce_permissions(
-    spec: PermissionEngine | PermissionMode | dict[str, Any] | None,
-) -> PermissionEngine | None:
-    """Normalize a user-supplied permissions spec into a ``PermissionEngine``.
-
-    Accepts an engine, a bare mode string, a dict of kwargs, or ``None``.
-    """
-    if spec is None:
-        return None
-    if isinstance(spec, PermissionEngine):
-        return spec
-    if isinstance(spec, str):
-        return PermissionEngine(mode=spec)  # type: ignore[arg-type]
-    if isinstance(spec, dict):
-        return PermissionEngine(**spec)
-    raise TypeError(f"Unsupported permissions spec: {type(spec)!r}")

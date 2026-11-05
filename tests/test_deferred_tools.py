@@ -13,10 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+
 import pytest
 
 from shipit_agent.agent import Agent
 from shipit_agent.core.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.runtime import AgentRuntime
 from shipit_agent.deferral import (
     DEFAULT_CORE_TOOLS,
     deferred_index,
@@ -24,9 +27,8 @@ from shipit_agent.deferral import (
     select_schemas,
     signature_line,
 )
+from shipit_agent.deferral.core import RESIDENT_LIMIT
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.core.models import ToolCall
-from shipit_agent.core.runtime import AgentRuntime
 from shipit_agent.tools.base import ToolOutput
 from shipit_agent.tools.tool_search import ToolSearchTool
 
@@ -100,8 +102,9 @@ def test_auto_discovery_starts_with_nine_then_loads_exact_tool(async_mode):
 
 
 def test_auto_small_catalog_and_priority():
-    tools = [FakeTool(f"tool_{i}", "A capability") for i in range(10)]
+    tools = [FakeTool(f"tool_{i}", "A capability") for i in range(RESIDENT_LIMIT)]
     assert resolve_deferred_names(tools, "auto") == set()
+    tools.append(FakeTool("extra", "Another capability"))
     important = FakeTool("important", "Application core tool")
     important.discovery_priority = 100
     tools.append(important)

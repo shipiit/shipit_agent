@@ -32,6 +32,29 @@ def _schema_name(schema: dict) -> str:
     return str(((schema.get("function") or {}).get("name")) or "")
 
 
+#: The tools that stay resident under ``deferred_tools="auto"``, most
+#: important first: Claude Code's working set. Files (read, edit, write,
+#: find, search), the shell, the web (search, fetch), the todo list and the
+#: human, then the batch editor and memory.
+CORE_ORDER: tuple[str, ...] = (
+    "read_file",
+    "edit_file",
+    "write_file",
+    "bash",
+    "glob_files",
+    "grep_files",
+    "web_search",
+    "open_url",
+    "todo",
+    "ask_user",
+    "multi_edit",
+    "memory",
+)
+
+#: Most tools kept resident besides the discovery tool itself.
+RESIDENT_LIMIT = 12
+
+
 def resolve_deferred_names(
     tools: Iterable[Any],
     config: Any,
@@ -55,17 +78,22 @@ def resolve_deferred_names(
 
         discovery = next((t for t in tools if isinstance(t, ToolSearchTool)), None)
         candidates = [t for t in tools if t is not discovery]
-        if len(names) <= 10:
+        # A catalog that fits the resident set has nothing to defer.
+        if len(names) <= RESIDENT_LIMIT:
             return set()
-        # Explicit caller priority first, existing core capabilities second,
-        # registration order as a stable tie-breaker. Never reorder per prompt:
-        # that would invalidate cached prefixes on each follow-up.
-        def priority(tool: Any) -> tuple[float, bool]:
+
+        # Explicit caller priority first, then the ordered core, then name as
+        # a stable tie-breaker. Never reorder per prompt or by registration:
+        # either would invalidate cached prefixes on each follow-up.
+        def priority(tool: Any) -> tuple[float, int, str]:
             value = getattr(tool, "discovery_priority", 0)
             value = float(value) if isinstance(value, (int, float)) else 0.0
-            return (value, _tool_name(tool) in core)
+            name = _tool_name(tool)
+            rank = len(CORE_ORDER) - CORE_ORDER.index(name) if name in CORE_ORDER else 0
+            return (value, rank, name)
 
-        resident = {_tool_name(t) for t in sorted(candidates, key=priority, reverse=True)[:9]}
+        ranked = sorted(candidates, key=priority, reverse=True)
+        resident = {_tool_name(t) for t in ranked[:RESIDENT_LIMIT]}
         if discovery is not None:
             resident.add(_tool_name(discovery))
         deferred = names - resident

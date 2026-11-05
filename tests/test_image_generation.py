@@ -143,15 +143,17 @@ def test_bad_size_falls_back_to_square(clean_registry, tmp_path):
 
 
 def test_tool_is_availability_gated(clean_registry):
-    from shipit_agent.tools.availability import is_available
+    from shipit_agent.tools.availability import clear_cache, is_available
 
+    # Availability is cached per process; start from a clean slate so an
+    # earlier test that built the tool catalogue cannot answer for this one.
+    clear_cache()
     tool = ImageGenerateTool()
     # no backend available → gated out
     ok, reason = is_available(tool)
     assert not ok
     # a backend appears → available
     prov.register_image_provider(FakeProvider("fake"))
-    from shipit_agent.tools.availability import clear_cache
     clear_cache()
     assert is_available(tool)[0] is True
 

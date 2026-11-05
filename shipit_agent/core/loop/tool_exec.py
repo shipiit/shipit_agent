@@ -225,6 +225,13 @@ class ToolExecutionMixin:
                 decision=decision.decision.value,
                 iteration=iteration,
             )
+            self._permission_denials.append(
+                {
+                    "tool_name": tool_call.name,
+                    "tool_use_id": tool_call_record["id"],
+                    "tool_input": dict(tool_call.arguments),
+                }
+            )
             content = (
                 # A denial is FINAL — say so, or the model retries the same call
                 # and re-prompts the human on every loop (reference-K.2 style).

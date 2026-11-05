@@ -77,6 +77,8 @@ class RunWrapUpMixin:
                 "hit_ratio": cache_hit_ratio,
             },
             "estimated_cost_usd": cost_usd,
+            "duration_api_ms": int(self._api_seconds * 1000),
+            "permission_denials": [dict(d) for d in self._permission_denials],
             "gave_up": bool(self.metadata.get("gave_up")),
             "completion_status": (
                 "incomplete"

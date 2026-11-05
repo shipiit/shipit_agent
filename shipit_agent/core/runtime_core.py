@@ -158,6 +158,9 @@ class RuntimeCore(
         self._usage_reports = 0
         self._complete_usage_reports = 0
         self._completed_model_calls = 0
+        # Time spent waiting on the model, retries included, backoff not.
+        self._api_seconds = 0.0
+        self._permission_denials: list[dict[str, Any]] = []
         self._cancel_event = threading.Event()
         self._guarded_tool_calls = 0
         self._nudges_used = 0

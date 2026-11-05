@@ -93,6 +93,55 @@ class AgentResult:
     def steps(self) -> list[AgentEvent]:
         return self.events
 
+    # -- the Claude Agent SDK's ResultMessage fields ----------------------
+
+    @property
+    def _run_summary(self) -> dict[str, Any]:
+        summary = self.metadata.get("run_summary")
+        return summary if isinstance(summary, dict) else {}
+
+    @property
+    def num_turns(self) -> int:
+        """Model steps the run took."""
+        return int(self._run_summary.get("iterations", 0) or 0)
+
+    @property
+    def duration_ms(self) -> int:
+        """Wall-clock time from the run's first event to its last."""
+        if len(self.events) < 2:
+            return 0
+        return int((self.events[-1].timestamp - self.events[0].timestamp) * 1000)
+
+    @property
+    def duration_api_ms(self) -> int:
+        """Time spent waiting on the model, retries included."""
+        return int(self._run_summary.get("duration_api_ms", 0) or 0)
+
+    @property
+    def total_cost_usd(self) -> float | None:
+        """Estimated spend from public pricing; ``None`` when unknown."""
+        return self._run_summary.get("estimated_cost_usd")
+
+    @property
+    def usage(self) -> dict[str, Any]:
+        """Token usage summed over the run."""
+        return dict(self._run_summary.get("usage") or self.metadata.get("usage") or {})
+
+    @property
+    def permission_denials(self) -> list[dict[str, Any]]:
+        """Calls that were refused or left waiting for approval, with their input."""
+        return [dict(d) for d in self._run_summary.get("permission_denials", [])]
+
+    @property
+    def stop_reason(self) -> str | None:
+        """Why the model's last response ended, as the provider reported it."""
+        return self._run_summary.get("finish_reason")
+
+    @property
+    def structured_output(self) -> Any:
+        """The answer parsed against ``output_schema``, when one was asked for."""
+        return self.parsed
+
     def summary(self) -> dict[str, Any]:
         """Run metrics computed from the event trace."""
         tools: dict[str, dict[str, Any]] = {}

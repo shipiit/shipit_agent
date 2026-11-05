@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
 from typing import Any
 
 from shipit_agent.core.models import Message
@@ -188,8 +189,9 @@ class ModelCallMixin:
     ) -> LLMResponse:
         attempt = 0
         while True:
+            started = time.perf_counter()
             try:
-                return await self._complete_async(
+                response = await self._complete_async(
                     state=state,
                     messages=messages,
                     tools=tools,
@@ -197,6 +199,7 @@ class ModelCallMixin:
                     require_tool_call=require_tool_call,
                 )
             except Exception as exc:
+                self._api_seconds += time.perf_counter() - started
                 retryable = isinstance(
                     exc, self.retry_policy.retry_on_exceptions
                 ) or is_transient_provider_error(exc)
@@ -222,4 +225,7 @@ class ModelCallMixin:
                 )
                 if delay > 0:
                     await asyncio.sleep(delay)
+            else:
+                self._api_seconds += time.perf_counter() - started
+                return response
 

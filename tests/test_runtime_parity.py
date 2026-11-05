@@ -324,7 +324,14 @@ class TestSharedStateIsActuallyShared:
         import pathlib
 
         core = pathlib.Path("shipit_agent") / "core"
-        loop = (core / "async_runtime.py").read_text()
+        # The loop is spread across the runtime and its phase modules.
+        loop = "".join(
+            (core / name).read_text()
+            for name in (
+                "async_runtime.py", "turn_setup.py", "turn_steps.py",
+                "answer_step.py", "tool_step.py", "tool_exec.py", "turn_finish.py",
+            )
+        )
         assert "build_shared_state(registry" in loop, "the loop must use the core"
         assert (
             'shared_state["available_tools"]' not in loop

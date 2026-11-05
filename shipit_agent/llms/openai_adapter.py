@@ -160,6 +160,25 @@ class OpenAIChatLLM:
             else:
                 self.extra_completion[_k] = _v
 
+    def _client_for(self, client_class: Any, timeout: float | None) -> Any:
+        """The adapter's SDK client, with *timeout* applied to this call only.
+
+        One client for the adapter's life, so calls share its connection
+        pool; rebuilt only if the SDK's client class itself is replaced.
+        """
+        if getattr(self, "_client_class", None) is not client_class:
+            self._client = client_class(api_key=self.api_key, **self.client_kwargs)
+            self._client_class = client_class
+        if timeout is None:
+            return self._client
+        with_options = getattr(self._client, "with_options", None)
+        if with_options is not None:
+            return with_options(timeout=timeout)
+        # An SDK without per-request options: a one-off client for this call.
+        return client_class(
+            api_key=self.api_key, **{**self.client_kwargs, "timeout": timeout}
+        )
+
     def complete(
         self,
         *,
@@ -178,11 +197,7 @@ class OpenAIChatLLM:
         except ImportError as exc:
             raise RuntimeError("Install `openai` to use OpenAIChatLLM.") from exc
 
-        client_kwargs = dict(self.client_kwargs)
-        if timeout is not None:
-            # Per-request override wins over any client-level default.
-            client_kwargs["timeout"] = timeout
-        client = OpenAI(api_key=self.api_key, **client_kwargs)
+        client = self._client_for(OpenAI, timeout)
         from shipit_agent.llms.capabilities import capabilities_for
 
         caps = capabilities_for(self.model)
@@ -240,7 +255,7 @@ class OpenAIChatLLM:
         if text_delta_callback is not None or tool_input_callback is not None:
             return self._complete_streaming(
                 client, kwargs, text_delta_callback, tool_input_callback,
-                timeout=client_kwargs.get("timeout"),
+                timeout=timeout if timeout is not None else self.client_kwargs.get("timeout"),
             )
 
         try:

@@ -34,3 +34,18 @@ def record_file_seen(state: Any, path: Path) -> None:
     except OSError:
         pass
     state[READ_MTIMES_KEY] = mtimes
+
+
+def changed_on_disk(state: Any, path: Path) -> bool:
+    """Whether *path* was modified after the run last read or wrote it."""
+    recorded = (
+        (state.get("read_file_mtimes") or {}).get(str(path))
+        if isinstance(state, dict)
+        else None
+    )
+    if recorded is None:
+        return False
+    try:
+        return path.stat().st_mtime_ns != recorded
+    except OSError:
+        return False

@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.file_state import changed_on_disk
 
 from .prompt import EDIT_FILE_PROMPT
 
@@ -107,24 +108,10 @@ class EditFileTool:
                 "based on current contents.",
                 path=str(path), error="not_read",
             )
-        # External-change detection: if the file's mtime moved since the last
-        # read_file, the patch may be based on stale contents.
-        recorded_mtime = (state.get("read_file_mtimes") or {}).get(str(path))
-        if recorded_mtime is not None:
-            try:
-                current_mtime = path.stat().st_mtime_ns
-            except OSError:
-                current_mtime = None
-            if current_mtime is not None and current_mtime != recorded_mtime:
-                return ToolOutput(
-                    text=(
-                        "Edit blocked: the file changed on disk after it was "
-                        "read (external modification). Re-read it with "
-                        "read_file, then retry the edit against the current "
-                        "contents."
-                    ),
-                    metadata={"path": str(path), "error": "stale_read", "is_error": True},
-                )
+        # An outside change (a formatter, another tool) is no reason to refuse
+        # an exact-text edit: it is applied to the file as it is now. Only a
+        # target that no longer matches needs a fresh read.
+        changed_since_read = changed_on_disk(state, path)
 
         old_text = str(kwargs.get("old_text", ""))
         new_text = str(kwargs.get("new_text", ""))
@@ -152,6 +139,13 @@ class EditFileTool:
                 },
             )
         occurrences = content.count(old_text)
+        if occurrences == 0 and changed_since_read:
+            return ToolOutput.error(
+                f"Edit blocked: {path.name} changed on disk after it was read and "
+                "old_text is no longer in it. Re-read the file with read_file, "
+                "then retry against its current contents. No changes were made.",
+                path=str(path), error="stale_read",
+            )
         if occurrences == 0:
             return ToolOutput.error(
                 f"Edit failed: old_text was not found in {path.name}. Re-read the file "
@@ -203,7 +197,8 @@ class EditFileTool:
         replaced = occurrences if replace_all else 1
         return ToolOutput(
             text=(
-                f"File patched: {path} "
+                ("(The file had changed on disk since it was read; the edit was applied to its current contents.)\n" if changed_since_read else "")
+                + f"File patched: {path} "
                 f"({replaced} occurrence{'s' if replaced != 1 else ''} replaced)\n"
                 f"{diff_text}"
             ),
@@ -211,6 +206,7 @@ class EditFileTool:
                 "path": str(path),
                 "replace_all": replace_all,
                 "occurrences": occurrences,
+                "changed_since_read": changed_since_read,
                 "size": path.stat().st_size,
                 "diff": diff_text,
             },

@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
+
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.file_state import changed_on_disk
 
 
 class MultiEditTool:
@@ -120,17 +122,9 @@ class MultiEditTool:
                 "the edits are based on current contents.",
                 path=str(path), error="not_read",
             )
-        recorded_mtime = (state.get("read_file_mtimes") or {}).get(str(path))
-        if recorded_mtime is not None:
-            try:
-                if path.stat().st_mtime_ns != recorded_mtime:
-                    return ToolOutput(
-                        text="multi_edit blocked: the file changed on disk after "
-                        "it was read. Re-read it, then retry.",
-                        metadata={"path": str(path), "error": "stale_read", "is_error": True},
-                    )
-            except OSError:
-                pass
+        # Applied to the file as it is now; only a target that no longer
+        # matches after an outside change needs a fresh read.
+        changed_since_read = changed_on_disk(state, path)
 
         try:
             content = path.read_bytes().decode("utf-8")
@@ -152,6 +146,18 @@ class MultiEditTool:
             new_text = str(edit.get("new_text", ""))
             replace_all = bool(edit.get("replace_all", False))
             count = working.count(old_text)
+            if count == 0 and changed_since_read:
+                return ToolOutput(
+                    text=f"multi_edit blocked at edit #{index}: {path.name} changed "
+                    "on disk after it was read and that old_text is no longer in "
+                    "it. Re-read the file, then retry (no changes written).",
+                    metadata={
+                        "path": str(path),
+                        "error": "stale_read",
+                        "failed_edit": index,
+                        "is_error": True,
+                    },
+                )
             if count == 0:
                 return ToolOutput(
                     text=f"multi_edit failed at edit #{index}: old_text not found "
@@ -193,7 +199,12 @@ class MultiEditTool:
         if len(diff) > 6000:
             diff = diff[:6000].rstrip() + "\n… (diff truncated)"
         return ToolOutput(
-            text=f"File patched: {path} ({applied} edits applied)\n{diff}",
-            metadata={"path": str(path), "edits_applied": applied},
+            text=("(The file had changed on disk since it was read; the edit was applied to its current contents.)\n" if changed_since_read else "")
+            + f"File patched: {path} ({applied} edits applied)\n{diff}",
+            metadata={
+                "path": str(path),
+                "edits_applied": applied,
+                "changed_since_read": changed_since_read,
+            },
         )
 

@@ -43,6 +43,9 @@ class BedrockChatLLM(LiteLLMChatLLM):
         self, model: str = "bedrock/openai.gpt-oss-120b-1:0", **completion_kwargs: Any
     ) -> None:
         self._mantle_delegate: Any = None
+        # As the caller passed them: both routes below consume or rewrite
+        # completion_kwargs, and with_model rebuilds from the originals.
+        self._init_kwargs = dict(completion_kwargs)
 
         # Bedrock Mantle models (Gemma 4 et al.) are served through the
         # OpenAI-compatible `bedrock-mantle` endpoint, NOT the Converse API
@@ -157,6 +160,11 @@ class BedrockChatLLM(LiteLLMChatLLM):
                 litellm.modify_params = True
             except Exception:
                 pass
+
+    def with_model(self, model: str) -> "BedrockChatLLM":
+        """This adapter's settings with another model, routed for that model
+        (Converse or the Mantle endpoint is chosen when the adapter is built)."""
+        return type(self)(model=model, **self._init_kwargs)
 
     def complete(
         self,

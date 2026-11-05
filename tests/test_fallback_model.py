@@ -135,3 +135,38 @@ def test_a_model_id_needs_an_adapter_with_a_model_attribute() -> None:
 def test_a_fallback_that_is_not_a_model_is_refused() -> None:
     with pytest.raises(TypeError, match="fallback_model"):
         Agent(llm=_Model("primary", set(), []), fallback_model=42)
+
+
+def _bedrock_route(llm: Any) -> str:
+    """Mantle (a delegate, or LiteLLM's native bedrock_mantle/ provider) or Converse."""
+    native = str(llm.model).startswith("bedrock_mantle/")
+    return "mantle" if llm._mantle_delegate is not None or native else "converse"
+
+
+def test_a_bedrock_fallback_takes_the_route_its_own_model_needs(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Bedrock picks Converse or the Mantle endpoint from the model when built,
+    # so a fallback is rebuilt for its model rather than copied.
+    from shipit_agent.llms import BedrockChatLLM
+    from shipit_agent.llms.fallback import fallback_llms
+
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "test-key")
+    monkeypatch.setenv("AWS_REGION_NAME", "us-east-1")
+    converse = BedrockChatLLM(model="bedrock/openai.gpt-oss-120b-1:0")
+    assert _bedrock_route(converse) == "converse"
+    [gemma] = fallback_llms(converse, "google.gemma-4-31b")
+    assert _bedrock_route(gemma) == "mantle"
+    [back] = fallback_llms(gemma, "bedrock/openai.gpt-oss-120b-1:0")
+    assert _bedrock_route(back) == "converse"
+
+
+def test_a_rebuilt_bedrock_adapter_keeps_the_callers_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    from shipit_agent.llms import BedrockChatLLM
+
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "test-key")
+    gemma = BedrockChatLLM(model="google.gemma-4-31b", region="eu-west-1", temperature=0.2)
+    converse = gemma.with_model("bedrock/openai.gpt-oss-120b-1:0")
+    # The same as building it fresh with the caller's settings: nothing the
+    # Mantle route consumed or rewrote carries over.
+    fresh = BedrockChatLLM(model="bedrock/openai.gpt-oss-120b-1:0", region="eu-west-1", temperature=0.2)
+    assert converse.completion_kwargs == fresh.completion_kwargs
+    assert converse.completion_kwargs["region"] == "eu-west-1"

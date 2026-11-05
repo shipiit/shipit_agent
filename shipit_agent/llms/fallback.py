@@ -1,8 +1,9 @@
 """Turning an Agent's ``fallback_model`` into the adapters a run falls back to.
 
 A model id (or a comma-separated list, as in the Claude Agent SDK) becomes
-a copy of the primary adapter with that model, so it keeps the primary's
-provider, credentials and settings. An adapter instance is used as given,
+the primary adapter with that model: its ``with_model()`` when it has one
+(Bedrock does, to re-pick its route), otherwise a copy with ``model`` set,
+so it keeps the primary's provider, credentials and settings. An adapter instance is used as given,
 which is how to fall back to another provider.
 """
 
@@ -33,6 +34,10 @@ def fallback_llms(primary: Any, spec: Any) -> list[Any]:
 
 
 def _with_model(primary: Any, model: str) -> Any:
+    rebuild = getattr(primary, "with_model", None)
+    if callable(rebuild):
+        # The adapter derives more than the model id from it (Bedrock's route).
+        return rebuild(model)
     if not hasattr(primary, "model"):
         raise ValueError(
             f"fallback_model {model!r} is a model id, but {type(primary).__name__} has no "

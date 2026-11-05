@@ -114,6 +114,9 @@ class AgentRuntime(AsyncAgentRuntime):
             maxsize=loop.stream_queue_maxsize
         )
         completed = threading.Event()
+        # Set when the caller stops reading. A cancel() alone does not stop
+        # delivery: a caller who interrupts a run still needs to see it end.
+        closed = threading.Event()
 
         def _put(item: AgentEvent | _StreamDone) -> None:
             while True:
@@ -121,11 +124,11 @@ class AgentRuntime(AsyncAgentRuntime):
                     events.put(item, timeout=0.1)
                     return
                 except queue.Full:
-                    if loop.cancelled:
+                    if closed.is_set():
                         return
 
         def _subscriber(event: AgentEvent) -> None:
-            if not loop.cancelled:
+            if not closed.is_set():
                 _put(event)
 
         def _worker() -> None:
@@ -164,6 +167,7 @@ class AgentRuntime(AsyncAgentRuntime):
                     break
                 yield item
         finally:
+            closed.set()
             if not completed.is_set() and loop.cancel_on_stream_close:
                 loop.cancel()
             worker.join(timeout=loop.stream_join_timeout)

@@ -149,3 +149,9 @@ def test_only_hidden_rules_take_a_tool_out_of_the_run() -> None:
     assert not PermissionEngine(deny=["bash"]).removes("bash")
     assert PermissionEngine(hidden=["Bash"]).removes("bash")
     assert PermissionEngine(hidden=["mcp__*"]).removes("mcp__srv__echo")
+
+
+def test_an_sdk_mcp_rule_matches_only_mcp_shaped_names() -> None:
+    assert rule_matches("mcp__github__get_issue", "github__get_issue", {}, root=ROOT)
+    assert rule_matches("mcp__*", "github__get_issue", {}, root=ROOT)
+    assert not rule_matches("mcp__*", "echo", {}, root=ROOT)

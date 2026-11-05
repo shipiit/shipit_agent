@@ -4,7 +4,7 @@ A rule is either a bare tool name (a glob) or a tool name with a specifier
 in parentheses, which scopes it to matching calls::
 
     "Bash"                     every bash call
-    "mcp__github__*"           every tool from the github MCP server
+    "mcp__github__*"           every tool from the github MCP server (``github__*``)
     "Bash(rm *)"               bash calls whose command matches ``rm *``
     "Bash(npm run test:*)"     bash calls whose command starts with ``npm run test``
     "Edit(src/**)"             writes under ``<root>/src`` (any file-writing tool)
@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 
 from shipit_agent.tools.bash.command_risk import command_segments
 
-__all__ = ["RuleBehavior", "is_scoped", "rule_matches", "rule_names_tool"]
+__all__ = ["RuleBehavior", "is_scoped", "rule_matches", "rule_names_tool", "sdk_tool_name"]
 
 RuleBehavior = Literal["allow", "deny", "ask"]
 
@@ -66,6 +66,12 @@ _URL_TOOLS = frozenset({"open_url"})
 _SCOPED = re.compile(r"^\s*([^()\s]+)\s*\((.*)\)\s*$", re.DOTALL)
 
 
+def sdk_tool_name(name: str) -> str | None:
+    """The shipit tool an SDK tool name stands for (``"Read"`` is ``read_file``), or ``None``."""
+    tools = _SDK_NAMES.get(name.strip().lower().replace("_", ""))
+    return tools[0] if tools else None
+
+
 def is_scoped(rule: str) -> bool:
     """Whether *rule* carries a specifier, as in ``Bash(rm *)``."""
     return _SCOPED.match(rule) is not None
@@ -76,6 +82,15 @@ def rule_names_tool(rule: str, tool_name: str) -> bool:
     scoped = _SCOPED.match(rule)
     name = scoped.group(1) if scoped else rule.strip()
     if fnmatch.fnmatchcase(tool_name, name):
+        return True
+    # The SDK writes MCP tools as mcp__<server>__<tool>; shipit names them
+    # <server>__<tool>, so match the rule without its prefix, against MCP-shaped
+    # names only (so "mcp__*" means every MCP tool, not every tool).
+    if (
+        name.startswith("mcp__")
+        and "__" in tool_name
+        and fnmatch.fnmatchcase(tool_name, name[len("mcp__"):])
+    ):
         return True
     return tool_name in _SDK_NAMES.get(name.lower().replace("_", ""), ())
 

@@ -153,6 +153,11 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
     # ── Meta / Open models (via Groq / Together) ─────────────────────
+    # OpenAI's open-weight models, as Amazon Bedrock serves them (US standard
+    # tier; third-party listings, November 2026). shipit's default Bedrock
+    # model: without a row, a cost cap on it stops the run.
+    "gpt-oss-120b": {"input": 0.15, "output": 0.60},
+    "gpt-oss-20b": {"input": 0.07, "output": 0.30},
     "llama-4-scout": {"input": 0.11, "output": 0.34},
     "llama-4-maverick": {"input": 0.50, "output": 0.77},
     # ── AWS Bedrock (same models, different IDs) ─────────────────────

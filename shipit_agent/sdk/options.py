@@ -58,6 +58,11 @@ class AgentOptions:
     #: Record files before the file tools change them, for ``AgentClient.rewind_files``.
     enable_file_checkpointing: bool = False
     session_id: str | None = None
+    #: Continue a saved session from ``session_store``; with ``fork_session``,
+    #: continue a copy of it under a new id instead.
+    resume: str | None = None
+    fork_session: bool = False
+    session_store: Any = None
     #: Passed to the model adapter when it takes them (Anthropic does).
     effort: str | None = None
     thinking: str | dict[str, Any] | None = None

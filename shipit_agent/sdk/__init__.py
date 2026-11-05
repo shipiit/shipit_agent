@@ -30,6 +30,16 @@ from .hooks import HOOK_EVENTS, HookMatcher
 from .options import AgentOptions
 from .permissions import PermissionResultAllow, PermissionResultDeny, ToolPermissionContext
 from .query import query
+from .sessions import (
+    SDKSessionInfo,
+    SessionMessage,
+    fork_session,
+    get_session_info,
+    get_session_messages,
+    list_sessions,
+    rename_session,
+    tag_session,
+)
 from .tools import SdkMcpTool, create_sdk_mcp_server, tool
 from .types import (
     AssistantMessage,
@@ -56,7 +66,9 @@ __all__ = [
     "PermissionResultAllow",
     "PermissionResultDeny",
     "ResultMessage",
+    "SDKSessionInfo",
     "SdkMcpTool",
+    "SessionMessage",
     "StreamEvent",
     "SystemMessage",
     "TextBlock",
@@ -67,6 +79,12 @@ __all__ = [
     "UserMessage",
     "build_agent",
     "create_sdk_mcp_server",
+    "fork_session",
+    "get_session_info",
+    "get_session_messages",
+    "list_sessions",
     "query",
+    "rename_session",
+    "tag_session",
     "tool",
 ]

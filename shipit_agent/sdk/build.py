@@ -44,8 +44,11 @@ def build_agent(options: AgentOptions) -> Any:
         settings["permission_callback"] = permission_callback(options.can_use_tool)
     if options.agents:
         settings["agents"] = dict(options.agents)
-    if options.session_id:
-        settings["session_id"] = options.session_id
+    if options.session_store is not None:
+        settings["session_store"] = options.session_store
+    session_id = _session_id(options)
+    if session_id:
+        settings["session_id"] = session_id
     if options.hooks is not None:
         settings["hooks"] = _hooks(options, root)
     settings.update(options.agent_options)
@@ -144,6 +147,18 @@ def mcp_servers(spec: dict[str, Any] | list[Any]) -> list[Any]:
         else:
             raise ValueError(f"MCP server {name!r}: type {kind!r} is not supported (use stdio, http or sdk)")
     return servers
+
+
+def _session_id(options: AgentOptions) -> str | None:
+    if options.resume is None:
+        return options.session_id
+    if options.session_store is None or options.session_store.load(options.resume) is None:
+        raise ValueError(f"resume={options.resume!r}: no such session in session_store")
+    if options.fork_session:
+        from .sessions import fork_session
+
+        return fork_session(options.session_store, options.resume)
+    return options.resume
 
 
 def _hooks(options: AgentOptions, root: Path) -> AgentHooks:

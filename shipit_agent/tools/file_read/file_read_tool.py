@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.file_state import record_file_seen
 from .prompt import FILE_READ_PROMPT
 
 
@@ -201,20 +202,7 @@ class FileReadTool:
         )
         if len(numbered) > self.max_chars:
             numbered = numbered[: self.max_chars].rstrip() + "\n...[truncated]"
-        state = getattr(context, "state", None)
-        if isinstance(state, dict):
-            read_files = list(state.get("read_files", []))
-            if str(path) not in read_files:
-                read_files.append(str(path))
-            state["read_files"] = read_files
-            # Record the mtime at read time so edit_file can detect the file
-            # changing underneath the agent between read and edit.
-            mtimes = dict(state.get("read_file_mtimes", {}))
-            try:
-                mtimes[str(path)] = path.stat().st_mtime_ns
-            except OSError:
-                pass
-            state["read_file_mtimes"] = mtimes
+        record_file_seen(getattr(context, "state", None), path)
         body = numbered or "(file is empty)"
         if had_replacement:
             body = (

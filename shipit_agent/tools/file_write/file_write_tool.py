@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.file_state import record_file_seen
 from .prompt import FILE_WRITE_PROMPT
 
 
@@ -71,6 +72,10 @@ class FileWriteTool:
                 handle.write(content)
         else:
             path.write_text(content, encoding="utf-8")
+            # A full write means the agent knows the exact contents, so it may
+            # edit next without re-reading. An append does not: what was
+            # already in the file is still unseen.
+            record_file_seen(getattr(context, "state", None), path)
         return ToolOutput(
             text=f"File updated: {path}",
             metadata={"path": str(path), "mode": mode, "size": path.stat().st_size},

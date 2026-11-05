@@ -82,25 +82,30 @@ class EditFileTool:
             or kwargs.get("filename")
         )
         if not raw:
-            return ToolOutput(
-                text=(
-                    "Edit failed: missing required argument `path`. "
-                    "Call edit_file with path, old_text, and new_text."
-                )
+            return ToolOutput.error(
+                "Edit failed: missing required argument `path`. "
+                "Call edit_file with path, old_text, and new_text.",
+                error="missing_path",
             )
         path = self._resolve(str(raw))
         if not path.exists():
-            return ToolOutput(text=f"File not found: {path}")
+            return ToolOutput.error(
+                f"File not found: {path}. Check the path with glob_files, or create "
+                "the file with write_file.",
+                path=str(path), error="not_found",
+            )
         if path.is_dir():
-            return ToolOutput(text=f"Path is a directory, not a file: {path}")
+            return ToolOutput.error(
+                f"Path is a directory, not a file: {path}", path=str(path), error="is_directory"
+            )
 
         state = getattr(context, "state", {}) or {}
         prior_reads = set(state.get("read_files", []))
         if str(path) not in prior_reads:
-            return ToolOutput(
-                text=(
-                    "Edit blocked: read the file first with read_file so the patch is based on current contents."
-                )
+            return ToolOutput.error(
+                "Edit blocked: read the file first with read_file so the patch is "
+                "based on current contents.",
+                path=str(path), error="not_read",
             )
         # External-change detection: if the file's mtime moved since the last
         # read_file, the patch may be based on stale contents.
@@ -118,7 +123,7 @@ class EditFileTool:
                         "read_file, then retry the edit against the current "
                         "contents."
                     ),
-                    metadata={"path": str(path), "error": "stale_read"},
+                    metadata={"path": str(path), "error": "stale_read", "is_error": True},
                 )
 
         old_text = str(kwargs.get("old_text", ""))
@@ -141,18 +146,25 @@ class EditFileTool:
                 ),
                 metadata={
                     "path": str(path),
+                    "is_error": True,
                     "error": "not_utf8",
                     "encoding_error": str(exc),
                 },
             )
         occurrences = content.count(old_text)
         if occurrences == 0:
-            return ToolOutput(text="Edit failed: old_text was not found in the file.")
+            return ToolOutput.error(
+                f"Edit failed: old_text was not found in {path.name}. Re-read the file "
+                "and copy the exact text to replace, including whitespace and "
+                "indentation. No changes were made.",
+                path=str(path), error="old_text_not_found",
+            )
         if occurrences > 1 and not replace_all:
-            return ToolOutput(
-                text=(
-                    "Edit failed: old_text is not unique in the file. Provide a more specific block or set replace_all=true."
-                )
+            return ToolOutput.error(
+                f"Edit failed: old_text matches {occurrences} places in {path.name}. "
+                "Include more surrounding lines so it matches exactly one, or set "
+                "replace_all=true to change every match. No changes were made.",
+                path=str(path), error="old_text_not_unique", occurrences=occurrences,
             )
 
         updated = (

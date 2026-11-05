@@ -981,10 +981,7 @@ class AsyncAgentRuntime(RuntimeCore):
                 **dict(tool_result.metadata),
             },
         )
-        # Record a successful read-only call so an identical repeat this run is
-        # skipped by the duplicate gate above instead of re-executed.
-        if signature is not None:
-            state.executed_readonly_calls.add(signature)
+        self.remember_tool_call(state, signature, failed=tool_result.is_error)
         if state.verify_gate is not None:
             md = dict(tool_result.metadata or {})
             arguments = getattr(tool_call, "arguments", None) or {}

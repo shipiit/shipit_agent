@@ -745,6 +745,21 @@ class RuntimeCore:
         return flags
 
     @staticmethod
+    def remember_tool_call(state: Any, signature: tuple[str, str] | None, *, failed: bool) -> None:
+        """Update the duplicate-call memory after a tool finishes.
+
+        A read-only call is remembered so an identical repeat is skipped. A
+        successful call that may change state (a write, an edit, a command)
+        clears that memory: an earlier read may now describe a file that has
+        changed, and re-reading after an edit is how an agent checks its work.
+        A failed mutation changed nothing, so the memory stays.
+        """
+        if signature is not None:
+            state.executed_readonly_calls.add(signature)
+        elif not failed:
+            state.executed_readonly_calls.clear()
+
+    @staticmethod
     def readonly_call_signature(tool: Any, tool_call: Any) -> tuple[str, str] | None:
         """A dedup key for a READ-ONLY call, or None if the tool may mutate.
 

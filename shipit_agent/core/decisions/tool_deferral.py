@@ -117,7 +117,9 @@ class ToolDeferralMixin:
             return ""
         from shipit_agent.tools.tool_search import ToolSearchTool
 
-        search = next((t for t in tools if isinstance(t, ToolSearchTool)), None)
+        # By marker, not isinstance: hosts wrap tools (ShipIt Cloud's CompactTool),
+        # and a missed one meant two search tools on every call.
+        search = next((t for t in tools if getattr(t, "is_tool_search", False) is True), None)
         if search is None:
             # Do not replace a user tool sharing the preferred name.
             name = "search_tools"

@@ -34,6 +34,10 @@ class ToolSearchTool:
     Pure stdlib — no embeddings, no external services, no API keys.
     """
 
+    #: Lets deferral recognise this tool through a wrapper that passes
+    #: attributes through, where an isinstance check would miss it.
+    is_tool_search = True
+
     read_only = True
 
     @staticmethod

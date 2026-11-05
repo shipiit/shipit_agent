@@ -116,7 +116,7 @@ class RunOptionsMixin:
             "trace_store": self._resolved_trace_store(),
             "trace_id": self.trace_id,
             "max_iterations": self._effective_max_iterations(selected_skills),
-            "retry_policy": self.retry_policy,
+            "retry_policy": self._retry_policy_with_fallbacks(),
             "router_policy": self.router_policy,
             "credential_store": self.credential_store,
             "parallel_tool_execution": self.parallel_tool_execution,
@@ -147,6 +147,17 @@ class RunOptionsMixin:
             "cancel_on_stream_close": self.cancel_on_stream_close,
             "stream_join_timeout": self.stream_join_timeout,
         }
+
+    def _retry_policy_with_fallbacks(self) -> Any:
+        """The retry policy, carrying this agent's ``fallback_model`` adapters."""
+        if self.fallback_model is None:
+            return self.retry_policy
+        from dataclasses import replace
+
+        from shipit_agent.llms.fallback import fallback_llms
+
+        extra = tuple(fallback_llms(self.llm, self.fallback_model))
+        return replace(self.retry_policy, fallback_llms=(*self.retry_policy.fallback_llms, *extra))
 
     def _resolved_trace_store(self) -> Any:
         """The trace store to run with, honouring ``observability``.

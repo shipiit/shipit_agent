@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(slots=True)
@@ -36,6 +37,10 @@ class RetryPolicy:
     #: SDK's own default. A hung connection without a timeout hangs the
     #: whole run — ``cancel()`` only takes effect between steps.
     request_timeout: float | None = None
+    #: Adapters to switch to, in order, once a model call has failed through
+    #: its retries; the run then stays on the one that answered. Filled from
+    #: the Agent's ``fallback_model``.
+    fallback_llms: tuple[Any, ...] = ()
 
     def llm_retry_delay(self, attempt: int) -> float:
         """Seconds to wait before retry *attempt* (1-based)."""

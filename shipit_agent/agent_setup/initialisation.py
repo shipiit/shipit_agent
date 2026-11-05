@@ -53,6 +53,11 @@ class AgentInitMixin:
             type(self.max_session_tokens) is not int or self.max_session_tokens < 1
         ):
             raise ValueError("max_session_tokens must be a positive integer or None")
+        if self.fallback_model is not None:
+            from shipit_agent.llms.fallback import fallback_llms
+
+            # Refuse a fallback that cannot work now, not when the model fails.
+            fallback_llms(self.llm, self.fallback_model)
         if self.max_turns is not None:
             if type(self.max_turns) is not int or self.max_turns < 1:
                 raise ValueError("max_turns must be a positive integer or None")

@@ -204,7 +204,10 @@ class ModelCallMixin:
                     exc, self.retry_policy.retry_on_exceptions
                 ) or is_transient_provider_error(exc)
                 if not retryable or attempt >= self.retry_policy.max_llm_retries:
-                    raise
+                    if not self._switch_to_fallback(state, exc):
+                        raise
+                    attempt = 0
+                    continue
                 attempt += 1
                 delay = self.retry_policy.llm_retry_delay(attempt)
                 asked = retry_after_seconds(exc)
@@ -229,3 +232,21 @@ class ModelCallMixin:
                 self._api_seconds += time.perf_counter() - started
                 return response
 
+    def _switch_to_fallback(self, state: RuntimeState, error: Exception) -> bool:
+        """Move the rest of the run to the next fallback model, if one is left."""
+        fallbacks = self.retry_policy.fallback_llms
+        if self._fallbacks_used >= len(fallbacks):
+            return False
+        previous = getattr(self.llm, "model", type(self.llm).__name__)
+        self.llm = fallbacks[self._fallbacks_used]
+        self._fallbacks_used += 1
+        self.emit(
+            state,
+            "model_fallback",
+            "Switching to the fallback model",
+            from_model=str(previous),
+            to_model=str(getattr(self.llm, "model", type(self.llm).__name__)),
+            error=str(error),
+            error_type=type(error).__name__,
+        )
+        return True

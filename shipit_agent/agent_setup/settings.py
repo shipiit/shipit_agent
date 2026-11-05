@@ -114,6 +114,9 @@ class AgentSettings:
     #: The Claude Agent SDK's name for ``max_iterations``; set either one.
     max_turns: int | None = None
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
+    #: Used when the model fails after its retries: a model id, ids separated
+    #: by commas, an adapter, or a list of them (see ``llms/fallback.py``).
+    fallback_model: Any = None
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
     #: Run a response's tool calls concurrently when every one is read-only.
     #: Writes and unknown tools always run one at a time, in order.

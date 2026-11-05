@@ -323,13 +323,16 @@ class TestSharedStateIsActuallyShared:
     def test_neither_loop_builds_tool_state_inline(self) -> None:
         import pathlib
 
-        for name in ("runtime.py", "async_runtime.py"):
-            src = pathlib.Path("shipit_agent") / "core" / name
-            text = src.read_text()
-            assert "build_shared_state(registry" in text, f"{name} must use the core"
-            assert (
-                'shared_state["available_tools"]' not in text
-            ), f"{name} builds tool state inline — it will drift"
+        core = pathlib.Path("shipit_agent") / "core"
+        loop = (core / "async_runtime.py").read_text()
+        assert "build_shared_state(registry" in loop, "the loop must use the core"
+        assert (
+            'shared_state["available_tools"]' not in loop
+        ), "the loop builds tool state inline — it will drift"
+        # The sync runtime drives the same loop; it must not grow one of its own.
+        facade = (core / "runtime.py").read_text()
+        assert "shared_state" not in facade, "runtime.py has started building its own loop"
+        assert "_run_turn(" in facade, "runtime.py must drive the shared loop"
 
     def test_the_subagent_event_sink_is_published_by_both(self) -> None:
         from shipit_agent.tools.sub_agent.sub_agent_tool import EVENT_SINK_KEY

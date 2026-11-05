@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import threading
+import time
 from collections import deque
 from typing import Any, AsyncIterator, Callable
 from uuid import uuid4
@@ -190,6 +192,9 @@ class AsyncAgentRuntime(RuntimeCore):
         self._llm_streams_text = accepts_text_delta_callback(self.llm.complete)
         self._llm_streams_tool_input = accepts_tool_input_callback(self.llm.complete)
         self._event_subscriber: Callable[[AgentEvent], None] | None = None
+        self._emit_lock = threading.Lock()
+        self.run_id = str(uuid4())
+        self._event_sequence = 0
 
     def registry(self) -> ToolRegistry:
         return construct_tool_registry(tools=self.tools, mcps=self.mcps)
@@ -330,22 +335,36 @@ class AsyncAgentRuntime(RuntimeCore):
     def emit(
         self, state: RuntimeState, event_type: str, message: str, **payload: Any
     ) -> None:
-        event = AgentEvent(type=event_type, message=message, payload=payload)
-        state.events.append(event)
-        if self._event_subscriber is not None:
-            try:
-                self._event_subscriber(event)
-            except Exception:
-                pass
-        self.trace_store.append_event(
-            self.trace_id,
-            event,
-            metadata={
-                "session_id": self.session_id,
-                "agent_name": self.metadata.get("agent_name"),
-                "agent_description": self.metadata.get("agent_description"),
-            },
-        )
+        """Record one event and deliver it to the stream subscriber and trace store.
+
+        Every event is stamped with the run and session ids and a sequence
+        number, so a client can order and correlate events; tool events also
+        carry ``tool_call_id``. The lock keeps parallel tool threads from
+        interleaving writes to a trace store that may not be thread-safe.
+        """
+        with self._emit_lock:
+            self._event_sequence += 1
+            payload.setdefault("run_id", self.run_id)
+            payload.setdefault("session_id", self.session_id)
+            payload.setdefault("sequence", self._event_sequence)
+            if "call_id" in payload:
+                payload.setdefault("tool_call_id", payload["call_id"])
+            event = AgentEvent(type=event_type, message=message, payload=payload)
+            state.events.append(event)
+            if self._event_subscriber is not None:
+                try:
+                    self._event_subscriber(event)
+                except Exception:
+                    pass
+            self.trace_store.append_event(
+                self.trace_id,
+                event,
+                metadata={
+                    "session_id": self.session_id,
+                    "agent_name": self.metadata.get("agent_name"),
+                    "agent_description": self.metadata.get("agent_description"),
+                },
+            )
 
     async def _complete_async(
         self,
@@ -700,6 +719,7 @@ class AsyncAgentRuntime(RuntimeCore):
         context: ToolContext,
         iteration: int,
         model_output_limit: int | None = None,
+        group_id: str | None = None,
     ) -> tuple[ToolResult | None, Message]:
         # Defined up front so the recording line below can never NameError on an
         # early-return path that skipped the duplicate gate.
@@ -812,6 +832,7 @@ class AsyncAgentRuntime(RuntimeCore):
                 # (tool, call_id), and the gate can fire before `tool_called`.
                 tool=tool_call.name,
                 call_id=tool_call_record["id"],
+                group_id=group_id,
                 reason=reason,
                 decision=decision.decision.value,
                 iteration=iteration,
@@ -853,9 +874,11 @@ class AsyncAgentRuntime(RuntimeCore):
             f"Tool called: {tool_call.name}",
             tool=tool_call.name,
             call_id=tool_call_record["id"],
+            group_id=group_id,
             arguments=tool_call.arguments,
             iteration=iteration,
         )
+        started_at = time.perf_counter()
         attempt = 0
         output_sequence = 0
         loop = asyncio.get_running_loop()
@@ -873,6 +896,7 @@ class AsyncAgentRuntime(RuntimeCore):
                     f"Tool output: {tool_call.name}",
                     tool=tool_call.name,
                     call_id=tool_call_record["id"],
+                    group_id=group_id,
                     chunk=chunk.text,
                     chunk_metadata=safe_tool_event_metadata(chunk.metadata),
                     sequence=sequence,
@@ -889,6 +913,7 @@ class AsyncAgentRuntime(RuntimeCore):
                 f"Tool output started: {tool_call.name}",
                 tool=tool_call.name,
                 call_id=tool_call_record["id"],
+                group_id=group_id,
                 attempt=attempt + 1,
                 buffered=self.guardrails is not None,
                 iteration=iteration,
@@ -1004,6 +1029,7 @@ class AsyncAgentRuntime(RuntimeCore):
             # them this loop's transcript could only guess.
             tool=tool_call.name,
             call_id=tool_call_record["id"],
+            group_id=group_id,
             output=tool_result.output,
             output_chars=len(tool_result.output),
             model_output_chars=len(model_output),
@@ -1012,6 +1038,7 @@ class AsyncAgentRuntime(RuntimeCore):
             error=(str(tool_result.metadata.get("error") or "")
                    if tool_result.is_error else ""),
             iteration=iteration,
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 1),
         )
         self.note_connection_request(state, tool_call.name, tool_result.metadata)
         self.note_artifacts(state, tool_call.name, tool_result)
@@ -1031,6 +1058,17 @@ class AsyncAgentRuntime(RuntimeCore):
         *,
         user_content: list[dict[str, Any]] | None = None,
     ) -> tuple[RuntimeState, LLMResponse]:
+        """Run one turn and return its final state and model response."""
+        return await self._run_turn(user_prompt, user_content=user_content)
+
+    async def _run_turn(
+        self,
+        user_prompt: str,
+        *,
+        user_content: list[dict[str, Any]] | None = None,
+    ) -> tuple[RuntimeState, LLMResponse]:
+        # The one implementation of a turn. ``run`` and the sync runtime's
+        # ``run``/``stream`` all come here, so they cannot drift apart.
         # Guarantee MCP cleanup even if registry construction or the loop raises.
         # ``user_content`` mirrors the sync loop: block-shaped user turn,
         # plain text everywhere else.
@@ -1745,6 +1783,7 @@ class AsyncAgentRuntime(RuntimeCore):
                             context=context,
                             iteration=iteration,
                             model_output_limit=group_output_limit,
+                            group_id=group_id,
                         )
                     )
                 results = await asyncio.gather(*tasks)
@@ -1778,6 +1817,7 @@ class AsyncAgentRuntime(RuntimeCore):
                         context=context,
                         iteration=iteration,
                         model_output_limit=group_output_limit,
+                        group_id=group_id,
                     )
                     if tool_result is not None:
                         state.tool_results.append(tool_result)
@@ -1931,8 +1971,15 @@ class AsyncAgentRuntime(RuntimeCore):
         )
         self.surface_give_up(state.tool_results)
         response.content = self.sanitize_output(state, response.content)
+        self.emit(
+            state,
+            "final_answer",
+            "Final answer generated",
+            content=response.content,
+            format="markdown",
+        )
 
-        # Closing accounting, same shape as the sync loop.
+        # Closing accounting: iterations, tool calls, compactions and usage.
         summary = self._build_run_summary(state)
         self.emit(state, "run_summary", summary["headline"], **summary)
         self.emit(
@@ -1944,6 +1991,7 @@ class AsyncAgentRuntime(RuntimeCore):
             format="markdown",
             usage=dict(self._total_usage),
             summary=summary,
+            cancelled=self._cancel_event.is_set(),
         )
 
         # MCP transports are closed by run()'s finally (covers the error path).
@@ -1985,7 +2033,7 @@ class AsyncAgentRuntime(RuntimeCore):
         async def _worker() -> None:
             nonlocal worker_done
             try:
-                await self.run(user_prompt, user_content=user_content)
+                await self._run_turn(user_prompt, user_content=user_content)
             finally:
                 worker_done = True
                 wake.set()

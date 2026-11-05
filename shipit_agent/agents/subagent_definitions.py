@@ -31,7 +31,8 @@ __all__ = ["SubagentDefinition", "coerce_subagents", "load_subagent_files"]
 #: Project folders searched for agent files; later ones win on a name clash.
 AGENT_FOLDERS: tuple[str, ...] = (".claude/agents", ".shipit/agents")
 
-_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+#: A short lowercase name, optionally under a plugin's: ``reviewer``, ``deploy-tools:reviewer``.
+_NAME = re.compile(r"^(?:[a-z0-9][a-z0-9_-]{0,63}:)?[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 @dataclass(frozen=True, slots=True)

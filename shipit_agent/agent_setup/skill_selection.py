@@ -112,11 +112,12 @@ class SkillSelectionMixin:
 
     def _project_skill_ids(self) -> set[str]:
         """Ids of the SKILL.md files discovered in the project."""
+        ids = {skill.id for skill in self.harness.skills} if self.harness is not None else set()
         if not self.auto_project_skills:
-            return set()
+            return ids
         from shipit_agent.skills import discover_project_skills
 
-        return {skill.id for skill in discover_project_skills(self.project_root)}
+        return ids | {skill.id for skill in discover_project_skills(self.project_root)}
 
     def _skill_tool_names(self, selected_skills: list[Skill]) -> list[str]:
         available = {getattr(tool, "name", None) for tool in self.tools}

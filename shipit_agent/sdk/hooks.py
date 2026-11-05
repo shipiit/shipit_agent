@@ -124,14 +124,22 @@ def _register(hooks: AgentHooks, event: str, matcher: HookMatcher, base: dict[st
         hooks.on_notification(notification)
 
 
+_PLAIN_MATCHER = re.compile(r"[A-Za-z0-9_\- ,|]+")
+
+
 def _matches(matcher: str | None, subject: str) -> bool:
-    if not matcher or matcher == "*":
+    """Claude Code's matcher syntax: empty or ``*`` matches all; letters,
+    digits, ``_ - , |`` and spaces are an exact list (SDK tool names work);
+    anything else is an unanchored regex, also tried on the SDK's
+    ``mcp__<server>__<tool>`` spelling of an MCP tool."""
+    if not matcher or matcher.strip() in ("", "*"):
         return True
-    alternatives = [part.strip() for part in matcher.split("|") if part.strip()]
-    if any(rule_names_tool(part, subject) for part in alternatives):
-        return True
+    if _PLAIN_MATCHER.fullmatch(matcher):
+        alternatives = [part.strip() for part in re.split(r"[|,]", matcher) if part.strip()]
+        return any(rule_names_tool(part, subject) for part in alternatives)
+    candidates = [subject, f"mcp__{subject}"] if "__" in subject else [subject]
     try:
-        return re.fullmatch(matcher, subject) is not None
+        return any(re.search(matcher, candidate) for candidate in candidates)
     except re.error:
         return False
 

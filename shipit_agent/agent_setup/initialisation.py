@@ -127,6 +127,11 @@ class AgentInitMixin:
             for skill in local_skills:
                 self.skill_registry.register(skill)
 
+        # Plugins and settings files (shipit_agent.harness): skills, agents,
+        # hooks, MCP servers and permission rules. Idempotent, for clone().
+        if self.harness is not None:
+            self.harness.apply(self)
+
         # Cache the file-discovered rules once (.shipit/rules/*.md — the only
         # I/O). AGENTS.md is excluded: it is already folded in as flat project
         # memory above; the rules layer adds the *structured* (scoped,

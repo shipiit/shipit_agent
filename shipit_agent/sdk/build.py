@@ -21,12 +21,14 @@ def build_agent(options: AgentOptions) -> Any:
     """The agent for *options*; every option lands on the matching Agent setting."""
     from shipit_agent import Agent
 
-    llm = options.llm if options.llm is not None else llm_for_model(options.model)
+    root = Path(options.cwd).resolve() if options.cwd else Path.cwd()
+    harness = _harness(options, root)
+    model = options.model or (harness.settings.model if harness is not None else None)
+    llm = options.llm if options.llm is not None else llm_for_model(model)
     for name in ("effort", "thinking"):
         value = getattr(options, name)
         if value is not None and hasattr(llm, name):
             setattr(llm, name, value)
-    root = Path(options.cwd).resolve() if options.cwd else Path.cwd()
     settings: dict[str, Any] = {
         "llm": llm,
         "prompt": system_prompt(options.system_prompt),
@@ -51,6 +53,8 @@ def build_agent(options: AgentOptions) -> Any:
         settings["session_id"] = session_id
     if options.hooks is not None:
         settings["hooks"] = _hooks(options, root)
+    if harness is not None:
+        settings["harness"] = harness
     settings.update(options.agent_options)
     return Agent(**settings)
 
@@ -147,6 +151,14 @@ def mcp_servers(spec: dict[str, Any] | list[Any]) -> list[Any]:
         else:
             raise ValueError(f"MCP server {name!r}: type {kind!r} is not supported (use stdio, http or sdk)")
     return servers
+
+
+def _harness(options: AgentOptions, root: Path) -> Any:
+    if not options.plugins and not options.setting_sources:
+        return None
+    from shipit_agent.harness import Harness
+
+    return Harness.load(root, plugins=list(options.plugins), setting_sources=options.setting_sources)
 
 
 def _session_id(options: AgentOptions) -> str | None:

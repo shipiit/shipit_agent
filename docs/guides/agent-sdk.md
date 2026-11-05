@@ -191,6 +191,47 @@ The client's methods:
 
 Each response starts with a `UserMessage` echoing the prompt. Its `uuid` is what `rewind_files` takes.
 
+## Plugins and settings files
+
+```python
+options = AgentOptions(
+    cwd="/path/to/repo",
+    plugins=[{"type": "local", "path": "./plugins/deploy-tools"}],
+    setting_sources=["project", "local"],
+)
+```
+
+A plugin is a Claude Code plugin directory:
+
+```text
+deploy-tools/
+├── .claude-plugin/plugin.json   # optional manifest
+├── skills/<name>/SKILL.md       # skill deploy-tools:<name>
+├── commands/<name>.md           # command /deploy-tools:<name>
+├── agents/<name>.md             # sub-agent deploy-tools:<name>
+├── hooks/hooks.json             # command hooks
+└── .mcp.json                    # MCP servers
+```
+
+Manifest keys work as in Claude Code: `skills` adds to `skills/`, `commands` and `agents` replace their folders, and `hooks` and `mcpServers` merge with the default files. `${CLAUDE_PLUGIN_ROOT}` is filled in in commands, agents and MCP configs, and hook commands get it in their environment. A plugin that doesn't load is reported in the `init` message's `plugin_errors`, as is a path that leaves the plugin directory. The `init` message also lists `plugins`, `skills` and `slash_commands`.
+
+`setting_sources` reads `~/.claude/settings.json` (`user`), `.claude/settings.json` (`project`) and `.claude/settings.local.json` (`local`):
+
+- **Permissions:** the `allow`, `deny` and `ask` lists add up across files, and `defaultMode` comes from the most specific file.
+- **Model and env:** `model` is used when no model is given. `env` goes to hook commands only, never this process's environment.
+- **Hooks:** every file's hooks run.
+- **Commands:** `.claude/commands/*.md` load with `project`.
+
+Command hooks follow Claude Code: the hook input arrives as JSON on stdin.
+
+- **Exit 0:** stdout, if it's one JSON object, is the hook's output. Plain text is added as context for `UserPromptSubmit`.
+- **Exit 2:** blocks, with stderr as the reason.
+- **Other exits and timeouts:** logged; the run carries on.
+
+Commands run with a minimal environment, so this process's secrets don't leak into them, plus `CLAUDE_PROJECT_DIR` and `CLAUDE_PLUGIN_ROOT`. Hook events and hook types shipit can't run, such as `SessionStart` and `prompt` hooks, are skipped and reported.
+
+The same works without the SDK layer: `Agent(llm=llm, harness=Harness.load(cwd, plugins=[...], setting_sources=[...]))`, and `Agent.run("/deploy-tools:status staging")` expands the command.
+
 ## Saved sessions
 
 ```python
@@ -207,6 +248,7 @@ options = AgentOptions(session_store=store, resume=branch)
 
 ## Where shipit differs
 
+- **Settings files are opt-in.** The SDK reads project settings by default. shipit reads none unless `setting_sources` names them, because they can run hook commands and a library has no "do you trust this folder?" prompt. Plugins run because you name each one.
 - **No CLI process.** shipit runs in your process, so `cli_path`, `extra_args`, `stderr`, `setting_sources` and `Transport` have no counterpart. Project files (`CLAUDE.md`, `.claude/agents`, `.shipit/skills`) are read directly.
 - **Sessions live in a `SessionStore`, not in transcript files.** Records have no timestamps, so there is no `continue_conversation` ("the most recent session").
 - **`continue_: False` in a hook output** refuses that call or prompt; it doesn't end the whole session. `PreToolUse` and `PermissionRequest` callbacks get `tool_use_id=None`.

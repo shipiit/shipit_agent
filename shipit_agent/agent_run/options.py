@@ -21,6 +21,10 @@ class RunOptionsMixin:
         """Expand a ``/command`` from ``.shipit/commands/``; else pass through."""
         if not isinstance(user_prompt, str) or not user_prompt.startswith("/"):
             return user_prompt
+        if self.harness is not None:
+            from_harness = self.harness.expand(user_prompt)
+            if from_harness is not None:
+                return from_harness
         from shipit_agent.workspace import expand_command
 
         expanded = expand_command(self.project_root, user_prompt)

@@ -98,6 +98,8 @@ def _init_data(agent: Any, options: AgentOptions) -> dict[str, Any]:
         "permission_mode": options.permission_mode,
         "cwd": str(agent.project_root),
         "session_id": options.session_id or "",
+        **(agent.harness.info() if agent.harness is not None else
+           {"plugins": [], "plugin_errors": [], "skills": [], "slash_commands": []}),
     }
 
 

@@ -180,6 +180,8 @@ class AgentSettings:
     permission_mode: str = "default"
     permissions: Any = None
     permission_callback: Any = None
+    #: A :class:`~shipit_agent.harness.Harness`: plugins and settings files.
+    harness: Any = None
     #: Pre-approved calls, as SDK rules: ``"Read"``, ``"Bash(npm test *)"``.
     #: They approve; they do not restrict the other tools.
     allowed_tools: list[str] = field(default_factory=list)

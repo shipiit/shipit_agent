@@ -226,3 +226,15 @@ class _FakeBash:
         from shipit_agent.tools.base import ToolOutput
 
         return ToolOutput(text="ran")
+
+
+def test_matchers_follow_claude_code_syntax() -> None:
+    from shipit_agent.sdk.hooks import _matches
+
+    assert _matches(None, "bash") and _matches("*", "bash") and _matches("", "bash")
+    assert _matches("Edit|Write", "write_file") and _matches("Edit, Write", "edit_file")
+    assert not _matches("Edit|Write", "bash")
+    assert _matches("^note", "note_create") and not _matches("^note", "bash")
+    assert _matches("mcp__memory__.*", "memory__create")
+    assert not _matches("mcp__memory__.*", "github__create")
+    assert not _matches("[unclosed", "bash")

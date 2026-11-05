@@ -48,6 +48,12 @@ class AgentOptions:
     #: ``{"PreToolUse": [HookMatcher(...)], ...}``, or an ``AgentHooks``.
     hooks: Any = None
     agents: dict[str, Any] | None = None
+    #: ``[{"type": "local", "path": ...}]``: Claude Code plugins (skills,
+    #: commands, agents, hooks, MCP servers). Relative paths start at ``cwd``.
+    plugins: list[Any] = field(default_factory=list)
+    #: Which settings files to read: ``"user"``, ``"project"``, ``"local"``.
+    #: ``None`` reads none: they can run hook commands, so a caller opts in.
+    setting_sources: list[str] | None = None
     max_turns: int | None = None
     max_budget_usd: float | None = None
     cwd: str | Path | None = None

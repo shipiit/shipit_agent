@@ -3,7 +3,7 @@
 Imperative because Vertex authenticates with three separate pieces resolved
 from several env vars each — a service-account credentials file, a project, and
 a location — validated up front so a misconfiguration fails clearly rather than
-deep inside the SDK. Mirrors the factory's ``_require_any`` checks exactly.
+deep inside the SDK. Mirrors the inline builder's ``_require_any`` checks exactly (llms/inline_providers.py).
 """
 
 from __future__ import annotations

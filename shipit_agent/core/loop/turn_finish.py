@@ -33,8 +33,10 @@ class TurnFinishMixin:
         response = turn.response
         appended_response_id = turn.appended_response_id
 
-        # Summarization if hit iteration cap
-        hit_iteration_cap = bool(response.tool_calls) and not response.content
+        # Calls still pending at the last step never ran, so the step limit
+        # stopped the run even when the response also carried text (that
+        # text is a preamble, not an answer): summarise instead.
+        hit_iteration_cap = bool(response.tool_calls)
         reached_step_limit = hit_iteration_cap
         if hit_iteration_cap and self.task_budget_reached(
             state, self.max_iterations + 1
@@ -60,7 +62,8 @@ class TurnFinishMixin:
                 self.track_usage(state, summary, self.max_iterations + 1)
                 if self.hooks:
                     self.hooks.run_after_llm(summary)
-                if summary.content:
+                # A summary that only repeats the pending text adds nothing.
+                if summary.content and summary.content != response.content:
                     response = summary
             except Exception:
                 pass

@@ -188,7 +188,7 @@ def test_agent_does_not_inject_unrelated_skills_from_incidental_words() -> None:
 
     assert agent._selected_skills(prompt) == []
     assert agent._skill_tool_names(agent._selected_skills(prompt)) == []
-    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 12
+    assert agent._effective_max_iterations(agent._selected_skills(prompt)) is None
 
 
 def test_skill_trigger_does_not_match_inside_an_informational_word() -> None:
@@ -200,7 +200,7 @@ def test_skill_trigger_does_not_match_inside_an_informational_word() -> None:
 
     assert agent._selected_skills(prompt) == []
     assert agent._effective_tools(prompt) == []
-    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 12
+    assert agent._effective_max_iterations(agent._selected_skills(prompt)) is None
 
 
 def test_agent_applies_default_skill_ids() -> None:
@@ -461,13 +461,14 @@ def test_deep_agent_can_use_newly_authored_skill_from_custom_catalog(
 
 
 def test_agent_boosts_max_iterations_when_skills_are_active() -> None:
-    """When skills are selected and max_iterations is at default (4),
-    the agent should auto-boost to at least 8 so skill-driven workflows
-    can complete without cutting off early."""
+    """When skills are selected and a small step limit is set, the agent
+    raises it to at least 16 so skill-driven workflows can complete without
+    cutting off early. (With no limit, the default, there is nothing to raise.)"""
     agent = Agent(
         llm=PromptCaptureLLM(),
         auto_use_skills=False,
         skills=["web-scraper-pro"],
+        max_iterations=12,
     )
     selected = agent._selected_skills("scrape it")
     effective_max = agent._effective_max_iterations(selected)
@@ -544,14 +545,14 @@ def test_agent_respects_explicit_max_iterations_override() -> None:
 
 
 def test_agent_no_boost_without_skills() -> None:
-    """No skills → no boost, max_iterations stays at default."""
+    """No skills → no boost, max_iterations stays at default (no limit)."""
     agent = Agent(
         llm=PromptCaptureLLM(),
         auto_use_skills=False,
     )
     selected = agent._selected_skills("hello")
     effective_max = agent._effective_max_iterations(selected)
-    assert effective_max == 12
+    assert effective_max is None
 
 
 def test_tool_bundle_names_all_exist_in_builtins() -> None:

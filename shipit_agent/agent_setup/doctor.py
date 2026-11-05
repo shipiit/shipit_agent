@@ -407,6 +407,17 @@ class AgentDoctor:
         )
 
     def _check_iterations(self, agent: Any) -> DoctorCheck:
+        if getattr(agent, "max_iterations", None) is None:
+            budget = getattr(agent, "max_budget_usd", None)
+            return DoctorCheck(
+                name="runtime_limits",
+                status="pass",
+                message=(
+                    "No step limit: runs end when the model answers."
+                    + (f" Spend is capped at ${budget}." if budget else "")
+                ),
+                details={"max_iterations": None, "max_budget_usd": budget},
+            )
         max_iterations = int(getattr(agent, "max_iterations", 0) or 0)
         if max_iterations < 1:
             return DoctorCheck(

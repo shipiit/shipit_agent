@@ -132,10 +132,15 @@ class ToolExecutionMixin:
             )
             return None, msg
 
+        refusal = self.refuse_withheld_call(
+            state, context.state, tool_call, tool_call_record, iteration=iteration
+        )
+        if refusal is not None:
+            return None, refusal
+
         # ── Argument gate ────────────────────────────────────────────────
-        # Mirrors runtime.py: repair recoverable argument names, refuse a
-        # call whose required arguments are all absent, and say which one is
-        # missing so the next step can supply it.
+        # Repair recoverable argument names; refuse a call missing required
+        # arguments, naming the one the next step must supply.
         argument_error = self.check_arguments(tool, tool_call)
         if argument_error:
             self.emit(
@@ -156,9 +161,8 @@ class ToolExecutionMixin:
                 },
             )
 
-        # ── Duplicate-call gate (see the sync runtime for the rationale) ────
-        # Skip an exact repeat of a READ-ONLY call already run this turn — the
-        # dithering fix. Mutating tools are never suppressed.
+        # ── Duplicate-call gate: skip an exact repeat of a READ-ONLY call
+        # already run this turn. Mutating tools are never suppressed here.
         signature = self.readonly_call_signature(tool, tool_call)
         if signature is not None and signature in state.executed_readonly_calls:
             self.emit(
@@ -212,8 +216,8 @@ class ToolExecutionMixin:
                 state,
                 "tool_denied",
                 f"Tool blocked: {tool_call.name}",
-                # Mirrors runtime.py — renderers pair outcomes to calls by
-                # (tool, call_id), and the gate can fire before `tool_called`.
+                # Renderers pair outcomes to calls by (tool, call_id); the
+                # gate can fire before `tool_called`.
                 tool=tool_call.name,
                 call_id=tool_call_record["id"],
                 group_id=group_id,

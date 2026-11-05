@@ -67,7 +67,8 @@ def test_default_iteration_budget_is_higher():
         llm=EchoLLM(),
         auto_use_skills=False, auto_project_memory=False, skill_source=None,
     )
-    assert agent.max_iterations >= 12
+    # No step limit: the run ends when the model answers.
+    assert agent.max_iterations is None
 
 
 # ── #9 end-of-run summary ────────────────────────────────────────────────

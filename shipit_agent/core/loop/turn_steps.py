@@ -75,8 +75,8 @@ class TurnStepsMixin:
             if self.hooks:
                 self.hooks.run_before_llm(list(state.messages), active_schemas)
 
-            # Mirrors runtime.py: compact when the window demands it (no-op
-            # unless context_window_tokens is set), then re-ground.
+            # Compact when the window demands it (no-op unless
+            # context_window_tokens is set), then re-ground.
             compacted_messages = self.compact(
                 state, list(state.messages), iteration, shared_state
             )

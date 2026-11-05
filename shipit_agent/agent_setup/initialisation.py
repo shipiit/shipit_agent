@@ -53,6 +53,14 @@ class AgentInitMixin:
             type(self.max_session_tokens) is not int or self.max_session_tokens < 1
         ):
             raise ValueError("max_session_tokens must be a positive integer or None")
+        if self.max_iterations is not None and (
+            type(self.max_iterations) is not int or self.max_iterations < 1
+        ):
+            raise ValueError("max_iterations must be a positive integer or None")
+        if self.max_budget_usd is not None and (
+            type(self.max_budget_usd) not in (int, float) or self.max_budget_usd <= 0
+        ):
+            raise ValueError("max_budget_usd must be a positive number or None")
         if self.stream_join_timeout < 0:
             raise ValueError("stream_join_timeout cannot be negative")
 

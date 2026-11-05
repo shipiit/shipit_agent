@@ -229,7 +229,11 @@ class AgentPreparationMixin:
                 tools.append(value)
         return [item["id"] for item in details], tools, details
 
-    def _effective_max_iterations(self, selected_skills: list[Skill]) -> int:
+    def _effective_max_iterations(self, selected_skills: list[Skill]) -> int | None:
+        """The step limit for this run: unlimited stays unlimited; a small
+        explicit limit is raised for skills, which add steps of their own."""
+        if self.max_iterations is None:
+            return None
         if selected_skills and self.max_iterations <= 12:
             return max(16, self.max_iterations)
         return self.max_iterations

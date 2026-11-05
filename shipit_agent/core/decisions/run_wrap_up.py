@@ -29,46 +29,7 @@ class RunWrapUpMixin:
             (e.payload.get("iteration", 0) for e in events if e.type == "step_started"),
             default=0,
         )
-        cost_usd: float | None = None
-        model = getattr(self.llm, "model", None)
-        if len(self._usage_by_model) > 1:
-            # Several models served this run: price each at its own rate.
-            try:
-                from shipit_agent.costs.tracker import CostTracker
-
-                tracker = CostTracker()
-                cost_usd = round(
-                    sum(
-                        tracker.calculate_cost(
-                            name,
-                            b["input"],
-                            b["output"],
-                            cache_read_tokens=b["cache_read"],
-                            cache_write_tokens=b["cache_write"],
-                        )
-                        for name, b in self._usage_by_model.items()
-                    ),
-                    6,
-                )
-            except (KeyError, TypeError, ValueError):
-                # A malformed pricing entry must not fail the run summary.
-                cost_usd = None
-        elif model:
-            try:
-                from shipit_agent.costs.tracker import CostTracker
-
-                cost_usd = round(
-                    CostTracker().calculate_cost(
-                        str(model),
-                        self._total_uncached_input,
-                        usage.get("completion_tokens", 0),
-                        cache_read_tokens=usage.get("cache_read_input_tokens", 0),
-                        cache_write_tokens=usage.get("cache_creation_input_tokens", 0),
-                    ),
-                    6,
-                )
-            except Exception:
-                cost_usd = None
+        cost_usd = self.run_cost_usd()
         total = usage.get("total_tokens", 0)
         cache_read = max(0, int(usage.get("cache_read_input_tokens", 0) or 0))
         cache_creation = max(0, int(usage.get("cache_creation_input_tokens", 0) or 0))

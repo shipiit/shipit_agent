@@ -104,6 +104,7 @@ class RunOptionsMixin:
                 **self.metadata,
                 "max_task_tokens": self.max_task_tokens,
                 "max_session_tokens": self.max_session_tokens,
+                "max_budget_usd": self.max_budget_usd,
                 "used_skills": skill_ids,
                 "used_skill_tools": skill_tool_names,
                 "selected_skills": skill_details,

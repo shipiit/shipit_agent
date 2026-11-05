@@ -29,6 +29,7 @@ from shipit_agent.core.decisions.call_keys import (
     _arguments_key,
 )
 from shipit_agent.core.decisions.context_fit import ContextFitMixin
+from shipit_agent.core.decisions.cost_budget import CostBudgetMixin
 from shipit_agent.core.decisions.guardrail_checks import GuardrailChecksMixin
 from shipit_agent.core.decisions.permission_gate import PermissionGateMixin
 from shipit_agent.core.decisions.prior_outputs import (
@@ -37,6 +38,7 @@ from shipit_agent.core.decisions.prior_outputs import (
     attach_reminder,
     evict_prior_tool_outputs,
 )
+from shipit_agent.core.decisions.repeat_guard import RepeatGuardMixin
 from shipit_agent.core.decisions.requested_tools import RequestedToolsMixin
 from shipit_agent.core.decisions.response_checks import ResponseChecksMixin
 from shipit_agent.core.decisions.run_wrap_up import RunWrapUpMixin
@@ -68,12 +70,14 @@ __all__ = [
 class RuntimeCore(
     RequestedToolsMixin,
     ToolCallsMixin,
+    RepeatGuardMixin,
     StepMessagesMixin,
     ToolDeferralMixin,
     GuardrailChecksMixin,
     PermissionGateMixin,
     ResponseChecksMixin,
     UsageBudgetMixin,
+    CostBudgetMixin,
     ContextFitMixin,
     SharedToolStateMixin,
     RunWrapUpMixin,
@@ -158,6 +162,8 @@ class RuntimeCore(
         self._guarded_tool_calls = 0
         self._nudges_used = 0
         self._last_nudged_text = ""
+        # Text-only recovery is offered once a turn; after it, the reply stands.
+        self._text_recovery_used = False
         self._requested_tool_nudges: set[str] = set()
         self._compactor_instance: Any = self._session_runtime_state.get("compactor")
         self.connections: Any = None

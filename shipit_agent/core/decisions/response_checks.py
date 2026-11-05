@@ -114,14 +114,22 @@ class ResponseChecksMixin:
         last: bool,
         tool_names: Sequence[str] = (),
     ) -> bool:
-        """Stop advertising tools after a second malformed action attempt."""
+        """Stop advertising tools after a second malformed action attempt.
+
+        Offered once a turn. The step after it has no tools, so whatever the
+        model says there is its answer; switching again would loop forever
+        on a model that keeps writing calls as prose.
+        """
         if not (self.heal_tool_calls and has_tools and not last):
             return False
-        if self._nudges_used < 1:
+        if self._nudges_used < 1 or self._text_recovery_used:
             return False
-        return is_malformed_action_attempt(
+        if not is_malformed_action_attempt(
             response.content or "", allowed_names=tool_names
-        )
+        ):
+            return False
+        self._text_recovery_used = True
+        return True
 
     @staticmethod
     def malformed_attempt_context(response: LLMResponse) -> str:

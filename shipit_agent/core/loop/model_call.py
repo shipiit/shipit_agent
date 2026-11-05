@@ -153,8 +153,7 @@ class ModelCallMixin:
             complete_fn, "require_tool_call"
         ):
             complete_kwargs["require_tool_call"] = True
-        # Per-request timeout, only for adapters that can honour it — same
-        # decision as the sync loop.
+        # Per-request timeout, only for adapters that can honour it.
         if self.retry_policy.request_timeout is not None and accepts_kwarg(
             complete_fn, "timeout"
         ):

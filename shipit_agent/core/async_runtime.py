@@ -9,6 +9,7 @@ loop. Both share their step logic through
 from __future__ import annotations
 
 import asyncio
+import sys
 import threading
 from typing import Any, Callable
 from uuid import uuid4
@@ -58,6 +59,8 @@ from shipit_agent.stores import (
 )
 from shipit_agent.tools import Tool
 
+#: Stands in for "no step limit" so the loop's step arithmetic stays plain ints.
+NO_STEP_LIMIT = sys.maxsize
 
 class AsyncAgentRuntime(
     EventStreamMixin,
@@ -110,7 +113,7 @@ class AsyncAgentRuntime(
         memory_store: MemoryStore | None = None,
         session_store: SessionStore | None = None,
         session_id: str | None = None,
-        max_iterations: int = 4,
+        max_iterations: int | None = None,
         retry_policy: RetryPolicy | None = None,
         router_policy: RouterPolicy | None = None,
         credential_store: CredentialStore | None = None,
@@ -165,7 +168,10 @@ class AsyncAgentRuntime(
         self.memory_store = memory_store or InMemoryMemoryStore()
         self.session_store = session_store or InMemorySessionStore()
         self.session_id = session_id or str(uuid4())
-        self.max_iterations = max_iterations
+        #: The caller's limit, or ``None`` for none. The loop compares against
+        #: ``max_iterations``, which is an unreachable count when there is no limit.
+        self.step_limit = max_iterations
+        self.max_iterations = NO_STEP_LIMIT if max_iterations is None else max_iterations
         self.retry_policy = retry_policy or RetryPolicy()
         self.router_policy = router_policy or RouterPolicy()
         self.credential_store = credential_store

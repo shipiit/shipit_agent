@@ -126,6 +126,18 @@ class UsageBudgetMixin:
         bucket["cache_write"] += write
 
     def budget_stop_message(self) -> str:
+        reason = str(self.metadata.get("incomplete_reason") or "")
+        if reason == "max_budget_usd":
+            return (
+                f"Stopped at the cost budget (${self.metadata.get('max_budget_usd')}). "
+                "Work is incomplete; completed tool results remain in the session."
+            )
+        if reason == "budget_cost_unavailable":
+            return (
+                "Stopped: the cost budget cannot be enforced because this model "
+                "has no pricing data. Remove max_budget_usd or add the model's "
+                "pricing to run with a cost cap."
+            )
         scope = (
             "session"
             if str(self.metadata.get("incomplete_reason") or "").startswith("session")
@@ -141,8 +153,10 @@ class UsageBudgetMixin:
 
     def task_budget_reached(self, state: Any, iteration: int) -> bool:
         """Between steps: stop if the run's or the session's budget is spent."""
-        return self._task_budget_hit(state, iteration) or self._session_budget_hit(
-            state, iteration
+        return (
+            self._task_budget_hit(state, iteration)
+            or self._session_budget_hit(state, iteration)
+            or self._cost_budget_hit(state, iteration)
         )
 
     def _session_budget_hit(self, state: Any, iteration: int) -> bool:

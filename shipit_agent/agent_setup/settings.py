@@ -106,12 +106,11 @@ class AgentSettings:
     trace_id: str | None = None
 
     # ── runtime tuning ────────────────────────────────────────────────
-    # A hard task should not stop after a handful of tool calls. 4 was too
-    # tight — a real multi-step run (read several files, edit, test, fix)
-    # blows through it and gets cut to a summary before the context window
-    # is the real constraint. Raised to 12; skills boost further; autopilot
-    # sets its own.
-    max_iterations: int = 12  # auto-boosted → 16 when skills are active
+    #: Most model steps a run may take. ``None`` (the default) means no limit:
+    #: the run ends when the model answers without calling a tool, as in the
+    #: Claude Agent SDK. Any fixed count cuts some real task off mid-way; cap
+    #: spend with ``max_budget_usd`` instead, or set a number here.
+    max_iterations: int | None = None
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
     parallel_tool_execution: bool = False
@@ -254,6 +253,10 @@ class AgentSettings:
     skill_match_limit: int = 3  # max auto-matched
     progressive_skills: bool = False  # metadata-first, model-selected loading
     max_task_tokens: int | None = None  # soft per-run stop between model steps
+    #: Stop a run, between steps, once its estimated cost reaches this many
+    #: US dollars. Needs pricing data for the model; without it the run stops
+    #: rather than spend unchecked.
+    max_budget_usd: float | None = None
     # Soft stop across every run of this agent (or one chat session), checked
     # between steps. Clones start fresh; reset with reset_session_usage().
     max_session_tokens: int | None = None

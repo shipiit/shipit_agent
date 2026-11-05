@@ -385,6 +385,10 @@ class CostTracker:
     # Internals
     # ------------------------------------------------------------------
 
+    def has_pricing(self, model: str) -> bool:
+        """True when *model* (or an alias or prefix of it) is in the pricing table."""
+        return self._resolve_model(model) in self._pricing
+
     def _resolve_model(self, model: str) -> str:
         """Resolve a model id to its pricing key.
 

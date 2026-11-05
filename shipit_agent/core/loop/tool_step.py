@@ -89,9 +89,8 @@ class ToolStepMixin:
             ],
         )
 
-        # Only read-only groups fan out — writes keep their order (see
-        # runtime.py for the full rationale). Shared decision on
-        # RuntimeCore so both loops agree on what is parallel-safe.
+        # Only read-only groups fan out; writes keep their order, since a
+        # later call may depend on an earlier one's effect.
         group_is_parallel_safe = all(
             self.read_only_calls(response.tool_calls, registry)
         )
@@ -173,8 +172,8 @@ class ToolStepMixin:
                     state.tool_results.append(tool_result)
                 state.messages.append(msg)
                 if tool_result is not None:
-                    # Mirrors runtime.py: an image-bearing tool result is
-                    # bridged into a user-turn image block.
+                    # An image-bearing tool result is bridged into a
+                    # user-turn image block.
                     vision = self.vision_followup(tool_result, tc.name)
                     if vision is not None:
                         state.messages.append(vision)
@@ -207,6 +206,9 @@ class ToolStepMixin:
             )
 
         self.settle_duplicate_batch(shared_state, state.messages, tool_call_records)
+        self.settle_repeated_results(
+            state, shared_state, tool_call_records, iteration=iteration
+        )
         if state.tool_results:
             shared_state.pop("force_any_tool", None)
         if forced_names:

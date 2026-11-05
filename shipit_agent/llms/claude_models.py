@@ -20,11 +20,20 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-__all__ = ["ClaudeModel", "NON_STREAMING_OUTPUT_CAP", "claude_model"]
+__all__ = [
+    "ClaudeModel",
+    "NON_STREAMING_OUTPUT_CAP",
+    "STREAMING_OUTPUT_CAP",
+    "claude_model",
+]
 
 #: Largest ``max_tokens`` worth asking for without streaming: bigger responses
 #: risk the SDK's HTTP timeout before the model finishes.
 NON_STREAMING_OUTPUT_CAP = 16_000
+
+#: Default ``max_tokens`` for a streamed call: room for long answers and tool
+#: inputs without asking every request for the model's full limit.
+STREAMING_OUTPUT_CAP = 64_000
 
 
 @dataclass(frozen=True, slots=True)

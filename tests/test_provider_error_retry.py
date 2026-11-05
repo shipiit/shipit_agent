@@ -138,3 +138,14 @@ class TestRetryAfter:
 
     def test_an_error_without_a_response(self) -> None:
         assert retry_after_seconds(RuntimeError("429")) is None
+
+
+def test_retry_after_survives_an_adapter_wrapping_the_error() -> None:
+    """Adapters re-raise rate limits as ConnectionError(...) from the SDK error."""
+    try:
+        try:
+            raise APIStatusError(429, {"retry-after": "4"})
+        except APIStatusError as sdk_error:
+            raise ConnectionError("RateLimitError: slow down") from sdk_error
+    except ConnectionError as wrapped:
+        assert retry_after_seconds(wrapped) == 4.0

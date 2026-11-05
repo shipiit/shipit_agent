@@ -11,7 +11,11 @@ from shipit_agent.core.models import Message, ToolCall
 from shipit_agent.llms import citations as _citations
 from shipit_agent.llms import server_tools as _server_tools
 from shipit_agent.llms.base import LLMResponse, coerce_message
-from shipit_agent.llms.claude_models import NON_STREAMING_OUTPUT_CAP, claude_model
+from shipit_agent.llms.claude_models import (
+    NON_STREAMING_OUTPUT_CAP,
+    STREAMING_OUTPUT_CAP,
+    claude_model,
+)
 
 # Beta header for interleaved thinking (verified in
 # anthropic.types.anthropic_beta_param, SDK 0.79.0).
@@ -154,6 +158,10 @@ class AnthropicChatLLM:
         # talks to Anthropic), so it defaults on.
         self.prompt_caching = prompt_caching
         self.client_kwargs = client_kwargs
+        # One SDK client for the adapter's life, so calls share its connection
+        # pool. Rebuilt only if the ``anthropic`` module itself is replaced.
+        self._client: Any = None
+        self._client_module: Any = None
 
     def _convert_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         """Map shipit's Message model to Anthropic's user/assistant blocks.
@@ -386,6 +394,21 @@ class AnthropicChatLLM:
             kwargs["betas"] = betas
         return kwargs
 
+    def _client_for(self, anthropic: Any, timeout: float | None) -> Any:
+        """The adapter's SDK client, with *timeout* applied to this call only."""
+        if self._client is None or self._client_module is not anthropic:
+            self._client = anthropic.Anthropic(api_key=self.api_key, **self.client_kwargs)
+            self._client_module = anthropic
+        if timeout is None:
+            return self._client
+        with_options = getattr(self._client, "with_options", None)
+        if with_options is not None:
+            return with_options(timeout=timeout)
+        # An SDK without per-request options: a one-off client for this call.
+        return anthropic.Anthropic(
+            api_key=self.api_key, **{**self.client_kwargs, "timeout": timeout}
+        )
+
     def _thinking_param(self) -> dict[str, Any] | None:
         """The ``thinking`` request field for this model, or ``None`` to omit it."""
         if isinstance(self.thinking, dict):
@@ -488,11 +511,7 @@ class AnthropicChatLLM:
                     "Install `anthropic` to use AnthropicChatLLM."
                 ) from exc
 
-        client_kwargs = dict(self.client_kwargs)
-        if timeout is not None:
-            # Per-request override wins over any client-level default.
-            client_kwargs["timeout"] = timeout
-        client = anthropic.Anthropic(api_key=self.api_key, **client_kwargs)
+        client = self._client_for(anthropic, timeout)
 
         kwargs = self._build_request_kwargs(
             messages=messages,
@@ -520,29 +539,37 @@ class AnthropicChatLLM:
                     betas
                 )
 
+        # Stream for live deltas, and whenever the output may be too large to
+        # wait for in one response (the SDK refuses those without streaming).
+        # The stream helper hands back the SAME final Message shape, so every
+        # parsing branch below works unchanged.
+        live = text_delta_callback is not None or tool_input_callback is not None
+        if live and self.max_tokens is None:
+            kwargs["max_tokens"] = min(
+                self.facts.max_output_tokens, STREAMING_OUTPUT_CAP
+            )
+        streaming = live or kwargs["max_tokens"] > NON_STREAMING_OUTPUT_CAP
+        endpoint = client.beta.messages if "betas" in kwargs else client.messages
+
         try:
-            # Token streaming: the SDK's stream helper yields text deltas and
-            # then hands back the SAME final Message shape, so every parsing
-            # branch below (thinking, tool_use, server tools, citations) works
-            # unchanged. Beta-endpoint calls keep the non-streaming path.
-            if (
-                text_delta_callback is not None or tool_input_callback is not None
-            ) and "betas" not in kwargs:
-                stream_fn = getattr(client.messages, "stream", None)
+            if streaming:
+                stream_fn = getattr(endpoint, "stream", None)
                 if stream_fn is not None:
                     with stream_fn(**kwargs) as _stream:
                         stopped = False
-                        if tool_input_callback is None:
+                        if tool_input_callback is not None:
+                            stopped = _pump_stream_events(
+                                _stream, text_delta_callback, tool_input_callback
+                            )
+                        elif text_delta_callback is not None:
                             # text_stream is simpler and well-trodden; only
                             # drop to raw events when someone wants tool input.
                             for _text in _stream.text_stream:
                                 if _text and text_delta_callback(_text) is False:
                                     stopped = True
                                     break
-                        else:
-                            stopped = _pump_stream_events(
-                                _stream, text_delta_callback, tool_input_callback
-                            )
+                        # With no callback the stream is only for size; the
+                        # final message below reads it to the end.
                         # A guard said stop. get_final_message() would read —
                         # and bill — the rest of the stream; take what was
                         # produced instead. Leaving this block closes it.

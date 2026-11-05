@@ -190,7 +190,10 @@ def retry_after_seconds(error: BaseException) -> float | None:
     """
     headers = getattr(getattr(error, "response", None), "headers", None)
     if not headers:
-        return None
+        # Adapters re-raise SDK errors as ConnectionError(...) from the
+        # original; the provider's headers are on that cause.
+        cause = error.__cause__
+        return retry_after_seconds(cause) if cause is not None else None
     for name, scale in (("retry-after-ms", 1000.0), ("retry-after", 1.0)):
         raw = headers.get(name)
         if raw is None:

@@ -1384,15 +1384,11 @@ class AsyncAgentRuntime(RuntimeCore):
         user_prompt = turn.user_prompt
         state = turn.state
         registry = turn.registry
-        tool_runner = turn.tool_runner
         tool_schemas = turn.tool_schemas
         base_prompt = turn.base_prompt
         shared_state = turn.shared_state
 
         response = LLMResponse(content="")
-        # id() of the response already appended as an assistant message in the
-        # loop, so the trailing append doesn't duplicate the final text.
-        appended_response_id: int | None = None
         for iteration in range(1, self.max_iterations + 1):
             if self.task_budget_reached(state, iteration):
                 response = LLMResponse(content=self.budget_stop_message())
@@ -1550,311 +1546,334 @@ class AsyncAgentRuntime(RuntimeCore):
                     )
 
             if not response.tool_calls:
-                force_any_retries = int(shared_state.get("force_any_retries", 0) or 0)
-                if (
-                    force_any_tool
-                    # Unsatisfiable with no tool advertised this step — see the
-                    # sync runtime: retrying just loops the required-tool nudge.
-                    and step_schemas
-                    and iteration < self.max_iterations
-                    and force_any_retries < self.MAX_FORCE_ANY_RETRIES
+                if await self._settle_answer_step(
+                    turn, iteration=iteration, response=response, forced_names=forced_names,
+                    force_any_tool=force_any_tool, step_schemas=step_schemas,
                 ):
-                    shared_state["force_any_retries"] = force_any_retries + 1
-                    state.messages.append(
-                        Message(
-                            role="assistant",
-                            content="[Unverified response discarded: no required tool executed.]",
-                        )
-                    )
-                    state.messages.append(
-                        Message(
-                            role="user",
-                            content=(
-                                "A registered tool must execute before answering. "
-                                "Call the best available tool now; do not simulate its result."
-                            ),
-                            metadata={"internal": True, "kind": "required_tool_retry"},
-                        )
-                    )
-                    self.emit(
-                        state,
-                        "tool_call_healed",
-                        "Retrying required tool use",
-                        nudge=True,
-                        iteration=iteration,
-                    )
-                    continue
-                # Give up forcing after the cap rather than re-emitting the same
-                # retry to max_iterations (the "Retrying required tool use" loop).
-                if force_any_tool:
-                    shared_state.pop("force_any_tool", None)
-                    force_any_tool = False
-                    self.emit(
-                        state,
-                        "step",
-                        "Required tool did not execute; answering from available "
-                        "context",
-                        iteration=iteration,
-                    )
-                executed = {result.name for result in state.tool_results}
-                missing_required = sorted(
-                    forced_names - executed - self._requested_tool_nudges
+                    break
+                continue
+
+
+            await self._run_tool_step(
+                turn, iteration=iteration, response=response, forced_names=forced_names
+            )
+
+
+        turn.response = response
+
+    async def _settle_answer_step(
+        self,
+        turn: Turn,
+        *,
+        iteration: int,
+        response: LLMResponse,
+        forced_names: set[str],
+        force_any_tool: bool,
+        step_schemas: list[dict[str, Any]],
+    ) -> bool:
+        """Handle a step where the model answered without calling a tool.
+
+        Nudges the model when a required tool never ran, enforces the verify
+        gate and stop hooks, and returns ``True`` when the turn is done or
+        ``False`` to run another step.
+        """
+        state = turn.state
+        registry = turn.registry
+        shared_state = turn.shared_state
+        tool_schemas = turn.tool_schemas
+        user_prompt = turn.user_prompt
+
+        force_any_retries = int(shared_state.get("force_any_retries", 0) or 0)
+        if (
+            force_any_tool
+            # Unsatisfiable with no tool advertised this step — see the
+            # sync runtime: retrying just loops the required-tool nudge.
+            and step_schemas
+            and iteration < self.max_iterations
+            and force_any_retries < self.MAX_FORCE_ANY_RETRIES
+        ):
+            shared_state["force_any_retries"] = force_any_retries + 1
+            state.messages.append(
+                Message(
+                    role="assistant",
+                    content="[Unverified response discarded: no required tool executed.]",
                 )
-                missing_requested = self.missing_requested_tools(
-                    user_prompt, registry, state.tool_results
+            )
+            state.messages.append(
+                Message(
+                    role="user",
+                    content=(
+                        "A registered tool must execute before answering. "
+                        "Call the best available tool now; do not simulate its result."
+                    ),
+                    metadata={"internal": True, "kind": "required_tool_retry"},
                 )
-                missing_requested = sorted(
-                    set(missing_requested) | set(missing_required)
+            )
+            self.emit(
+                state,
+                "tool_call_healed",
+                "Retrying required tool use",
+                nudge=True,
+                iteration=iteration,
+            )
+            return False
+        # Give up forcing after the cap rather than re-emitting the same
+        # retry to max_iterations (the "Retrying required tool use" loop).
+        if force_any_tool:
+            shared_state.pop("force_any_tool", None)
+            force_any_tool = False
+            self.emit(
+                state,
+                "step",
+                "Required tool did not execute; answering from available "
+                "context",
+                iteration=iteration,
+            )
+        executed = {result.name for result in state.tool_results}
+        missing_required = sorted(
+            forced_names - executed - self._requested_tool_nudges
+        )
+        missing_requested = self.missing_requested_tools(
+            user_prompt, registry, state.tool_results
+        )
+        missing_requested = sorted(
+            set(missing_requested) | set(missing_required)
+        )
+        if missing_requested and iteration < self.max_iterations:
+            self.record_requested_tool_nudge(missing_requested)
+            shared_state["forced_tool_names"] = set(missing_requested)
+            state.messages.append(
+                Message(
+                    role="assistant",
+                    content="[Unverified response discarded: no requested tool executed.]",
                 )
-                if missing_requested and iteration < self.max_iterations:
-                    self.record_requested_tool_nudge(missing_requested)
-                    shared_state["forced_tool_names"] = set(missing_requested)
-                    state.messages.append(
-                        Message(
-                            role="assistant",
-                            content="[Unverified response discarded: no requested tool executed.]",
+            )
+            state.messages.append(
+                Message(
+                    role="user",
+                    content=(
+                        "The requested registered tool did not execute. Call "
+                        + ", ".join(missing_requested)
+                        + " now; do not simulate or invent its result."
+                    ),
+                    metadata={"internal": True, "kind": "requested_tool_retry"},
+                )
+            )
+            self.emit(
+                state,
+                "tool_call_healed",
+                "Retrying an explicitly requested tool",
+                tools=missing_requested,
+                nudge=True,
+                iteration=iteration,
+            )
+            return False
+        # Nudge-on-stall: the model narrated an action and called
+        # nothing. One tightly-gated re-prompt recovers the turn.
+        if self.should_nudge(
+            response,
+            has_tools=bool(tool_schemas),
+            last=iteration >= self.max_iterations,
+            tool_names=tuple(tool.name for tool in registry.values()),
+        ):
+            self.record_nudge(response)
+            state.messages.append(
+                Message(
+                    role="assistant",
+                    content=self.malformed_attempt_context(response),
+                )
+            )
+            state.messages.append(
+                Message(
+                    role="user",
+                    content=self.NUDGE_TEXT,
+                    metadata={"internal": True, "kind": "tool_call_retry"},
+                )
+            )
+            self.emit(
+                state,
+                "tool_call_healed",
+                "Nudged: malformed tool call",
+                nudge=True,
+                iteration=iteration,
+            )
+            return False
+        if self.should_force_text_recovery(
+            response,
+            has_tools=bool(tool_schemas),
+            last=iteration >= self.max_iterations,
+            tool_names=tuple(tool.name for tool in registry.values()),
+        ):
+            shared_state["force_text_after_malformed"] = True
+            state.messages.append(
+                Message(
+                    role="assistant",
+                    content=self.malformed_attempt_context(response),
+                )
+            )
+            state.messages.append(
+                Message(
+                    role="user",
+                    content=(
+                        "The structured action failed twice. Do not call or "
+                        "describe any tool now. Answer the original request "
+                        "concisely from completed results already above, and "
+                        "state what could not be verified."
+                    ),
+                    metadata={
+                        "internal": True,
+                        "kind": "text_only_recovery",
+                    },
+                )
+            )
+            self.emit(
+                state,
+                "tool_call_healed",
+                "Switching to text-only recovery after repeated malformed calls",
+                recovery="text_only",
+                iteration=iteration,
+            )
+            return False
+        if state.verify_gate is not None:
+            if iteration < self.max_iterations:
+                verify_nudge = state.verify_gate.stop_nudge()
+                if verify_nudge:
+                    if response.content:
+                        state.messages.append(
+                            Message(role="assistant", content=response.content)
                         )
-                    )
+                        turn.appended_response_id = id(response)
                     state.messages.append(
                         Message(
                             role="user",
-                            content=(
-                                "The requested registered tool did not execute. Call "
-                                + ", ".join(missing_requested)
-                                + " now; do not simulate or invent its result."
-                            ),
-                            metadata={"internal": True, "kind": "requested_tool_retry"},
-                        )
-                    )
-                    self.emit(
-                        state,
-                        "tool_call_healed",
-                        "Retrying an explicitly requested tool",
-                        tools=missing_requested,
-                        nudge=True,
-                        iteration=iteration,
-                    )
-                    continue
-                # Nudge-on-stall: the model narrated an action and called
-                # nothing. One tightly-gated re-prompt recovers the turn.
-                if self.should_nudge(
-                    response,
-                    has_tools=bool(tool_schemas),
-                    last=iteration >= self.max_iterations,
-                    tool_names=tuple(tool.name for tool in registry.values()),
-                ):
-                    self.record_nudge(response)
-                    state.messages.append(
-                        Message(
-                            role="assistant",
-                            content=self.malformed_attempt_context(response),
-                        )
-                    )
-                    state.messages.append(
-                        Message(
-                            role="user",
-                            content=self.NUDGE_TEXT,
-                            metadata={"internal": True, "kind": "tool_call_retry"},
-                        )
-                    )
-                    self.emit(
-                        state,
-                        "tool_call_healed",
-                        "Nudged: malformed tool call",
-                        nudge=True,
-                        iteration=iteration,
-                    )
-                    continue
-                if self.should_force_text_recovery(
-                    response,
-                    has_tools=bool(tool_schemas),
-                    last=iteration >= self.max_iterations,
-                    tool_names=tuple(tool.name for tool in registry.values()),
-                ):
-                    shared_state["force_text_after_malformed"] = True
-                    state.messages.append(
-                        Message(
-                            role="assistant",
-                            content=self.malformed_attempt_context(response),
-                        )
-                    )
-                    state.messages.append(
-                        Message(
-                            role="user",
-                            content=(
-                                "The structured action failed twice. Do not call or "
-                                "describe any tool now. Answer the original request "
-                                "concisely from completed results already above, and "
-                                "state what could not be verified."
-                            ),
+                            content=verify_nudge,
                             metadata={
                                 "internal": True,
-                                "kind": "text_only_recovery",
+                                "kind": "verify_retry",
                             },
                         )
                     )
                     self.emit(
                         state,
-                        "tool_call_healed",
-                        "Switching to text-only recovery after repeated malformed calls",
-                        recovery="text_only",
+                        "verify_required",
+                        "Edited code without passing verification — running tests",
                         iteration=iteration,
                     )
-                    continue
-                if state.verify_gate is not None:
-                    if iteration < self.max_iterations:
-                        verify_nudge = state.verify_gate.stop_nudge()
-                        if verify_nudge:
-                            if response.content:
-                                state.messages.append(
-                                    Message(role="assistant", content=response.content)
-                                )
-                                appended_response_id = id(response)
-                            state.messages.append(
-                                Message(
-                                    role="user",
-                                    content=verify_nudge,
-                                    metadata={
-                                        "internal": True,
-                                        "kind": "verify_retry",
-                                    },
-                                )
-                            )
-                            self.emit(
-                                state,
-                                "verify_required",
-                                "Edited code without passing verification — running tests",
-                                iteration=iteration,
-                            )
-                            continue
-                    elif state.verify_gate.would_nudge():
-                        self.emit(
-                            state,
-                            "verify_skipped",
-                            "Edited code but ran out of steps before verification passed",
-                            iteration=iteration,
-                        )
-                if self.apply_stop_hooks(state, response, iteration, shared_state):
-                    if response.content:
-                        appended_response_id = id(response)
-                    continue
-                break
-
-            tool_call_records = self.assign_tool_call_ids(
-                response.tool_calls, state.messages, iteration
-            )
-            group_output_limit = None
-            if (
-                self.max_tool_output_chars > 0
-                and self.max_tool_output_group_chars > 0
-                and response.tool_calls
-            ):
-                group_output_limit = max(
-                    1,
-                    self.max_tool_output_group_chars // len(response.tool_calls),
+                    return False
+            elif state.verify_gate.would_nudge():
+                self.emit(
+                    state,
+                    "verify_skipped",
+                    "Edited code but ran out of steps before verification passed",
+                    iteration=iteration,
                 )
-            state.messages.append(
-                Message(
-                    role="assistant",
-                    content=response.content,
-                    tool_calls=list(response.tool_calls),
-                    metadata={
-                        **dict(response.metadata),
-                        **(
-                            {"reasoning_content": response.reasoning_content}
-                            if response.reasoning_content
-                            else {}
-                        ),
-                    },
+        if self.apply_stop_hooks(state, response, iteration, shared_state):
+            if response.content:
+                turn.appended_response_id = id(response)
+            return False
+        return True
+
+    async def _run_tool_step(
+        self,
+        turn: Turn,
+        *,
+        iteration: int,
+        response: LLMResponse,
+        forced_names: set[str],
+    ) -> None:
+        """Run the tool calls from one model response as a group, then record them.
+
+        Read-only groups run in parallel; anything that changes state runs in
+        order. Emits the group events and the step's observation summary.
+        """
+        state = turn.state
+        registry = turn.registry
+        shared_state = turn.shared_state
+        tool_runner = turn.tool_runner
+        base_prompt = turn.base_prompt
+        user_prompt = turn.user_prompt
+
+        tool_call_records = self.assign_tool_call_ids(
+            response.tool_calls, state.messages, iteration
+        )
+        group_output_limit = None
+        if (
+            self.max_tool_output_chars > 0
+            and self.max_tool_output_group_chars > 0
+            and response.tool_calls
+        ):
+            group_output_limit = max(
+                1,
+                self.max_tool_output_group_chars // len(response.tool_calls),
+            )
+        state.messages.append(
+            Message(
+                role="assistant",
+                content=response.content,
+                tool_calls=list(response.tool_calls),
+                metadata={
+                    **dict(response.metadata),
+                    **(
+                        {"reasoning_content": response.reasoning_content}
+                        if response.reasoning_content
+                        else {}
+                    ),
+                },
+            )
+        )
+        turn.appended_response_id = id(response)
+
+        group_id = f"tool_group_{iteration}"
+        group_result_start = len(state.tool_results)
+        self.emit(
+            state,
+            "tool_group_started",
+            "Tool group started",
+            group_id=group_id,
+            iteration=iteration,
+            tool_count=len(tool_call_records),
+            tools=[
+                {"name": record["name"], "call_id": record["id"]}
+                for record in tool_call_records
+            ],
+        )
+
+        # Only read-only groups fan out — writes keep their order (see
+        # runtime.py for the full rationale). Shared decision on
+        # RuntimeCore so both loops agree on what is parallel-safe.
+        group_is_parallel_safe = all(
+            self.read_only_calls(response.tool_calls, registry)
+        )
+        if (
+            self.parallel_tool_execution
+            and len(response.tool_calls) > 1
+            and group_is_parallel_safe
+        ):
+            # Run tools concurrently — each on its own isolated copy of
+            # shared_state so concurrent writes can't corrupt each other;
+            # merged back in original order after all complete.
+            isolated_states = [
+                _isolated_tool_state(shared_state) for _ in response.tool_calls
+            ]
+            tasks = []
+            semaphore = asyncio.Semaphore(
+                self.max_tool_concurrency or len(response.tool_calls)
+            )
+
+            async def _bounded_tool_call(**kwargs: Any):
+                async with semaphore:
+                    return await self._execute_single_tool(**kwargs)
+
+            for idx, tc in enumerate(response.tool_calls):
+                context = ToolContext(
+                    prompt=user_prompt,
+                    system_prompt=base_prompt,
+                    metadata=dict(self.metadata),
+                    state=isolated_states[idx],
+                    session_id=self.session_id,
                 )
-            )
-            appended_response_id = id(response)
-
-            group_id = f"tool_group_{iteration}"
-            group_result_start = len(state.tool_results)
-            self.emit(
-                state,
-                "tool_group_started",
-                "Tool group started",
-                group_id=group_id,
-                iteration=iteration,
-                tool_count=len(tool_call_records),
-                tools=[
-                    {"name": record["name"], "call_id": record["id"]}
-                    for record in tool_call_records
-                ],
-            )
-
-            # Only read-only groups fan out — writes keep their order (see
-            # runtime.py for the full rationale). Shared decision on
-            # RuntimeCore so both loops agree on what is parallel-safe.
-            group_is_parallel_safe = all(
-                self.read_only_calls(response.tool_calls, registry)
-            )
-            if (
-                self.parallel_tool_execution
-                and len(response.tool_calls) > 1
-                and group_is_parallel_safe
-            ):
-                # Run tools concurrently — each on its own isolated copy of
-                # shared_state so concurrent writes can't corrupt each other;
-                # merged back in original order after all complete.
-                isolated_states = [
-                    _isolated_tool_state(shared_state) for _ in response.tool_calls
-                ]
-                tasks = []
-                semaphore = asyncio.Semaphore(
-                    self.max_tool_concurrency or len(response.tool_calls)
-                )
-
-                async def _bounded_tool_call(**kwargs: Any):
-                    async with semaphore:
-                        return await self._execute_single_tool(**kwargs)
-
-                for idx, tc in enumerate(response.tool_calls):
-                    context = ToolContext(
-                        prompt=user_prompt,
-                        system_prompt=base_prompt,
-                        metadata=dict(self.metadata),
-                        state=isolated_states[idx],
-                        session_id=self.session_id,
-                    )
-                    tasks.append(
-                        _bounded_tool_call(
-                            state=state,
-                            registry=registry,
-                            tool_runner=tool_runner,
-                            tool_call=tc,
-                            tool_call_record=tool_call_records[idx],
-                            context=context,
-                            iteration=iteration,
-                            model_output_limit=group_output_limit,
-                            group_id=group_id,
-                        )
-                    )
-                results = await asyncio.gather(*tasks)
-                for idx, (tool_result, msg) in enumerate(results):
-                    _merge_tool_state(shared_state, isolated_states[idx])
-                    if tool_result is not None:
-                        state.tool_results.append(tool_result)
-                    state.messages.append(msg)
-                    if tool_result is not None:
-                        vision = self.vision_followup(
-                            tool_result, response.tool_calls[idx].name
-                        )
-                        if vision is not None:
-                            state.messages.append(vision)
-
-            else:
-                for idx, tc in enumerate(response.tool_calls):
-                    context = ToolContext(
-                        prompt=user_prompt,
-                        system_prompt=base_prompt,
-                        metadata=dict(self.metadata),
-                        state=shared_state,
-                        session_id=self.session_id,
-                    )
-                    tool_result, msg = await self._execute_single_tool(
+                tasks.append(
+                    _bounded_tool_call(
                         state=state,
                         registry=registry,
                         tool_runner=tool_runner,
@@ -1865,71 +1884,101 @@ class AsyncAgentRuntime(RuntimeCore):
                         model_output_limit=group_output_limit,
                         group_id=group_id,
                     )
-                    if tool_result is not None:
-                        state.tool_results.append(tool_result)
-                    state.messages.append(msg)
-                    if tool_result is not None:
-                        # Mirrors runtime.py: an image-bearing tool result is
-                        # bridged into a user-turn image block.
-                        vision = self.vision_followup(tool_result, tc.name)
-                        if vision is not None:
-                            state.messages.append(vision)
-
-            iteration_results = state.tool_results[group_result_start:]
-            observation_summary = self._generate_observation_summary(
-                tool_results=iteration_results,
-                tool_calls=response.tool_calls,
-            )
-            self.emit(
-                state,
-                "tool_group_completed",
-                "Tool group completed",
-                group_id=group_id,
-                iteration=iteration,
-                tool_count=len(tool_call_records),
-                completed_count=len(iteration_results),
-                summary=observation_summary,
-            )
-            if observation_summary:
-                state.last_observation = observation_summary
-                self.emit(
-                    state,
-                    "agent_observation",
-                    observation_summary,
-                    summary=observation_summary,
-                    iteration=iteration,
-                    next_action="evaluate_results",
-                    generated_by_model=False,
                 )
+            results = await asyncio.gather(*tasks)
+            for idx, (tool_result, msg) in enumerate(results):
+                _merge_tool_state(shared_state, isolated_states[idx])
+                if tool_result is not None:
+                    state.tool_results.append(tool_result)
+                state.messages.append(msg)
+                if tool_result is not None:
+                    vision = self.vision_followup(
+                        tool_result, response.tool_calls[idx].name
+                    )
+                    if vision is not None:
+                        state.messages.append(vision)
 
-            self.settle_duplicate_batch(shared_state, state.messages, tool_call_records)
-            if state.tool_results:
-                shared_state.pop("force_any_tool", None)
-            if forced_names:
-                remaining_forced = forced_names - {
-                    result.name for result in state.tool_results
-                }
-                if remaining_forced:
-                    shared_state["forced_tool_names"] = remaining_forced
-                else:
-                    shared_state.pop("forced_tool_names", None)
-            if (
-                self.replan_interval > 0
-                and iteration % self.replan_interval == 0
-                and iteration < self.max_iterations
-            ):
-                await self._run_planner_if_needed(
+        else:
+            for idx, tc in enumerate(response.tool_calls):
+                context = ToolContext(
+                    prompt=user_prompt,
+                    system_prompt=base_prompt,
+                    metadata=dict(self.metadata),
+                    state=shared_state,
+                    session_id=self.session_id,
+                )
+                tool_result, msg = await self._execute_single_tool(
                     state=state,
                     registry=registry,
-                    user_prompt=user_prompt,
-                    base_prompt=base_prompt,
-                    shared_state=shared_state,
                     tool_runner=tool_runner,
+                    tool_call=tc,
+                    tool_call_record=tool_call_records[idx],
+                    context=context,
+                    iteration=iteration,
+                    model_output_limit=group_output_limit,
+                    group_id=group_id,
                 )
+                if tool_result is not None:
+                    state.tool_results.append(tool_result)
+                state.messages.append(msg)
+                if tool_result is not None:
+                    # Mirrors runtime.py: an image-bearing tool result is
+                    # bridged into a user-turn image block.
+                    vision = self.vision_followup(tool_result, tc.name)
+                    if vision is not None:
+                        state.messages.append(vision)
 
+        iteration_results = state.tool_results[group_result_start:]
+        observation_summary = self._generate_observation_summary(
+            tool_results=iteration_results,
+            tool_calls=response.tool_calls,
+        )
+        self.emit(
+            state,
+            "tool_group_completed",
+            "Tool group completed",
+            group_id=group_id,
+            iteration=iteration,
+            tool_count=len(tool_call_records),
+            completed_count=len(iteration_results),
+            summary=observation_summary,
+        )
+        if observation_summary:
+            state.last_observation = observation_summary
+            self.emit(
+                state,
+                "agent_observation",
+                observation_summary,
+                summary=observation_summary,
+                iteration=iteration,
+                next_action="evaluate_results",
+                generated_by_model=False,
+            )
 
-        turn.response = response
-        turn.appended_response_id = appended_response_id
+        self.settle_duplicate_batch(shared_state, state.messages, tool_call_records)
+        if state.tool_results:
+            shared_state.pop("force_any_tool", None)
+        if forced_names:
+            remaining_forced = forced_names - {
+                result.name for result in state.tool_results
+            }
+            if remaining_forced:
+                shared_state["forced_tool_names"] = remaining_forced
+            else:
+                shared_state.pop("forced_tool_names", None)
+        if (
+            self.replan_interval > 0
+            and iteration % self.replan_interval == 0
+            and iteration < self.max_iterations
+        ):
+            await self._run_planner_if_needed(
+                state=state,
+                registry=registry,
+                user_prompt=user_prompt,
+                base_prompt=base_prompt,
+                shared_state=shared_state,
+                tool_runner=tool_runner,
+            )
 
     async def _finish_turn(self, turn: Turn) -> tuple[RuntimeState, LLMResponse]:
         """Close a turn: settle the final answer, save the session, report the result."""

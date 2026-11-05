@@ -10,15 +10,16 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections import deque
-from typing import Any, AsyncIterator, Callable
+from typing import Any, Callable
 from uuid import uuid4
 
 from shipit_agent.core.answer_step import AnswerStepMixin
 from shipit_agent.core.code_mode import CodeModeMixin
 from shipit_agent.core.construction import construct_tool_registry
+from shipit_agent.core.event_stream import EventStreamMixin
 from shipit_agent.core.model_call import ModelCallMixin
-from shipit_agent.core.models import AgentEvent, Message, ToolCall
+from shipit_agent.core.models import AgentEvent, Message
+from shipit_agent.core.planning import PlanningMixin
 from shipit_agent.core.policies import RetryPolicy, RouterPolicy
 from shipit_agent.core.registry import ToolRegistry
 from shipit_agent.core.runtime_core import (
@@ -27,8 +28,8 @@ from shipit_agent.core.runtime_core import (
 from shipit_agent.core.state import (
     RuntimeState,
 )
+from shipit_agent.core.step_narration import StepNarrationMixin
 from shipit_agent.core.tool_exec import ToolExecutionMixin
-from shipit_agent.core.tool_runner import ToolRunner
 from shipit_agent.core.tool_step import ToolStepMixin
 from shipit_agent.core.turn import Turn
 from shipit_agent.core.turn_finish import TurnFinishMixin
@@ -51,11 +52,14 @@ from shipit_agent.stores import (
     MemoryStore,
     SessionStore,
 )
-from shipit_agent.tools import Tool, ToolContext
+from shipit_agent.tools import Tool
 
 
 class AsyncAgentRuntime(
+    EventStreamMixin,
+    PlanningMixin,
     ModelCallMixin,
+    StepNarrationMixin,
     ToolExecutionMixin,
     TurnSetupMixin,
     TurnStepsMixin,
@@ -197,50 +201,6 @@ class AsyncAgentRuntime(
     def registry(self) -> ToolRegistry:
         return construct_tool_registry(tools=self.tools, mcps=self.mcps)
 
-    async def _run_planner_if_needed(
-        self,
-        *,
-        state: RuntimeState,
-        registry: ToolRegistry,
-        user_prompt: str,
-        base_prompt: str,
-        shared_state: dict[str, Any],
-        tool_runner: ToolRunner,
-    ) -> None:
-        planner = registry.get("plan_task")
-        if (
-            planner is None
-            or not self.router_policy.auto_plan
-            or not self.router_policy.should_plan(user_prompt)
-        ):
-            return
-        self.emit(state, "planning_started", "Planner started", prompt=user_prompt)
-        result = await tool_runner.run_tool_call_async(
-            ToolCall(name=planner.name, arguments={"goal": user_prompt}),
-            ToolContext(
-                prompt=user_prompt,
-                system_prompt=base_prompt,
-                metadata=dict(self.metadata),
-                state=shared_state,
-                session_id=self.session_id,
-            ),
-        )
-        state.tool_results.append(result)
-        state.messages.append(
-            Message(
-                role="user",
-                content=f"[Planner output]\n{result.output}",
-                metadata={
-                    "source": "planner",
-                    "planner_tool": planner.name,
-                    "internal": True,
-                },
-            )
-        )
-        self.emit(
-            state, "planning_completed", "Planner completed", output=result.output
-        )
-
     def emit(
         self, state: RuntimeState, event_type: str, message: str, **payload: Any
     ) -> None:
@@ -315,69 +275,3 @@ class AsyncAgentRuntime(
         await self._run_steps(turn)
         return await self._finish_turn(turn)
 
-    async def stream(
-        self,
-        user_prompt: str,
-        *,
-        user_content: list[dict[str, Any]] | None = None,
-    ) -> AsyncIterator[AgentEvent]:
-        """Run the agent and yield a bounded stream with disconnect cancellation."""
-        event_buffer: deque[AgentEvent] = deque()
-        wake = asyncio.Event()
-        worker_done = False
-        provisional_types = {"text_delta", "tool_input_delta", "tool_output_delta"}
-
-        def _subscriber(event: AgentEvent) -> None:
-            # Preserve canonical lifecycle events. Under a slow consumer only
-            # replace an older delta; run_completed carries the complete text.
-            if len(event_buffer) >= self.stream_queue_maxsize:
-                drop_index = next(
-                    (
-                        index
-                        for index, queued in enumerate(event_buffer)
-                        if queued.type in provisional_types
-                    ),
-                    None,
-                )
-                if drop_index is None:
-                    self.cancel()
-                    return
-                del event_buffer[drop_index]
-            event_buffer.append(event)
-            wake.set()
-
-        self._event_subscriber = _subscriber
-
-        async def _worker() -> None:
-            nonlocal worker_done
-            try:
-                await self._run_turn(user_prompt, user_content=user_content)
-            finally:
-                worker_done = True
-                wake.set()
-
-        task = asyncio.create_task(_worker())
-        try:
-            while not worker_done or event_buffer:
-                if not event_buffer:
-                    wake.clear()
-                    if worker_done:
-                        break
-                    await wake.wait()
-                    continue
-                yield event_buffer.popleft()
-        finally:
-            self._event_subscriber = None
-            if not task.done() and self.cancel_on_stream_close:
-                self.cancel()
-                task.cancel()
-            if task.done() or not self.cancel_on_stream_close:
-                await asyncio.gather(task, return_exceptions=True)
-            else:
-                try:
-                    await asyncio.wait_for(
-                        asyncio.gather(task, return_exceptions=True),
-                        timeout=self.stream_join_timeout,
-                    )
-                except TimeoutError:
-                    task.cancel()

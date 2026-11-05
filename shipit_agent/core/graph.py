@@ -37,11 +37,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol, Sequence
 
-from shipit_agent.llms.capabilities import ModelCapabilities, capabilities_for
-from shipit_agent.llms.parameters import ResolvedParameters, resolve_parameters
-from shipit_agent.context.discovery import DiscoveryState, ToolSearchTool, filter_schemas
-from shipit_agent.llms.schema_prep import prepare_tool_schema
-from shipit_agent.llms.wire import apply_reasoning_policy
+from shipit_agent.context.discovery import (
+    DiscoveryState,
+    ToolSearchTool,
+    filter_schemas,
+)
+from shipit_agent.context.prefix import PromptPrefix, build_prefix
 from shipit_agent.core.models import (
     AgentEvent,
     AgentResult,
@@ -50,10 +51,18 @@ from shipit_agent.core.models import (
     ToolResult,
     pair_calls_and_results,
 )
-from shipit_agent.context.prefix import PromptPrefix, build_prefix
+from shipit_agent.llms.capabilities import ModelCapabilities, capabilities_for
+from shipit_agent.llms.parameters import ResolvedParameters, resolve_parameters
+from shipit_agent.llms.schema_prep import prepare_tool_schema
+from shipit_agent.llms.wire import apply_reasoning_policy
+from shipit_agent.observability.usage import (
+    Purpose,
+    ServiceTier,
+    TierPolicy,
+    UsageLedger,
+)
 from shipit_agent.skills.catalog import LoadSkillTool, SkillSession, build_catalog
 from shipit_agent.toolkit.contracts import run_tool_safely
-from shipit_agent.observability.usage import Purpose, ServiceTier, TierPolicy, UsageLedger
 
 logger = logging.getLogger(__name__)
 
@@ -565,7 +574,9 @@ class AgentGraph:
         return result
 
     def _tool_context(self, call: ToolCall) -> Any:
-        from shipit_agent.core.tools_compat import ToolOutput  # noqa: F401 — shim import
+        from shipit_agent.core.tools_compat import (
+            ToolOutput,  # noqa: F401 — shim import
+        )
 
         return type(
             "RunContext",

@@ -33,9 +33,9 @@ from typing import Any, Iterator
 
 from shipit_agent.core.bridge import spec_from_agent, unmapped
 from shipit_agent.core.graph import AgentGraph
-from shipit_agent.observability.live import Packet, to_packets
-from shipit_agent.llms.capabilities import capabilities_for, describe
 from shipit_agent.core.models import AgentEvent, AgentResult
+from shipit_agent.llms.capabilities import capabilities_for, describe
+from shipit_agent.observability.live import Packet, to_packets
 from shipit_agent.observability.usage import UsageLedger
 
 logger = logging.getLogger(__name__)

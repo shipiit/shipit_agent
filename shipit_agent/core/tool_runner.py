@@ -14,7 +14,6 @@ from shipit_agent.core.models import ToolCall, ToolResult
 from shipit_agent.core.registry import ToolRegistry
 from shipit_agent.tools import ToolContext, ToolOutput, ToolOutputChunk
 
-
 ToolOutputCallback = Callable[[ToolOutputChunk], None]
 _LIVE_OUTPUT_CHUNK_CHARS = 16_384
 _HEAVY_EVENT_METADATA_KEYS = frozenset(

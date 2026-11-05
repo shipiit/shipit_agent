@@ -20,15 +20,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 from copy import deepcopy
-import re
-
 from typing import Any, Sequence
 
-from shipit_agent.safety.action_detection import is_malformed_action_attempt
-from shipit_agent.llms.base import LLMResponse
 from shipit_agent.core.models import Message
+from shipit_agent.llms.base import LLMResponse
+from shipit_agent.safety.action_detection import is_malformed_action_attempt
 from shipit_agent.safety.permissions import (
     PermissionDecision,
     PermissionResult,
@@ -907,10 +906,13 @@ class RuntimeCore:
         if self.code_mode or not getattr(self, "deferred_tools", False):
             return ""
         tools = [t for t in registry.values() if t.name not in hidden]
-        from shipit_agent.deferral.policy import (
-            DiscoveryPolicy, schema_tokens, schema_fingerprint, select_resident,
-        )
         from shipit_agent.deferral import DEFAULT_CORE_TOOLS
+        from shipit_agent.deferral.policy import (
+            DiscoveryPolicy,
+            schema_fingerprint,
+            schema_tokens,
+            select_resident,
+        )
 
         policy = self.deferred_tools if isinstance(self.deferred_tools, DiscoveryPolicy) else DiscoveryPolicy()
         automatic = self.deferred_tools == "auto" or isinstance(self.deferred_tools, DiscoveryPolicy)
@@ -1545,7 +1547,7 @@ class RuntimeCore:
     def track_usage(self, state: Any, response: LLMResponse, iteration: int) -> None:
         """Accumulate tokens and emit a running total for the live footer."""
         self._last_finish_reason = response.metadata.get("finish_reason")
-        from shipit_agent.llms.usage import input_token_counts, has_complete_token_usage
+        from shipit_agent.llms.usage import has_complete_token_usage, input_token_counts
         uncached, read, write, total_input = input_token_counts(response)
         self._total_uncached_input += uncached
         route = response.metadata.get("route") if isinstance(response.metadata, dict) else None
@@ -1678,7 +1680,6 @@ class RuntimeCore:
         whose prompt is a different shape.
         """
         from shipit_agent.context.compaction import count_messages
-
         from shipit_agent.llms.usage import input_token_counts
         actual = input_token_counts(response)[3]
         if actual <= 0:
@@ -1745,8 +1746,9 @@ class RuntimeCore:
             return compactor.estimated_prompt_tokens(candidate) <= budget
 
         fitted, stats = fit_messages(messages, fits=fits)
-        from shipit_agent.context.compaction import content_tokens
         import hashlib
+
+        from shipit_agent.context.compaction import content_tokens
         model = getattr(self.llm, "model", None)
         for message in fitted:
             category = "system" if message.role == "system" else "tool_results" if message.role == "tool" else "conversation"
@@ -2105,10 +2107,10 @@ class RuntimeCore:
     def build_shared_state(self, registry: Any, state: Any = None) -> dict[str, Any]:
         """What every tool can see. Identical in both loops, by construction."""
         from shipit_agent.connections import ConnectionRegistry
-        from shipit_agent.tools.helpers import describe_tool_capability
         from shipit_agent.tools.connections.connections_tool import (
             REGISTRY_STATE_KEY as CONNECTIONS_KEY,
         )
+        from shipit_agent.tools.helpers import describe_tool_capability
         from shipit_agent.tools.sub_agent.sub_agent_tool import (
             DEPTH_STATE_KEY,
             EVENT_SINK_KEY,

@@ -67,6 +67,19 @@ class EventStreamMixin:
                     await wake.wait()
                     continue
                 yield event_buffer.popleft()
+            # The worker's error would otherwise be gathered and dropped
+            # below; report it the way the sync stream does.
+            outcome = (await asyncio.gather(task, return_exceptions=True))[0]
+            if isinstance(outcome, Exception):
+                yield AgentEvent(
+                    type="run_failed",
+                    message="Agent run failed",
+                    payload={
+                        "error_type": type(outcome).__name__,
+                        "error": str(outcome),
+                        "retryable": isinstance(outcome, ConnectionError),
+                    },
+                )
         finally:
             self._event_subscriber = None
             if not task.done() and self.cancel_on_stream_close:

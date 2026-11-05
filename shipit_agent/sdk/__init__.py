@@ -25,6 +25,7 @@ Custom tools use :func:`tool` and :func:`create_sdk_mcp_server`; hooks use
 from __future__ import annotations
 
 from .build import build_agent
+from .client import AgentClient
 from .hooks import HOOK_EVENTS, HookMatcher
 from .options import AgentOptions
 from .permissions import PermissionResultAllow, PermissionResultDeny, ToolPermissionContext
@@ -46,6 +47,7 @@ from .types import (
 
 __all__ = [
     "HOOK_EVENTS",
+    "AgentClient",
     "AgentOptions",
     "AssistantMessage",
     "ContentBlock",

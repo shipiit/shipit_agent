@@ -55,6 +55,8 @@ class AgentOptions:
     #: and arrives parsed as ``ResultMessage.structured_output``.
     output_format: dict[str, Any] | None = None
     include_partial_messages: bool = False
+    #: Record files before the file tools change them, for ``AgentClient.rewind_files``.
+    enable_file_checkpointing: bool = False
     session_id: str | None = None
     #: Passed to the model adapter when it takes them (Anthropic does).
     effort: str | None = None

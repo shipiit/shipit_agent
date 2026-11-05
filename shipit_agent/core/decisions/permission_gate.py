@@ -49,7 +49,18 @@ class PermissionGateMixin:
                 return guard
             self._guarded_tool_calls += 1
 
-        return authorize_tool(self.hooks, self.permissions, name, arguments, tool)
+        risk: tuple[str, ...] = ()
+        assess = getattr(tool, "assess_command", None)
+        if callable(assess):
+            verdict = assess(arguments)
+            if verdict.level == "blocked":
+                return PermissionResult(
+                    decision=PermissionDecision.DENY, reason="; ".join(verdict.reasons)
+                )
+            risk = tuple(verdict.reasons) if verdict.level == "risky" else ()
+        return authorize_tool(
+            self.hooks, self.permissions, name, arguments, tool, risk=risk
+        )
 
     def note_lockdown(
         self,

@@ -16,6 +16,7 @@ from shipit_agent.tools.formatting import clip_text
 from shipit_agent.tools.subprocess_env import build_tool_env
 
 from .prompt import BASH_PROMPT
+from .command_risk import CommandVerdict, assess_command
 from .runner import StillRunning, read_log, run_command
 
 #: Lines of output shown when a command moves to the background.
@@ -64,12 +65,12 @@ class BashTool:
         max_timeout: float = 600.0,
         allowed_command_prefixes: list[str] | None = None,
         blocked_substrings: list[str] | None = None,
-        #: Opt in to a full shell — redirections (``>``/``>>``/``<``),
-        #: heredocs, pipes into files, and command/process substitution. The
-        #: safe default keeps the conservative syntactic filter; set this for
-        #: a full shell when the environment is already trusted /
-        #: sandboxed. The allowlist and blocked-substring checks still apply.
-        unrestricted: bool = False,
+        #: A full shell (any command, redirections, heredocs, substitution)
+        #: is the default; what may run without approval is decided by
+        #: :mod:`.command_risk` at the permission gate. Pass an explicit
+        #: ``allowed_command_prefixes``, or ``unrestricted=False``, for the
+        #: conservative mode: a first-token allowlist and no redirection.
+        unrestricted: bool | None = None,
         #: The child shell gets a scrubbed environment (PATH, HOME, locale,
         #: TERM, TMPDIR and similar) so host secrets are not readable with
         #: ``printenv``. ``env_allowlist`` passes named host variables through,
@@ -83,10 +84,16 @@ class BashTool:
         self.name = name
         self.description = description
         self.prompt = prompt or BASH_PROMPT
-        self.prompt_instructions = "Use this for bounded shell inspection, test runs, and local developer workflows."
+        self.prompt_instructions = (
+            "Run shell commands in the project: inspect, search, test, build. "
+            "Commands that delete, publish, or reach outside the project need "
+            "approval; prefer the file tools for reading and editing files."
+        )
         self.default_timeout = default_timeout
         self.max_timeout = max_timeout
-        self.unrestricted = unrestricted
+        self.unrestricted = (
+            allowed_command_prefixes is None if unrestricted is None else unrestricted
+        )
         self.env_allowlist = list(env_allowlist or [])
         self.extra_env = dict(extra_env or {})
         self.inherit_env = inherit_env
@@ -335,6 +342,10 @@ class BashTool:
                 raise ValueError(
                     f"Command '{first}' is not in the allowlist for the bash tool"
                 )
+
+    def assess_command(self, arguments: dict[str, Any]) -> CommandVerdict:
+        """How risky the call's command is; the permission gate decides on it."""
+        return assess_command(str(arguments.get("command", "")), root=self.root_dir)
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         command = str(kwargs.get("command", ""))

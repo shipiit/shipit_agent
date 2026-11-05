@@ -377,7 +377,7 @@ def test_agent_result_metadata_includes_used_skills_and_skill_tools() -> None:
 
 
 def test_bash_tool_blocks_commands_outside_allowlist(tmp_path: Path) -> None:
-    tool = BashTool(root_dir=tmp_path)
+    tool = BashTool(root_dir=tmp_path, unrestricted=False)
 
     # A rejected command comes back as an error result (not a raised
     # exception, which would crash the run) the model can react to.

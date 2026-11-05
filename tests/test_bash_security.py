@@ -15,7 +15,8 @@ from shipit_agent.tools.bash.bash_tool import BashTool
 
 @pytest.fixture()
 def tool(tmp_path) -> BashTool:
-    return BashTool(root_dir=tmp_path)
+    # The conservative mode (allowlist, no redirection) is now opt-in.
+    return BashTool(root_dir=tmp_path, unrestricted=False)
 
 
 class TestBypassesRejected:

@@ -25,7 +25,7 @@ from __future__ import annotations
 import fnmatch
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, Sequence
 
 PermissionMode = Literal["default", "acceptEdits", "plan", "bypass"]
 
@@ -171,8 +171,16 @@ class PermissionEngine:
                 or self.default_decision != PermissionDecision.DENY)
 
     def check(
-        self, tool_name: str, arguments: dict[str, Any], tool: Any = None
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        tool: Any = None,
+        *,
+        risk: Sequence[str] = (),
     ) -> PermissionResult:
+        """Decide one call. *risk* names what makes this call need approval
+        (a shell command that deletes, say): an allow rule or bypass mode
+        still allows it, otherwise only a yes from the callback does."""
         # 1. Hard deny rules always win.
         if _matches_any(tool_name, self.deny):
             return PermissionResult(
@@ -244,6 +252,11 @@ class PermissionEngine:
         asked = self._consult_callback(tool_name, arguments)
         if asked is not None:
             return asked
+        if risk:
+            return PermissionResult(
+                PermissionDecision.ASK,
+                reason=f"'{tool_name}' needs approval because " + "; ".join(risk),
+            )
         return PermissionResult(self.default_decision, reason="default")
 
     def _consult_callback(
@@ -264,8 +277,13 @@ def authorize_tool(
     name: str,
     arguments: dict[str, Any],
     tool: Any = None,
+    *,
+    risk: Sequence[str] = (),
 ) -> PermissionResult | None:
     """Fold blocking hooks + the permission engine into one decision.
+
+    A call with *risk* is always judged by an engine (a default one when
+    none is configured), so it cannot slip through the permissive default.
 
     Precedence: DENY wins, then ASK, otherwise ALLOW (carrying the last
     argument rewrite). Returns ``None`` when neither has an opinion — the
@@ -278,8 +296,10 @@ def authorize_tool(
         hook_decision = hooks.run_before_tool(name, arguments)
         if hook_decision is not None:
             results.append(hook_decision)
+    if permissions is None and risk:
+        permissions = PermissionEngine()
     if permissions is not None:
-        results.append(permissions.check(name, arguments, tool))
+        results.append(permissions.check(name, arguments, tool, risk=risk))
     if not results:
         return None
     for result in results:

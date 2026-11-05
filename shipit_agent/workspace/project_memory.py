@@ -1,4 +1,4 @@
-"""Project memory — auto-load ``SHIPIT.md`` / ``AGENTS.md`` instructions.
+"""Project memory — auto-load ``SHIPIT.md`` / ``AGENTS.md`` / ``CLAUDE.md`` instructions.
 
 The SHIPIT answer to a project instructions file: drop a ``SHIPIT.md`` (or the
 conventional ``AGENTS.md``) at your repo root and every agent pointed at that
@@ -18,8 +18,13 @@ from pathlib import Path
 PROJECT_FILES: tuple[str, ...] = (
     "SHIPIT.md",
     "AGENTS.md",
+    # Claude Code's project file, so a repository set up for it works as is.
+    # Its user-level ~/.claude/CLAUDE.md is deliberately not read: those are a
+    # developer's personal preferences, not instructions for every agent.
+    "CLAUDE.md",
     ".shipit/SHIPIT.md",
     ".shipit/AGENTS.md",
+    ".claude/CLAUDE.md",
 )
 USER_FILES: tuple[str, ...] = ("~/.shipit/SHIPIT.md", "~/.shipit/AGENTS.md")
 

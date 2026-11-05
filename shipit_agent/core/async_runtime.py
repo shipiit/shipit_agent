@@ -119,7 +119,7 @@ class AsyncAgentRuntime(
         credential_store: CredentialStore | None = None,
         trace_store: TraceStore | None = None,
         trace_id: str | None = None,
-        parallel_tool_execution: bool = False,
+        parallel_tool_execution: bool = True,
         max_tool_concurrency: int | None = None,
         hooks: Any | None = None,
         context_window_tokens: int = 0,

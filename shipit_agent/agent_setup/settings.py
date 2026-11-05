@@ -113,7 +113,9 @@ class AgentSettings:
     max_iterations: int | None = None
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     router_policy: RouterPolicy = field(default_factory=RouterPolicy)
-    parallel_tool_execution: bool = False
+    #: Run a response's tool calls concurrently when every one is read-only.
+    #: Writes and unknown tools always run one at a time, in order.
+    parallel_tool_execution: bool = True
     # None means no cap; otherwise bound concurrent local tool calls per turn.
     max_tool_concurrency: int | None = None
     hooks: Any = None

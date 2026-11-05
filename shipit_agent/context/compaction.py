@@ -142,6 +142,15 @@ def get_model_limits(model: str | None) -> ModelLimits:
     """Limits for *model*, by longest-prefix match, with a safe default."""
     if not model:
         return ModelLimits(DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_OUTPUT)
+    from shipit_agent.llms.claude_models import STREAMING_OUTPUT_CAP, known_claude_model
+
+    claude = known_claude_model(model)
+    if claude is not None:
+        # One source for Claude limits. Reserve what a call actually asks for
+        # (the streamed default), not the model's full output ceiling.
+        return ModelLimits(
+            claude.context_window, min(claude.max_output_tokens, STREAMING_OUTPUT_CAP)
+        )
 
     def _match(name: str) -> tuple[int, int] | None:
         """Longest-prefix match against the table."""

@@ -25,6 +25,7 @@ __all__ = [
     "NON_STREAMING_OUTPUT_CAP",
     "STREAMING_OUTPUT_CAP",
     "claude_model",
+    "known_claude_model",
 ]
 
 #: Largest ``max_tokens`` worth asking for without streaming: bigger responses
@@ -81,10 +82,15 @@ _RULES: tuple[tuple[re.Pattern[str], ClaudeModel], ...] = (
 )
 
 
-def claude_model(model: str) -> ClaudeModel:
-    """The facts for *model*, or conservative defaults when no rule matches."""
+def known_claude_model(model: str | None) -> ClaudeModel | None:
+    """The facts for *model* when a rule knows it, else ``None``."""
     name = (model or "").lower()
     for pattern, facts in _RULES:
         if pattern.search(name):
             return facts
-    return ClaudeModel()
+    return None
+
+
+def claude_model(model: str) -> ClaudeModel:
+    """The facts for *model*, or conservative defaults when no rule matches."""
+    return known_claude_model(model) or ClaudeModel()

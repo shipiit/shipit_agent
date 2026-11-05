@@ -14,6 +14,7 @@ EventType = Literal[
     "reasoning_delta",
     "reasoning_completed",
     "text_delta",
+    "assistant_message",
     "tool_group_started",
     "tool_called",
     "tool_input_delta",

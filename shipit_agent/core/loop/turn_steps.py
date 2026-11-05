@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from shipit_agent.core.loop.turn import Turn
 from shipit_agent.core.models import Message
+from shipit_agent.core.state import RuntimeState
 from shipit_agent.llms.base import (
     LLMResponse,
 )
@@ -157,6 +158,7 @@ class TurnStepsMixin:
                     iteration=iteration,
                     content=response.reasoning_content,
                 )
+            self._emit_assistant_message(state, response, iteration)
 
             if response.tool_calls:
                 decision_summary = await self._generate_decision_summary(
@@ -203,3 +205,29 @@ class TurnStepsMixin:
             )
 
         turn.response = response
+
+    def _emit_assistant_message(
+        self, state: RuntimeState, response: LLMResponse, iteration: int
+    ) -> None:
+        """One event per model response: its text, thinking and tool calls.
+
+        Text is left out when guardrails may rewrite the answer, so nothing
+        reaches a client before redaction; the final answer arrives through
+        ``final_answer`` once checked.
+        """
+        guarded = self.guardrails is not None and self.guardrails.modifies_output()
+        self.emit(
+            state,
+            "assistant_message",
+            "Model response",
+            iteration=iteration,
+            content="" if guarded else (response.content or ""),
+            reasoning=response.reasoning_content or "",
+            tool_calls=[
+                {"id": call.id, "name": call.name, "arguments": dict(call.arguments)}
+                for call in response.tool_calls
+            ],
+            model=str(getattr(self.llm, "model", "") or ""),
+            usage=dict(response.usage or {}),
+            stop_reason=response.metadata.get("finish_reason"),
+        )

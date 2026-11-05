@@ -1,0 +1,13 @@
+profile_version: 1
+name: deepseek
+display_name: DeepSeek
+description: DeepSeek chat and reasoning models via the DeepSeek API.
+icon: "🐋"
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: "deepseek/deepseek-chat"
+model_keys: [model, SHIPIT_DEEPSEEK_MODEL]
+model_env: [SHIPIT_DEEPSEEK_MODEL]
+require_env: [DEEPSEEK_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://platform.deepseek.com/api_keys
+env_help: 'Set DEEPSEEK_API_KEY.'

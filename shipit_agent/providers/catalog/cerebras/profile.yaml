@@ -1,0 +1,13 @@
+profile_version: 1
+name: cerebras
+display_name: Cerebras
+description: Very fast open models on Cerebras hardware.
+icon: "🧠"
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: ""
+model_keys: [model, SHIPIT_CEREBRAS_MODEL]
+model_env: [SHIPIT_CEREBRAS_MODEL]
+require_env: [CEREBRAS_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://cloud.cerebras.ai
+env_help: 'Set CEREBRAS_API_KEY and SHIPIT_CEREBRAS_MODEL (e.g. "cerebras/<model>").'

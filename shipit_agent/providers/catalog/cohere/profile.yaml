@@ -1,0 +1,13 @@
+profile_version: 1
+name: cohere
+display_name: Cohere
+description: Command models via the Cohere API.
+icon: "🪢"
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: ""
+model_keys: [model, SHIPIT_COHERE_MODEL]
+model_env: [SHIPIT_COHERE_MODEL]
+require_env: [COHERE_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://dashboard.cohere.com/api-keys
+env_help: 'Set COHERE_API_KEY and SHIPIT_COHERE_MODEL (e.g. "cohere/<command model>").'

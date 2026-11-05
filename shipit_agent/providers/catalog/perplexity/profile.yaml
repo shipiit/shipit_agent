@@ -1,0 +1,13 @@
+profile_version: 1
+name: perplexity
+display_name: Perplexity
+description: Sonar models with built-in web search.
+icon: "🔎"
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: "perplexity/sonar"
+model_keys: [model, SHIPIT_PERPLEXITY_MODEL]
+model_env: [SHIPIT_PERPLEXITY_MODEL]
+require_env: [PERPLEXITYAI_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://www.perplexity.ai/settings/api
+env_help: 'Set PERPLEXITYAI_API_KEY.'

@@ -10,13 +10,14 @@ import threading
 import time
 from typing import Any, Callable
 
+from shipit_agent.core.models import Message, ToolCall
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.llms.bedrock_token import (
     BedrockTokenError,
     existing_bearer_token,
     generate_bearer_token,
 )
-from shipit_agent.core.models import Message, ToolCall
+from shipit_agent.llms.model_defaults import DEFAULT_MODELS
 
 
 def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:
@@ -982,7 +983,7 @@ class BedrockChatLLM(LiteLLMChatLLM):
 class GeminiChatLLM(LiteLLMChatLLM):
     """Google Gemini models through the Gemini API."""
     def __init__(
-        self, model: str = "gemini/gemini-1.5-pro", **completion_kwargs: Any
+        self, model: str = DEFAULT_MODELS["gemini"], **completion_kwargs: Any
     ) -> None:
         super().__init__(model=model, **completion_kwargs)
 
@@ -997,7 +998,7 @@ class VertexAIChatLLM(LiteLLMChatLLM):
     Example::
 
         llm = VertexAIChatLLM(
-            model="vertex_ai/gemini-1.5-pro",
+            model="vertex_ai/gemini-3.5-flash",
             service_account_file="/path/to/sa.json",
             project_id="my-gcp-project",
             location="us-central1",
@@ -1012,7 +1013,7 @@ class VertexAIChatLLM(LiteLLMChatLLM):
 
     def __init__(
         self,
-        model: str = "vertex_ai/gemini-1.5-pro",
+        model: str = DEFAULT_MODELS["vertex"],
         *,
         service_account_file: str | None = None,
         project_id: str | None = None,

@@ -26,12 +26,16 @@ import os
 import sys
 from typing import Any
 
-from shipit_agent.safety.askuser_channel import all_entries, pending_questions, write_answer
 from shipit_agent.autopilot import Autopilot, BudgetPolicy, default_heartbeat_stderr
 from shipit_agent.deep.goal_agent import Goal
+from shipit_agent.llms.model_defaults import DEFAULT_MODELS
 from shipit_agent.observability.live_renderer import render_stream
+from shipit_agent.safety.askuser_channel import (
+    all_entries,
+    pending_questions,
+    write_answer,
+)
 from shipit_agent.scheduling.daemon import SchedulerDaemon
-
 
 # ─────────────────────── entry points ───────────────────────
 
@@ -281,12 +285,14 @@ def _resolve_llm() -> Any | None:
         if name in ("openai", "oai"):
             from shipit_agent.llms import OpenAIChat
 
-            return OpenAIChat(model=os.environ.get("SHIPIT_MODEL", "gpt-4o-mini"))
+            return OpenAIChat(
+                model=os.environ.get("SHIPIT_MODEL", DEFAULT_MODELS["openai"])
+            )
         if name in ("anthropic", "claude"):
             from shipit_agent.llms import AnthropicChat
 
             return AnthropicChat(
-                model=os.environ.get("SHIPIT_MODEL", "claude-sonnet-4-5")
+                model=os.environ.get("SHIPIT_MODEL", DEFAULT_MODELS["anthropic"])
             )
         if name == "bedrock":
             from shipit_agent.llms import BedrockChat

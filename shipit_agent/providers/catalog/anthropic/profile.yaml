@@ -4,7 +4,7 @@ display_name: Anthropic Claude
 description: Claude models via the native Anthropic API (falls back to Bedrock).
 icon: "🟤"
 adapter: shipit_agent.llms.anthropic_adapter:AnthropicChatLLM
-default_model: claude-3-5-sonnet-latest
+default_model: claude-opus-5-5
 model_keys: [model, SHIPIT_ANTHROPIC_MODEL]
 model_env: [SHIPIT_ANTHROPIC_MODEL]
 require_env: [ANTHROPIC_API_KEY]

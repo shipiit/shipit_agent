@@ -65,6 +65,7 @@ from typing import Any
 # means, shared with `shipit models`, `run`, `code` and `serve`.
 from shipit_agent.cli.llm import DEFAULT_MODELS as _CATALOG_DEFAULTS
 from shipit_agent.core.models import Message
+from shipit_agent.llms.model_defaults import DEFAULT_MODELS
 from shipit_agent.stores import FileSessionStore, InMemorySessionStore
 
 try:  # readline is unix-only but ships with mac/linux Python builds
@@ -259,18 +260,15 @@ class Spinner:
 #: Environment override per provider, and the fallback for providers the
 #: curated catalog does not cover.
 #:
-#: The catalog in `cli.llm` is authoritative wherever it has an opinion —
-#: these defaults are overlaid from it below. They had drifted apart:
-#: `shipit run --provider anthropic` used claude-sonnet-5 while
-#: `shipit chat --provider anthropic` used claude-3-5-sonnet-latest, and
-#: openai here was still gpt-4o-mini. Same CLI, same flag, two
-#: generations apart, with nothing on screen to say so.
+#: Defaults come from `llms.model_defaults`, with the CLI catalog in
+#: `cli.llm` overlaid below wherever it has its own pick. They used to be
+#: written out here and drifted generations apart from `shipit run`.
 _PROVIDER_ENV_FALLBACK = {
     "bedrock": ("SHIPIT_BEDROCK_MODEL", "bedrock/openai.gpt-oss-120b-1:0"),
-    "openai": ("SHIPIT_OPENAI_MODEL", "gpt-4o-mini"),
-    "anthropic": ("SHIPIT_ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"),
-    "gemini": ("SHIPIT_GEMINI_MODEL", "gemini/gemini-1.5-pro"),
-    "vertex": ("SHIPIT_VERTEX_MODEL", "vertex_ai/gemini-1.5-pro"),
+    "openai": ("SHIPIT_OPENAI_MODEL", DEFAULT_MODELS["openai"]),
+    "anthropic": ("SHIPIT_ANTHROPIC_MODEL", DEFAULT_MODELS["anthropic"]),
+    "gemini": ("SHIPIT_GEMINI_MODEL", DEFAULT_MODELS["gemini"]),
+    "vertex": ("SHIPIT_VERTEX_MODEL", DEFAULT_MODELS["vertex"]),
     "groq": ("SHIPIT_GROQ_MODEL", "groq/llama-3.3-70b-versatile"),
     "together": (
         "SHIPIT_TOGETHER_MODEL",

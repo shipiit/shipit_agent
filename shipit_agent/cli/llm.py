@@ -5,23 +5,26 @@ from __future__ import annotations
 import os
 from typing import Any
 
-# Latest defaults (July 2026): Claude 5 family for Anthropic, GPT-5.5 for
-# OpenAI (the current production API recommendation), Gemma 4 31B for
-# Bedrock agents. Override any of these with --model / $SHIPIT_MODEL.
+from shipit_agent.llms.model_defaults import DEFAULT_MODELS as LIBRARY_DEFAULTS
+
+# Defaults come from the library's one table; Bedrock here goes through the
+# Mantle client, so it keeps a model id in that form. Override any of these
+# with --model / $SHIPIT_MODEL.
 DEFAULT_MODELS = {
     "bedrock": "google.gemma-4-31b",
-    "openai": "gpt-5.5",
-    "anthropic": "claude-sonnet-5",
-    "ollama": "ollama/llama3.1",
+    "openai": LIBRARY_DEFAULTS["openai"],
+    "anthropic": LIBRARY_DEFAULTS["anthropic"],
+    "ollama": LIBRARY_DEFAULTS["ollama"],
 }
 
 # Curated latest-model catalog per provider (July 2026) — shown by
 # `shipit models`. (best) marks the strongest agentic pick per provider.
 MODEL_CATALOG: dict[str, list[tuple[str, str]]] = {
     "anthropic": [
-        ("claude-opus-5", "most capable Claude for complex agents (best)"),
-        ("claude-sonnet-5", "flagship balance of speed and intelligence"),
-        ("claude-haiku-4-5-20251001", "fastest/cheapest Claude"),
+        ("claude-opus-5-5", "most capable Claude for complex agents (best)"),
+        ("claude-sonnet-5-5", "speed and capability for everyday agent work"),
+        ("claude-haiku-5-5", "fastest/cheapest Claude"),
+        ("claude-fable-5-1", "most capable overall, priced above Opus"),
     ],
     "openai": [
         ("gpt-5.6", "newest flagship family"),

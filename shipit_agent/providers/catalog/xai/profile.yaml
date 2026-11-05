@@ -1,0 +1,13 @@
+profile_version: 1
+name: xai
+display_name: xAI
+description: Grok models via the xAI API.
+icon: "✖️"
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: ""
+model_keys: [model, SHIPIT_XAI_MODEL]
+model_env: [SHIPIT_XAI_MODEL]
+require_env: [XAI_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://console.x.ai
+env_help: 'Set XAI_API_KEY and SHIPIT_XAI_MODEL (e.g. "xai/<grok model>").'

@@ -219,4 +219,12 @@ def generic_build(
     require_env_any(profile, config, env)
     model = resolve_model(profile, config, env)
     adapter = import_adapter(profile.adapter)
-    return adapter(model=model) if model else adapter()
+    if model:
+        return adapter(model=model)
+    if profile.model_env:
+        # Providers whose model ids change too often to pin ship no default.
+        raise RuntimeError(
+            f"No model set for {profile.name}. Set {profile.model_env[0]} "
+            f"or pass model=. {profile.env_help}".strip()
+        )
+    return adapter()

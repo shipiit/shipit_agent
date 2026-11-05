@@ -1,0 +1,13 @@
+profile_version: 1
+name: azure
+display_name: Azure OpenAI
+description: OpenAI models deployed in your Azure subscription.
+icon: "☁️"
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: ""
+model_keys: [model, SHIPIT_AZURE_MODEL]
+model_env: [SHIPIT_AZURE_MODEL]
+require_env: [AZURE_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://portal.azure.com
+env_help: 'Set AZURE_API_KEY, AZURE_API_BASE, AZURE_API_VERSION and SHIPIT_AZURE_MODEL ("azure/<deployment name>").'

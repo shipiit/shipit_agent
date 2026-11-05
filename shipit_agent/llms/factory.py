@@ -16,6 +16,7 @@ from .litellm_adapter import (
     TogetherChatLLM,
     VertexAIChatLLM,
 )
+from .model_defaults import DEFAULT_MODELS
 from .openai_adapter import OpenAIChatLLM
 from .simple import ShipitLLM, SimpleEchoLLM
 
@@ -213,7 +214,7 @@ def build_llm_from_settings(
             model=str(
                 config.get("model")
                 or config.get("SHIPIT_OPENAI_MODEL")
-                or os.getenv("SHIPIT_OPENAI_MODEL", "gpt-4o-mini")
+                or os.getenv("SHIPIT_OPENAI_MODEL", DEFAULT_MODELS["openai"])
             ),
             tool_choice=tool_choice,
         )
@@ -224,7 +225,7 @@ def build_llm_from_settings(
                 model=str(
                     config.get("model")
                     or config.get("SHIPIT_ANTHROPIC_MODEL")
-                    or os.getenv("SHIPIT_ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
+                    or os.getenv("SHIPIT_ANTHROPIC_MODEL", DEFAULT_MODELS["anthropic"])
                 )
             )
         except RuntimeError as exc:
@@ -243,7 +244,7 @@ def build_llm_from_settings(
             model=str(
                 config.get("model")
                 or config.get("SHIPIT_GEMINI_MODEL")
-                or os.getenv("SHIPIT_GEMINI_MODEL", "gemini/gemini-1.5-pro")
+                or os.getenv("SHIPIT_GEMINI_MODEL", DEFAULT_MODELS["gemini"])
             )
         )
     if selected in {"vertex", "vertex_ai", "vertexai"}:
@@ -289,7 +290,7 @@ def build_llm_from_settings(
             model=str(
                 config.get("model")
                 or config.get("SHIPIT_VERTEX_MODEL")
-                or os.getenv("SHIPIT_VERTEX_MODEL", "vertex_ai/gemini-1.5-pro")
+                or os.getenv("SHIPIT_VERTEX_MODEL", DEFAULT_MODELS["vertex"])
             ),
             service_account_file=credentials_file,
             project_id=project_id,

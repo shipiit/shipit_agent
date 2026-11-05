@@ -1,0 +1,13 @@
+profile_version: 1
+name: fireworks
+display_name: Fireworks AI
+description: Fast open models on Fireworks.
+icon: "🎆"
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: ""
+model_keys: [model, SHIPIT_FIREWORKS_MODEL]
+model_env: [SHIPIT_FIREWORKS_MODEL]
+require_env: [FIREWORKS_AI_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://fireworks.ai/account/api-keys
+env_help: 'Set FIREWORKS_AI_API_KEY and SHIPIT_FIREWORKS_MODEL (e.g. "fireworks_ai/accounts/fireworks/models/<model>").'

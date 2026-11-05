@@ -4,7 +4,7 @@ display_name: Google Gemini
 description: Gemini 1.5 / 2.x models via the Google AI API.
 icon: "✨"
 adapter: shipit_agent.llms.litellm_adapter:GeminiChatLLM
-default_model: gemini/gemini-1.5-pro
+default_model: gemini/gemini-3.5-flash
 model_keys: [model, SHIPIT_GEMINI_MODEL]
 model_env: [SHIPIT_GEMINI_MODEL]
 require_env: [GEMINI_API_KEY, GOOGLE_API_KEY]

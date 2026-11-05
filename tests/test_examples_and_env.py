@@ -55,7 +55,7 @@ def test_example_build_llm_from_env_supports_vertex_json_credentials(
     monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
     llm = module.build_llm_from_env()
     assert isinstance(llm, VertexAIChatLLM)
-    assert llm.model == "vertex_ai/gemini-1.5-pro"
+    assert llm.model == "vertex_ai/gemini-3.5-flash"
 
 
 def test_example_build_llm_from_env_falls_back_to_bedrock_when_anthropic_sdk_missing(

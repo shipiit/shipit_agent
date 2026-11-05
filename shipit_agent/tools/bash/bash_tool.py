@@ -16,6 +16,10 @@ from shipit_agent.tools.formatting import clip_text
 from shipit_agent.tools.subprocess_env import build_tool_env
 
 from .prompt import BASH_PROMPT
+from .runner import StillRunning, read_log, run_command
+
+#: Lines of output shown when a command moves to the background.
+_EARLY_LINES = 40
 
 # Patterns that signal a long-running / never-exits-cleanly process
 # (dev servers, watchers, REPLs, etc.). When the LLM tries to run one of
@@ -52,7 +56,9 @@ class BashTool:
         name: str = "bash",
         description: str = "Run a shell command inside the local project root with basic safety checks.",
         prompt: str | None = None,
-        default_timeout: float = 30.0,
+        # Two minutes, as in Claude Code; a command still running then keeps
+        # going in the background instead of being killed.
+        default_timeout: float = 120.0,
         # Allow up to 600s so real test suites and builds aren't killed
         # mid-run. Raised from 120s.
         max_timeout: float = 600.0,
@@ -349,27 +355,26 @@ class BashTool:
         background = bool(kwargs.get("background"))
         if background or _is_long_running(command):
             return self._run_background(command, cwd)
-        started_at = time.monotonic()
-        completed = subprocess.run(
-            ["/bin/bash", "-lc", command],
-            cwd=str(cwd),
-            env=self._child_env(),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+        outcome = run_command(
+            command, cwd=cwd, env=self._child_env(), timeout=timeout
         )
-        duration = time.monotonic() - started_at
+        if isinstance(outcome, StillRunning):
+            return self._adopt_timed_out(command, cwd, outcome)
         # Clip long logs to head + tail so a noisy command can't flood the
         # model's context while still keeping the error/exit at the very end.
-        output = clip_text(completed.stdout.strip())
-        error = clip_text(completed.stderr.strip())
-        lines: list[str] = [f"exit_code: {completed.returncode}"]
+        output = clip_text(outcome.stdout.strip())
+        error = clip_text(outcome.stderr.strip())
+        lines: list[str] = [f"exit_code: {outcome.exit_code}"]
         if output:
             lines.append("stdout:")
             lines.append(output)
+            if output != outcome.stdout.strip():
+                lines.append(f"(full stdout: {outcome.stdout_path})")
         if error:
             lines.append("stderr:")
             lines.append(error)
+            if error != outcome.stderr.strip():
+                lines.append(f"(full stderr: {outcome.stderr_path})")
         if not output and not error:
             lines.append("(no output)")
         return ToolOutput(
@@ -377,10 +382,49 @@ class BashTool:
             metadata={
                 "command": command,
                 "cwd": str(cwd),
-                "exit_code": completed.returncode,
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
-                "duration_seconds": round(duration, 4),
+                "exit_code": outcome.exit_code,
+                "stdout": outcome.stdout,
+                "stderr": outcome.stderr,
+                "stdout_path": str(outcome.stdout_path),
+                "stderr_path": str(outcome.stderr_path),
+                "duration_seconds": round(outcome.duration, 4),
+            },
+        )
+
+    def _adopt_timed_out(
+        self, command: str, cwd: Path, outcome: StillRunning
+    ) -> ToolOutput:
+        """Keep a command that outlived its timeout running, as a background job."""
+        job_id = f"job_{len(self.background_jobs) + 1}_{outcome.process.pid}"
+        self.background_jobs[job_id] = {
+            "process": outcome.process,
+            "log_path": outcome.stdout_path,
+            "err_path": outcome.stderr_path,
+            "command": command,
+        }
+        so_far = "\n".join(
+            read_log(outcome.stdout_path).splitlines()[-_EARLY_LINES:]
+        )
+        return ToolOutput(
+            text="\n".join(
+                [
+                    f"Still running after {outcome.waited:.0f}s, so it continues in "
+                    f"the background as {job_id} (pid {outcome.process.pid}).",
+                    f"Check on it with the bash_job tool using job_id {job_id!r}; "
+                    "the kill action stops it.",
+                    "",
+                    "Output so far:",
+                    so_far or "(no output yet)",
+                ]
+            ),
+            metadata={
+                "command": command,
+                "cwd": str(cwd),
+                "background": True,
+                "timed_out": True,
+                "job_id": job_id,
+                "pid": outcome.process.pid,
+                "log_path": str(outcome.stdout_path),
             },
         )
 
@@ -457,10 +501,11 @@ class BashTool:
             return {"ok": False, "error": f"no such job {job_id!r}; known: {known}"}
         process = job["process"]
         code = process.poll()
-        try:
-            text = job["log_path"].read_text(errors="replace")
-        except OSError:
-            text = ""
+        text = read_log(job["log_path"])
+        if job.get("err_path") is not None:
+            errors = read_log(job["err_path"])
+            if errors:
+                text = f"{text}\n[stderr]\n{errors}" if text else f"[stderr]\n{errors}"
         recent = "\n".join(text.splitlines()[-tail_lines:])
         return {
             "ok": True,

@@ -94,8 +94,6 @@ def _coerce_one(name: str, value: Any) -> SubagentDefinition:
 
 def load_subagent_files(project_root: str | Path) -> dict[str, SubagentDefinition]:
     """Sub-agents defined by Markdown files in the project's agent folders."""
-    from shipit_agent.skills.registry import split_frontmatter
-
     root = Path(project_root)
     found: dict[str, SubagentDefinition] = {}
     for folder in AGENT_FOLDERS:
@@ -103,22 +101,34 @@ def load_subagent_files(project_root: str | Path) -> dict[str, SubagentDefinitio
         if not directory.is_dir():
             continue
         for path in sorted(directory.glob("*.md")):
-            metadata, body = split_frontmatter(path.read_text(encoding="utf-8"))
-            name = str(metadata.get("name") or path.stem).strip().lower()
-            tools = metadata.get("tools")
-            if isinstance(tools, str):
-                tools = [part.strip() for part in tools.split(",") if part.strip()]
-            try:
-                found[name] = _coerce_one(
-                    name,
-                    {
-                        "description": metadata.get("description"),
-                        "prompt": body.strip(),
-                        "tools": tools or None,
-                        "model": metadata.get("model"),
-                    },
-                )
-            except ValueError:
-                # A malformed file is skipped rather than failing every run.
-                continue
+            loaded = load_subagent_file(path)
+            if loaded is not None:
+                found[loaded[0]] = loaded[1]
     return found
+
+
+def load_subagent_file(
+    path: Path, *, prefix: str = ""
+) -> tuple[str, SubagentDefinition] | None:
+    """One sub-agent Markdown file as ``(name, definition)``, named
+    ``<prefix><name>``; ``None`` if it is malformed."""
+    from shipit_agent.skills.registry import split_frontmatter
+
+    metadata, body = split_frontmatter(path.read_text(encoding="utf-8"))
+    name = prefix + str(metadata.get("name") or path.stem).strip().lower()
+    tools = metadata.get("tools")
+    if isinstance(tools, str):
+        tools = [part.strip() for part in tools.split(",") if part.strip()]
+    try:
+        return name, _coerce_one(
+            name,
+            {
+                "description": metadata.get("description"),
+                "prompt": body.strip(),
+                "tools": tools or None,
+                "model": metadata.get("model"),
+            },
+        )
+    except ValueError:
+        # A malformed file is skipped rather than failing every run.
+        return None

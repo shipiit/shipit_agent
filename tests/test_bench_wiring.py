@@ -34,3 +34,38 @@ def test_a_check_after_an_edit_is_not_a_repeat() -> None:
     assert repeated_calls([pytest_run, pytest_run]) == 1
     assert repeated_calls([read, ("glob_files", {"pattern": "*"}), read]) == 1
     assert repeated_calls([]) == 0
+
+
+def _result(turns: int, prompt_tokens: int, cost: float, api_ms: int):
+    from shipit_agent.sdk import ResultMessage
+
+    return ResultMessage(subtype="success", duration_ms=api_ms, duration_api_ms=api_ms, is_error=False,
+                         num_turns=turns, session_id="s", total_cost_usd=cost,
+                         usage={"prompt_tokens": prompt_tokens, "completion_tokens": 5}, result=f"turn {turns}")
+
+
+def test_a_task_of_several_turns_reports_all_of_them(tmp_path) -> None:
+    from scripts.bench.run import _row
+    from scripts.bench.tasks_basic import Run
+
+    run = Run(root=tmp_path)
+    run.record(_result(3, 1000, 0.01, 2000))
+    run.record(_result(1, 400, 0.002, 500))
+    row = _row(TASKS[0], run, True, "ok", 0.0)
+    assert (row["turns"], row["input_tokens"], row["output_tokens"]) == (4, 1400, 10)
+    assert row["cost_usd"] == 0.012 and row["api_ms"] == 2500
+    assert run.answer == "turn 1"  # the answer is still the last turn's
+
+
+def test_a_task_with_no_result_reports_zeros(tmp_path) -> None:
+    from scripts.bench.run import _row
+    from scripts.bench.tasks_basic import Run
+
+    row = _row(TASKS[0], Run(root=tmp_path), False, "no result", 0.0)
+    assert (row["turns"], row["input_tokens"], row["cost_usd"]) == (0, 0, None)
+
+
+def test_the_recovery_task_states_the_id_format_only_in_its_error() -> None:
+    from scripts.bench.tasks_hard import _order_status
+
+    assert "ORD" not in _order_status.description

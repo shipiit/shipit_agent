@@ -84,16 +84,16 @@ async def run_task(task: Task, run_query: Any) -> dict[str, Any]:
 
 def _row(task: Task, run: Run | None, passed: bool, note: str, started: float) -> dict[str, Any]:
     result = run.result if run else None
-    usage = (getattr(result, "usage", None) or {}) if result else {}
+    results = run.results if run else []
     calls = [(name, json.dumps(args, sort_keys=True)) for name, args in (run.tool_uses if run else [])]
     return {
         "task": task.name, "feature": task.feature, "passed": bool(passed), "note": note,
         "subtype": getattr(result, "subtype", None),
-        "turns": getattr(result, "num_turns", 0),
-        "input_tokens": int(usage.get("prompt_tokens", usage.get("input_tokens", 0)) or 0),
-        "output_tokens": int(usage.get("completion_tokens", usage.get("output_tokens", 0)) or 0),
-        "cost_usd": getattr(result, "total_cost_usd", None),
-        "api_ms": getattr(result, "duration_api_ms", 0),
+        "turns": sum(r.num_turns for r in results),
+        "input_tokens": _tokens(results, "prompt_tokens", "input_tokens"),
+        "output_tokens": _tokens(results, "completion_tokens", "output_tokens"),
+        "cost_usd": _cost(results),
+        "api_ms": sum(r.duration_api_ms for r in results),
         "wall_s": round(time.monotonic() - started, 1),
         "tool_calls": len(calls),
         "tool_errors": run.tool_errors if run else 0,
@@ -101,6 +101,20 @@ def _row(task: Task, run: Run | None, passed: bool, note: str, started: float) -
         "answer": (run.answer if run else "")[:500],
         "trace": _trace(run),
     }
+
+
+def _tokens(results: list[Any], *keys: str) -> int:
+    """Summed over turns, under whichever name the provider's usage uses."""
+    total = 0
+    for result in results:
+        usage = result.usage or {}
+        total += int(next((usage[k] for k in keys if usage.get(k)), 0))
+    return total
+
+
+def _cost(results: list[Any]) -> float | None:
+    costs = [r.total_cost_usd for r in results if r.total_cost_usd is not None]
+    return round(sum(costs), 6) if costs else None
 
 
 #: Calls that only look; anything else may change what a later call returns.

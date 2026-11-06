@@ -54,7 +54,8 @@ def big_log(root: Path) -> None:
     (root / "service.log").write_text("\n".join(lines) + "\n")
 
 
-@tool("order_status", "Status of an order. The id looks like ORD-<number>.", {"order_id": str},
+# The id's format is stated only in the error, so the task tests recovering from it.
+@tool("order_status", "Status of an order, by its id.", {"order_id": str},
       annotations={"readOnlyHint": True})
 def _order_status(args: dict[str, Any]) -> dict[str, Any]:
     order_id = str(args.get("order_id", "")).strip()

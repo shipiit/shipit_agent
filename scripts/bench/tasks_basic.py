@@ -33,6 +33,8 @@ class Run:
     tool_errors: int = 0
     #: Each tool result's text and whether it failed, in order (for the trace).
     tool_results: list[tuple[str, bool]] = field(default_factory=list)
+    #: Every ResultMessage, one per turn; a multi-turn task's cost is their sum.
+    results: list[Any] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
     def used(self, *names: str) -> bool:
@@ -48,6 +50,7 @@ class Run:
                 self.tool_errors += failed
                 self.tool_results.append((str(getattr(block, "content", "")), failed))
         elif isinstance(message, ResultMessage):
+            self.results.append(message)
             self.result, self.answer = message, message.result or ""
 
 

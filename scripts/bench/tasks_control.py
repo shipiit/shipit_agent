@@ -101,6 +101,8 @@ async def _deferred(task: Task, run_query: Callable[..., Any], root: Path) -> Ru
     second.extra.update(paused=paused, written_early=written_early)
     second.tool_uses = first.tool_uses + second.tool_uses
     second.tool_errors += first.tool_errors
+    second.results = first.results + second.results
+    second.tool_results = first.tool_results + second.tool_results
     return second
 
 

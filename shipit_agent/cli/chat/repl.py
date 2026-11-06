@@ -20,7 +20,7 @@ from .style import bold, cyan, dim, green, magenta, red, typewriter
 class ChatREPL(InputMixin, CommandsMixin, ViewsMixin, StateMixin):
     """Modern multi-agent chat REPL."""
 
-    render_style: str = "modern"
+    render_style: str = "compact"
 
     SLASH_COMMANDS = (
         "/help",
@@ -165,11 +165,20 @@ class ChatREPL(InputMixin, CommandsMixin, ViewsMixin, StateMixin):
     def _make_renderer(self) -> Any:
         """The transcript renderer for a turn.
 
-        Defaults to the Narrator — human verbs, collapsed work runs, a
-        tokens/cost footer. `/style rich` or `/style plain` falls back to the
-        original Claude-Code-style cards.
+        Defaults to the compact transcript: one line per tool call with a short
+        result, as Claude Code prints it. `/style modern` is the Narrator
+        (human verbs, collapsed work runs); `/style rich` or `/style plain`
+        show every line of tool output.
         """
-        style = getattr(self, "render_style", "modern")
+        style = getattr(self, "render_style", "compact")
+        if style == "compact":
+            from shipit_agent.narrate.compact import CompactRenderer
+
+            return CompactRenderer(
+                color=not self.quiet and sys.stdout.isatty(),
+                show_footer=not self.quiet,
+                model=current_model_name(self.provider),
+            )
         if style == "modern":
             from shipit_agent.narrate import NarratorRenderer
 
@@ -206,8 +215,8 @@ class ChatREPL(InputMixin, CommandsMixin, ViewsMixin, StateMixin):
                         else None
                     )
                     final_text = payload_out or final_text
-                    if getattr(self, "render_style", "modern") == "modern":
-                        # The Narrator closes the turn itself: it prints the
+                    if getattr(self, "render_style", "compact") in ("compact", "modern"):
+                        # These renderers close the turn themselves: they print the
                         # answer when the adapter never streamed, and the
                         # tokens/cost footer either way.
                         renderer.feed(event)

@@ -154,10 +154,10 @@ class CommandsMixin:
         self._rebuild_agent(output)
 
     def _set_style(self, arg: str, output) -> None:
-        """`/style modern|rich|plain` — switch the transcript renderer."""
+        """`/style compact|modern|rich|plain` — switch the transcript renderer."""
         choice = (arg or "").strip().lower()
-        if choice not in ("modern", "rich", "plain"):
-            output(dim(f"  style: {self.render_style}  (modern | rich | plain)"))
+        if choice not in ("compact", "modern", "rich", "plain"):
+            output(dim(f"  style: {self.render_style}  (compact | modern | rich | plain)"))
             return
         self.render_style = choice
         output(dim(f"  style → {choice}"))

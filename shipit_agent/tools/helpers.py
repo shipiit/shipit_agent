@@ -17,6 +17,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "edit_file",
         "multi_edit",
         "bash_job",
+        "task_stop",
         "glob_files",
         "grep_files",
         "notebook_edit",

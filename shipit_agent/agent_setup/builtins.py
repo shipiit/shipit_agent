@@ -37,76 +37,76 @@ Note: ``SubAgentTool`` requires an ``llm`` and is only included when
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from shipit_agent.llms.base import LLM
-from shipit_agent.tools.connections import ConnectionsTool
-from shipit_agent.tools.describe_binding import DescribeBindingTool
-from pathlib import Path
-
-from shipit_agent.tools.apps import app_tools
-from shipit_agent.tools.give_up import GiveUpTool
 from shipit_agent.tools import (
+    ArtifactBuilderTool,
     AskUserAsyncTool,
     AskUserTool,
-    ArtifactBuilderTool,
-    DeepResearchTool,
-    DocumentBuilderTool,
-    DownloadFileTool,
-    BashTool,
     BashJobTool,
+    BashTool,
     CodeExecutionTool,
     ConfluenceTool,
     CustomAPITool,
     DashboardRenderTool,
     DecisionMatrixTool,
+    DeepResearchTool,
+    DocumentBuilderTool,
+    DownloadFileTool,
     EditFileTool,
-    MultiEditTool,
     EvidenceSynthesisTool,
     FigmaTool,
     FileReadTool,
     FileWriteTool,
     GitHubTool,
-    GitOpsTool,
     GitLabTool,
-    GmailTool,
+    GitOpsTool,
     GlobSearchTool,
+    GmailTool,
     GoogleCalendarTool,
     GoogleDriveTool,
     GoogleSheetsTool,
     GrepSearchTool,
     HumanReviewTool,
+    ImageGenerateTool,
     JiraTool,
     LinearTool,
     LinkedInSearchTool,
     MemoryTool,
+    MultiEditTool,
     NotebookEditTool,
     NotionTool,
     OpenURLTool,
     PDFTool,
     PlannerTool,
+    PlaywrightBrowserTool,
     PresentFileTool,
     PresentPlanTool,
-    PlaywrightBrowserTool,
     PromptTool,
     SalesforceTool,
+    SlackTool,
     SQLTool,
     StripeTool,
     SubAgentTool,
     TextToSpeechTool,
+    ThoughtDecompositionTool,
     TodoTool,
-    VideoGenerateTool,
     Tool,
-    ImageGenerateTool,
     ToolSearchTool,
     VerifierTool,
+    VideoGenerateTool,
     VisionTool,
     WebSearchTool,
     WorkspaceFilesTool,
-    SlackTool,
-    ThoughtDecompositionTool,
     ZendeskTool,
 )
+from shipit_agent.tools.apps import app_tools
+from shipit_agent.tools.connections import ConnectionsTool
+from shipit_agent.tools.describe_binding import DescribeBindingTool
+from shipit_agent.tools.give_up import GiveUpTool
+from shipit_agent.tools.task_stop import TaskStopTool
 
 
 def get_builtin_tool_map(
@@ -146,6 +146,7 @@ def get_builtin_tool_map(
         # ── file operations ───────────────────────────────────────
         bash_tool,
         BashJobTool(bash_tool),
+        TaskStopTool(),
         FileReadTool(root_dir=project_root),
         EditFileTool(root_dir=project_root),
         MultiEditTool(root_dir=project_root),

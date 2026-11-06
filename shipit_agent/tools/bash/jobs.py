@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from shipit_agent.core.tasks import TaskInfo
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
 from .runner import StillRunning, read_log
@@ -183,11 +184,31 @@ class BackgroundJobsMixin:
             return {"ok": False, "error": f"no such job {job_id!r}"}
         process = job["process"]
         if process.poll() is None:
+            job["stopped"] = True
             try:
                 os.killpg(os.getpgid(process.pid), signal.SIGTERM)
             except (ProcessLookupError, PermissionError):
                 process.terminate()
         return {"ok": True, "job_id": job_id, "killed": True}
+
+    def list_background_tasks(self) -> list[TaskInfo]:
+        """The jobs as background tasks (see :mod:`shipit_agent.core.tasks`)."""
+        return [self._task_info(job_id, job) for job_id, job in self.background_jobs.items()]
+
+    def stop_background_task(self, task_id: str) -> TaskInfo | None:
+        if task_id not in self.background_jobs:
+            return None
+        self.kill_job(task_id)
+        self.background_jobs[task_id]["process"].wait(timeout=5)
+        return self._task_info(task_id, self.background_jobs[task_id])
+
+    @staticmethod
+    def _task_info(job_id: str, job: dict[str, Any]) -> TaskInfo:
+        code = job["process"].poll()
+        status = ("running" if code is None else "stopped" if job.get("stopped")
+                  else "completed" if code == 0 else "failed")
+        return TaskInfo(job_id, "local_bash", str(job["command"]), status,
+                        output_file=str(job["log_path"]), exit_code=code)
 
 
 class BashJobTool:

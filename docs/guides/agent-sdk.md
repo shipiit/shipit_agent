@@ -223,6 +223,15 @@ The client's methods:
 
 Each response starts with a `UserMessage` echoing the prompt. Its `uuid` is what `rewind_files` takes.
 
+## Background tasks
+
+Both kinds of background work are tasks: a command started with `bash(background=True)`, or one that outlives its timeout, is `local_bash`, and `sub_agent(background=True)` is `local_agent`. Between steps the runtime checks on them:
+
+- **A new task** emits a `task_started` event.
+- **A finished task** emits `task_notification`. If it completed or failed, the model is also told in the conversation, with the output file or a summary, so it can react without polling.
+
+In the SDK stream these are `SystemMessage("task_started")` and `SystemMessage("task_notification")`. `task_stop` (the SDK's `TaskStop`, also matched by `KillShell` and `KillBash`) stops either kind by id, and so does `AgentClient.stop_task(task_id)`. A tool can join in by defining `list_background_tasks()` and `stop_background_task(task_id)` (see `shipit_agent.core.tasks`).
+
 ## Plugins and settings files
 
 ```python

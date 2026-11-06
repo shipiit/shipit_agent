@@ -29,6 +29,8 @@ EventType = Literal[
     "mcp_attached",
     "tools_discovered",
     "tools_rebound",
+    "task_started",
+    "task_notification",
     "subagent_started",
     "subagent_event",
     "subagent_completed",

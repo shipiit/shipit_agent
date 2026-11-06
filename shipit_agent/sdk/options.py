@@ -19,7 +19,7 @@ __all__ = ["AgentOptions"]
 #: Claude Code preset (sub_agent and load_skill join when they apply).
 DEFAULT_TOOLS = (
     "read_file", "edit_file", "write_file", "multi_edit", "notebook_edit", "bash",
-    "glob_files", "grep_files", "web_search", "open_url", "todo", "ask_user", "memory",
+    "glob_files", "grep_files", "web_search", "open_url", "todo", "ask_user", "memory", "task_stop",
 )
 
 

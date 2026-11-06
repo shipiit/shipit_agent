@@ -161,6 +161,8 @@ VERBS: dict[str, VerbSpec] = {
                      args=("command", "cmd", "script")),
     "bash_job": VerbSpec("Checked background job", "Checking background job",
                          CODE, args=("job_id",), intransitive=True),
+    "task_stop": VerbSpec("Stopped background task", "Stopping background task",
+                          CODE, args=("task_id",), intransitive=True),
     "execute_code": VerbSpec("Ran code", "Running code", CODE,
                              args=("code",), intransitive=True),
     "run_code": VerbSpec("Ran code", "Running code", CODE,

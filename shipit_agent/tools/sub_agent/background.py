@@ -9,6 +9,7 @@ from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any
 
+from shipit_agent.core.tasks import TaskInfo
 from shipit_agent.tools.base import ToolOutput
 
 from .result import (
@@ -30,9 +31,38 @@ class BackgroundTasksMixin:
             child = self._children.get(task_id)
         if future is None:
             return False
+        self._stopped.add(task_id)
         if not future.cancel() and child is not None:
             child.cancel()
         return True
+
+    def list_background_tasks(self) -> list[TaskInfo]:
+        """Delegations not yet collected, as background tasks (see :mod:`shipit_agent.core.tasks`)."""
+        with self._lock:
+            items = [(task_id, future, dict(self._meta.get(task_id) or {})) for task_id, future in self._tasks.items()]
+        return [self._task_info(task_id, future, meta) for task_id, future, meta in items]
+
+    def stop_background_task(self, task_id: str) -> TaskInfo | None:
+        with self._lock:
+            future, meta = self._tasks.get(task_id), dict(self._meta.get(task_id) or {})
+        if future is None or not self.stop_task(task_id):
+            return None
+        return self._task_info(task_id, future, meta)
+
+    def _task_info(self, task_id: str, future: Future[SubAgentResult], meta: dict[str, Any]) -> TaskInfo:
+        description = str(meta.get("agent_type") or "sub-agent") + ": " + str(meta.get("task", ""))
+        if not future.done():
+            status = "stopped" if task_id in self._stopped else "running"
+            return TaskInfo(task_id, "local_agent", description, status)
+        if future.cancelled() or task_id in self._stopped:
+            return TaskInfo(task_id, "local_agent", description, "stopped")
+        error = future.exception()
+        result = None if error is not None else future.result()
+        failed = error is not None or bool(result and result.error)
+        text = str(error) if error is not None else (result.error or result.output) if result else ""
+        summary = " ".join(text.split())[:300]
+        return TaskInfo(task_id, "local_agent", description, "failed" if failed else "completed",
+                        summary=f"{summary} (collect it with collect={task_id!r} for the full result)")
 
     def running_tasks(self) -> list[str]:
         """Ids of background delegations not yet finished."""

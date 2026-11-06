@@ -124,6 +124,7 @@ class SubAgentTool(ChildRunMixin, BackgroundTasksMixin):
         self._tasks: dict[str, Future[SubAgentResult]] = {}
         self._meta: dict[str, dict[str, Any]] = {}
         self._children: dict[str, Any] = {}
+        self._stopped: set[str] = set()
         self._task_ids = count(1)
         self._lock = threading.Lock()
 

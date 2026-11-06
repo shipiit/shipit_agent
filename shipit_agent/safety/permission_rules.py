@@ -54,6 +54,9 @@ _SDK_NAMES: dict[str, tuple[str, ...]] = {
     "task": ("sub_agent",),
     "askuserquestion": ("ask_user",),
     "skill": ("load_skill",),
+    "taskstop": ("task_stop",),
+    "killshell": ("task_stop",),
+    "killbash": ("task_stop",),
 }
 
 #: Which argument a specifier is matched against, by shipit tool.

@@ -29,6 +29,8 @@ _SYSTEM_SUBTYPES = {
     "context_compacted": "compact_boundary",
     "llm_retry": "api_retry",
     "model_fallback": "model_fallback",
+    "task_started": "task_started",
+    "task_notification": "task_notification",
 }
 #: Bookkeeping keys every event carries, left out of ``SystemMessage.data``.
 _STAMP_KEYS = frozenset({"run_id", "sequence", "session_id"})

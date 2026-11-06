@@ -45,6 +45,7 @@ class TurnStepsMixin:
                 if not response.content:
                     response = LLMResponse(content="[cancelled]")
                 break
+            self.watch_background_tasks(state, registry.values())
             # Deferred loading grows the advertised set mid-run, so the
             # selection is re-evaluated every step (a no-op when off).
             force_text = bool(

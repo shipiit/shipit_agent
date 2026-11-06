@@ -50,7 +50,10 @@ def make_runner(llm: Any) -> Any:
             if isinstance(message, AssistantMessage):
                 run.tool_uses += [(b.name, b.input) for b in message.content if isinstance(b, ToolUseBlock)]
             elif isinstance(message, UserMessage) and isinstance(message.content, list):
-                run.tool_errors += sum(1 for b in message.content if getattr(b, "is_error", False))
+                for block in message.content:
+                    failed = bool(getattr(block, "is_error", False))
+                    run.tool_errors += failed
+                    run.tool_results.append((str(getattr(block, "content", "")), failed))
             elif isinstance(message, ResultMessage):
                 run.result, run.answer = message, message.result or ""
         return run
@@ -90,7 +93,21 @@ def _row(task: Task, run: Run | None, passed: bool, note: str, started: float) -
         "tool_calls": len(calls),
         "tool_errors": run.tool_errors if run else 0,
         "repeated_calls": sum(n - 1 for n in Counter(calls).values() if n > 1),
+        "answer": (run.answer if run else "")[:500],
+        "trace": _trace(run),
     }
+
+
+def _trace(run: Run | None) -> list[dict[str, Any]]:
+    """Each call with its arguments and the start of its result, to see where turns went."""
+    if run is None:
+        return []
+    trace = []
+    for index, (name, args) in enumerate(run.tool_uses):
+        output, failed = run.tool_results[index] if index < len(run.tool_results) else ("", False)
+        trace.append({"tool": name, "args": json.dumps(args)[:160], "error": failed,
+                      "result": " ".join(output.split())[:160]})
+    return trace
 
 
 def report(rows: list[dict[str, Any]], label: str) -> str:

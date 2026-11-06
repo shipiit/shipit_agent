@@ -24,6 +24,8 @@ class Run:
     result: Any = None
     tool_uses: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     tool_errors: int = 0
+    #: Each tool result's text and whether it failed, in order (for the trace).
+    tool_results: list[tuple[str, bool]] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
     def used(self, *names: str) -> bool:

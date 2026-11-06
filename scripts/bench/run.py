@@ -27,12 +27,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from shipit_agent.sdk import AgentOptions, AssistantMessage, ResultMessage, ToolUseBlock, UserMessage, query
+from shipit_agent.sdk import AgentOptions, query
 
 from .tasks_basic import BASIC_TASKS, Run, Task
 from .tasks_control import CONTROL_TASKS
+from .tasks_hard import HARD_TASKS
 
-TASKS = BASIC_TASKS + CONTROL_TASKS
+TASKS = BASIC_TASKS + CONTROL_TASKS + HARD_TASKS
 
 
 def build_llm(provider: str | None, model: str | None, dry_run: bool) -> Any:
@@ -45,23 +46,24 @@ def build_llm(provider: str | None, model: str | None, dry_run: bool) -> Any:
     return build_llm_from_settings({"model": model} if model else None, provider=provider)
 
 
-def make_runner(llm: Any) -> Any:
-    async def run_query(prompt: str, extra: dict[str, Any], root: Path) -> Run:
-        settings = {"llm": llm, "cwd": root, "max_turns": 12, "max_budget_usd": 0.25, **extra}
+class Runner:
+    """Runs one prompt as a query; tasks that drive a client use its options."""
+
+    def __init__(self, llm: Any) -> None:
+        self.llm = llm
+
+    def options(self, extra: dict[str, Any], root: Path) -> AgentOptions:
+        return AgentOptions(**{"llm": self.llm, "cwd": root, "max_turns": 12, "max_budget_usd": 0.25, **extra})
+
+    async def __call__(self, prompt: str, extra: dict[str, Any], root: Path) -> Run:
         run = Run(root=root)
-        async for message in query(prompt=prompt, options=AgentOptions(**settings)):
-            if isinstance(message, AssistantMessage):
-                run.tool_uses += [(b.name, b.input) for b in message.content if isinstance(b, ToolUseBlock)]
-            elif isinstance(message, UserMessage) and isinstance(message.content, list):
-                for block in message.content:
-                    failed = bool(getattr(block, "is_error", False))
-                    run.tool_errors += failed
-                    run.tool_results.append((str(getattr(block, "content", "")), failed))
-            elif isinstance(message, ResultMessage):
-                run.result, run.answer = message, message.result or ""
+        async for message in query(prompt=prompt, options=self.options(extra, root)):
+            run.record(message)
         return run
 
-    return run_query
+
+def make_runner(llm: Any) -> Runner:
+    return Runner(llm)
 
 
 async def run_task(task: Task, run_query: Any) -> dict[str, Any]:

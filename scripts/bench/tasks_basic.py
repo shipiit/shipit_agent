@@ -8,7 +8,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from shipit_agent.sdk import create_sdk_mcp_server, tool
+from shipit_agent.sdk import (
+    AssistantMessage,
+    ResultMessage,
+    ToolUseBlock,
+    UserMessage,
+    create_sdk_mcp_server,
+    tool,
+)
 
 from .fixtures import BILLING_FUNCTIONS, SRC_PY_FILES, code_repo, plugin
 
@@ -30,6 +37,18 @@ class Run:
 
     def used(self, *names: str) -> bool:
         return any(name in names for name, _ in self.tool_uses)
+
+    def record(self, message: Any) -> None:
+        """Take in one streamed message: its calls, their results, the final result."""
+        if isinstance(message, AssistantMessage):
+            self.tool_uses += [(b.name, b.input) for b in message.content if isinstance(b, ToolUseBlock)]
+        elif isinstance(message, UserMessage) and isinstance(message.content, list):
+            for block in message.content:
+                failed = bool(getattr(block, "is_error", False))
+                self.tool_errors += failed
+                self.tool_results.append((str(getattr(block, "content", "")), failed))
+        elif isinstance(message, ResultMessage):
+            self.result, self.answer = message, message.result or ""
 
 
 @dataclass

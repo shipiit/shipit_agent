@@ -4,7 +4,9 @@
     python -m scripts.bench.run anthropic claude-sonnet-5-5 --tasks mcp_stdio,subagent
     python -m scripts.bench.run --dry-run      # wiring only, no model, no cost
 
-Run it from the repository root.
+Run it from the repository root. The task shells get this interpreter's
+folder first on PATH, as an activated virtualenv would, so `python` and
+`pytest` there are the ones this run uses.
 
 Each task gets a fresh synthetic workspace in a temp folder and runs through
 shipit_agent.sdk.query with at most 12 turns and $0.25. Reported per task:
@@ -18,6 +20,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import sys
 import tempfile
 import time
 from collections import Counter
@@ -133,6 +137,7 @@ async def main() -> None:
     parser.add_argument("--out", default="bench-results.json", help="where to write the JSON results")
     parser.add_argument("--dry-run", action="store_true", help="check the wiring with an echo model; no cost")
     args = parser.parse_args()
+    os.environ["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '')}"
     chosen = [t for t in TASKS if not args.tasks or t.name in args.tasks.split(",")]
     llm = build_llm(args.provider, args.model, args.dry_run)
     label = "dry run (echo model)" if args.dry_run else str(getattr(llm, "model", args.model or "default"))

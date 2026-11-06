@@ -10,7 +10,7 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.formatting import clip_text
 from shipit_agent.tools.subprocess_env import build_tool_env
 
-from .command_risk import CommandVerdict, assess_command
+from .command_risk import CommandVerdict, assess_command, command_segments
 from .conservative import (
     DEFAULT_ALLOWED_PREFIXES,
     DEFAULT_BLOCKED_SUBSTRINGS,
@@ -144,6 +144,11 @@ class BashTool(BackgroundJobsMixin):
         normalized = command.strip()
         if not normalized:
             raise ValueError("Command must not be empty")
+        if all(part.strip() in (":", "true") for part in command_segments(normalized)):
+            raise ValueError(
+                "this command does nothing. Put the command you want to run in "
+                "`command`; to plan or think, write text instead of calling bash."
+            )
         lowered = normalized.lower()
         if self.unrestricted:
             verdict = assess_command(normalized, root=self.root_dir)

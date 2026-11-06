@@ -1,7 +1,9 @@
-"""shipit's agent, with the Claude Agent SDK's API.
+"""shipit's SDK: query(), a multi-turn client, typed messages, hooks and approvals.
 
-The same names and shapes as the SDK's Python package, on top of shipit's
-one agent loop, so SDK-style code runs on any provider shipit supports::
+This is shipit's own code on shipit's own agent loop; it does not use the
+Claude Agent SDK. Its names and shapes follow that SDK's Python package, so
+code written for it ports by changing the import, and it runs on any
+provider shipit supports::
 
     from shipit_agent.sdk import AgentOptions, ResultMessage, query
 

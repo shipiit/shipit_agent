@@ -1,9 +1,12 @@
-# The Claude Agent SDK API
+# The SDK API
 
-`shipit_agent.sdk` has the same names and shapes as the Claude Agent SDK's
-Python package, on top of shipit's agent loop. SDK-style code runs on every
-provider shipit supports: Anthropic, OpenAI, Bedrock, Gemini, Vertex, and
-the rest through LiteLLM.
+`shipit_agent.sdk` is shipit's own SDK layer, running on shipit's own agent
+loop. It doesn't use or depend on the Claude Agent SDK. Its names and message
+shapes follow that SDK's Python package on purpose: anyone who knows that SDK
+can use shipit straight away, and code written for it ports by changing the
+import. It runs on every provider shipit supports: Anthropic, OpenAI,
+Bedrock (gpt-oss, Gemma 4 and the rest), Gemini, Vertex, and others through
+LiteLLM.
 
 ```python
 import asyncio

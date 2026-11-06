@@ -5,13 +5,17 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import re
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from shipit_agent.core.models import ToolCall, ToolResult
 from shipit_agent.core.registry import ToolRegistry
+from shipit_agent.core.tool_arguments import (
+    declared_parameters,
+    missing_argument,
+    missing_argument_message,
+)
 from shipit_agent.tools import ToolContext, ToolOutput, ToolOutputChunk
 
 ToolOutputCallback = Callable[[ToolOutputChunk], None]
@@ -38,61 +42,6 @@ def safe_tool_event_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
         for key, value in dict(metadata or {}).items()
         if key not in _HEAVY_EVENT_METADATA_KEYS
     }
-
-
-def _declared_parameters(tool: Any) -> tuple[set[str], list[str]]:
-    """``(all parameter names, required names)`` from a tool's schema."""
-    try:
-        schema = tool.schema() or {}
-        function = schema.get("function", schema)
-        parameters = function.get("parameters") or {}
-        return (
-            set((parameters.get("properties") or {}).keys()),
-            list(parameters.get("required") or []),
-        )
-    except Exception:
-        return set(), []
-
-
-def _missing_argument(
-    exc: Exception, supplied: dict[str, Any], declared: set[str]
-) -> str | None:
-    """The argument name a KeyError/TypeError is complaining about.
-
-    Returns ``None`` when the exception is about something else. A tool with a
-    genuine bug must still surface as a failure — relabelling it as the
-    model's mistake would send the model retrying a call that was fine.
-    """
-    if isinstance(exc, KeyError):
-        key = exc.args[0] if exc.args else None
-        if not isinstance(key, str) or key in supplied:
-            return None
-        # It must be a parameter the tool *declares*. A KeyError from a tool's
-        # own internal dict lookup names something the caller was never asked
-        # for, and that is a bug in the tool.
-        return key if key in declared else None
-
-    text = str(exc)
-    if "required" not in text or "argument" not in text:
-        return None
-    match = re.search(r"argument:? \'([^\']+)\'", text)
-    if match is None:
-        return None
-    name = match.group(1)
-    return name if not declared or name in declared else None
-
-
-def _missing_argument_message(name: str, missing: str, required: list[str]) -> str:
-    """What the model is told, including which arguments the tool requires.
-
-    Listing them all means the next turn can supply everything, rather than
-    discovering them one at a time over three round trips.
-    """
-    detail = f" Required: {', '.join(required)}." if required else ""
-    return (
-        f"Error: {name} needs the '{missing}' argument, which was not "
-        f"provided.{detail} Call it again with that argument."
-    )
 
 
 @dataclass(slots=True)
@@ -233,13 +182,13 @@ class ToolRunner:
             # Models omit arguments constantly; that is why tool_healing
             # exists. Turn it into a result that names what is missing, so the
             # next turn can supply it.
-            declared, required = _declared_parameters(tool)
-            missing = _missing_argument(exc, safe_arguments, declared)
+            declared, required = declared_parameters(tool)
+            missing = missing_argument(exc, safe_arguments, declared)
             if missing is None:
                 raise
             result = ToolResult(
                 name=tool_call.name,
-                output=_missing_argument_message(tool_call.name, missing, required),
+                output=missing_argument_message(tool_call.name, missing, required),
                 metadata={"error": "missing_argument", "argument": missing},
             )
             if output_callback is not None:
@@ -281,13 +230,13 @@ class ToolRunner:
                     self.run_tool_call, tool_call, context, output_callback
                 )
         except (KeyError, TypeError) as exc:
-            declared, required = _declared_parameters(tool)
-            missing = _missing_argument(exc, safe_arguments, declared)
+            declared, required = declared_parameters(tool)
+            missing = missing_argument(exc, safe_arguments, declared)
             if missing is None:
                 raise
             result = ToolResult(
                 name=tool_call.name,
-                output=_missing_argument_message(tool_call.name, missing, required),
+                output=missing_argument_message(tool_call.name, missing, required),
                 metadata={"error": "missing_argument", "argument": missing},
             )
             if output_callback is not None:

@@ -15,24 +15,8 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from shipit_agent.core.construction import construct_tool_registry
-from shipit_agent.core.loop.answer_step import AnswerStepMixin
-from shipit_agent.core.loop.code_mode import CodeModeMixin
-from shipit_agent.core.loop.event_stream import EventStreamMixin
-from shipit_agent.core.loop.model_call import ModelCallMixin
-from shipit_agent.core.loop.planning import PlanningMixin
-from shipit_agent.core.loop.step_narration import StepNarrationMixin
-from shipit_agent.core.loop.task_watch import TaskWatchMixin
-from shipit_agent.core.loop.tool_attempts import ToolAttemptsMixin
-from shipit_agent.core.loop.tool_denial import ToolDenialMixin
-from shipit_agent.core.loop.tool_exec import ToolExecutionMixin
-from shipit_agent.core.loop.tool_outcome import ToolOutcomeMixin
-from shipit_agent.core.loop.tool_step import ToolStepMixin
+from shipit_agent.core.loop.agent_loop import AgentLoop
 from shipit_agent.core.loop.turn import Turn
-from shipit_agent.core.loop.turn_finish import TurnFinishMixin
-from shipit_agent.core.loop.turn_history import TurnHistoryMixin
-from shipit_agent.core.loop.turn_setup import TurnSetupMixin
-from shipit_agent.core.loop.turn_steps import TurnStepsMixin
-from shipit_agent.core.loop.turn_tools import TurnToolsMixin
 from shipit_agent.core.models import AgentEvent, Message
 from shipit_agent.core.policies import RetryPolicy, RouterPolicy
 from shipit_agent.core.registry import ToolRegistry
@@ -64,26 +48,7 @@ from shipit_agent.tools import Tool
 #: Stands in for "no step limit" so the loop's step arithmetic stays plain ints.
 NO_STEP_LIMIT = sys.maxsize
 
-class AsyncAgentRuntime(
-    EventStreamMixin,
-    PlanningMixin,
-    ModelCallMixin,
-    StepNarrationMixin,
-    ToolExecutionMixin,
-    ToolDenialMixin,
-    TaskWatchMixin,
-    ToolAttemptsMixin,
-    ToolOutcomeMixin,
-    TurnSetupMixin,
-    TurnHistoryMixin,
-    TurnToolsMixin,
-    TurnStepsMixin,
-    AnswerStepMixin,
-    ToolStepMixin,
-    TurnFinishMixin,
-    CodeModeMixin,
-    RuntimeCore,
-):
+class AsyncAgentRuntime(AgentLoop, RuntimeCore):
     """Async version of AgentRuntime for use with asyncio/FastAPI/Starlette.
 
     Mirrors the synchronous AgentRuntime but uses ``await`` for LLM calls

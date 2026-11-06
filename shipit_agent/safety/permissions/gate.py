@@ -43,6 +43,9 @@ def authorize_tool(
         if result.denied:
             return result
     for result in results:
+        if result.deferred:
+            return result
+    for result in results:
         if result.needs_approval:
             return result
     updated: dict[str, Any] | None = None

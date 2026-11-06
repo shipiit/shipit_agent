@@ -31,6 +31,9 @@ class TurnStepsMixin:
         shared_state = turn.shared_state
 
         response = LLMResponse(content="")
+        if not await self._resume_deferred_call(turn):
+            turn.response = self._paused(LLMResponse(content=""))
+            return
         for iteration in range(1, self.max_iterations + 1):
             if self.task_budget_reached(state, iteration):
                 response = LLMResponse(content=self.budget_stop_message())
@@ -204,8 +207,16 @@ class TurnStepsMixin:
             await self._run_tool_step(
                 turn, iteration=iteration, response=response, forced_names=forced_names
             )
+            if self._deferred_tool_use is not None:
+                response = self._paused(response)
+                break
 
         turn.response = response
+
+    def _paused(self, response: LLMResponse) -> LLMResponse:
+        """The response a run paused for a deferred call ends with."""
+        self._last_finish_reason = "tool_deferred"
+        return LLMResponse(content=self._pause_message(), usage=dict(response.usage or {}))
 
     def _emit_assistant_message(
         self, state: RuntimeState, response: LLMResponse, iteration: int

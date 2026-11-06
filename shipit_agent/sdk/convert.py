@@ -131,6 +131,7 @@ class MessageStream:
             result=str(event.payload.get("output") or ""),
             stop_reason=summary.get("finish_reason"),
             permission_denials=[dict(d) for d in summary.get("permission_denials", [])],
+            deferred_tool_use=summary.get("deferred_tool_use"),
         )
 
 

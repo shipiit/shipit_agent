@@ -79,6 +79,7 @@ class RunWrapUpMixin:
             "estimated_cost_usd": cost_usd,
             "duration_api_ms": int(self._api_seconds * 1000),
             "permission_denials": [dict(d) for d in self._permission_denials],
+            "deferred_tool_use": dict(self._deferred_tool_use) if self._deferred_tool_use else None,
             "gave_up": bool(self.metadata.get("gave_up")),
             "completion_status": (
                 "incomplete"

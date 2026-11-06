@@ -140,6 +140,11 @@ class TurnFinishMixin:
         )
         if latest_checkpoint is not None:
             session_metadata["compaction_checkpoint"] = latest_checkpoint.to_dict()
+        # A deferred call waits in the session until the next run settles it.
+        if self._deferred_tool_use is not None:
+            session_metadata["deferred_tool_use"] = dict(self._deferred_tool_use)
+        else:
+            session_metadata.pop("deferred_tool_use", None)
         self.session_store.save(
             SessionRecord(
                 session_id=self.session_id,

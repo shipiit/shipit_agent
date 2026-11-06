@@ -209,6 +209,9 @@ class ToolExecutionMixin:
             if queued is not None:
                 return queued
 
+        if decision is not None and decision.deferred:
+            return self._pause_tool_call(state, tool_call=tool_call, call_id=tool_call_record["id"],
+                                         reason=decision.reason or "deferred", iteration=iteration)
         if decision is not None and not decision.allowed:
             return self._deny_tool_call(
                 state,

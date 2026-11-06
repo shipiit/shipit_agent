@@ -12,11 +12,15 @@ PermissionMode = Literal[
 
 
 class PermissionDecision(str, Enum):
-    """What a permission rule decides about a tool call: allow, deny or ask."""
+    """What a permission rule decides about a tool call: allow, deny or ask.
+
+    ``DEFER`` (from a hook) pauses the run for a decision that comes later.
+    """
 
     ALLOW = "allow"
     DENY = "deny"
     ASK = "ask"
+    DEFER = "defer"
 
 
 @dataclass(slots=True)
@@ -46,3 +50,7 @@ class PermissionResult:
     @property
     def needs_approval(self) -> bool:
         return self.decision == PermissionDecision.ASK
+
+    @property
+    def deferred(self) -> bool:
+        return self.decision == PermissionDecision.DEFER

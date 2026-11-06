@@ -138,6 +138,11 @@ class AgentResult:
         return self._run_summary.get("finish_reason")
 
     @property
+    def deferred_tool_use(self) -> dict[str, Any] | None:
+        """The call a hook deferred (``id``, ``name``, ``input``); the run paused for it."""
+        return self._run_summary.get("deferred_tool_use")
+
+    @property
     def structured_output(self) -> Any:
         """The answer parsed against ``output_schema``, when one was asked for."""
         return self.parsed

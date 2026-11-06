@@ -162,6 +162,8 @@ class RuntimeCore(
         self._api_seconds = 0.0
         self._fallbacks_used = 0
         self._permission_denials: list[dict[str, Any]] = []
+        # A call a hook deferred; the run pauses after its step (see paused_calls).
+        self._deferred_tool_use: dict[str, Any] | None = None
         self._cancel_event = threading.Event()
         self._guarded_tool_calls = 0
         self._nudges_used = 0

@@ -22,6 +22,7 @@ EventType = Literal[
     "tool_completed",
     "tool_failed",
     "tool_denied",
+    "tool_deferred",
     "tool_arguments_rejected",
     "tool_group_completed",
     "skill_catalog_ready",

@@ -232,6 +232,15 @@ Both kinds of background work are tasks: a command started with `bash(background
 
 In the SDK stream these are `SystemMessage("task_started")` and `SystemMessage("task_notification")`. `task_stop` (the SDK's `TaskStop`, also matched by `KillShell` and `KillBash`) stops either kind by id, and so does `AgentClient.stop_task(task_id)`. A tool can join in by defining `list_background_tasks()` and `stop_background_task(task_id)` (see `shipit_agent.core.tasks`).
 
+## Deferring a call for later
+
+A `PreToolUse` hook that answers `permissionDecision: "defer"` (or a before-tool hook that returns `{"decision": "defer"}`) pauses the run after that step:
+
+- **When it pauses:** the call doesn't run. The run ends with `stop_reason == "tool_deferred"`, and `deferred_tool_use` holds the call's `id`, `name` and `input`. The call is saved with the session.
+- **When you resume:** resume the session with the same `session_id` and `session_store`, or `AgentOptions(resume=...)`. Before the model is called, the hook is asked again. An approval runs the call and puts its result where the call stood; a refusal is recorded there instead; another defer pauses again without calling the model.
+
+Precedence among hook answers is deny, then defer, then ask, then allow. Use this when a person may take longer to decide than the process should stay open. For approvals within the run, use `can_use_tool`. To queue side effects and keep going, use `ApprovalQueue`.
+
 ## Plugins and settings files
 
 ```python

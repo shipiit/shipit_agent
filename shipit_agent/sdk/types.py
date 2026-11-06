@@ -114,6 +114,8 @@ class ResultMessage:
     stop_reason: str | None = None
     permission_denials: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    #: The call a hook deferred; resume the session to settle it.
+    deferred_tool_use: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)

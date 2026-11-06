@@ -30,23 +30,26 @@ class HookDispatchMixin:
     ) -> PermissionResult | None:
         """Run before-tool hooks and fold their decisions together.
 
-        Precedence: a DENY wins; otherwise an ASK; otherwise the last
-        ``updated_arguments`` rewrite is applied on an ALLOW. Returns ``None``
-        when every hook is observe-only (backward compatible).
+        Precedence: a DENY wins; then a DEFER; then an ASK; otherwise the
+        last ``updated_arguments`` rewrite is applied on an ALLOW. Returns
+        ``None`` when every hook is observe-only (backward compatible).
         """
         outcome: PermissionResult | None = None
+        deferred: PermissionResult | None = None
         for fn in self.before_tool:
             decision = _coerce_hook_decision(fn(name, arguments))
             if decision is None:
                 continue
             if decision.denied:
                 return decision  # short-circuit on the first hard deny
-            if decision.needs_approval:
+            if decision.deferred:
+                deferred = deferred or decision
+            elif decision.needs_approval:
                 outcome = decision
             elif outcome is None or not outcome.needs_approval:
                 # ALLOW (possibly with a rewrite) — keep unless an ASK stands.
                 outcome = decision
-        return outcome
+        return deferred or outcome
 
     def run_after_tool(
         self, name: str, result: Any, arguments: dict[str, Any] | None = None

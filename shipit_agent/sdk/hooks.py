@@ -201,6 +201,8 @@ def _fold_pre_tool(outputs: list[Any]) -> dict[str, Any] | None:
         verdict = specific.get("permissionDecision")
         if _blocks(output) or verdict == "deny":
             return {"decision": "deny", "reason": _reason(output) or "denied by a hook"}
+        if verdict == "defer":
+            return {"decision": "defer", "reason": _reason(output) or "deferred by a hook"}
         if verdict == "ask":
             decision = {"decision": "ask", "reason": _reason(output) or "a hook asked for approval"}
         elif verdict == "allow" and (decision is None or decision["decision"] != "ask"):

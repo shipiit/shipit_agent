@@ -406,6 +406,9 @@ class WorkRunAccumulator:
         self.writing: dict[str, str] = {}
         # Work done by delegated agents, keyed by (agent, task).
         self._sub_agents: dict[tuple[str, str], SubAgentRow] = {}
+        # Rows already emitted, so a child still working when the parent's
+        # work settled keeps adding to its one row instead of starting another.
+        self._emitted_sub_agents: dict[tuple[str, str], SubAgentRow] = {}
 
     # ── ingest ───────────────────────────────────────────────────────────
 
@@ -604,7 +607,7 @@ class WorkRunAccumulator:
         tool = str(inner.get("tool") or "?")
 
         key = (agent, task)
-        row = self._sub_agents.get(key)
+        row = self._sub_agents.get(key) or self._emitted_sub_agents.get(key)
         if row is None:
             row = self._sub_agents[key] = SubAgentRow(agent=agent, task=task)
         row.calls.append(
@@ -651,8 +654,9 @@ class WorkRunAccumulator:
         self._rows.extend(self._pending_artifacts)
         self._pending_artifacts = []
         # A child's work belongs under the delegation that started it.
-        for row in self._sub_agents.values():
+        for key, row in self._sub_agents.items():
             self._rows.append(row)
+            self._emitted_sub_agents[key] = row
         self._sub_agents = {}
         self._calls = []
         self._by_id = {}

@@ -24,7 +24,6 @@ import os
 import sys
 import tempfile
 import time
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -96,10 +95,29 @@ def _row(task: Task, run: Run | None, passed: bool, note: str, started: float) -
         "wall_s": round(time.monotonic() - started, 1),
         "tool_calls": len(calls),
         "tool_errors": run.tool_errors if run else 0,
-        "repeated_calls": sum(n - 1 for n in Counter(calls).values() if n > 1),
+        "repeated_calls": repeated_calls(run.tool_uses if run else []),
         "answer": (run.answer if run else "")[:500],
         "trace": _trace(run),
     }
+
+
+#: Calls that only look; anything else may change what a later call returns.
+_LOOK_ONLY = frozenset({"read_file", "glob_files", "grep_files", "todo", "web_search", "open_url"})
+
+
+def repeated_calls(tool_uses: list[tuple[str, dict[str, Any]]]) -> int:
+    """Identical calls made again with nothing changed in between.
+
+    Running the tests again after an edit is a check, not a repeat: any call
+    that may change something (an edit, a write, a command) starts afresh.
+    """
+    seen: set[tuple[str, str]] = set()
+    repeats = 0
+    for name, args in tool_uses:
+        key = (name, json.dumps(args, sort_keys=True))
+        repeats += key in seen
+        seen = seen | {key} if name in _LOOK_ONLY else {key}
+    return repeats
 
 
 def _trace(run: Run | None) -> list[dict[str, Any]]:

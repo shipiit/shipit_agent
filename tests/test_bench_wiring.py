@@ -22,3 +22,15 @@ def test_each_task_runs_and_is_checked(task) -> None:
 
 def test_task_names_are_unique() -> None:
     assert len({t.name for t in TASKS}) == len(TASKS) == 12
+
+
+def test_a_check_after_an_edit_is_not_a_repeat() -> None:
+    from scripts.bench.run import repeated_calls
+
+    pytest_run = ("bash", {"command": "pytest"})
+    edit = ("edit_file", {"path": "calc.py"})
+    read = ("read_file", {"path": "calc.py"})
+    assert repeated_calls([pytest_run, read, edit, pytest_run]) == 0
+    assert repeated_calls([pytest_run, pytest_run]) == 1
+    assert repeated_calls([read, ("glob_files", {"pattern": "*"}), read]) == 1
+    assert repeated_calls([]) == 0

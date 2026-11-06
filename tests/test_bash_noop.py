@@ -42,3 +42,10 @@ def test_a_command_that_does_nothing_is_refused(command: str, ran: list[str], tm
 def test_real_commands_still_run(command: str, ran: list[str], tmp_path: Path) -> None:
     BashTool(root_dir=tmp_path).run(ToolContext(prompt=""), command=command)
     assert ran == [command]
+
+
+def test_a_no_op_is_still_a_safe_command(tmp_path: Path) -> None:
+    # The safety check answers "may this run?"; `:` may. ShipIt Cloud adds it
+    # to its allowlist and checks exactly this. Only run() refuses it, as useless.
+    BashTool(root_dir=tmp_path)._validate_command(":")
+    BashTool(root_dir=tmp_path, allowed_command_prefixes=[":"])._validate_command(":")

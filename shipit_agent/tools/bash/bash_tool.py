@@ -144,11 +144,6 @@ class BashTool(BackgroundJobsMixin):
         normalized = command.strip()
         if not normalized:
             raise ValueError("Command must not be empty")
-        if all(part.strip() in (":", "true") for part in command_segments(normalized)):
-            raise ValueError(
-                "this command does nothing. Put the command you want to run in "
-                "`command`; to plan or think, write text instead of calling bash."
-            )
         lowered = normalized.lower()
         if self.unrestricted:
             verdict = assess_command(normalized, root=self.root_dir)
@@ -162,6 +157,19 @@ class BashTool(BackgroundJobsMixin):
         if not self.unrestricted:
             check_conservative(normalized, self.allowed_command_prefixes)
 
+    @staticmethod
+    def _refuse_no_op(command: str) -> None:
+        """A command that does nothing costs a turn; models send one as a placeholder.
+
+        Kept out of :meth:`_validate_command`, which says whether a command is
+        safe to run: a no-op is safe, only pointless.
+        """
+        if command.strip() and all(part.strip() in (":", "true") for part in command_segments(command.strip())):
+            raise ValueError(
+                "this command does nothing. Put the command you want to run in "
+                "`command`; to plan or think, write text instead of calling bash."
+            )
+
     def assess_command(self, arguments: dict[str, Any]) -> CommandVerdict:
         """How risky the call's command is; the permission gate decides on it."""
         return assess_command(str(arguments.get("command", "")), root=self.root_dir)
@@ -171,6 +179,7 @@ class BashTool(BackgroundJobsMixin):
         # A validation failure is a result the model can fix, not a crash: a
         # raised exception escapes the tool and can take the whole run down.
         try:
+            self._refuse_no_op(command)
             self._validate_command(command)
         except ValueError as exc:
             return ToolOutput(

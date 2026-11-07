@@ -9,6 +9,7 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.file_state import changed_on_disk, missing_text_hint
 
 from .prompt import EDIT_FILE_PROMPT
+from shipit_agent.tools.paths import resolve_in_roots
 
 
 class EditFileTool:
@@ -23,6 +24,8 @@ class EditFileTool:
         prompt: str | None = None,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
+        #: Folders beside the project this tool may also use (AgentOptions.add_dirs).
+        self.extra_roots: tuple[Path, ...] = ()
         self.name = name
         self.description = description
         self.prompt = prompt or EDIT_FILE_PROMPT
@@ -57,19 +60,7 @@ class EditFileTool:
         }
 
     def _resolve(self, relative_path: str) -> Path:
-        # Accept absolute paths inside root_dir as well as relative ones; use
-        # is_relative_to so symlinked roots (/tmp -> /private/tmp) don't
-        # trigger a false "escapes project root" rejection.
-        candidate_path = Path(relative_path)
-        if candidate_path.is_absolute():
-            candidate = candidate_path.resolve()
-        else:
-            candidate = (self.root_dir / candidate_path).resolve()
-        if not candidate.is_relative_to(self.root_dir):
-            raise ValueError(
-                f"Path escapes project root: {candidate} is not under {self.root_dir}"
-            )
-        return candidate
+        return resolve_in_roots(relative_path, self.root_dir, self.extra_roots)
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         # Some models like to call this tool with `file_path` / `filepath`

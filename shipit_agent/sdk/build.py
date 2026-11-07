@@ -37,6 +37,13 @@ def build_agent(options: AgentOptions) -> Any:
     for tool in tools if options.env else ():
         if isinstance(getattr(tool, "extra_env", None), dict):
             tool.extra_env = {**tool.extra_env, **options.env}
+    if options.add_dirs:
+        from shipit_agent.tools.paths import as_roots
+
+        extra_roots = as_roots(options.add_dirs)
+        for tool in tools:
+            if hasattr(tool, "extra_roots"):
+                tool.extra_roots = extra_roots
     settings: dict[str, Any] = {
         "llm": llm,
         "prompt": system_prompt(options.system_prompt),

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.file_state import changed_on_disk, missing_text_hint
+from shipit_agent.tools.paths import resolve_in_roots
 
 
 class MultiEditTool:
@@ -35,6 +36,8 @@ class MultiEditTool:
         prompt: str | None = None,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
+        #: Folders beside the project this tool may also use (AgentOptions.add_dirs).
+        self.extra_roots: tuple[Path, ...] = ()
         self.name = name
         self.description = description
         self.prompt = prompt or (
@@ -83,17 +86,7 @@ class MultiEditTool:
         }
 
     def _resolve(self, relative_path: str) -> Path:
-        candidate_path = Path(relative_path)
-        candidate = (
-            candidate_path.resolve()
-            if candidate_path.is_absolute()
-            else (self.root_dir / candidate_path).resolve()
-        )
-        if not candidate.is_relative_to(self.root_dir):
-            raise ValueError(
-                f"Path escapes project root: {candidate} is not under {self.root_dir}"
-            )
-        return candidate
+        return resolve_in_roots(relative_path, self.root_dir, self.extra_roots)
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         raw = kwargs.get("path") or kwargs.get("file_path")

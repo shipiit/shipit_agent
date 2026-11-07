@@ -57,6 +57,8 @@ class AgentOptions:
     max_turns: int | None = None
     max_budget_usd: float | None = None
     cwd: str | Path | None = None
+    #: Folders beside ``cwd`` the file tools may also read, write and search.
+    add_dirs: list[str | Path] = field(default_factory=list)
     #: ``{"type": "json_schema", "schema": {...}}``: the answer must match it,
     #: and arrives parsed as ``ResultMessage.structured_output``.
     output_format: dict[str, Any] | None = None

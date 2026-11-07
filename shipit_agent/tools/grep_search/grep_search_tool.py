@@ -11,6 +11,7 @@ from pathlib import Path
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.formatting import clip_text
 from .prompt import GREP_SEARCH_PROMPT
+from shipit_agent.tools.paths import resolve_in_roots, shown_path
 
 
 class GrepSearchTool:
@@ -26,6 +27,8 @@ class GrepSearchTool:
         timeout_seconds: float = 30.0,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
+        #: Folders beside the project this tool may also use (AgentOptions.add_dirs).
+        self.extra_roots: tuple[Path, ...] = ()
         self.name = name
         self.description = description
         self.timeout_seconds = timeout_seconds
@@ -68,22 +71,7 @@ class GrepSearchTool:
         }
 
     def _resolve(self, relative_path: str | None) -> Path:
-        # Accept either a relative path (joined to root_dir) or an absolute
-        # path that already lives inside root_dir. is_relative_to() handles
-        # symlinked roots (/tmp -> /private/tmp on macOS, .shipit workspaces)
-        # so the LLM passing back the absolute workspace path the engagement
-        # created doesn't trip a false "escapes project root".
-        rel = relative_path or "."
-        candidate_path = Path(rel)
-        if candidate_path.is_absolute():
-            candidate = candidate_path.resolve()
-        else:
-            candidate = (self.root_dir / candidate_path).resolve()
-        if not candidate.is_relative_to(self.root_dir):
-            raise ValueError(
-                f"Path escapes project root: {candidate} is not under {self.root_dir}"
-            )
-        return candidate
+        return resolve_in_roots(relative_path or ".", self.root_dir, self.extra_roots)
 
     def _run_rg(
         self,
@@ -151,7 +139,7 @@ class GrepSearchTool:
             for line_number, line in enumerate(lines, start=1):
                 if regex.search(line):
                     matches.append(
-                        f"{candidate.relative_to(self.root_dir)}:{line_number}:{line}"
+                        f"{shown_path(candidate, self.root_dir)}:{line_number}:{line}"
                     )
                     if len(matches) >= limit:
                         return "\n".join(matches)

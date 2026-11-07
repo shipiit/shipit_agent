@@ -19,7 +19,9 @@ _PROMPT_INSTRUCTIONS = (
     "Use a checklist for work with three or more distinct steps; skip it for a "
     "single, simple change or a question and just do the work. Write all the "
     "steps first, keep exactly one 'in_progress', and mark each 'completed' as "
-    "soon as it is done. Each call replaces the whole list, so pass every item "
+    "soon as it is done. An item is a step, not a file: for one change made "
+    "across many files, update the list when the step is done, not after each "
+    "file. Each call replaces the whole list, so pass every item "
     "as {content, status}, status being 'pending', 'in_progress' or 'completed'."
 )
 

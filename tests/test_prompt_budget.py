@@ -68,7 +68,8 @@ def test_tool_search_and_todo_keep_their_rules_without_the_repeated_sections() -
     for rule in ("intent", "already loaded", "never invent a tool", "same capability"):
         assert rule in TOOL_SEARCH_PROMPT
     todo = TodoTool().prompt_instructions
-    for rule in ("three or more", "in_progress", "replaces the whole list"):
+    # a rename across eight modules spent 13 of its 39 calls updating the list, once per file
+    for rule in ("three or more", "in_progress", "replaces the whole list", "not after each file"):
         assert rule in todo
 
 

@@ -30,6 +30,10 @@ would.
 task, starting at that many tokens; run once with it and once without to
 see what it saves.
 
+`--repeat N` runs each task N times. The comparison then shows each task's
+median input tokens over its passing runs, with passes out of runs (`2/3`),
+and sums the medians, so a repeated run compares fairly with a single one.
+
 To compare runs:
 
 ```bash
@@ -75,8 +79,8 @@ of its result: when a task takes more turns than it should, the trace shows
 where they went. A run that ended in error reports the error itself.
 
 A single run varies: the same model's totals moved by up to 20% between two
-runs. Compare models on several runs before reading differences of a few
-percent, and remember each model counts tokens with its own tokenizer.
+runs. Use `--repeat 3` or more before reading differences of a few percent,
+and remember each model counts tokens with its own tokenizer.
 
 ## Adding a task
 

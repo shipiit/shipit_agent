@@ -79,8 +79,8 @@ def _row_for(task: str, tokens: int, passed: bool = True) -> dict:
 def test_compare_names_who_used_more_tokens() -> None:
     from scripts.bench.compare import compare
 
-    a = ("gemma", {"t1": _row_for("t1", 1000), "t2": _row_for("t2", 3000)})
-    b = ("claude", {"t1": _row_for("t1", 500), "t2": _row_for("t2", 9000, passed=False)})
+    a = ("gemma", {"t1": [_row_for("t1", 1000)], "t2": [_row_for("t2", 3000)]})
+    b = ("claude", {"t1": [_row_for("t1", 500)], "t2": [_row_for("t2", 9000, passed=False)]})
     text = compare([a, b])
     assert "Most input tokens: claude, 2.38x gemma's." in text
     t1 = next(line for line in text.splitlines() if line.startswith("t1"))
@@ -92,7 +92,7 @@ def test_compare_names_who_used_more_tokens() -> None:
 def test_compare_handles_a_task_missing_from_one_run() -> None:
     from scripts.bench.compare import compare
 
-    text = compare([("a", {"t1": _row_for("t1", 10)}), ("b", {})])
+    text = compare([("a", {"t1": [_row_for("t1", 10)]}), ("b", {})])
     assert "t1" in text and " -" in text
 
 
@@ -145,3 +145,32 @@ def test_settings_for_every_task_reach_the_agent(tmp_path) -> None:
 
     options = Runner(build_llm(None, None, dry_run=True), {"clear_tool_results": True}).options({}, tmp_path)
     assert options.agent_options == {"clear_tool_results": True}
+
+
+def test_compare_summarises_repeated_runs_by_median(tmp_path) -> None:
+    import json
+
+    from scripts.bench.compare import compare, load
+
+    rows = [dict(_row_for("t1", n), trial=i) for i, n in enumerate([100, 900, 300])]
+    rows.append(dict(_row_for("t1", 50, passed=False), trial=3))
+    path = tmp_path / "run.json"
+    path.write_text(json.dumps({"model": "m", "rows": rows}))
+    name, by_task = load(str(path))
+    assert name == "m" and len(by_task["t1"]) == 4
+    text = compare([(name, by_task)])
+    t1 = next(line for line in text.splitlines() if line.startswith("t1"))
+    assert "300" in t1 and "3/4" in t1          # median of the passing runs; passes out of runs
+    passed = next(line for line in text.splitlines() if line.startswith("passed"))
+    assert "3/4" in passed
+
+
+def test_repeat_runs_each_task_that_many_times() -> None:
+    import asyncio
+
+    from scripts.bench.run import run_tasks
+
+    rows = asyncio.run(run_tasks(TASKS[:2], make_runner(build_llm(None, None, dry_run=True)), repeat=3))
+    assert [(r["task"], r["trial"]) for r in rows] == [
+        (TASKS[0].name, 0), (TASKS[0].name, 1), (TASKS[0].name, 2),
+        (TASKS[1].name, 0), (TASKS[1].name, 1), (TASKS[1].name, 2)]

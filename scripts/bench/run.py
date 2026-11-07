@@ -87,6 +87,19 @@ async def run_task(task: Task, run_query: Any) -> dict[str, Any]:
         return _row(task, run, passed, note, started)
 
 
+async def run_tasks(tasks: list[Task], run_query: Any, *, repeat: int = 1, verbose: bool = False) -> list[dict[str, Any]]:
+    """Each task *repeat* times, in order; each row says which trial it was."""
+    rows = []
+    for task in tasks:
+        for trial in range(repeat):
+            row = {**await run_task(task, run_query), "trial": trial}
+            rows.append(row)
+            if verbose:
+                label = f"{task.name} #{trial + 1}" if repeat > 1 else task.name
+                print(f"  {label}: {'passed' if row['passed'] else 'failed'} ({row['note'][:70]})", flush=True)
+    return rows
+
+
 def _row(task: Task, run: Run | None, passed: bool, note: str, started: float) -> dict[str, Any]:
     result = run.result if run else None
     results = run.results if run else []
@@ -180,6 +193,8 @@ async def main() -> None:
     parser.add_argument("--tasks", help="comma-separated task names (default: all)")
     parser.add_argument("--out", default="bench-results.json", help="where to write the JSON results")
     parser.add_argument("--dry-run", action="store_true", help="check the wiring with an echo model; no cost")
+    parser.add_argument("--repeat", type=int, default=1, metavar="N",
+                        help="run each task N times; compare.py then reads medians")
     parser.add_argument("--clear-tool-results", type=int, metavar="TOKENS",
                         help="clear old tool results once they pass TOKENS (off by default)")
     args = parser.parse_args()
@@ -194,10 +209,7 @@ async def main() -> None:
         agent_options["clear_tool_results"] = ToolResultClearing(trigger_tokens=args.clear_tool_results)
         label += f" · clearing at {args.clear_tool_results:,} tokens"
     run_query = make_runner(llm, agent_options)
-    rows = []
-    for task in chosen:
-        rows.append(await run_task(task, run_query))
-        print(f"  {task.name}: {'passed' if rows[-1]['passed'] else 'failed'} ({rows[-1]['note'][:70]})", flush=True)
+    rows = await run_tasks(chosen, run_query, repeat=args.repeat, verbose=True)
     print("\n" + report(rows, label))
     Path(args.out).write_text(json.dumps({"model": label, "rows": rows}, indent=2))
     print(f"\nresults: {args.out}")

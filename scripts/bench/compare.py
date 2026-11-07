@@ -12,51 +12,74 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 
-def load(path: str) -> tuple[str, dict[str, dict[str, Any]]]:
+Rows = dict[str, list[dict[str, Any]]]
+
+
+def load(path: str) -> tuple[str, Rows]:
+    """The run's model name, and its rows grouped by task (several with --repeat)."""
     data = json.loads(Path(path).read_text())
-    return str(data.get("model") or Path(path).stem), {row["task"]: row for row in data["rows"]}
+    by_task: Rows = {}
+    for row in data["rows"]:
+        by_task.setdefault(row["task"], []).append(row)
+    return str(data.get("model") or Path(path).stem), by_task
 
 
-def totals(rows: dict[str, dict[str, Any]]) -> dict[str, float]:
-    values = list(rows.values())
+def typical(runs: list[dict[str, Any]], key: str) -> float:
+    """The median of *key* over the runs that passed, or over all when none did."""
+    passing = [r for r in runs if r["passed"]] or runs
+    return float(median((r.get(key) or 0) for r in passing))
+
+
+def totals(rows: Rows) -> dict[str, Any]:
+    """Each task's typical figures, summed, so runs with different repeats compare."""
+    def total(key: str) -> float:
+        return sum(typical(runs, key) for runs in rows.values())
+
     return {
-        "passed": sum(r["passed"] for r in values),
-        "tasks": len(values),
-        "input_tokens": sum(r["input_tokens"] for r in values),
-        "output_tokens": sum(r["output_tokens"] for r in values),
-        "turns": sum(r["turns"] for r in values),
-        "cost_usd": sum(r["cost_usd"] or 0 for r in values),
-        "api_s": sum(r["api_ms"] for r in values) / 1000,
+        "passed": f"{sum(r['passed'] for runs in rows.values() for r in runs)}"
+                  f"/{sum(len(runs) for runs in rows.values())}",
+        "input_tokens": total("input_tokens"),
+        "output_tokens": total("output_tokens"),
+        "turns": total("turns"),
+        "cost_usd": total("cost_usd"),
+        "api_s": total("api_ms") / 1000,
         # Older result files have neither.
-        "narration_chars": sum(r.get("narration_chars", 0) for r in values),
-        "thinking_chars": sum(r.get("thinking_chars", 0) for r in values),
+        "narration_chars": total("narration_chars"),
+        "thinking_chars": total("thinking_chars"),
     }
 
 
-def compare(runs: list[tuple[str, dict[str, dict[str, Any]]]]) -> str:
+def _cell(runs: list[dict[str, Any]] | None, best: float | None, width: int) -> str:
+    if not runs:
+        return f"{'-':>{width}}"
+    tokens = typical(runs, "input_tokens")
+    passes = sum(r["passed"] for r in runs)
+    if len(runs) > 1:
+        mark = "★" if passes and tokens == best else " "
+        return f"{f'{tokens:,.0f} {passes}/{len(runs)}':>{width - 2}} {mark}"
+    mark = "✗" if not passes else ("★" if tokens == best else " ")
+    return f"{tokens:>{width - 2},.0f} {mark}"
+
+
+def compare(runs: list[tuple[str, Rows]]) -> str:
     names = [name for name, _ in runs]
     width = max(14, *(len(n) for n in names))
     tasks = list(dict.fromkeys(task for _, rows in runs for task in rows))
-    lines = ["Input tokens per task (★ fewest among runs that passed, ✗ failed)",
+    lines = ["Input tokens per task: the median of passing runs, with passes/runs when repeated",
+             "(★ fewest among runs that passed, ✗ failed)",
              f"{'task':20} " + " ".join(f"{n:>{width}}" for n in names)]
     for task in tasks:
         cells = [rows.get(task) for _, rows in runs]
-        passing = [c["input_tokens"] for c in cells if c and c["passed"]]
+        passing = [typical(c, "input_tokens") for c in cells if c and any(r["passed"] for r in c)]
         best = min(passing) if passing else None
-        shown = []
-        for cell in cells:
-            if cell is None:
-                shown.append(f"{'-':>{width}}")
-                continue
-            mark = "✗" if not cell["passed"] else ("★" if cell["input_tokens"] == best else " ")
-            shown.append(f"{cell['input_tokens']:>{width - 2},} {mark}")
-        lines.append(f"{task:20} " + " ".join(shown))
+        lines.append(f"{task:20} " + " ".join(_cell(c, best, width) for c in cells))
     sums = [totals(rows) for _, rows in runs]
     lines += ["", f"{'totals':20} " + " ".join(f"{n:>{width}}" for n in names)]
-    for key, label, fmt in [("passed", "passed", "{:.0f}"), ("input_tokens", "input tokens", "{:,.0f}"),
+    for key, label, fmt in [("passed", "passed", "{}"), ("input_tokens", "input tokens", "{:,.0f}"),
                             ("output_tokens", "output tokens", "{:,.0f}"), ("turns", "turns", "{:.0f}"),
                             ("cost_usd", "cost $", "{:.4f}"), ("api_s", "model seconds", "{:.1f}"),
                             ("narration_chars", "text beside calls", "{:,.0f}"),

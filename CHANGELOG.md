@@ -44,6 +44,10 @@ docs/guides/upgrading.md, and docs/releases/3.0.0.md for the full notes.
 
 - Without the `anthropic` package, Anthropic requests raised nothing and
   went to gpt-oss on Bedrock; they now raise with the install command.
+- The native Anthropic adapter sent shipit's tools in OpenAI's shape, so the
+  API rejected every request that had a tool; they are now converted.
+- Streamed text could arrive after `run_completed`, and the transcript then
+  showed the answer twice.
 - Dropped connections are retried instead of ending the run.
 - A background sub-agent's whole work shows in the live display.
 - Current Claude models, gpt-oss and Gemma 4 on Bedrock are priced at their

@@ -69,3 +69,28 @@ def test_the_recovery_task_states_the_id_format_only_in_its_error() -> None:
     from scripts.bench.tasks_hard import _order_status
 
     assert "ORD" not in _order_status.description
+
+
+def _row_for(task: str, tokens: int, passed: bool = True) -> dict:
+    return {"task": task, "passed": passed, "input_tokens": tokens, "output_tokens": 10, "turns": 2,
+            "cost_usd": 0.01, "api_ms": 1000}
+
+
+def test_compare_names_who_used_more_tokens() -> None:
+    from scripts.bench.compare import compare
+
+    a = ("gemma", {"t1": _row_for("t1", 1000), "t2": _row_for("t2", 3000)})
+    b = ("claude", {"t1": _row_for("t1", 500), "t2": _row_for("t2", 9000, passed=False)})
+    text = compare([a, b])
+    assert "Most input tokens: claude, 2.38x gemma's." in text
+    t1 = next(line for line in text.splitlines() if line.startswith("t1"))
+    assert t1.rstrip().endswith("★")                      # claude's 500 is fewest
+    t2 = next(line for line in text.splitlines() if line.startswith("t2"))
+    assert "✗" in t2 and "★" in t2                         # a failed run cannot be the best
+
+
+def test_compare_handles_a_task_missing_from_one_run() -> None:
+    from scripts.bench.compare import compare
+
+    text = compare([("a", {"t1": _row_for("t1", 10)}), ("b", {})])
+    assert "t1" in text and " -" in text

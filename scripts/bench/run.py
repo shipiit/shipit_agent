@@ -111,8 +111,9 @@ def _row(task: Task, run: Run | None, passed: bool, note: str, started: float) -
         "task": task.name, "feature": task.feature, "passed": bool(passed), "note": note,
         "subtype": getattr(result, "subtype", None),
         "turns": sum(r.num_turns for r in results),
-        "input_tokens": _tokens(results, "prompt_tokens", "input_tokens"),
-        "output_tokens": _tokens(results, "completion_tokens", "output_tokens"),
+        "input_tokens": sum(_total_input(r.usage or {}) for r in results),
+        "cached_input_tokens": sum(int((r.usage or {}).get("cache_read_input_tokens") or 0) for r in results),
+        "output_tokens": _tokens(results, "output_tokens", "completion_tokens"),
         "cost_usd": _cost(results),
         "api_ms": sum(r.duration_api_ms for r in results),
         "wall_s": round(time.monotonic() - started, 1),
@@ -133,6 +134,14 @@ def _tokens(results: list[Any], *keys: str) -> int:
         usage = result.usage or {}
         total += int(next((usage[k] for k in keys if usage.get(k)), 0))
     return total
+
+
+def _total_input(usage: dict[str, Any]) -> int:
+    """All input: the SDK-shaped fields when present, else the provider's prompt_tokens."""
+    if "input_tokens" in usage:
+        return sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_read_input_tokens",
+                                                    "cache_creation_input_tokens"))
+    return int(usage.get("prompt_tokens") or 0)
 
 
 def _cost(results: list[Any]) -> float | None:

@@ -29,10 +29,25 @@ def build_agent(options: AgentOptions) -> Any:
         value = getattr(options, name)
         if value is not None and hasattr(llm, name):
             setattr(llm, name, value)
+    if options.max_thinking_tokens and options.thinking is None and hasattr(llm, "thinking_budget_tokens"):
+        llm.thinking_budget_tokens = options.max_thinking_tokens
+    if options.betas and hasattr(llm, "betas"):
+        llm.betas = [*llm.betas, *(b for b in options.betas if b not in llm.betas)]
+    tools = _with_sdk_questions(tools_for(options.tools, llm=llm, root=root), options.can_use_tool)
+    for tool in tools if options.env else ():
+        if isinstance(getattr(tool, "extra_env", None), dict):
+            tool.extra_env = {**tool.extra_env, **options.env}
+    if options.add_dirs:
+        from shipit_agent.tools.paths import as_roots
+
+        extra_roots = as_roots(options.add_dirs)
+        for tool in tools:
+            if hasattr(tool, "extra_roots"):
+                tool.extra_roots = extra_roots
     settings: dict[str, Any] = {
         "llm": llm,
         "prompt": system_prompt(options.system_prompt),
-        "tools": _with_sdk_questions(tools_for(options.tools, llm=llm, root=root), options.can_use_tool),
+        "tools": tools,
         "mcps": mcp_servers(options.mcp_servers),
         "project_root": root,
         "permission_mode": options.permission_mode,
@@ -135,6 +150,7 @@ def _with_sdk_questions(tools: list[Any], can_use_tool: Any) -> list[Any]:
 def mcp_servers(spec: dict[str, Any] | list[Any]) -> list[Any]:
     from shipit_agent.mcp import (
         MCPServer,
+        MCPSSETransport,
         MCPStreamableHTTPTransport,
         PersistentMCPSubprocessTransport,
         RemoteMCPServer,
@@ -157,8 +173,11 @@ def mcp_servers(spec: dict[str, Any] | list[Any]) -> list[Any]:
         elif kind == "http":
             transport = MCPStreamableHTTPTransport(str(config["url"]), headers=config.get("headers"))
             servers.append(RemoteMCPServer(name=name, transport=transport, include_server_in_tool_names=True))
+        elif kind == "sse":
+            transport = MCPSSETransport(str(config["url"]), headers=config.get("headers"))
+            servers.append(RemoteMCPServer(name=name, transport=transport, include_server_in_tool_names=True))
         else:
-            raise ValueError(f"MCP server {name!r}: type {kind!r} is not supported (use stdio, http or sdk)")
+            raise ValueError(f"MCP server {name!r}: type {kind!r} is not supported (use stdio, sse, http or sdk)")
     return servers
 
 
@@ -171,6 +190,10 @@ def _harness(options: AgentOptions, root: Path) -> Any:
 
 
 def _session_id(options: AgentOptions) -> str | None:
+    if options.resume is None and options.continue_conversation:
+        if options.session_store is None:
+            raise ValueError("continue_conversation needs a session_store to continue from")
+        return _latest_session(options.session_store) or options.session_id
     if options.resume is None:
         return options.session_id
     if options.session_store is None or options.session_store.load(options.resume) is None:
@@ -180,6 +203,15 @@ def _session_id(options: AgentOptions) -> str | None:
 
         return fork_session(options.session_store, options.resume)
     return options.resume
+
+
+def _latest_session(store: Any) -> str | None:
+    """The most recently saved session; the agent stamps ``updated_at`` on every save."""
+    records = store.list_all()
+    if not records:
+        return None
+    latest = max(enumerate(records), key=lambda item: (float(item[1].metadata.get("updated_at") or 0), item[0]))
+    return latest[1].session_id
 
 
 def _hooks(options: AgentOptions, root: Path) -> AgentHooks:

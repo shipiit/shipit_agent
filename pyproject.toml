@@ -173,6 +173,9 @@ include = ["shipit_agent*"]
 "shipit_agent.providers.catalog" = ["*/profile.yaml", "*/provider.py"]
 # Ship the bundled plugin packs (one plugin.yaml + plugin.py per catalog dir).
 "shipit_agent.plugins.catalog" = ["*/plugin.yaml", "*/plugin.py"]
+# The packaged skills catalog Agent loads by default, and the packaged agents.
+"shipit_agent.skills" = ["skills.json"]
+"shipit_agent.agents" = ["agents.json"]
 
 [project.urls]
 Homepage = "https://github.com/shipiit/shipit_agent"

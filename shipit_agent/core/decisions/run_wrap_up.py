@@ -23,6 +23,12 @@ class RunWrapUpMixin:
         model isn't in the table), never a billing figure.
         """
         usage = dict(self._total_usage)
+        # The SDK's shape beside the raw counters: input_tokens is uncached
+        # input for every provider, so it plus the two cache counters is the
+        # whole input, whether the provider counts cache inside prompt_tokens
+        # (OpenAI) or beside it (Anthropic).
+        usage["input_tokens"] = self._total_uncached_input
+        usage["output_tokens"] = usage.get("completion_tokens", 0)
         tool_results = list(getattr(state, "tool_results", []) or [])
         events = list(getattr(state, "events", []) or [])
         tool_calls = sum(1 for e in events if e.type == "tool_called")

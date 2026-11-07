@@ -26,6 +26,11 @@ docs/guides/upgrading.md, and docs/releases/3.0.0.md for the full notes.
 - User-defined sub-agents; background tasks with notifications and
   `task_stop`; `fallback_model`.
 - `clear_tool_results` (off by default) for very long runs.
+- MCP servers over SSE (`{"type": "sse"}`), `continue_conversation`,
+  `add_dirs`, `env`, `betas` and `max_thinking_tokens` on `AgentOptions`.
+- A run's usage, and `ResultMessage.usage`, carries the SDK's shape
+  (`input_tokens` uncached, the cache counters, `output_tokens`) for every
+  provider.
 - `scripts/bench`: 18 real tasks checked by outcome, with traces,
   `--repeat` and run comparison.
 
@@ -52,6 +57,9 @@ docs/guides/upgrading.md, and docs/releases/3.0.0.md for the full notes.
 - A background sub-agent's whole work shows in the live display.
 - Current Claude models, gpt-oss and Gemma 4 on Bedrock are priced at their
   own rates.
+- The docs build (`mkdocs --strict`) failed on a link outside the docs folder.
+- The installed package now includes the packaged skills catalog and agents
+  (`skills/skills.json`, `agents/agents.json`); the wheel had left them out.
 
 ## [2.2.1] - 2026-10-07
 

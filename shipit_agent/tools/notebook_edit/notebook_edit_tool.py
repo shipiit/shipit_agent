@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.paths import resolve_in_roots
 
 
 class NotebookEditTool:
@@ -33,6 +34,8 @@ class NotebookEditTool:
 
     def __init__(self, *, root_dir: str | Path = "/tmp") -> None:
         self.root_dir = Path(root_dir).resolve()
+        #: Folders beside the project this tool may also use (AgentOptions.add_dirs).
+        self.extra_roots: tuple[Path, ...] = ()
         self.prompt = self.prompt_instructions = (
             "Use for .ipynb files instead of edit_file — it edits cells "
             "structurally. Always `list` first, then `read` the target cell, "
@@ -75,12 +78,7 @@ class NotebookEditTool:
 
     # ------------------------------------------------------------------
     def _resolve(self, raw: str) -> Path:
-        candidate = Path(raw)
-        candidate = (candidate if candidate.is_absolute()
-                     else self.root_dir / candidate).resolve()
-        if not candidate.is_relative_to(self.root_dir):
-            raise ValueError(f"Path escapes project root: {candidate}")
-        return candidate
+        return resolve_in_roots(raw, self.root_dir, self.extra_roots)
 
     @staticmethod
     def _source_text(cell: dict[str, Any]) -> str:

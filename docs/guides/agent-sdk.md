@@ -50,14 +50,17 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `permission_mode` | `default`, `acceptEdits`, `plan`, `dontAsk` or `bypassPermissions`. |
 | `can_use_tool` | Decides calls that no rule, mode or hook settled. |
 | `hooks` | `{"PreToolUse": [HookMatcher(...)], ...}`, or an `AgentHooks`. |
-| `mcp_servers` | `{name: config}`: stdio, http or `create_sdk_mcp_server(...)`. |
+| `mcp_servers` | `{name: config}`: stdio, sse, http or `create_sdk_mcp_server(...)`. |
 | `agents` | Sub-agent definitions (`description`, `prompt`, `tools`, `model`). |
 | `max_turns`, `max_budget_usd` | The step limit and the spend limit. |
 | `output_format` | `{"type": "json_schema", "schema": {...}}`. The parsed answer is in `ResultMessage.structured_output`. |
 | `include_partial_messages` | Also yield `StreamEvent` text deltas. |
 | `resume`, `fork_session`, `session_store`, `session_id` | Continue a saved session, or a copy of it. |
+| `continue_conversation` | Continue the most recently saved session in `session_store`. |
 | `enable_file_checkpointing` | Record files before the file tools change them, for `rewind_files`. |
-| `effort`, `thinking` | Passed to adapters that take them (Anthropic does). |
+| `cwd`, `add_dirs` | The project root, and folders beside it the file tools may also use. |
+| `env` | Environment variables for the commands bash and code execution run, never this process's own. |
+| `effort`, `thinking`, `max_thinking_tokens`, `betas` | Passed to adapters that take them (Anthropic does). A thinking budget becomes adaptive thinking on models that reject budgets. |
 | `agent_options` | Any other `Agent` setting, under its shipit name. |
 
 ## Messages
@@ -302,9 +305,9 @@ options = AgentOptions(session_store=store, resume=branch)
 ## Where shipit differs
 
 - **Settings files are opt-in.** The SDK reads project settings by default. shipit reads none unless `setting_sources` names them, because they can run hook commands and a library has no "do you trust this folder?" prompt. Plugins run because you name each one.
-- **No CLI process.** shipit runs in your process, so `cli_path`, `extra_args`, `stderr`, `setting_sources` and `Transport` have no counterpart. Project files (`CLAUDE.md`, `.claude/agents`, `.shipit/skills`) are read directly.
-- **Sessions live in a `SessionStore`, not in transcript files.** Records have no timestamps, so there is no `continue_conversation` ("the most recent session").
+- **No CLI process.** shipit runs in your process, so `cli_path`, `extra_args`, `stderr`, `max_buffer_size`, `permission_prompt_tool_name` and `Transport` have no counterpart. Project files (`CLAUDE.md`, `.claude/agents`, `.shipit/skills`) are read directly.
+- **Sessions live in a `SessionStore`, not in transcript files.** The agent stamps `updated_at` on each save; `continue_conversation` picks the latest.
 - **`continue_: False` in a hook output** refuses that call or prompt; it doesn't end the whole session. `PreToolUse` and `PermissionRequest` callbacks get `tool_use_id=None`.
 - **`interrupt=True` from `can_use_tool`** refuses the call; it doesn't end the session.
-- **SSE MCP servers aren't supported.** Use stdio or HTTP (Streamable HTTP).
+- **No `sandbox`.** Bash runs under permissions and a secret-free environment, not an OS sandbox.
 - **File checkpoints** cover the file tools, not files changed by shell commands. The SDK has the same limit.

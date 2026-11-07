@@ -7,6 +7,7 @@ from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from .prompt import GLOB_SEARCH_PROMPT
+from shipit_agent.tools.paths import resolve_in_roots, shown_path
 
 
 class GlobSearchTool:
@@ -20,6 +21,8 @@ class GlobSearchTool:
         prompt: str | None = None,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
+        #: Folders beside the project this tool may also use (AgentOptions.add_dirs).
+        self.extra_roots: tuple[Path, ...] = ()
         self.name = name
         self.description = description
         self.prompt = prompt or GLOB_SEARCH_PROMPT
@@ -55,25 +58,7 @@ class GlobSearchTool:
         }
 
     def _resolve(self, relative_path: str | None) -> Path:
-        # Accept either a relative path (joined to root_dir) or an
-        # absolute path that already lives inside root_dir. Use
-        # is_relative_to() instead of "in parents" so symlinked
-        # workspace roots (/tmp -> /private/tmp on macOS, .shipit
-        # workspaces) don't trip a false "escapes project root" when
-        # the LLM passes back the absolute path the engagement created.
-        rel = relative_path or "."
-        candidate_path = Path(rel)
-        if candidate_path.is_absolute():
-            candidate = candidate_path.resolve()
-        else:
-            candidate = (self.root_dir / candidate_path).resolve()
-        try:
-            candidate.relative_to(self.root_dir)
-        except ValueError:
-            raise ValueError(
-                f"Path escapes project root: {candidate} is not under {self.root_dir}"
-            ) from None
-        return candidate
+        return resolve_in_roots(relative_path or ".", self.root_dir, self.extra_roots)
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         base = self._resolve(kwargs.get("path"))
@@ -86,10 +71,11 @@ class GlobSearchTool:
         # Use is_relative_to so symlinked workspace roots (/tmp -> /private/tmp
         # on macOS) don't drop legitimate matches when the symlink isn't on
         # the parents chain. _resolve already enforces containment.
+        roots = (self.root_dir, *self.extra_roots)
         filtered = [
-            str(match.relative_to(self.root_dir))
+            shown_path(match, self.root_dir)
             for match in matches
-            if match.is_relative_to(self.root_dir)
+            if any(match.is_relative_to(base) for base in roots)
         ][:limit]
         return ToolOutput(
             text="\n".join(filtered) if filtered else "No matching files found.",

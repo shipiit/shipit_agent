@@ -7,6 +7,7 @@ from pathlib import Path
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.file_state import record_file_seen
 from .prompt import FILE_WRITE_PROMPT
+from shipit_agent.tools.paths import resolve_in_roots, shown_path
 
 
 class FileWriteTool:
@@ -20,6 +21,8 @@ class FileWriteTool:
         prompt: str | None = None,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
+        #: Folders beside the project this tool may also use (AgentOptions.add_dirs).
+        self.extra_roots: tuple[Path, ...] = ()
         self.name = name
         self.description = description
         self.prompt = prompt or FILE_WRITE_PROMPT
@@ -48,19 +51,7 @@ class FileWriteTool:
         }
 
     def _resolve(self, relative_path: str) -> Path:
-        # Accept absolute paths inside root_dir as well as relative ones; use
-        # is_relative_to so symlinked roots (/tmp -> /private/tmp) don't
-        # trigger a false "escapes project root" rejection.
-        candidate_path = Path(relative_path)
-        if candidate_path.is_absolute():
-            candidate = candidate_path.resolve()
-        else:
-            candidate = (self.root_dir / candidate_path).resolve()
-        if not candidate.is_relative_to(self.root_dir):
-            raise ValueError(
-                f"Path escapes project root: {candidate} is not under {self.root_dir}"
-            )
-        return candidate
+        return resolve_in_roots(relative_path, self.root_dir, self.extra_roots)
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         try:
@@ -86,10 +77,7 @@ class FileWriteTool:
             # edit next without re-reading. An append does not: what was
             # already in the file is still unseen.
             record_file_seen(getattr(context, "state", None), path)
-        try:
-            shown = path.relative_to(self.root_dir)
-        except ValueError:
-            shown = path
+        shown = shown_path(path, self.root_dir)
         lines = content.count("\n") + (0 if content.endswith("\n") or not content else 1)
         verb = "Appended to" if mode == "append" else "Overwrote" if existed else "Created"
         return ToolOutput(

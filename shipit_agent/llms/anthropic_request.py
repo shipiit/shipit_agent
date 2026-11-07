@@ -142,6 +142,7 @@ class AnthropicRequestMixin:
         # Assemble beta headers required by opt-in features. Empty list ->
         # the request stays on the GA endpoint and is identical to legacy.
         betas: list[str] = list(_server_tools.required_betas(tools))
+        betas += [b for b in getattr(self, "betas", []) if b not in betas]
         # Adaptive thinking interleaves on its own; the beta is for budgets.
         if (
             self.interleaved_thinking

@@ -43,6 +43,7 @@ def totals(rows: Rows) -> dict[str, Any]:
         "passed": f"{sum(r['passed'] for runs in rows.values() for r in runs)}"
                   f"/{sum(len(runs) for runs in rows.values())}",
         "input_tokens": total("input_tokens"),
+        "cached_input_tokens": total("cached_input_tokens"),
         "output_tokens": total("output_tokens"),
         "turns": total("turns"),
         "cost_usd": total("cost_usd"),
@@ -80,6 +81,7 @@ def compare(runs: list[tuple[str, Rows]]) -> str:
     sums = [totals(rows) for _, rows in runs]
     lines += ["", f"{'totals':20} " + " ".join(f"{n:>{width}}" for n in names)]
     for key, label, fmt in [("passed", "passed", "{}"), ("input_tokens", "input tokens", "{:,.0f}"),
+                            ("cached_input_tokens", "  of which cached", "{:,.0f}"),
                             ("output_tokens", "output tokens", "{:,.0f}"), ("turns", "turns", "{:.0f}"),
                             ("cost_usd", "cost $", "{:.4f}"), ("api_s", "model seconds", "{:.1f}"),
                             ("narration_chars", "text beside calls", "{:,.0f}"),

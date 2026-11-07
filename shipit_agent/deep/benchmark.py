@@ -1,3 +1,5 @@
+"""Run an agent against test cases and report pass rates, timing and failures."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

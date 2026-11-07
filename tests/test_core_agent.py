@@ -1,8 +1,8 @@
 from shipit_agent import Agent, DEFAULT_AGENT_PROMPT, FunctionTool, RetryPolicy
-from shipit_agent.exceptions import DuplicateToolError
+from shipit_agent.core.exceptions import DuplicateToolError
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
-from shipit_agent.models import ToolCall
-from shipit_agent.registry import ToolRegistry
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.registry import ToolRegistry
 
 
 def test_agent_runs_with_basic_prompt() -> None:

@@ -7,7 +7,7 @@ again (double LLM call + re-run side-effecting tools).
 
 from __future__ import annotations
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.pipeline import Pipeline, step
 
 

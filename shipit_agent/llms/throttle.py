@@ -39,6 +39,8 @@ __all__ = [
     "BackoffPolicy",
     "RetrySchedule",
     "classify",
+    "is_transient_provider_error",
+    "retry_after_seconds",
     "DEFAULT_SCHEDULE",
 ]
 
@@ -92,10 +94,34 @@ _STATUS_KINDS = {
     400: ThrottleKind.BAD_REQUEST,
     401: ThrottleKind.AUTH,
     403: ThrottleKind.AUTH,
+    # A request timeout or a conflict says nothing about the request itself;
+    # the same request can succeed a moment later.
+    408: ThrottleKind.TRANSIENT,
+    409: ThrottleKind.TRANSIENT,
     422: ThrottleKind.BAD_REQUEST,
     429: ThrottleKind.TOKEN_QUOTA,
     503: ThrottleKind.CAPACITY,
+    # Anthropic's "overloaded": capacity, not a fault in the request.
+    529: ThrottleKind.CAPACITY,
 }
+
+#: Kinds a plain wait-and-resend can fix. AUTH needs a fresh credential first,
+#: and BAD_REQUEST cannot succeed unchanged.
+_RESEND_KINDS = frozenset(
+    {ThrottleKind.TOKEN_QUOTA, ThrottleKind.CAPACITY, ThrottleKind.TRANSIENT}
+)
+
+#: Provider SDK errors that carry no status but are transport failures. They
+#: do not subclass the built-in ConnectionError or TimeoutError.
+_TRANSPORT_ERROR_SUFFIXES = ("ConnectionError", "TimeoutError")
+_TRANSIENT_ERROR_NAMES = frozenset(
+    {"RateLimitError", "OverloadedError", "InternalServerError", "ServiceUnavailableError",
+     # A connection that dropped or stalled mid-request: httpx (Read/Write/
+     # Connect/CloseError share NetworkError), botocore, http.client. Not
+     # httpx's UnsupportedProtocol or LocalProtocolError: those are our bugs.
+     "NetworkError", "RemoteProtocolError", "TimeoutException",
+     "ConnectionClosedError", "IncompleteRead"}
+)
 
 _MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], ThrottleKind], ...] = (
     (re.compile(r"\b429\b|too many requests|rate.?limit|throttl", re.I), ThrottleKind.TOKEN_QUOTA),
@@ -140,6 +166,50 @@ def classify(error: Any) -> ThrottleKind:
         if pattern.search(text):
             return kind
     return ThrottleKind.UNKNOWN
+
+
+def is_transient_provider_error(error: BaseException) -> bool:
+    """True when sending the same request again, after a wait, can succeed.
+
+    An error with an HTTP status is judged by it: rate limits, overloads,
+    timeouts and server errors are transient; bad requests and rejected
+    credentials are not. An error without one is transient only when it is a
+    provider SDK's transport error. Anything else (a ``KeyError`` in an
+    adapter, say) is a bug, and retrying it would only hide it.
+    """
+    if _status_of(error) is not None:
+        return classify(error) in _RESEND_KINDS
+    names = {klass.__name__ for klass in type(error).__mro__}
+    return bool(names & _TRANSIENT_ERROR_NAMES) or any(
+        name.endswith(_TRANSPORT_ERROR_SUFFIXES) and name not in ("ConnectionError", "TimeoutError")
+        for name in names
+    )
+
+
+def retry_after_seconds(error: BaseException) -> float | None:
+    """How long the provider asked us to wait, from its ``Retry-After`` headers.
+
+    Reads ``retry-after-ms`` first (Anthropic and OpenAI send it), then
+    ``retry-after`` in seconds. HTTP-date values and anything unparseable or
+    negative are ignored, so the caller falls back to its own backoff.
+    """
+    headers = getattr(getattr(error, "response", None), "headers", None)
+    if not headers:
+        # Adapters re-raise SDK errors as ConnectionError(...) from the
+        # original; the provider's headers are on that cause.
+        cause = error.__cause__
+        return retry_after_seconds(cause) if cause is not None else None
+    for name, scale in (("retry-after-ms", 1000.0), ("retry-after", 1.0)):
+        raw = headers.get(name)
+        if raw is None:
+            continue
+        try:
+            value = float(raw) / scale
+        except (TypeError, ValueError):
+            continue
+        if value >= 0:
+            return value
+    return None
 
 
 @dataclass(frozen=True, slots=True)

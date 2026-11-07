@@ -20,7 +20,7 @@ from shipit_agent.deep import (
 )
 from shipit_agent.deep.deep_agent.delegation import build_delegation_tool
 from shipit_agent.llms import SimpleEchoLLM
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.tools.base import ToolContext
 
 

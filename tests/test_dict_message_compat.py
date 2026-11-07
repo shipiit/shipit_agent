@@ -17,7 +17,7 @@ from shipit_agent.llms import ShipitLLM
 from shipit_agent.llms.anthropic_adapter import AnthropicChatLLM
 from shipit_agent.llms.base import coerce_message, coerce_messages
 from shipit_agent.llms.litellm_adapter import _normalize_content, _serialize_message
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 # The exact shapes ComputerUseAgent builds.
@@ -83,10 +83,12 @@ class TestAnthropicAcceptsDicts:
     def test_convert_messages_no_crash(self) -> None:
         llm = AnthropicChatLLM(model="claude-opus-4-1", api_key="test")
         converted = llm._convert_messages(HISTORY)
-        # system is passed via the top-level kwarg, so it's skipped here
-        assert [c["role"] for c in converted] == ["user", "user", "assistant"]
-        # the multimodal block is preserved (anthropic-native shape)
-        assert isinstance(converted[1]["content"], list)
+        # system is passed via the top-level kwarg, so it's skipped here; the
+        # two user turns in a row are sent as one message
+        assert [c["role"] for c in converted] == ["user", "assistant"]
+        # the multimodal blocks are preserved (anthropic-native shape), after the text
+        assert converted[0]["content"] == [{"type": "text", "text": "Goal: find the price"},
+                                           *SCREENSHOT["content"]]
 
 
 class TestShipitLLMAcceptsDicts:

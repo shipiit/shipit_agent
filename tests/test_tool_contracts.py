@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.builtins import get_builtin_tools
-from shipit_agent.permissions import PermissionEngine
+from shipit_agent.agent_setup.builtins import get_builtin_tools
+from shipit_agent.safety.permissions import PermissionEngine
 from shipit_agent.tools.contracts import (
     CONTRACTS,
     OBSERVE,
@@ -252,7 +252,7 @@ class TestAllowListingPattern:
         assert engine.check("read_file", {}).denied
 
     def test_the_correct_way_to_mean_these_and_nothing_else(self) -> None:
-        from shipit_agent.permissions import PermissionDecision
+        from shipit_agent.safety.permissions import PermissionDecision
 
         engine = PermissionEngine(
             allow=["read_file", "grep_files"],

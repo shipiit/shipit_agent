@@ -1,3 +1,5 @@
+"""Follow GitHub's ``Link`` header to the next page of results."""
+
 from __future__ import annotations
 
 import re

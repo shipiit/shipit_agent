@@ -23,7 +23,7 @@ from shipit_agent.llms.anthropic_adapter import (
     INTERLEAVED_THINKING_BETA,
     AnthropicChatLLM,
 )
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 def _ns(**kwargs):

@@ -7,9 +7,9 @@ import pytest
 from shipit_agent import Agent
 from shipit_agent.deferral import DiscoveryPolicy
 from shipit_agent.deferral.policy import schema_tokens, select_resident
-from shipit_agent.permissions import PermissionEngine
-from shipit_agent.runtime import AgentRuntime
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.safety.permissions import PermissionEngine
+from shipit_agent.core.runtime import AgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from shipit_agent.tools.base import ToolOutput
 from test_deferred_tools import FakeTool, ScriptedLLM
 

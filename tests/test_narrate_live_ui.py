@@ -7,7 +7,7 @@ could leak into the page around it — is a string, and is checked here.
 
 from __future__ import annotations
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.narrate.live_ui import LiveView, render_chat_html, watch
 
 

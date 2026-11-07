@@ -12,13 +12,13 @@ from __future__ import annotations
 import base64
 
 from shipit_agent.agent import Agent
-from shipit_agent.compaction import estimate_tokens
+from shipit_agent.context.compaction import estimate_tokens
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.llms.litellm_adapter import _normalize_content
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.core.models import Message, ToolCall
 from shipit_agent.multimodal.builder import file_blocks_from, image_block_from
-from shipit_agent.runtime import AgentRuntime
-from shipit_agent.runtime_core import RuntimeCore, evict_prior_tool_outputs
+from shipit_agent.core.runtime import AgentRuntime
+from shipit_agent.core.runtime_core import RuntimeCore, evict_prior_tool_outputs
 from shipit_agent.tools.base import ToolOutput
 from shipit_agent.tools.file_read import FileReadTool
 

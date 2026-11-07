@@ -1,3 +1,5 @@
+"""A team member: an agent with a named role."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

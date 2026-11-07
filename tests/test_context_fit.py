@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from shipit_agent.context_fit import fit_messages
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.context.fit import fit_messages
+from shipit_agent.core.models import Message, ToolCall
 
 
 def chars(messages) -> int:

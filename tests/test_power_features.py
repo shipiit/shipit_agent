@@ -24,9 +24,9 @@ from shipit_agent import (
 )
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
 from shipit_agent.llms.base import LLMResponse as BaseLLMResponse
-from shipit_agent.models import Message, ToolCall
-from shipit_agent.policies import RetryPolicy as RP
-from shipit_agent.runtime import AgentRuntime, RuntimeState
+from shipit_agent.core.models import Message, ToolCall
+from shipit_agent.core.policies import RetryPolicy as RP
+from shipit_agent.core.runtime import AgentRuntime, RuntimeState
 from shipit_agent.stores import InMemoryMemoryStore
 from shipit_agent.tools import ToolOutput
 
@@ -360,10 +360,11 @@ class TestParallelToolExecution:
         names = [m.name for m in tool_msgs]
         assert names == ["t1", "t2", "t3"]
 
-    def test_sequential_execution_is_default(self) -> None:
-        """Default mode should be sequential (parallel_tool_execution=False)."""
+    def test_parallel_read_only_execution_is_default(self) -> None:
+        """Read-only groups run in parallel by default; writes stay in order
+        (see tests/test_parallel_by_default.py)."""
         agent = Agent(llm=SimpleEchoLLM())
-        assert agent.parallel_tool_execution is False
+        assert agent.parallel_tool_execution is True
 
     def test_single_tool_call_runs_sequentially_even_in_parallel_mode(self) -> None:
         """When only 1 tool is called, parallel mode still works fine."""

@@ -54,7 +54,7 @@ class TestTool:
 
 class TestWiring:
     def test_registered_as_a_builtin(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         names = {getattr(t, "name", "") for t in get_builtin_tools(llm=None, project_root=".")}
         assert "give_up" in names
@@ -73,7 +73,7 @@ class TestRuntimeSurfacing:
     def test_a_stop_reaches_agent_result_metadata(self) -> None:
         from shipit_agent import Agent
         from shipit_agent.llms.base import LLMResponse
-        from shipit_agent.models import ToolCall
+        from shipit_agent.core.models import ToolCall
 
         class L:
             model = "t"

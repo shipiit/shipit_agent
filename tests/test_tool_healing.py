@@ -6,7 +6,7 @@ from typing import Any
 
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.tool_healing import heal_tool_calls
+from shipit_agent.safety.tool_healing import heal_tool_calls
 
 ALLOWED = {"web_search", "read_file"}
 
@@ -280,7 +280,7 @@ class TestWreckageIsNotHealed:
     "no filter" as "everything"."""
 
     def _heal(self, arguments: str):
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         text = f'<tool_call>{{"name":"search_echo","arguments":{arguments}}}</tool_call>'
         return heal_tool_calls(text, {"search_echo"})[1]
@@ -297,7 +297,7 @@ class TestWreckageIsNotHealed:
         assert not self._heal('{":[{":","}')
 
     def test_the_text_is_left_alone_when_refused(self) -> None:
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         text = '<tool_call>{"name":"search_echo","arguments":{":[{":","}}</tool_call>'
         remaining, calls = heal_tool_calls(text, {"search_echo"})
@@ -321,7 +321,7 @@ class TestSchemaAwareHealing:
     tool's filter is optional and a missing one means "return everything"."""
 
     def _heal(self, arguments: str, schemas=SEARCH_SCHEMA):
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         text = f'<tool_call>{{"name":"search_echo","arguments":{arguments}}}</tool_call>'
         return heal_tool_calls(text, {"search_echo"}, schemas=schemas)[1]
@@ -358,7 +358,7 @@ class TestNamelessArgumentObjects:
     against that tool's schema. Without this the call is simply lost."""
 
     def _heal(self, text: str):
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         return heal_tool_calls(text, {"search_echo"}, schemas=SEARCH_SCHEMA)
 
@@ -384,7 +384,7 @@ class TestArgumentCoercion:
     arrive as JSON strings, and whole argument objects arrive double-encoded."""
 
     def _heal(self, arguments: str):
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         schemas = {
             "web_search": {
@@ -434,7 +434,7 @@ class TestVarKwargsAreNotParameters:
 
     def test_the_real_arguments_now_validate(self) -> None:
         """The end the fix serves: healing can trust the declaration."""
-        from shipit_agent.tool_healing import _arguments_fit_schema
+        from shipit_agent.safety.tool_healing import _arguments_fit_schema
 
         assert _arguments_fit_schema(
             {"a": 2, "b": 3}, self._parameters(), strict_required=True
@@ -455,7 +455,7 @@ class TestNameAdjacentCalls:
     }
 
     def _heal(self, text):
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         return heal_tool_calls(text, set(self.ALLOWED), schemas=self.SCHEMAS)
 
@@ -542,7 +542,7 @@ class TestPythonStyleCalls:
     }
 
     def _heal(self, text):
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         return heal_tool_calls(text, set(self.ALLOWED), schemas=self.SCHEMAS)
 
@@ -591,7 +591,7 @@ class TestNonAsciiMarkerTokens:
     """
 
     def test_marker_glued_to_name_still_heals(self) -> None:
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         _, healed = heal_tool_calls(
             "I will check the current weather in Paris.\n\n"
@@ -605,7 +605,7 @@ class TestNonAsciiMarkerTokens:
     def test_rule_is_general_not_cjk_specific(self) -> None:
         """The fix is 'not preceded by an ASCII identifier character', so any
         marker works — nothing about the script is encoded."""
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         for marker in ("逃", "→", "»", "▶", "​"):
             _, healed = heal_tool_calls(
@@ -616,7 +616,7 @@ class TestNonAsciiMarkerTokens:
     def test_longer_identifier_is_still_refused(self) -> None:
         """The only thing `\\b` was buying — not matching a genuine longer
         identifier — must survive the change."""
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         _, healed = heal_tool_calls(
             "my_weather_lookup(city='Paris')", {"weather_lookup"}
@@ -625,7 +625,7 @@ class TestNonAsciiMarkerTokens:
 
     def test_generic_tool_namespace_prefix_resolves_to_declared_name(self) -> None:
         """Provider namespaces are accepted; identity remains allow-listed."""
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         cleaned, healed = heal_tool_calls(
             'I will call it now.\n\nllamar tool_weather_lookup(city="Paris")',
@@ -655,7 +655,7 @@ class TestAnthropicXmlRecovery:
     }
 
     def test_multi_parameter_invoke_is_recovered(self) -> None:
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         text = (
             "Let me look that up.\n"
@@ -676,7 +676,7 @@ class TestAnthropicXmlRecovery:
         assert cleaned == "Let me look that up."
 
     def test_xml_parameter_json_value_is_coerced(self) -> None:
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         text = (
             "<function_calls><invoke name=\"search\">"
@@ -691,7 +691,7 @@ class TestAnthropicXmlRecovery:
         assert healed and healed[0].arguments == {"queries": ["a", "b"]}
 
     def test_undeclared_name_in_xml_is_not_promoted(self) -> None:
-        from shipit_agent.tool_healing import heal_tool_calls
+        from shipit_agent.safety.tool_healing import heal_tool_calls
 
         text = ('<function_calls><invoke name="delete_all">'
                 '<parameter name="x">1</parameter></invoke></function_calls>')
@@ -745,7 +745,7 @@ class TestSplitCallMerging:
 
     def test_disjoint_same_tool_calls_merge(self) -> None:
         from shipit_agent.llms.base import ToolCall
-        from shipit_agent.tool_healing import merge_split_calls
+        from shipit_agent.safety.tool_healing import merge_split_calls
 
         merged = merge_split_calls(
             [ToolCall(name="get_entity", arguments={"domain": "ransomlook"}),
@@ -760,7 +760,7 @@ class TestSplitCallMerging:
 
     def test_overlapping_keys_are_kept_separate(self) -> None:
         from shipit_agent.llms.base import ToolCall
-        from shipit_agent.tool_healing import merge_split_calls
+        from shipit_agent.safety.tool_healing import merge_split_calls
 
         calls = [ToolCall(name="search", arguments={"query": "akira"}),
                  ToolCall(name="search", arguments={"query": "qilin"})]
@@ -770,7 +770,7 @@ class TestSplitCallMerging:
 
     def test_distinct_tools_are_untouched(self) -> None:
         from shipit_agent.llms.base import ToolCall
-        from shipit_agent.tool_healing import merge_split_calls
+        from shipit_agent.safety.tool_healing import merge_split_calls
 
         calls = [ToolCall(name="search", arguments={"query": "x"}),
                  ToolCall(name="get_entity", arguments={"domain": "d"})]
@@ -778,7 +778,7 @@ class TestSplitCallMerging:
 
     def test_single_call_is_returned_unchanged(self) -> None:
         from shipit_agent.llms.base import ToolCall
-        from shipit_agent.tool_healing import merge_split_calls
+        from shipit_agent.safety.tool_healing import merge_split_calls
 
         calls = [ToolCall(name="search", arguments={"query": "x"})]
         assert merge_split_calls(calls, self._SCHEMAS) == calls

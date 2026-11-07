@@ -21,6 +21,7 @@ _PREFERENCE = ("edge", "openai", "gemini", "elevenlabs")
 
 @runtime_checkable
 class TTSProvider(Protocol):
+    """A text-to-speech backend: says whether it is usable and turns text into audio."""
     name: str
 
     def is_available(self) -> bool:
@@ -34,15 +35,19 @@ _REGISTRY: dict[str, TTSProvider] = {}
 
 
 def register_tts_provider(provider: TTSProvider) -> TTSProvider:
+    """Add *provider* to the registry under its name and return it."""
     _REGISTRY[provider.name] = provider
     return provider
 
 
 def available_providers() -> list[str]:
+    """Names of registered text-to-speech backends that are usable right now."""
     return [name for name, p in _REGISTRY.items() if _safe_available(p)]
 
 
 def build_tts_provider(name: str | None = None) -> TTSProvider:
+    """The named text-to-speech backend, or the most preferred usable one when *name* is empty.
+    """
     if name:
         provider = _REGISTRY.get(name)
         if provider is None:

@@ -32,12 +32,13 @@ def schema_tokens(schema: dict, model: str | None = None) -> int:
     """Approximate portable estimate; never represents provider billing."""
     encoded = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
     if model:
-        from shipit_agent.token_counting import count_tokens
+        from shipit_agent.context.token_counting import count_tokens
         return max(1, count_tokens(encoded, model))
     return max(1, (len(encoded) + 3) // 4)
 
 
 def schema_fingerprint(schema: dict) -> str:
+    """A stable hash of a tool schema, to notice when it changes."""
     return hashlib.sha256(json.dumps(schema, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 

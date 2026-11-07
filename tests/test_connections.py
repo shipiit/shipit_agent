@@ -78,7 +78,7 @@ class TestDiscovery:
         assert registry(tools=[Plain()]).all() == []
 
     def test_every_real_connector_is_found(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         found = registry(tools=get_builtin_tools(llm=None, project_root=".")).all()
         assert len(found) == 17
@@ -285,7 +285,7 @@ class TestTool:
         assert contract_for("connections").read_only
 
     def test_registered_as_a_builtin(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         names = {getattr(t, "name", "") for t in
                  get_builtin_tools(llm=None, project_root=".")}
@@ -317,7 +317,7 @@ class TestRuntimeIntegration:
     def test_the_registry_reaches_the_tool_in_a_real_run(self) -> None:
         from shipit_agent import Agent
         from shipit_agent.llms.base import LLMResponse
-        from shipit_agent.models import ToolCall
+        from shipit_agent.core.models import ToolCall
 
         class L:
             model = "m"

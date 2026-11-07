@@ -147,7 +147,7 @@ class Critic:
         We try both so the critic stays decoupled from adapter internals.
         """
         try:
-            from shipit_agent.models import Message
+            from shipit_agent.core.models import Message
 
             resp = llm.complete(
                 messages=[

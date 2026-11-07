@@ -1,9 +1,11 @@
+"""A tiny built-in model stub for local development and tests."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from shipit_agent.llms.base import LLMResponse, coerce_messages
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 class ShipitLLM:

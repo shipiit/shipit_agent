@@ -3,11 +3,11 @@ from __future__ import annotations
 import time
 
 from shipit_agent import Agent, FunctionTool
-from shipit_agent.live import Packet, PacketAccumulator, PacketKind, to_packets
+from shipit_agent.observability.live import Packet, PacketAccumulator, PacketKind, to_packets
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.llms.capabilities import capabilities_for
 from shipit_agent.llms.litellm_adapter import _parse_tool_arguments, _serialize_message
-from shipit_agent.models import AgentEvent, Message, ToolCall, pair_calls_and_results
+from shipit_agent.core.models import AgentEvent, Message, ToolCall, pair_calls_and_results
 from shipit_agent.tools.helpers import build_tools_prompt
 import pytest
 from types import SimpleNamespace as NS
@@ -167,7 +167,7 @@ def test_malformed_provider_arguments_become_a_recoverable_call() -> None:
 
 
 def test_live_gemma_bare_prose_argument_is_healed() -> None:
-    from shipit_agent.tool_healing import heal_tool_calls
+    from shipit_agent.safety.tool_healing import heal_tool_calls
 
     cleaned, calls = heal_tool_calls(
         "I will search for a tool.\n\n"
@@ -188,7 +188,7 @@ def test_live_gemma_bare_prose_argument_is_healed() -> None:
 
 
 def test_live_gemma_call_mapping_is_healed() -> None:
-    from shipit_agent.tool_healing import heal_tool_calls
+    from shipit_agent.safety.tool_healing import heal_tool_calls
 
     cleaned, calls = heal_tool_calls(
         'I will search.\n\n<call>{"tool_search":{"query":"weather Paris"}}</call>',
@@ -208,7 +208,7 @@ def test_live_gemma_call_mapping_is_healed() -> None:
 
 
 def test_malformed_action_detection_uses_call_structure_not_model_phrases() -> None:
-    from shipit_agent.runtime_core import is_malformed_action_attempt
+    from shipit_agent.core.runtime_core import is_malformed_action_attempt
 
     wreckage = (
         "Starting the requested operation.\n\n"
@@ -226,7 +226,7 @@ def test_malformed_action_detection_uses_call_structure_not_model_phrases() -> N
 
 
 def test_whitespace_degenerate_generation_is_recoverable_without_phrase_matching() -> None:
-    from shipit_agent.runtime_core import is_malformed_action_attempt
+    from shipit_agent.core.runtime_core import is_malformed_action_attempt
 
     degenerate = "Starting.\n" + ("  \n" * 120)
     assert is_malformed_action_attempt(
@@ -238,7 +238,7 @@ def test_whitespace_degenerate_generation_is_recoverable_without_phrase_matching
 
 
 def test_incomplete_generation_naming_a_registered_tool_is_recoverable() -> None:
-    from shipit_agent.runtime_core import is_malformed_action_attempt
+    from shipit_agent.core.runtime_core import is_malformed_action_attempt
 
     assert is_malformed_action_attempt(
         "I found `weather_lookup` and now I will call",
@@ -255,7 +255,7 @@ def test_incomplete_generation_naming_a_registered_tool_is_recoverable() -> None
 
 
 def test_repeated_generation_is_detected_without_provider_markers() -> None:
-    from shipit_agent.action_detection import (
+    from shipit_agent.safety.action_detection import (
         RepetitionGuard,
         is_malformed_action_attempt,
     )
@@ -275,7 +275,7 @@ def test_repeated_generation_is_detected_without_provider_markers() -> None:
 
 
 def test_explicit_tool_requests_are_resolved_from_the_registry() -> None:
-    from shipit_agent.runtime_core import RuntimeCore
+    from shipit_agent.core.runtime_core import RuntimeCore
 
     class Tool:
         def __init__(self, name):
@@ -401,7 +401,7 @@ def test_explicit_tool_request_cannot_finish_with_a_simulated_result() -> None:
 
 
 def test_internal_recovery_messages_do_not_shift_human_turn_numbers() -> None:
-    from shipit_agent.runtime_core import RuntimeCore
+    from shipit_agent.core.runtime_core import RuntimeCore
 
     labelled = RuntimeCore.label_user_turns([
         Message(role="user", content="first"),
@@ -415,7 +415,7 @@ def test_internal_recovery_messages_do_not_shift_human_turn_numbers() -> None:
 
 
 def test_compaction_summary_is_not_a_human_turn() -> None:
-    from shipit_agent.runtime_core import RuntimeCore
+    from shipit_agent.core.runtime_core import RuntimeCore
 
     labelled = RuntimeCore.label_user_turns([
         Message(role="user", content="historical handoff", metadata={"compacted": True}),

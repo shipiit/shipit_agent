@@ -1,3 +1,5 @@
+"""One memory object that combines conversation, semantic and entity memory."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,7 +12,7 @@ from shipit_agent.memory.semantic import (
     SearchResult,
     SemanticMemory,
 )
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 @dataclass(slots=True)

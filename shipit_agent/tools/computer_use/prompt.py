@@ -1,3 +1,5 @@
+"""What the model is told about the computer use tool: when to use it and how."""
+
 COMPUTER_USE_PROMPT = """Use the `computer_use` tool when you need to drive a native GUI app — one that has no API, no CLI flag, and no web surface. Think Finder, Photos, Messages, Preview, a native preferences pane, a packaged Electron app without automation hooks.
 
 Action vocabulary (pass one `action` per call):

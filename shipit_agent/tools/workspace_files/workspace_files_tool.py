@@ -1,3 +1,6 @@
+"""The ``workspace_files`` tool: read, write, list, and inspect files in the local shipit workspace.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,6 +10,8 @@ from .prompt import WORKSPACE_FILES_PROMPT
 
 
 class WorkspaceFilesTool:
+    """The ``workspace_files`` tool: read, write, list, and inspect files in the local shipit workspace.
+    """
     def __init__(
         self,
         *,

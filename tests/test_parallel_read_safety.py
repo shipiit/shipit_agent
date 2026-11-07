@@ -8,12 +8,12 @@ import asyncio
 import threading
 import time
 
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
-from shipit_agent.registry import ToolRegistry
-from shipit_agent.runtime import AgentRuntime
-from shipit_agent.runtime_core import RuntimeCore
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.registry import ToolRegistry
+from shipit_agent.core.runtime import AgentRuntime
+from shipit_agent.core.runtime_core import RuntimeCore
 from shipit_agent.tools.base import ToolOutput
 
 

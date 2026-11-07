@@ -817,6 +817,7 @@ def app_docstring(app: "App") -> str:
 
 @dataclass(slots=True)
 class AppRunResult:
+    """What one run of an app produced: success, its value and captured output."""
     ok: bool
     value: Any = None
     stdout: str = ""

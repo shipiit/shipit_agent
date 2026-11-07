@@ -1,13 +1,19 @@
+"""The ``edit_file`` tool: apply an exact string replacement patch to an existing file.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.file_state import changed_on_disk, missing_text_hint
 
 from .prompt import EDIT_FILE_PROMPT
 
 
 class EditFileTool:
+    """The ``edit_file`` tool: apply an exact string replacement patch to an existing file.
+    """
     def __init__(
         self,
         *,
@@ -77,44 +83,35 @@ class EditFileTool:
             or kwargs.get("filename")
         )
         if not raw:
-            return ToolOutput(
-                text=(
-                    "Edit failed: missing required argument `path`. "
-                    "Call edit_file with path, old_text, and new_text."
-                )
+            return ToolOutput.error(
+                "Edit failed: missing required argument `path`. "
+                "Call edit_file with path, old_text, and new_text.",
+                error="missing_path",
             )
         path = self._resolve(str(raw))
         if not path.exists():
-            return ToolOutput(text=f"File not found: {path}")
+            return ToolOutput.error(
+                f"File not found: {path}. Check the path with glob_files, or create "
+                "the file with write_file.",
+                path=str(path), error="not_found",
+            )
         if path.is_dir():
-            return ToolOutput(text=f"Path is a directory, not a file: {path}")
+            return ToolOutput.error(
+                f"Path is a directory, not a file: {path}", path=str(path), error="is_directory"
+            )
 
         state = getattr(context, "state", {}) or {}
         prior_reads = set(state.get("read_files", []))
         if str(path) not in prior_reads:
-            return ToolOutput(
-                text=(
-                    "Edit blocked: read the file first with read_file so the patch is based on current contents."
-                )
+            return ToolOutput.error(
+                "Edit blocked: read the file first with read_file so the patch is "
+                "based on current contents.",
+                path=str(path), error="not_read",
             )
-        # External-change detection: if the file's mtime moved since the last
-        # read_file, the patch may be based on stale contents.
-        recorded_mtime = (state.get("read_file_mtimes") or {}).get(str(path))
-        if recorded_mtime is not None:
-            try:
-                current_mtime = path.stat().st_mtime_ns
-            except OSError:
-                current_mtime = None
-            if current_mtime is not None and current_mtime != recorded_mtime:
-                return ToolOutput(
-                    text=(
-                        "Edit blocked: the file changed on disk after it was "
-                        "read (external modification). Re-read it with "
-                        "read_file, then retry the edit against the current "
-                        "contents."
-                    ),
-                    metadata={"path": str(path), "error": "stale_read"},
-                )
+        # An outside change (a formatter, another tool) is no reason to refuse
+        # an exact-text edit: it is applied to the file as it is now. Only a
+        # target that no longer matches needs a fresh read.
+        changed_since_read = changed_on_disk(state, path)
 
         old_text = str(kwargs.get("old_text", ""))
         new_text = str(kwargs.get("new_text", ""))
@@ -136,18 +133,36 @@ class EditFileTool:
                 ),
                 metadata={
                     "path": str(path),
+                    "is_error": True,
                     "error": "not_utf8",
                     "encoding_error": str(exc),
                 },
             )
         occurrences = content.count(old_text)
+        if occurrences == 0 and changed_since_read:
+            return ToolOutput.error(
+                f"Edit blocked: {path.name} changed on disk after it was read and "
+                "old_text is no longer in it. Re-read the file with read_file, "
+                "then retry against its current contents. No changes were made.",
+                path=str(path), error="stale_read",
+            )
         if occurrences == 0:
-            return ToolOutput(text="Edit failed: old_text was not found in the file.")
-        if occurrences > 1 and not replace_all:
-            return ToolOutput(
-                text=(
-                    "Edit failed: old_text is not unique in the file. Provide a more specific block or set replace_all=true."
+            return ToolOutput.error(
+                f"Edit failed: old_text was not found in {path.name}."
+                + (
+                    missing_text_hint(old_text, content)
+                    or " Re-read the file and copy the exact text to replace, "
+                    "including whitespace and indentation."
                 )
+                + " No changes were made.",
+                path=str(path), error="old_text_not_found",
+            )
+        if occurrences > 1 and not replace_all:
+            return ToolOutput.error(
+                f"Edit failed: old_text matches {occurrences} places in {path.name}. "
+                "Include more surrounding lines so it matches exactly one, or set "
+                "replace_all=true to change every match. No changes were made.",
+                path=str(path), error="old_text_not_unique", occurrences=occurrences,
             )
 
         updated = (
@@ -186,7 +201,8 @@ class EditFileTool:
         replaced = occurrences if replace_all else 1
         return ToolOutput(
             text=(
-                f"File patched: {path} "
+                ("(The file had changed on disk since it was read; the edit was applied to its current contents.)\n" if changed_since_read else "")
+                + f"File patched: {path} "
                 f"({replaced} occurrence{'s' if replaced != 1 else ''} replaced)\n"
                 f"{diff_text}"
             ),
@@ -194,6 +210,7 @@ class EditFileTool:
                 "path": str(path),
                 "replace_all": replace_all,
                 "occurrences": occurrences,
+                "changed_since_read": changed_since_read,
                 "size": path.stat().st_size,
                 "diff": diff_text,
             },

@@ -1,3 +1,5 @@
+"""Stores for remembered facts: in memory or in a JSON file."""
+
 from __future__ import annotations
 
 import json
@@ -11,6 +13,7 @@ from typing import Protocol
 
 @dataclass(slots=True)
 class MemoryFact:
+    """One remembered fact, with its category and metadata."""
     content: str
     category: str = "general"
     score: float = 1.0
@@ -18,12 +21,14 @@ class MemoryFact:
 
 
 class MemoryStore(Protocol):
+    """Where an agent saves facts and searches them later."""
     def add(self, fact: MemoryFact) -> None: ...
 
     def search(self, query: str, limit: int = 5) -> list[MemoryFact]: ...
 
 
 class InMemoryMemoryStore:
+    """A memory store that lives for the life of the process."""
     def __init__(self) -> None:
         self._facts: list[MemoryFact] = []
 
@@ -37,6 +42,7 @@ class InMemoryMemoryStore:
 
 
 class FileMemoryStore:
+    """A memory store kept in one JSON file."""
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)

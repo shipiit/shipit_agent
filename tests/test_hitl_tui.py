@@ -170,7 +170,7 @@ class TestBareShipitOpensChat:
 
         monkeypatch.setattr(cli, "_interactive_terminal", lambda: True)
         called = {}
-        import shipit_agent.chat_cli as chat_cli
+        import shipit_agent.cli.chat as chat_cli
 
         monkeypatch.setattr(
             chat_cli, "main", lambda argv: called.setdefault("argv", argv) or 0
@@ -298,7 +298,7 @@ class TestJobsCommand:
 
 class TestConsoleAskUser:
     def test_prompts_and_returns_answer(self) -> None:
-        from shipit_agent.hitl import ConsoleAskUserTool
+        from shipit_agent.safety.hitl import ConsoleAskUserTool
 
         writes: list[str] = []
         tool = ConsoleAskUserTool(input_fn=lambda: "2", output=writes.append)
@@ -308,7 +308,7 @@ class TestConsoleAskUser:
         assert "❓ Which env?" in joined and "1. staging" in joined
 
     def test_eof_gives_safe_default(self) -> None:
-        from shipit_agent.hitl import ConsoleAskUserTool
+        from shipit_agent.safety.hitl import ConsoleAskUserTool
 
         def boom():
             raise EOFError
@@ -322,7 +322,7 @@ class TestConsoleAskUser:
         from types import SimpleNamespace as ns
 
         from shipit_agent.cli.llm import build_agent
-        from shipit_agent.hitl import ConsoleAskUserTool
+        from shipit_agent.safety.hitl import ConsoleAskUserTool
 
         agent = build_agent(
             ns(

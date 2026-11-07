@@ -1,3 +1,5 @@
+"""Split a markdown answer into its headed sections, lists and code blocks."""
+
 from __future__ import annotations
 
 import re

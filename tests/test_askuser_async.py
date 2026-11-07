@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from shipit_agent.askuser_channel import (
+from shipit_agent.safety.askuser_channel import (
     all_entries,
     ask_question,
     clear,

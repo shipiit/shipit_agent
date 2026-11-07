@@ -30,7 +30,7 @@ from shipit_agent.costs.tracker import (
     _extract_model,
     _extract_usage,
 )
-from shipit_agent.hooks import AgentHooks
+from shipit_agent.safety.hooks import AgentHooks
 from shipit_agent.notifications.base import SEVERITY_ORDER, Notification
 from shipit_agent.notifications.discord import DiscordNotifier
 from shipit_agent.notifications.discord import _SEVERITY_COLOURS as DISCORD_COLOURS
@@ -732,15 +732,15 @@ class TestCostTracker:
         assert cost == pytest.approx(12.5)
 
     def test_model_alias_resolution(self) -> None:
-        """'opus' resolves to 'claude-opus-4'."""
+        """'opus' resolves to the current Opus, claude-opus-5-5."""
         t = CostTracker()
         cost = t.calculate_cost(
             model="opus",
             input_tokens=1_000_000,
             output_tokens=0,
         )
-        # claude-opus-4 input price is 15.00 per million
-        assert cost == pytest.approx(15.0)
+        # claude-opus-5-5 input price is 4.00 per million
+        assert cost == pytest.approx(4.0)
 
     def test_total_tokens_accumulate(self) -> None:
         """Multiple calls aggregate token counts correctly."""

@@ -10,6 +10,8 @@ from shipit_agent.tools.base import ToolOutput
 
 @dataclass(frozen=True, slots=True)
 class RecallableResult:
+    """A full tool result kept aside so the agent can recall it after it was trimmed from context.
+    """
     call_id: str
     name: str
     output: str

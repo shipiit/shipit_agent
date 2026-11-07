@@ -14,7 +14,7 @@ import pytest
 
 from shipit_agent.cli import main
 from shipit_agent.cli.commands import simple
-from shipit_agent.doctor import DoctorCheck, DoctorReport
+from shipit_agent.agent_setup.doctor import DoctorCheck, DoctorReport
 
 
 class _Agent:

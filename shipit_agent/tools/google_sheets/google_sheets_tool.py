@@ -1,3 +1,6 @@
+"""The ``google_sheets`` tool: read / write Google Sheets cells, ranges, formulas, and sheet structure.
+"""
+
 from __future__ import annotations
 
 import json
@@ -29,6 +32,8 @@ _ACTIONS = sorted(_READ_ACTIONS | _WRITE_ACTIONS)
 
 
 class GoogleSheetsTool(HTTPConnectorToolBase):
+    """The ``google_sheets`` tool: read / write Google Sheets cells, ranges, formulas, and sheet structure.
+    """
     provider = "google_sheets"
 
     def __init__(

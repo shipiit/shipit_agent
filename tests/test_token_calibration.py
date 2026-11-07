@@ -1,5 +1,5 @@
 """The token calibrator: it learns the estimate error, safely."""
-from shipit_agent.token_calibration import TokenCalibrator
+from shipit_agent.context.token_calibration import TokenCalibrator
 
 
 def test_factor_is_one_before_warmup():

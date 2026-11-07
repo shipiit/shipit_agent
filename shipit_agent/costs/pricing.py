@@ -1,6 +1,6 @@
 """Per-million-token pricing for supported LLM providers.
 
-Prices are in USD per 1 million tokens.  Updated as of April 2026.
+Prices are in USD per 1 million tokens. Claude rows updated October 2026.
 Users can override or extend via :meth:`CostTracker.add_model`.
 """
 
@@ -11,6 +11,96 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 MODEL_PRICING: dict[str, dict[str, float]] = {
+    # ── Anthropic Claude, current generations (October 2026 list prices) ──
+    # Longest-prefix matching means these must exist, or e.g. claude-opus-4-8
+    # would fall through to the older, three-times-pricier claude-opus-4 row.
+    # Cache reads are the documented rate where one is published, else 0.1x
+    # input; cache writes are the 5-minute rate, 1.25x input. Claude Haiku 5.5
+    # is priced for prompts up to 100K tokens.
+    "claude-fable-5-1": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_read": 0.25,
+        "cache_write": 12.5,
+    },
+    "claude-fable-5": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_read": 1.0,
+        "cache_write": 12.5,
+    },
+    "claude-mythos-5-1": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_read": 0.25,
+        "cache_write": 12.5,
+    },
+    "claude-mythos-5": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_read": 1.0,
+        "cache_write": 12.5,
+    },
+    "claude-opus-5-5": {
+        "input": 4.0,
+        "output": 20.0,
+        "cache_read": 0.2,
+        "cache_write": 5.0,
+    },
+    "claude-opus-5": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25,
+    },
+    "claude-opus-4-8": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25,
+    },
+    "claude-opus-4-7": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25,
+    },
+    "claude-opus-4-6": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25,
+    },
+    "claude-sonnet-5-5": {
+        "input": 2.0,
+        "output": 10.0,
+        "cache_read": 0.2,
+        "cache_write": 2.5,
+    },
+    "claude-sonnet-5": {
+        "input": 2.0,
+        "output": 10.0,
+        "cache_read": 0.2,
+        "cache_write": 2.5,
+    },
+    "claude-sonnet-4-6": {
+        "input": 3.0,
+        "output": 15.0,
+        "cache_read": 0.3,
+        "cache_write": 3.75,
+    },
+    "claude-haiku-5-5": {
+        "input": 0.1,
+        "output": 0.5,
+        "cache_read": 0.01,
+        "cache_write": 0.125,
+    },
+    "claude-haiku-4-5": {
+        "input": 1.0,
+        "output": 5.0,
+        "cache_read": 0.1,
+        "cache_write": 1.25,
+    },
     # ── Anthropic Claude ──────────────────────────────────────────────
     "claude-opus-4-20250514": {
         "input": 15.00,
@@ -63,6 +153,11 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
     # ── Meta / Open models (via Groq / Together) ─────────────────────
+    # OpenAI's open-weight models, as Amazon Bedrock serves them (US standard
+    # tier; third-party listings, November 2026). shipit's default Bedrock
+    # model: without a row, a cost cap on it stops the run.
+    "gpt-oss-120b": {"input": 0.15, "output": 0.60},
+    "gpt-oss-20b": {"input": 0.07, "output": 0.30},
     "llama-4-scout": {"input": 0.11, "output": 0.34},
     "llama-4-maverick": {"input": 0.50, "output": 0.77},
     # ── AWS Bedrock (same models, different IDs) ─────────────────────
@@ -86,11 +181,13 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     # reads as *free*, not *unknown*. Keys match after the resolver peels the
     # `bedrock-mantle/` prefix. Verify rates against the Bedrock pricing page;
     # the relative ordering matters most. (No prompt caching on Gemma.)
+    # 31B and 26B: the lower published regional rates, November 2026
+    # (Mumbai, Ireland and Milan list about 20% more).
     "google.gemma-4-31b": {
-        "input": 0.30, "output": 0.50, "cache_read": 0.075, "cache_write": 0.0,
+        "input": 0.14, "output": 0.40, "cache_read": 0.035, "cache_write": 0.0,
     },
     "google.gemma-4-26b-a4b": {
-        "input": 0.12, "output": 0.20, "cache_read": 0.03, "cache_write": 0.0,
+        "input": 0.13, "output": 0.40, "cache_read": 0.0325, "cache_write": 0.0,
     },
     "google.gemma-4-e2b": {
         "input": 0.05, "output": 0.10, "cache_read": 0.0125, "cache_write": 0.0,
@@ -102,9 +199,9 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
 # ---------------------------------------------------------------------------
 
 MODEL_ALIASES: dict[str, str] = {
-    "opus": "claude-opus-4",
-    "sonnet": "claude-sonnet-4",
-    "haiku": "claude-haiku-4",
+    "opus": "claude-opus-5-5",
+    "sonnet": "claude-sonnet-5-5",
+    "haiku": "claude-haiku-5-5",
     "gpt4o": "gpt-4o",
     "gpt4o-mini": "gpt-4o-mini",
 }

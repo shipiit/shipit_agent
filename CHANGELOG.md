@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-07
+
+Feature and default parity with the Claude Agent SDK and Claude Code, under
+the same API names, on every provider. Several defaults changed: see
+docs/guides/upgrading.md, and docs/releases/3.0.0.md for the full notes.
+
+### Added
+
+- `shipit_agent.sdk`: `query()`, `AgentOptions`, typed messages, `AgentClient`
+  (multi-turn, interrupt, file rewind), saved sessions (resume, fork),
+  in-process MCP tools (`@tool`, `create_sdk_mcp_server`), `AskUserQuestion`.
+- `shipit_agent.harness`: Claude Code plugins, settings files (opt-in) and
+  shell command hooks.
+- Permission rules in the SDK's syntax, checked in its order;
+  `allowed_tools`, `disallowed_tools`, `max_turns`, `dontAsk` mode.
+- All ten SDK hook events; hooks may defer a call to resume it later.
+- User-defined sub-agents; background tasks with notifications and
+  `task_stop`; `fallback_model`.
+- `clear_tool_results` (off by default) for very long runs.
+- `scripts/bench`: 18 real tasks checked by outcome, with traces,
+  `--repeat` and run comparison.
+
+### Changed
+
+- No step limit by default (`max_iterations`, `max_budget_usd` are opt-in).
+- Read-only tool calls run in parallel by default.
+- Claude Code's working set of tools stays resident; skills load on demand.
+- The automatic planner is opt-in.
+- Bash: full shell under permissions, two-minute default timeout, long
+  commands continue in the background.
+- The fixed per-turn prompt is about 42% smaller.
+- `shipit chat` prints a compact transcript by default.
+
+### Fixed
+
+- Without the `anthropic` package, Anthropic requests raised nothing and
+  went to gpt-oss on Bedrock; they now raise with the install command.
+- The native Anthropic adapter sent shipit's tools in OpenAI's shape, so the
+  API rejected every request that had a tool; they are now converted.
+- Streamed text could arrive after `run_completed`, and the transcript then
+  showed the answer twice.
+- Dropped connections are retried instead of ending the run.
+- A background sub-agent's whole work shows in the live display.
+- Current Claude models, gpt-oss and Gemma 4 on Bedrock are priced at their
+  own rates.
+
 ## [2.2.1] - 2026-10-07
 
 ### Security

@@ -1,3 +1,6 @@
+"""A supervisor agent that plans, delegates to worker agents, reviews and combines their results.
+"""
+
 from __future__ import annotations
 
 import json
@@ -162,7 +165,7 @@ class Supervisor:
     def _ask_supervisor(
         self, task: str, delegations: list[Delegation]
     ) -> dict[str, Any]:
-        from shipit_agent.models import Message
+        from shipit_agent.core.models import Message
 
         history = (
             "(None yet)"
@@ -245,7 +248,7 @@ class Supervisor:
             for event in supervisor.stream("Analyze data and write report"):
                 print(f"[{event.payload.get('worker', 'supervisor')}] {event.message}")
         """
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         yield AgentEvent(
             type="run_started",

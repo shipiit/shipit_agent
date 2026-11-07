@@ -10,6 +10,7 @@ from shipit_agent.cli import ui
 
 
 def cmd_roles(_args: argparse.Namespace) -> int:
+    """``shipit roles``: list the prebuilt specialist agents."""
     from shipit_agent.agents import AgentRegistry
 
     registry = AgentRegistry.default()
@@ -29,6 +30,7 @@ def cmd_roles(_args: argparse.Namespace) -> int:
 
 
 def cmd_mcp(_args: argparse.Namespace) -> int:
+    """``shipit mcp``: list the MCP servers in the catalog."""
     from shipit_agent import list_mcp_catalog
 
     for entry in list_mcp_catalog():
@@ -40,7 +42,8 @@ def cmd_mcp(_args: argparse.Namespace) -> int:
 
 
 def cmd_tools(_args: argparse.Namespace) -> int:
-    from shipit_agent.builtins import get_builtin_tools
+    """``shipit tools``: list the built-in tools."""
+    from shipit_agent.agent_setup.builtins import get_builtin_tools
 
     tools = get_builtin_tools(project_root=os.getcwd())
     for tool in sorted(tools, key=lambda t: t.name):
@@ -51,6 +54,7 @@ def cmd_tools(_args: argparse.Namespace) -> int:
 
 
 def cmd_models(_args: argparse.Namespace) -> int:
+    """``shipit models``: list known providers and their default models."""
     from shipit_agent.cli.llm import DEFAULT_MODELS, MODEL_CATALOG
 
     for provider in ("anthropic", "openai", "bedrock", "ollama"):
@@ -66,6 +70,8 @@ def cmd_models(_args: argparse.Namespace) -> int:
 
 
 def register(sub: Any) -> None:
+    """Add the catalog sub-commands (``roles``, ``mcp``, ``tools``, ``models``) to the CLI.
+    """
     sub.add_parser("roles", help="List prebuilt sector specialists").set_defaults(
         fn=cmd_roles)
     sub.add_parser("mcp", help="List the prebuilt MCP catalog").set_defaults(

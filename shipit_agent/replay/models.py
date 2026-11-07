@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from shipit_agent.models import AgentEvent, Message
+from shipit_agent.core.models import AgentEvent, Message
 
 
 @dataclass(slots=True)

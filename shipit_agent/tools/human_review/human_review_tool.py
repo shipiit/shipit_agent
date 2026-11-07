@@ -1,3 +1,5 @@
+"""The ``human_review`` tool: pause for human review and approval before continuing."""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +9,8 @@ from .prompt import HUMAN_REVIEW_PROMPT
 
 
 class HumanReviewTool:
+    """The ``human_review`` tool: pause for human review and approval before continuing.
+    """
     def __init__(
         self,
         *,

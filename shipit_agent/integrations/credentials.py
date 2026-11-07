@@ -1,3 +1,5 @@
+"""Storing the credentials connector tools use: in memory or in a JSON file."""
+
 from __future__ import annotations
 
 import json
@@ -12,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class CredentialRecord:
+    """One stored credential for a service: its secrets and any metadata."""
     key: str
     provider: str
     secrets: dict[str, Any] = field(default_factory=dict)
@@ -19,6 +22,7 @@ class CredentialRecord:
 
 
 class CredentialStore(Protocol):
+    """Where connector tools look up credentials by service name."""
     def get(self, key: str) -> CredentialRecord | None: ...
 
     def set(self, record: CredentialRecord) -> None: ...
@@ -27,6 +31,7 @@ class CredentialStore(Protocol):
 
 
 class InMemoryCredentialStore:
+    """A credential store that lives for the life of the process."""
     def __init__(self) -> None:
         self._records: dict[str, CredentialRecord] = {}
 

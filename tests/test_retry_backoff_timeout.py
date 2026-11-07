@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import threading
 import time
 
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.policies import RetryPolicy
-from shipit_agent.runtime import AgentRuntime
+from shipit_agent.core.policies import RetryPolicy
+from shipit_agent.core.runtime import AgentRuntime
 
 
 class FlakyLLM:
@@ -59,16 +58,16 @@ def test_retry_policy_backoff_is_exponential_and_capped():
 
 
 def test_sync_retry_sleeps_with_backoff(monkeypatch):
+    # The sync runtime drives the async loop, which waits with asyncio.sleep.
     sleeps: list[float] = []
-    caller = threading.get_ident()
+    real_sleep = asyncio.sleep
 
-    def record(seconds: float) -> None:
-        # time.sleep is process-wide: a background thread left by another
-        # test must not land in this run's list.
-        if threading.get_ident() == caller:
+    async def record(seconds: float) -> None:
+        if seconds:
             sleeps.append(seconds)
+        await real_sleep(0)
 
-    monkeypatch.setattr(time, "sleep", record)
+    monkeypatch.setattr(asyncio, "sleep", record)
 
     llm = FlakyLLM(failures=2)
     runtime = AgentRuntime(

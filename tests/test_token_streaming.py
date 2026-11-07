@@ -13,7 +13,7 @@ import pytest
 
 from shipit_agent import Agent, FunctionTool, StreamRenderer
 from shipit_agent.llms.base import LLMResponse, ToolCall
-from shipit_agent.models import AgentEvent, Message
+from shipit_agent.core.models import AgentEvent, Message
 
 
 # ── fake OpenAI with real streaming chunks ────────────────────────────
@@ -153,7 +153,7 @@ class TestOpenAIStreaming:
         assert out.metadata["stream_stopped"] == "degenerate_repetition"
 
     def test_repetition_guard_stops_an_alternating_prose_loop(self) -> None:
-        from shipit_agent.action_detection import RepetitionGuard
+        from shipit_agent.safety.action_detection import RepetitionGuard
 
         guard = RepetitionGuard()
         first = "Actually, I will call the forum search with the requested subject."

@@ -1,6 +1,10 @@
-class ShipitAgentError(Exception):
-    """Base package exception."""
+"""Moved to :mod:`shipit_agent.core.exceptions`.
 
+This path is kept so existing imports keep working; it is the same module
+object, so attribute access and patching behave exactly as before.
+"""
+import sys
 
-class DuplicateToolError(ShipitAgentError):
-    """Raised when two tools share the same public name."""
+from shipit_agent.core import exceptions as _moved
+
+sys.modules[__name__] = _moved

@@ -9,8 +9,8 @@ import time
 
 from shipit_agent import Agent, FunctionTool, StreamRenderer
 from shipit_agent.llms.base import LLMResponse, ToolCall
-from shipit_agent.models import AgentEvent, Message
-from shipit_agent.runtime import AgentRuntime, RuntimeState
+from shipit_agent.core.models import AgentEvent, Message
+from shipit_agent.core.runtime import AgentRuntime, RuntimeState
 from shipit_agent.tools.base import ToolContext
 from shipit_agent.tools.edit_file import EditFileTool
 from shipit_agent.tools.file_read import FileReadTool
@@ -78,8 +78,22 @@ class TestEditHardening:
         f.write_text("hello world!!")
         os.utime(f, ns=(time.time_ns(), time.time_ns() + 1_000_000))
         out = edit.run(ctx, path="a.txt", old_text="hello", new_text="hi")
+        # Detected and reported; the target is intact, so the edit applies.
+        assert "changed on disk" in out.text
+        assert out.metadata["changed_since_read"] is True
+        assert f.read_text() == "hi world!!"
+
+    def test_external_change_that_removes_the_target_blocks(self, tmp_path) -> None:
+        f = tmp_path / "a.txt"
+        f.write_text("hello world")
+        read, edit, ctx = self._tools(tmp_path)
+        read.run(ctx, path="a.txt")
+        f.write_text("goodbye world")
+        os.utime(f, ns=(time.time_ns(), time.time_ns() + 1_000_000))
+        out = edit.run(ctx, path="a.txt", old_text="hello", new_text="hi")
         assert "changed on disk" in out.text
         assert out.metadata["error"] == "stale_read"
+        assert f.read_text() == "goodbye world"
 
     def test_successful_edit_returns_diff(self, tmp_path) -> None:
         f = tmp_path / "a.txt"
@@ -202,7 +216,7 @@ class TestRichRendering:
 
 class TestCLIPermissionPrompt:
     def _repl(self, answers):
-        from shipit_agent.chat_cli import ChatREPL
+        from shipit_agent.cli.chat import ChatREPL
 
         class L:
             def complete(self, **_kw):

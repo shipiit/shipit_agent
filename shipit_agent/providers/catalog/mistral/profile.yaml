@@ -1,0 +1,13 @@
+profile_version: 1
+name: mistral
+display_name: Mistral AI
+description: Mistral's own models (Large, Medium, Codestral) via the Mistral API.
+icon: "🌬️"
+adapter: shipit_agent.llms.litellm_adapter:LiteLLMChatLLM
+default_model: "mistral/mistral-large-latest"
+model_keys: [model, SHIPIT_MISTRAL_MODEL]
+model_env: [SHIPIT_MISTRAL_MODEL]
+require_env: [MISTRAL_API_KEY]
+capabilities: {vision: false, prompt_cache: false}
+signup_url: https://console.mistral.ai/api-keys
+env_help: 'Set MISTRAL_API_KEY.'

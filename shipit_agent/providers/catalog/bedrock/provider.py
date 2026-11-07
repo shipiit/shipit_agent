@@ -16,6 +16,7 @@ from shipit_agent.providers.registry import resolve_model
 
 
 def build(profile: ProviderProfile, config: dict[str, Any], env: Mapping[str, str]) -> Any:
+    """Construct the Amazon Bedrock model adapter from *profile*, *config* and *env*."""
     from shipit_agent.llms.litellm_adapter import BedrockChatLLM
 
     region = (

@@ -27,6 +27,7 @@ from typing import Any, Protocol, runtime_checkable
 
 @runtime_checkable
 class Extractor(Protocol):
+    """Turns one kind of document (PDF, Word, spreadsheet, …) into plain text."""
     name: str
     suffixes: tuple[str, ...]
 

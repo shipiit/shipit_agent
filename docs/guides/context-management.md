@@ -108,6 +108,44 @@ user: "Now analyze the data"
 
 Set to `0` (default) to disable compaction entirely.
 
+## Clearing old tool results
+
+Every turn re-sends the whole conversation, so a long task keeps paying for
+files it read many turns ago. Compaction only steps in near the context
+limit; clearing works long before that, on every provider:
+
+```python
+from shipit_agent import Agent
+from shipit_agent.context.tool_result_clearing import ToolResultClearing
+
+agent = Agent(llm=llm, clear_tool_results=True)            # the defaults below
+agent = Agent(llm=llm, clear_tool_results=ToolResultClearing(
+    trigger_tokens=30_000,     # start once uncleared tool results pass this
+    keep=3,                    # the most recent results always stay whole
+    min_result_tokens=100,     # smaller results are not worth clearing
+    exclude_tools=("memory",), # never clear these
+))
+```
+
+With the SDK API, pass it through `AgentOptions(agent_options={"clear_tool_results": True})`.
+
+- Only the request changes. The session's history keeps every result.
+- A cleared result becomes a one-line note naming the tool and what it
+  looked at, such as `[Earlier read_file result for src/app.py cleared to
+  save context. Call it again if you need it.]`.
+- Clearing goes down to half the trigger, and the point never moves back,
+  so the request's prefix changes once per batch and prompt caches keep
+  hitting in between. Each batch emits a `tool_results_cleared` event.
+- It is off by default. Measured on Gemma 4 31B with clearing at 8,000
+  tokens: a 40-turn run fell from 907k to 574k input tokens (−37%) with the
+  same calls, but on tasks that finish in 11 to 19 turns the difference went
+  both ways (−17% to +22%), within run-to-run variance. Turn it on for long
+  runs, and measure your own workload first:
+  `python -m scripts.bench.run <provider> <model> --clear-tool-results 8000`.
+
+On Anthropic, `AnthropicChatLLM(context_management=...)` does the same on
+the server instead.
+
 ## Cost tracking with hooks
 
 Combine usage tracking with hooks for detailed cost monitoring:

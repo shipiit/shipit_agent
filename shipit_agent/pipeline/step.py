@@ -1,3 +1,5 @@
+"""Pipeline building blocks: a step, and a group of steps that run in parallel."""
+
 from __future__ import annotations
 
 import re

@@ -29,6 +29,7 @@ from typing import Any
 
 @dataclass(slots=True)
 class WorkspaceSettings:
+    """Per-project agent settings: permission mode and allow/deny rules."""
     permission_mode: str = "default"
     allow: list[str] = field(default_factory=list)
     deny: list[str] = field(default_factory=list)
@@ -47,7 +48,7 @@ class WorkspaceSettings:
             self.allow or self.deny or self.ask
         ):
             return None
-        from shipit_agent.permissions import PermissionEngine
+        from shipit_agent.safety.permissions import PermissionEngine
 
         return PermissionEngine(
             mode=self.permission_mode,  # type: ignore[arg-type]
@@ -63,6 +64,7 @@ class WorkspaceSettings:
 
 
 def settings_path(project_root: str | Path) -> Path:
+    """Where a project's agent settings live: ``.shipit/settings.json``."""
     return Path(project_root).resolve() / ".shipit" / "settings.json"
 
 

@@ -17,9 +17,9 @@ from shipit_agent import (
     skill_id_from_name,
 )
 from shipit_agent.agent import DEFAULT_SKILLS_PATH
-from shipit_agent.builtins import get_builtin_tool_map
+from shipit_agent.agent_setup.builtins import get_builtin_tool_map
 from shipit_agent.llms import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.skills.tool_bundles import validate_tool_bundles
 
 
@@ -169,7 +169,8 @@ def test_skill_prompt_text_falls_back_to_metadata_when_template_missing() -> Non
 
 def test_agent_auto_applies_matching_skill_from_registry() -> None:
     llm = PromptCaptureLLM()
-    agent = Agent(llm=llm)
+    # Keyword matching against the catalog is the opt-in, pre-on-demand mode.
+    agent = Agent(llm=llm, progressive_skills=False)
 
     agent.run("Please help me debug this production bug and plan this feature.")
 
@@ -188,7 +189,7 @@ def test_agent_does_not_inject_unrelated_skills_from_incidental_words() -> None:
 
     assert agent._selected_skills(prompt) == []
     assert agent._skill_tool_names(agent._selected_skills(prompt)) == []
-    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 12
+    assert agent._effective_max_iterations(agent._selected_skills(prompt)) is None
 
 
 def test_skill_trigger_does_not_match_inside_an_informational_word() -> None:
@@ -200,7 +201,7 @@ def test_skill_trigger_does_not_match_inside_an_informational_word() -> None:
 
     assert agent._selected_skills(prompt) == []
     assert agent._effective_tools(prompt) == []
-    assert agent._effective_max_iterations(agent._selected_skills(prompt)) == 12
+    assert agent._effective_max_iterations(agent._selected_skills(prompt)) is None
 
 
 def test_agent_applies_default_skill_ids() -> None:
@@ -377,7 +378,7 @@ def test_agent_result_metadata_includes_used_skills_and_skill_tools() -> None:
 
 
 def test_bash_tool_blocks_commands_outside_allowlist(tmp_path: Path) -> None:
-    tool = BashTool(root_dir=tmp_path)
+    tool = BashTool(root_dir=tmp_path, unrestricted=False)
 
     # A rejected command comes back as an error result (not a raised
     # exception, which would crash the run) the model can react to.
@@ -461,13 +462,14 @@ def test_deep_agent_can_use_newly_authored_skill_from_custom_catalog(
 
 
 def test_agent_boosts_max_iterations_when_skills_are_active() -> None:
-    """When skills are selected and max_iterations is at default (4),
-    the agent should auto-boost to at least 8 so skill-driven workflows
-    can complete without cutting off early."""
+    """When skills are selected and a small step limit is set, the agent
+    raises it to at least 16 so skill-driven workflows can complete without
+    cutting off early. (With no limit, the default, there is nothing to raise.)"""
     agent = Agent(
         llm=PromptCaptureLLM(),
         auto_use_skills=False,
         skills=["web-scraper-pro"],
+        max_iterations=12,
     )
     selected = agent._selected_skills("scrape it")
     effective_max = agent._effective_max_iterations(selected)
@@ -544,14 +546,14 @@ def test_agent_respects_explicit_max_iterations_override() -> None:
 
 
 def test_agent_no_boost_without_skills() -> None:
-    """No skills → no boost, max_iterations stays at default."""
+    """No skills → no boost, max_iterations stays at default (no limit)."""
     agent = Agent(
         llm=PromptCaptureLLM(),
         auto_use_skills=False,
     )
     selected = agent._selected_skills("hello")
     effective_max = agent._effective_max_iterations(selected)
-    assert effective_max == 12
+    assert effective_max is None
 
 
 def test_tool_bundle_names_all_exist_in_builtins() -> None:

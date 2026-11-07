@@ -13,7 +13,7 @@ question. Every layer reported success.
 
 from __future__ import annotations
 
-from shipit_agent.tool_healing import call_carries_nothing, repair_argument_names
+from shipit_agent.safety.tool_healing import call_carries_nothing, repair_argument_names
 
 SEARCH = {
     "type": "object",
@@ -77,7 +77,7 @@ class TestEndToEnd:
     def _run(self, arguments: dict):
         from shipit_agent import Agent
         from shipit_agent.llms.base import LLMResponse
-        from shipit_agent.models import ToolCall
+        from shipit_agent.core.models import ToolCall
         from shipit_agent.tools.base import ToolOutput
 
         ran: list[dict] = []

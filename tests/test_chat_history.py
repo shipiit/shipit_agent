@@ -1,6 +1,6 @@
 """The collapsed chat-history shape: lossless round-trip, paused-call safety."""
-from shipit_agent.chat_history import collapse, expand, is_collapsed, to_wire_messages
-from shipit_agent.models import Message, TextPart, ToolCall, ToolCallPart
+from shipit_agent.sessions.chat_history import collapse, expand, is_collapsed, to_wire_messages
+from shipit_agent.core.models import Message, TextPart, ToolCall, ToolCallPart
 
 
 def _turn() -> list[Message]:

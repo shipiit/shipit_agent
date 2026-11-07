@@ -12,16 +12,16 @@ from __future__ import annotations
 import pytest
 
 from shipit_agent.llms.factory import build_llm_from_settings
-from shipit_agent.llms import factory
+from shipit_agent.llms import factory, inline_providers
 
 # The frozen contract, captured from the pre-catalog factory.
 BASELINE = {
     "shipit": ("ShipitLLM", None),
     "bedrock": ("BedrockChatLLM", "bedrock/openai.gpt-oss-120b-1:0"),
-    "openai": ("OpenAIChatLLM", "gpt-4o-mini"),
-    "anthropic": ("AnthropicChatLLM", "claude-3-5-sonnet-latest"),
-    "gemini": ("GeminiChatLLM", "gemini/gemini-1.5-pro"),
-    "vertex": ("VertexAIChatLLM", "vertex_ai/gemini-1.5-pro"),
+    "openai": ("OpenAIChatLLM", "gpt-5.5"),
+    "anthropic": ("AnthropicChatLLM", "claude-opus-5-5"),
+    "gemini": ("GeminiChatLLM", "gemini/gemini-3.5-flash"),
+    "vertex": ("VertexAIChatLLM", "vertex_ai/gemini-3.5-flash"),
     "litellm": ("LiteLLMChatLLM", "openrouter/x"),
     "groq": ("GroqChatLLM", "groq/llama-3.3-70b-versatile"),
     "together": ("TogetherChatLLM", "together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo"),
@@ -72,3 +72,52 @@ def test_unsupported_provider_still_errors(monkeypatch):
     # An unknown name is unknown to both the catalog and the inline chain.
     with pytest.raises(RuntimeError, match="Unsupported|Unknown"):
         build_llm_from_settings(provider="totally-unknown", load_env=False)
+
+
+# -- the inline chain on its own: aliases and the anthropic fallback ----------
+
+
+@pytest.fixture
+def inline_only(monkeypatch):
+    monkeypatch.setattr(factory, "_build_from_catalog", lambda *a, **k: None)
+
+
+@pytest.mark.parametrize(
+    "alias,expected",
+    [
+        ("echo", "ShipitLLM"),  # SimpleEchoLLM is an alias of ShipitLLM
+        ("vertex_ai", "VertexAIChatLLM"),
+        ("vertexai", "VertexAIChatLLM"),
+        ("litellm_proxy", "LiteLLMChatLLM"),
+        ("proxy", "LiteLLMChatLLM"),
+    ],
+)
+def test_inline_chain_accepts_every_alias(alias, expected, full_env, inline_only):
+    llm = build_llm_from_settings(provider=alias, load_env=False)
+    assert type(llm).__name__ == expected
+
+
+def test_inline_litellm_with_an_api_base_uses_the_proxy(full_env, inline_only):
+    llm = build_llm_from_settings(
+        {"api_base": "http://localhost:4000"}, provider="litellm", load_env=False
+    )
+    assert type(llm).__name__ == "LiteLLMProxyChatLLM"
+
+
+def _anthropic_not_installed(*_args, **_kwargs):
+    raise RuntimeError("Install `anthropic` to use this provider.")
+
+
+def test_inline_anthropic_falls_back_to_bedrock_when_not_explicit(
+    full_env, inline_only, monkeypatch
+):
+    monkeypatch.setattr(inline_providers, "AnthropicChatLLM", _anthropic_not_installed)
+    monkeypatch.setenv("SHIPIT_LLM_PROVIDER", "anthropic")
+    llm = build_llm_from_settings(load_env=False)
+    assert type(llm).__name__ == "BedrockChatLLM"
+
+
+def test_inline_anthropic_raises_when_explicit(full_env, inline_only, monkeypatch):
+    monkeypatch.setattr(inline_providers, "AnthropicChatLLM", _anthropic_not_installed)
+    with pytest.raises(RuntimeError, match="Install `anthropic`"):
+        build_llm_from_settings(provider="anthropic", load_env=False)

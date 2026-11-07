@@ -1,3 +1,6 @@
+"""The ``tool_search`` tool: search the current agent's available tools and return a ranked shortlist of the best matches for a task.
+"""
+
 from __future__ import annotations
 
 import math
@@ -30,6 +33,10 @@ class ToolSearchTool:
 
     Pure stdlib — no embeddings, no external services, no API keys.
     """
+
+    #: Lets deferral recognise this tool through a wrapper that passes
+    #: attributes through, where an isinstance check would miss it.
+    is_tool_search = True
 
     read_only = True
 

@@ -1,3 +1,5 @@
+"""Wrap an agent as a tool, so another agent can call it."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,37 +1,15 @@
+"""What the model is told about the file read tool: when to use it and how."""
+
 from __future__ import annotations
 
 FILE_READ_PROMPT = """
-
-## read_file
-Read a file from the local project root. Returns line-numbered output for text,
-and **clean Markdown for documents** — a `.docx`, `.xlsx`, `.pptx`, `.html`, or
-`.csv` is extracted to readable text/tables automatically (images and PDFs come
-back as viewable media). One tool reads code, data, and documents alike.
-
-**When to use:**
-- Inspect source files, configs, logs, generated outputs, and local data files
-- Read a Word/Excel/PowerPoint/HTML/CSV document as Markdown — no separate step
-- Read the exact text before editing or patching a file — **required** before calling `edit_file`
-- Pull a targeted range of lines when you already know the relevant area
-- Verify file contents after a write or edit operation
-- Understand existing code structure before proposing changes
-
-**Decision tree:**
-1. Need to find a file first? → use `glob_files` then `read_file`
-2. Need to search inside files? → use `grep_files` then `read_file` on matches
-3. Need to change the file? → `read_file` first, then `edit_file`
-4. Need a full rewrite? → `read_file` first, then `write_file`
-
-**Rules:**
-- Paths are relative to the configured project root
-- **Always read before editing** — `edit_file` will reject patches on unread files
-- Use `start_line` and `max_lines` for large files instead of reading the whole thing
-- Prefer focused reads: read the function, not the whole module
-- Directories are not valid inputs — use `glob_files` for directory listing
-- Reading tracks state: the file is marked as "read" for subsequent `edit_file` calls
-
-**Anti-patterns:**
-- Reading an entire 10k-line file when you only need lines 50–80
-- Skipping the read and going straight to `edit_file` (will be rejected)
-- Using `bash` with `cat` when `read_file` is available
+Read a file under the project root. Text comes back line-numbered; a
+`.docx`, `.xlsx`, `.pptx`, `.html` or `.csv` comes back as Markdown, and
+images and PDFs as viewable media.
+- Read a file before you edit or overwrite it: `edit_file` rejects edits to
+  files you have not read.
+- For a large file, read the part you need with `start_line` and `max_lines`.
+- Find files with `glob_files` and search inside them with `grep_files`;
+  directories are not valid paths.
+- Use this rather than `cat` in `bash`.
 """.strip()

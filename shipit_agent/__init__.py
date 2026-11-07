@@ -1,3 +1,19 @@
+"""shipit-agent: build tool-using AI agents on any model provider.
+
+The usual entry point is :class:`Agent`::
+
+    from shipit_agent import Agent
+
+    agent = Agent(llm=my_llm, tools=[...])
+    result = agent.run("Summarise the open issues")
+
+Everything listed in ``__all__`` is the public API. Sub-packages group
+the internals by job: ``core`` (the run loop), ``context`` (what goes
+into each request), ``safety`` (permissions, hooks, guardrails),
+``observability`` (streams, tracing, usage), ``tools``, ``llms``,
+``skills`` and more; each has a README.
+"""
+
 try:
     from importlib.metadata import version as _pkg_version
 
@@ -5,7 +21,7 @@ try:
 except Exception:
     __version__ = "0.0.0+unknown"
 
-from .async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from .deep import (
     AdaptiveAgent,
     AgentBenchmark,
@@ -27,8 +43,8 @@ from .deep import (
     Worker,
     create_deep_agent,
 )
-from .exceptions import DuplicateToolError, ShipitAgentError
-from .hooks import AgentHooks
+from shipit_agent.core.exceptions import DuplicateToolError, ShipitAgentError
+from shipit_agent.safety.hooks import AgentHooks
 from .memory import (
     AgentMemory,
     ConsolidationResult,
@@ -53,13 +69,13 @@ from .parsers import (
     parse_partial_json,
 )
 from .pipeline import Pipeline, Step, parallel, step
-from .structured import (
+from shipit_agent.core.structured import (
     build_schema_prompt,
     is_pydantic_model,
     parse_structured_output,
     schema_to_response_format,
 )
-from .structured_output import StructuredOutput, StructuredOutputResult
+from shipit_agent.core.structured_output import StructuredOutput, StructuredOutputResult
 from .computer_use import (
     ActionKind,
     ActionRecord,
@@ -101,21 +117,21 @@ from .verifier import (
     VerifierVerdict,
 )
 from .team import AgentTeam, TeamAgent, TeamResult, TeamRound
-from .activity import StreamRenderer, format_activity, format_event_line
+from shipit_agent.observability.activity import StreamRenderer, format_activity, format_event_line
 from .approvals import ActionState, ApprovalQueue, PendingAction
-from .compaction import CompactionCheckpoint, Compactor, get_model_limits
-from .token_calibration import TokenCalibrator
+from shipit_agent.context.compaction import CompactionCheckpoint, Compactor, get_model_limits
+from shipit_agent.context.token_calibration import TokenCalibrator
 from .mcp_resilience import CircuitBreaker, ResilientMCPTransport
-from .token_counting import count_message_tokens, count_tokens
+from shipit_agent.context.token_counting import count_message_tokens, count_tokens
 from .connections import (
     AuthKind,
     Connection,
     ConnectionRegistry,
     ConnectionState,
 )
-from .lockdown import LockdownPolicy, LockdownState
-from .streaming import STREAM_GENERATION, Durability, StreamFrame, classify, sse
-from .triggers import (
+from shipit_agent.safety.lockdown import LockdownPolicy, LockdownState
+from shipit_agent.observability.streaming import STREAM_GENERATION, Durability, StreamFrame, classify, sse
+from shipit_agent.scheduling.triggers import (
     InMemoryTriggerQueue,
     SqliteTriggerQueue,
     Trigger,
@@ -124,7 +140,7 @@ from .triggers import (
     TriggerRun,
     fire_all,
 )
-from .delegation import DelegationAdvice, DelegationPolicy
+from shipit_agent.agents.delegation import DelegationAdvice, DelegationPolicy
 from .narrate import (
     NarratorRenderer,
     build_transcript,
@@ -139,14 +155,14 @@ from .narrate.json_stream import StreamingToolInputParser
 # `ActionKind` is already public from .computer_use — alias rather than shadow it.
 from .tools.contracts import ActionKind as ToolActionKind
 from .tools.contracts import ToolContract, contract_for
-from .guardrails import GuardDecision, Guardrails
-from .hitl import console_permission_prompt, format_call_preview
+from shipit_agent.safety.guardrails import GuardDecision, Guardrails
+from shipit_agent.safety.hitl import console_permission_prompt, format_call_preview
 from .agent import Agent, DEFAULT_SKILLS_PATH
-from .builtins import get_builtin_tool_map, get_builtin_tools
+from shipit_agent.agent_setup.builtins import get_builtin_tool_map, get_builtin_tools
 from .chat_session import AgentChatSession
-from .construction import build_tool_schemas, construct_tool_registry
-from .context_tracker import ContextSnapshot, ContextTracker
-from .doctor import AgentDoctor, DoctorCheck, DoctorReport
+from shipit_agent.core.construction import build_tool_schemas, construct_tool_registry
+from shipit_agent.context.tracker import ContextSnapshot, ContextTracker
+from shipit_agent.agent_setup.doctor import AgentDoctor, DoctorCheck, DoctorReport
 from .integrations import (
     CredentialRecord,
     CredentialStore,
@@ -187,8 +203,8 @@ from .mcp_catalog import (
     connect_mcp,
     list_mcp_catalog,
 )
-from .models import AgentEvent, AgentResult, Artifact, Message, ToolCall, ToolResult
-from .packets import (
+from shipit_agent.core.models import AgentEvent, AgentResult, Artifact, Message, ToolCall, ToolResult
+from shipit_agent.core.packets import (
     event_packet,
     result_packet,
     sse_event_packet,
@@ -196,7 +212,7 @@ from .packets import (
     websocket_event_packet,
     websocket_result_packet,
 )
-from .permissions import (
+from shipit_agent.safety.permissions import (
     PermissionDecision,
     PermissionEngine,
     PermissionResult,
@@ -208,12 +224,12 @@ from .workspace import (
     load_project_memory,
     load_settings,
 )
-from .policies import RetryPolicy, RouterPolicy
-from .profiles import AgentProfile, AgentProfileBuilder
+from shipit_agent.core.policies import RetryPolicy, RouterPolicy
+from shipit_agent.agent_setup.profiles import AgentProfile, AgentProfileBuilder
 from .prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
-from .reasoning import ReasoningResult, ReasoningRuntime
-from .registry import ToolRegistry
-from .schedule import (
+from shipit_agent.core.reasoning import ReasoningResult, ReasoningRuntime
+from shipit_agent.core.registry import ToolRegistry
+from shipit_agent.scheduling.schedule import (
     AgentScheduler,
     ScheduledAgentConfig,
     ScheduledAgentFactory,
@@ -222,7 +238,7 @@ from .schedule import (
     ScheduleRunner,
     SQLiteJobStore,
 )
-from .session_manager import SessionManager
+from shipit_agent.sessions.manager import SessionManager
 from .stores import (
     FileMemoryStore,
     FileSessionStore,
@@ -233,9 +249,9 @@ from .stores import (
     SessionRecord,
     SessionStore,
 )
-from .templates import PromptTemplate
-from .tool_runner import ToolRunner, ToolRunnerResult
-from .tracing import FileTraceStore, InMemoryTraceStore, TraceRecord, TraceStore
+from shipit_agent.agent_setup.templates import PromptTemplate
+from shipit_agent.core.tool_runner import ToolRunner, ToolRunnerResult
+from shipit_agent.observability.tracing import FileTraceStore, InMemoryTraceStore, TraceRecord, TraceStore
 from .skills import (
     FileSkillRegistry,
     SkillCatalog,
@@ -695,3 +711,76 @@ __all__ = [
     "BatchRuntime",
     "MessageBatchRunner",
 ]
+
+# Modules that moved into sub-packages stay reachable under their old names,
+# so ``shipit_agent.runtime`` and friends keep working as attributes too.
+_MOVED_MODULES = {
+    "runtime": "shipit_agent.core.runtime",
+    "async_runtime": "shipit_agent.core.async_runtime",
+    "runtime_core": "shipit_agent.core.runtime_core",
+    "runtime_state": "shipit_agent.core.state",
+    "runtime_narration": "shipit_agent.core.narration",
+    "agent_mixin": "shipit_agent.core.agent_mixin",
+    "tool_runner": "shipit_agent.core.tool_runner",
+    "registry": "shipit_agent.core.registry",
+    "models": "shipit_agent.core.models",
+    "packets": "shipit_agent.core.packets",
+    "policies": "shipit_agent.core.policies",
+    "exceptions": "shipit_agent.core.exceptions",
+    "construction": "shipit_agent.core.construction",
+    "checkpoint": "shipit_agent.core.checkpoint",
+    "reasoning": "shipit_agent.core.reasoning",
+    "tools_compat": "shipit_agent.core.tools_compat",
+    "structured": "shipit_agent.core.structured",
+    "structured_output": "shipit_agent.core.structured_output",
+    "agent_preparation": "shipit_agent.agent_setup.preparation",
+    "builtins": "shipit_agent.agent_setup.builtins",
+    "profiles": "shipit_agent.agent_setup.profiles",
+    "templates": "shipit_agent.agent_setup.templates",
+    "config": "shipit_agent.agent_setup.config",
+    "doctor": "shipit_agent.agent_setup.doctor",
+    "delegation": "shipit_agent.agents.delegation",
+    "compaction": "shipit_agent.context.compaction",
+    "context_fit": "shipit_agent.context.fit",
+    "context_tracker": "shipit_agent.context.tracker",
+    "prefix": "shipit_agent.context.prefix",
+    "prefix_rules": "shipit_agent.context.prefix_rules",
+    "token_calibration": "shipit_agent.context.token_calibration",
+    "token_counting": "shipit_agent.context.token_counting",
+    "discovery": "shipit_agent.context.discovery",
+    "session_facts": "shipit_agent.context.session_facts",
+    "chat_history": "shipit_agent.sessions.chat_history",
+    "session_lock": "shipit_agent.sessions.lock",
+    "session_manager": "shipit_agent.sessions.manager",
+    "permissions": "shipit_agent.safety.permissions",
+    "guardrails": "shipit_agent.safety.guardrails",
+    "lockdown": "shipit_agent.safety.lockdown",
+    "hitl": "shipit_agent.safety.hitl",
+    "hooks": "shipit_agent.safety.hooks",
+    "askuser_channel": "shipit_agent.safety.askuser_channel",
+    "action_detection": "shipit_agent.safety.action_detection",
+    "tool_healing": "shipit_agent.safety.tool_healing",
+    "activity": "shipit_agent.observability.activity",
+    "live": "shipit_agent.observability.live",
+    "live_renderer": "shipit_agent.observability.live_renderer",
+    "streaming": "shipit_agent.observability.streaming",
+    "tracing": "shipit_agent.observability.tracing",
+    "usage": "shipit_agent.observability.usage",
+    "chat_cli": "shipit_agent.cli.chat",
+    "cli_autopilot": "shipit_agent.cli.autopilot",
+    "serve": "shipit_agent.cli.serve",
+    "schedule": "shipit_agent.scheduling.schedule",
+    "scheduler_daemon": "shipit_agent.scheduling.daemon",
+    "triggers": "shipit_agent.scheduling.triggers",
+}
+
+
+def __getattr__(name: str):
+    target = _MOVED_MODULES.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+
+    module = importlib.import_module(target)
+    globals()[name] = module
+    return module

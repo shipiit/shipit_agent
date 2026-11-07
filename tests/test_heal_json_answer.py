@@ -9,7 +9,7 @@ call and a duplicate-call loop.
 
 from __future__ import annotations
 
-from shipit_agent.tool_healing import heal_tool_calls
+from shipit_agent.safety.tool_healing import heal_tool_calls
 
 ANSWER = '```json\n{"name": "Asha", "product": "Lumen", "city": "Lisbon", "budget_eur": 50000}\n```'
 SCHEMAS = {

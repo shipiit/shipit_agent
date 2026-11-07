@@ -1,3 +1,5 @@
+"""Stores for conversation sessions: in memory or one JSON file per session."""
+
 from __future__ import annotations
 
 import json
@@ -7,17 +9,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 @dataclass(slots=True)
 class SessionRecord:
+    """A saved conversation: its messages and metadata."""
     session_id: str
     messages: list[Message] = field(default_factory=list)
     metadata: dict[str, object] = field(default_factory=dict)
 
 
 class SessionStore(Protocol):
+    """Where an agent loads and saves conversations by session id."""
     def load(self, session_id: str) -> SessionRecord | None: ...
 
     def save(self, record: SessionRecord) -> None: ...
@@ -26,6 +30,7 @@ class SessionStore(Protocol):
 
 
 class InMemorySessionStore:
+    """A session store that lives for the life of the process."""
     def __init__(self) -> None:
         self._records: dict[str, SessionRecord] = {}
 
@@ -40,6 +45,7 @@ class InMemorySessionStore:
 
 
 class FileSessionStore:
+    """A session store that writes one JSON file per session in a folder."""
     def __init__(self, root_dir: str | Path) -> None:
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)

@@ -37,7 +37,7 @@ import os
 import sys
 from typing import Any
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 
 from .grouping import (
     ApprovalRow,
@@ -50,75 +50,17 @@ from .grouping import (
 )
 from .verbs import ASCII_ICONS
 
-__all__ = ["NarratorRenderer", "render_transcript", "LiveRegion"]
+from .renderer_footer import RendererFooterMixin
+from .terminal import _ANSI, _supports_unicode, _terminal_width
+from .terminal import LiveRegion as LiveRegion
 
-_ANSI = {
-    "dim": "\033[2m",
-    "bold": "\033[1m",
-    "accent": "\033[38;5;209m",  # the warm orange the reference UI uses
-    "green": "\033[32m",
-    "red": "\033[31m",
-    "reset": "\033[0m",
-}
+__all__ = ["NarratorRenderer", "render_transcript", "LiveRegion"]
 
 _GUTTER = "  "
 _EXPAND_HINT = "›"
 
 
-def _supports_unicode(stream: Any) -> bool:
-    encoding = getattr(stream, "encoding", None) or ""
-    if not encoding:
-        return True  # StringIO and friends handle anything
-    try:
-        "⌕›·".encode(encoding)
-    except (UnicodeEncodeError, LookupError):
-        return False
-    return True
-
-
-def _terminal_width(default: int = 80) -> int:
-    try:
-        return max(40, os.get_terminal_size().columns)
-    except OSError:
-        return default
-
-
-class LiveRegion:
-    """A block of lines that can be redrawn in place.
-
-    Tracks how many lines it last wrote and rewinds over exactly those before
-    writing again. A no-op when the stream isn't a terminal, which is what
-    keeps piped output clean.
-    """
-
-    def __init__(self, write: Any, *, enabled: bool) -> None:
-        self._write = write
-        self._enabled = enabled
-        self._lines = 0
-
-    @property
-    def active(self) -> bool:
-        return self._lines > 0
-
-    def draw(self, lines: list[str]) -> None:
-        if not self._enabled:
-            return
-        self.clear()
-        if not lines:
-            return
-        self._write("\n".join(lines) + "\n")
-        self._lines = len(lines)
-
-    def clear(self) -> None:
-        """Erase what we drew, leaving the cursor where we started."""
-        if not self._enabled or self._lines == 0:
-            return
-        # Up N lines, then erase from the cursor to the end of the screen.
-        self._write(f"\033[{self._lines}A\033[J")
-        self._lines = 0
-
-
-class NarratorRenderer:
+class NarratorRenderer(RendererFooterMixin):
     """Render a live ``agent.stream(...)`` in the modern transcript style.
 
     ``style`` selects the look:
@@ -294,49 +236,6 @@ class NarratorRenderer:
             footer = self._footer()
             if footer:
                 self._write(footer + "\n")
-
-    def _footer(self) -> str:
-        """``18,240 tokens · $0.12 · claude-opus-5``, right-aligned and dim."""
-        usage = self._acc.usage or {}
-        tokens = int(usage.get("total_tokens") or 0)
-        if not tokens:
-            tokens = int(usage.get("prompt_tokens") or 0) + int(
-                usage.get("completion_tokens") or 0
-            )
-        parts: list[str] = []
-        if tokens:
-            parts.append(f"{tokens:,} tokens")
-        cost = self._cost()
-        if cost is not None:
-            parts.append(f"${cost:,.2f}" if cost >= 0.01 else f"${cost:.4f}")
-        if self._model:
-            parts.append(self._model)
-        if not parts:
-            return ""
-        text = self._sep().join(parts)
-        pad = max(0, _terminal_width() - len(text) - 2)
-        return " " * pad + self._c("dim", text)
-
-    def _cost(self) -> float | None:
-        """Run cost in USD, when a tracker was supplied and knows the model."""
-        tracker = self._cost_tracker
-        if tracker is None:
-            return None
-        usage = self._acc.usage or {}
-        try:
-            if self._model:
-                return float(
-                    tracker.calculate_cost(
-                        model=self._model,
-                        input_tokens=int(usage.get("prompt_tokens") or 0),
-                        output_tokens=int(usage.get("completion_tokens") or 0),
-                    )
-                )
-            return float(tracker.total_cost())
-        except Exception:
-            # A missing price or an unexpected tracker shape must never take
-            # the transcript down — just omit the dollar figure.
-            return None
 
     @property
     def rows(self) -> list[Any]:

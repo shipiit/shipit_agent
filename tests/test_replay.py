@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from shipit_agent.models import AgentEvent, AgentResult, Message
+from shipit_agent.core.models import AgentEvent, AgentResult, Message
 from shipit_agent.replay import (
     ForkPoint,
     ReplayCheckpoint,
@@ -34,7 +34,7 @@ from shipit_agent.replay import (
     TraceReplayer,
     diff_traces,
 )
-from shipit_agent.tracing import FileTraceStore, InMemoryTraceStore, TraceRecord
+from shipit_agent.observability.tracing import FileTraceStore, InMemoryTraceStore, TraceRecord
 
 
 # ---------------------------------------------------------------------------

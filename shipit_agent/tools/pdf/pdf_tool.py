@@ -77,6 +77,8 @@ def parse_pages(spec: str | None, total_pages: int | None = None) -> list[int]:
 
 
 class PDFTool:
+    """The ``pdf`` tool: extract text, per-page content, or metadata from a PDF file (local or URL).
+    """
     def __init__(
         self,
         *,

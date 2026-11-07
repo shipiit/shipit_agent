@@ -1,3 +1,5 @@
+"""What the model is told about the google calendar tool: when to use it and how."""
+
 from __future__ import annotations
 
 GOOGLE_CALENDAR_PROMPT = """

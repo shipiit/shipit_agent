@@ -15,7 +15,7 @@ import asyncio
 from typing import Any
 
 from shipit_agent.agent import Agent
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
 from shipit_agent.llms.base import LLMResponse, ToolCall
 from shipit_agent.tools.base import ToolContext, ToolOutput
 

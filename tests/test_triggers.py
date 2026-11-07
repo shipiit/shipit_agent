@@ -6,7 +6,7 @@ import threading
 
 import pytest
 
-from shipit_agent.triggers import (
+from shipit_agent.scheduling.triggers import (
     InMemoryTriggerQueue,
     SqliteTriggerQueue,
     Trigger,

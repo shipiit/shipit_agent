@@ -1,3 +1,5 @@
+"""Base classes for tools that call a third-party service with a stored credential."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +11,11 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 
 
 class ConnectorToolBase:
+    """A tool backed by a stored credential (for example a Slack or GitHub token).
+
+    When the credential is missing, the tool returns an actionable
+    "connect this service" result instead of failing.
+    """
     provider: str = "connector"
 
     def __init__(
@@ -85,6 +92,7 @@ class ConnectorToolBase:
 
 
 class HTTPConnectorToolBase(ConnectorToolBase):
+    """A connector tool that calls a JSON HTTP API with the stored credential."""
     def _headers(self, record: CredentialRecord) -> dict[str, str]:
         headers = {"content-type": "application/json"}
         token = (

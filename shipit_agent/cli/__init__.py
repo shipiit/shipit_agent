@@ -23,6 +23,7 @@ __all__ = ["main", "build_parser", "build_llm"]
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The ``shipit`` command-line parser with every sub-command registered."""
     from .commands import browse, catalog, code, jobs, serve_cmd, simple
 
     parser = argparse.ArgumentParser(
@@ -48,24 +49,25 @@ def _interactive_terminal() -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Entry point for the ``shipit`` command; returns the process exit code."""
     argv = list(sys.argv[1:] if argv is None else argv)
 
     # Bare `shipit` on a real terminal opens the full interactive REPL —
     # bottom-pinned input, slash commands, live tool cards — like Claude
     # Code. Pipes/CI (non-TTY) keep the help text so scripts don't hang.
     if not argv and _interactive_terminal():
-        from shipit_agent.chat_cli import main as chat_main
+        from shipit_agent.cli.chat import main as chat_main
 
         return chat_main([])
 
     # Full flag passthrough for the interactive/long-running families —
     # unknown flags are forwarded untouched to their dedicated CLIs.
     if argv and argv[0] == "chat":
-        from shipit_agent.chat_cli import main as chat_main
+        from shipit_agent.cli.chat import main as chat_main
 
         return chat_main(argv[1:])
     if argv and argv[0] in ("autopilot", "daemon", "queue", "answer"):
-        from shipit_agent.cli_autopilot import (
+        from shipit_agent.cli.autopilot import (
             run_answer_cli,
             run_autopilot_cli,
             run_daemon_cli,

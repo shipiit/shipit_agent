@@ -20,7 +20,7 @@ from shipit_agent import (
     InMemoryVectorStore,
     Entity,
 )
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 def simple_embed(text: str) -> list[float]:

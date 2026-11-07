@@ -11,15 +11,15 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.compaction import (
+from shipit_agent.context.compaction import (
     Compactor,
     count_messages,
     messages_tokens,
     starts_a_turn,
 )
-from shipit_agent.models import Message
-from shipit_agent.runtime import AgentRuntime
-from shipit_agent.token_calibration import TokenCalibrator
+from shipit_agent.core.models import Message
+from shipit_agent.core.runtime import AgentRuntime
+from shipit_agent.context.token_calibration import TokenCalibrator
 
 
 def user(text: str, **md) -> Message:
@@ -136,7 +136,7 @@ def test_real_counting_beats_the_estimate_on_dense_json():
     which is precisely the shape that most needs compacting."""
     import json
 
-    from shipit_agent.token_counting import real_counting_available
+    from shipit_agent.context.token_counting import real_counting_available
 
     if not real_counting_available():
         pytest.skip("no tokenizer available in this environment")
@@ -148,7 +148,7 @@ def test_real_counting_beats_the_estimate_on_dense_json():
 
 def test_counting_degrades_to_the_estimate_without_a_tokenizer(monkeypatch):
     """The tokenizer is optional; losing it must cost accuracy, not the run."""
-    import shipit_agent.token_counting as tc
+    import shipit_agent.context.token_counting as tc
 
     monkeypatch.setattr(tc, "_litellm_count", lambda *_a, **_k: None)
     msgs = conversation(turns=2)

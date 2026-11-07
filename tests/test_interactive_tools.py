@@ -1,6 +1,6 @@
 from shipit_agent import Agent, AskUserTool, HumanReviewTool
 from shipit_agent.llms import LLMResponse
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 
 
 def test_ask_user_tool_emits_interactive_event() -> None:

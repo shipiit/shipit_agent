@@ -21,6 +21,7 @@ ApplyFn = Callable[[], Any]
 
 
 class ActionState(str, Enum):
+    """Where a queued action stands: pending, approved, rejected and so on."""
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"

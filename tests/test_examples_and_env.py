@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from shipit_agent.llms import LLMResponse, LiteLLMChatLLM, ShipitLLM, VertexAIChatLLM
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 
 ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE_PATH = ROOT / "examples" / "run_multi_tool_agent.py"
@@ -55,7 +55,7 @@ def test_example_build_llm_from_env_supports_vertex_json_credentials(
     monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
     llm = module.build_llm_from_env()
     assert isinstance(llm, VertexAIChatLLM)
-    assert llm.model == "vertex_ai/gemini-1.5-pro"
+    assert llm.model == "vertex_ai/gemini-3.5-flash"
 
 
 def test_example_build_llm_from_env_falls_back_to_bedrock_when_anthropic_sdk_missing(

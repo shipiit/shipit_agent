@@ -1,3 +1,6 @@
+"""The ``decompose_problem`` tool: break a problem into workstreams, assumptions, risks, evidence needs, and next actions.
+"""
+
 from __future__ import annotations
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -5,6 +8,8 @@ from .prompt import THOUGHT_DECOMPOSITION_PROMPT
 
 
 class ThoughtDecompositionTool:
+    """The ``decompose_problem`` tool: break a problem into workstreams, assumptions, risks, evidence needs, and next actions.
+    """
     def __init__(
         self,
         *,

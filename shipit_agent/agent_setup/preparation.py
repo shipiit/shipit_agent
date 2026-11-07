@@ -1,0 +1,252 @@
+"""Skill, delegation, tool, and permission preparation for :class:`Agent`."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from shipit_agent.agent_setup.builtins import get_builtin_tool_map
+from shipit_agent.agent_setup.skill_selection import SkillSelectionMixin
+from shipit_agent.skills import Skill, apply_skill
+from shipit_agent.skills.tool_bundles import tool_names_for_skills
+
+SkillLike = str | Skill
+
+
+class AgentPreparationMixin(SkillSelectionMixin):
+    """Build the effective prompt, tools, skills, and permissions for a run."""
+
+    def _resolve_skill_refs(self, skill_refs: list[SkillLike]) -> list[Skill]:
+        resolved: list[Skill] = []
+        seen: set[str] = set()
+        for ref in skill_refs:
+            skill = self._resolve_skill_ref(ref)
+            if skill.id not in seen:
+                resolved.append(skill)
+                seen.add(skill.id)
+        return resolved
+
+    def available_skills(self) -> list[Skill]:
+        return self.skill_registry.list() if self.skill_registry is not None else []
+
+    def search_skills(self, query: str) -> list[Skill]:
+        if self.skill_registry is None:
+            return []
+        return self.skill_registry.search(query)
+
+    def add_skill(self, skill: SkillLike) -> Skill:
+        resolved = self._resolve_skill_ref(skill)
+        if resolved.id not in {item.id for item in self.skills}:
+            self.skills.append(resolved)
+        return resolved
+
+    def _effective_prompt(
+        self, user_prompt: str, *, selected_skills: list[Skill] | None = None
+    ) -> str:
+        effective = self.prompt
+        if selected_skills is None:
+            selected_skills = self._selected_skills(user_prompt)
+        for skill in selected_skills:
+            holder = type("PromptHolder", (), {"prompt": effective})()
+            apply_skill(holder, skill)
+            effective = holder.prompt
+        catalog = self._progressive_skill_catalog(selected_skills)
+        if catalog:
+            effective += "\n\n# Available skills\nLoad relevant instructions with load_skill before applying them. " \
+                "Skills provide guidance, not permission to access new tools or data.\n"
+            effective += "\n".join(f"- {entry.id}: {entry.description}" for entry in catalog)
+        rules = self._rules_block()
+        return f"{effective}\n\n{rules}" if rules and rules not in effective else effective
+
+    def _rules_block(self) -> str:
+        from shipit_agent.rules import RuleSet, collect_tool_rules
+
+        merged = RuleSet()
+        merged.extend(list(self.rules), source="agent")
+        merged.rules.extend(self._project_rules or [])
+        merged.rules.extend(collect_tool_rules(self.tools))
+        if not merged:
+            return ""
+        names = frozenset(str(getattr(t, "name", "") or "") for t in self.tools)
+        return merged.render(tools=names)
+
+    def _subagent_definitions(self) -> dict[str, Any]:
+        """Sub-agents from the project's agent files, then ``agents=`` (which wins)."""
+        from shipit_agent.agents.subagent_definitions import (
+            coerce_subagents,
+            load_subagent_files,
+        )
+
+        found = load_subagent_files(self.project_root) if self.auto_project_agents else {}
+        return {**found, **coerce_subagents(self.agents)}
+
+    def _delegation_policy(self) -> Any:
+        from shipit_agent.agents.delegation import coerce_delegation
+
+        return coerce_delegation(self.delegation)
+
+    def _delegation_warranted(self, user_prompt: str) -> bool:
+        policy = self._delegation_policy()
+        if policy is None or not isinstance(user_prompt, str) or not user_prompt.strip():
+            return False
+        try:
+            return bool(policy.assess(user_prompt, llm=self.llm))
+        except Exception:  # noqa: BLE001
+            return True
+
+    def _delegated_prompt(self, user_prompt: str) -> str:
+        policy = self._delegation_policy()
+        if policy is None or not isinstance(user_prompt, str):
+            return user_prompt
+        return policy.apply(user_prompt, llm=self.llm)
+
+    def _effective_tools(
+        self, user_prompt: str, *, selected_skills: list[Skill] | None = None
+    ) -> list[Any]:
+        if selected_skills is None:
+            selected_skills = self._selected_skills(user_prompt)
+        effective = {
+            getattr(tool, "name", f"tool_{index}"): tool
+            for index, tool in enumerate(self.tools)
+        }
+        if self.code_mode:
+            from shipit_agent.tools.describe_binding import DescribeBindingTool
+            from shipit_agent.tools.execute_code import ExecuteCodeTool
+
+            effective.setdefault("execute_code", ExecuteCodeTool())
+            effective.setdefault("describe_binding", DescribeBindingTool())
+
+        policy = self._delegation_policy()
+        if policy is not None and not self._delegation_warranted(user_prompt):
+            policy = None
+        if policy is not None and "sub_agent" not in effective:
+            if self._auto_sub_agent is None:
+                self._auto_sub_agent = policy.build_tool(
+                    self.llm, list(effective.values())
+                )
+            if self._auto_sub_agent is not None:
+                effective["sub_agent"] = self._auto_sub_agent
+
+        defined = self._subagent_definitions()
+        if defined:
+            existing = effective.get("sub_agent")
+            if existing is None:
+                if self._auto_sub_agent is None:
+                    from shipit_agent.tools.sub_agent import SubAgentTool
+
+                    self._auto_sub_agent = SubAgentTool(self.llm)
+                existing = effective["sub_agent"] = self._auto_sub_agent
+            if hasattr(existing, "agents"):
+                existing.agents = {**defined, **existing.agents}
+
+        missing_skill_tools = [
+            name for name in tool_names_for_skills(selected_skills)
+            if name not in effective
+        ]
+        if missing_skill_tools:
+            builtins = get_builtin_tool_map(
+                llm=self.llm, project_root=str(self.project_root)
+            )
+            for name in missing_skill_tools:
+                if name in builtins:
+                    # Host-supplied tools may enforce tenant scoping or custom
+                    # behavior. A skill adds missing capabilities, not overrides.
+                    effective.setdefault(name, builtins[name])
+        catalog = self._progressive_skill_catalog(selected_skills)
+        if catalog:
+            from shipit_agent.skills.catalog import LoadSkillTool, SkillSession
+            if "load_skill" in effective:
+                raise ValueError("progressive_skills reserves the tool name 'load_skill'")
+            # Fresh state per run: never store mutable loading state on an
+            # Agent shared by several chats. Previous evidence stays in history;
+            # reloading remains possible after history eviction/compaction.
+            lookup = {entry.id: self.skill_registry.get(entry.id) for entry in catalog}
+            effective["load_skill"] = LoadSkillTool(lookup, SkillSession(), available_tools=[])
+        tools = list(effective.values())
+        if self.verifier is not None and hasattr(self.verifier, "wrap_tools"):
+            tools = self.verifier.wrap_tools(tools)
+        return tools
+
+    def _runtime_skill_metadata(
+        self, selected_skills: list[Skill]
+    ) -> tuple[list[str], list[str], list[dict[str, str]]]:
+        details = [
+            {
+                "id": skill.id,
+                "name": skill.display_name or skill.name or skill.id,
+                "description": skill.description,
+                "category": skill.category,
+            }
+            for skill in selected_skills
+        ]
+        seen = {item["id"] for item in details}
+        external = self.metadata.get("selected_skills", [])
+        if isinstance(external, list):
+            for item in external:
+                if not isinstance(item, dict):
+                    continue
+                skill_id = str(item.get("id", "")).strip()
+                if skill_id and skill_id not in seen:
+                    details.append(
+                        {
+                            "id": skill_id,
+                            "name": str(item.get("name") or skill_id),
+                            "description": str(item.get("description") or ""),
+                            "category": str(item.get("category") or ""),
+                        }
+                    )
+                    seen.add(skill_id)
+        tools = self._skill_tool_names(selected_skills)
+        for name in self.metadata.get("used_skill_tools", []) or []:
+            value = str(name).strip()
+            if value and value not in tools:
+                tools.append(value)
+        return [item["id"] for item in details], tools, details
+
+    def _effective_max_iterations(self, selected_skills: list[Skill]) -> int | None:
+        """The step limit for this run: unlimited stays unlimited; a small
+        explicit limit is raised for skills, which add steps of their own."""
+        if self.max_iterations is None:
+            return None
+        if selected_skills and self.max_iterations <= 12:
+            return max(16, self.max_iterations)
+        return self.max_iterations
+
+    def _effective_permissions(self) -> Any:
+        from shipit_agent.safety.permission_rules import is_scoped
+        from shipit_agent.safety.permissions import PermissionEngine, coerce_permissions
+
+        engine = coerce_permissions(self.permissions)
+        if engine is None and (
+            self.permission_mode != "default"
+            or self.permission_callback is not None
+            or self.allowed_tools
+            or self.disallowed_tools
+        ):
+            # Kept for the agent's session, so "approve for the session"
+            # grants survive from one run to the next.
+            cached = self._session_runtime_state.get("permission_engine")
+            if cached is not None and cached.mode == self.permission_mode:
+                engine = cached
+            else:
+                engine = PermissionEngine(mode=self.permission_mode)  # type: ignore[arg-type]
+                self._session_runtime_state["permission_engine"] = engine
+        if (
+            engine is not None
+            and self.permission_callback is not None
+            and engine.callback is None
+        ):
+            engine.callback = self.permission_callback
+        if engine is not None:
+            engine.allow = _merged(engine.allow, self.allowed_tools)
+            engine.deny = _merged(engine.deny, self.disallowed_tools)
+            engine.hidden = _merged(
+                engine.hidden, [rule for rule in self.disallowed_tools if not is_scoped(rule)]
+            )
+            if engine.root is None:
+                engine.root = str(self.project_root)
+        return engine
+
+
+def _merged(rules: list[str], extra: list[str]) -> list[str]:
+    """*rules* plus each of *extra* not already there, in order."""
+    return [*rules, *(rule for rule in extra if rule not in rules)]

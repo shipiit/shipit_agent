@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.chat_cli import PROVIDER_MODEL_ENV
+from shipit_agent.cli.chat import PROVIDER_MODEL_ENV
 from shipit_agent.cli.llm import DEFAULT_MODELS, MODEL_CATALOG
 
 
@@ -27,7 +27,7 @@ class TestTheDefaultsAgree:
         assert DEFAULT_MODELS[provider] in listed
 
     def test_claude_is_a_claude_5(self) -> None:
-        assert DEFAULT_MODELS["anthropic"].startswith("claude-sonnet-5")
+        assert DEFAULT_MODELS["anthropic"].startswith(("claude-opus-5", "claude-sonnet-5"))
 
     def test_every_provider_still_has_an_env_override(self) -> None:
         """Overlaying the catalog must not drop a provider's env var."""

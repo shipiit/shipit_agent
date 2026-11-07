@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.narrate.grouping import (
     CallRecord,
     NoticeRow,

@@ -1,24 +1,30 @@
+"""What the model is told about the artifact builder tool: when to use it and how."""
+
 from __future__ import annotations
 
 ARTIFACT_BUILDER_PROMPT = """
 
-## artifact_builder
-Generate a polished, interactive React artifact rendered live in the chat — like Claude artifacts.
+## build_artifact
+Create a deliverable the user will keep, share or reuse — a report, a web
+page, a code file, a diagram, a data file — and keep improving the same one.
 
 **When to use:**
-- User wants a visual artifact: dashboards, scorecards, calculators, charts, comparisons, timelines, interactive widgets
-- You have raw numbers, tabular data, KPIs, risk scores, calculator inputs, or report sections that would look better as a widget than plain text
-- The user asks for analysis, breakdown, or comparison that benefits from charts, tables, or structured layout
-- Any time a rich visual presentation would be more effective than markdown
+- The answer is a document or file, not a chat reply: reports, specs, plans,
+  HTML pages, scripts, SVG or Mermaid diagrams, JSON or CSV data
+- The user asks you to change something you already produced
+
+**How:**
+- `action="create"` with a short stable `id` (like `q3-report`), a `title`,
+  a `type` (markdown, html, code, svg, mermaid, json, csv, text; add
+  `language` for code) and the full `content`.
+- To change it, reuse the same `id`:
+  - `action="update"` with `old_text` (exact, unique) and `new_text` for a
+    targeted edit;
+  - `action="rewrite"` with new `content` when most of it changes.
+- Every change is saved as a new version; earlier ones are kept.
 
 **Rules:**
-- Always pass `title` (clear, descriptive) and `raw_data` (the data payload to visualize)
-- Use `artifact_kind` to steer: dashboard, scorecard, calculator, analytics_report, chart_panel, table_report, comparison, timeline, kanban, interactive_widget
-- Use `user_brief` for extra design/behavior instructions (e.g. "show as pie chart", "add filter by status", "make it interactive with sliders")
-- Use `chart_preference` when you specifically want or want to avoid charts
-- Structure `raw_data` with named sections for complex artifacts (e.g. {"kpis": [...], "rows": [...], "chart_data": [...]})
-- For calculators or interactive widgets, describe the desired interactions in `user_brief`
-- Prefer passing computed/clean data — the artifact will derive totals, averages, percentages
-- The artifact renders as a live React component inside the chat with expand/fullscreen/copy controls
-- Uses the project's design system (Tailwind CSS tokens, Recharts for charts, lucide-react for icons)
+- One id per deliverable. Do not create `report-v2`; update `report`.
+- Put the complete deliverable in the artifact; in chat, say what it is and
+  what changed, without pasting it again.
 """.strip()

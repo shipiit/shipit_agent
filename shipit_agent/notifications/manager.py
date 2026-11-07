@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Any
 
-from shipit_agent.hooks import AgentHooks
+from shipit_agent.safety.hooks import AgentHooks
 
 from .base import Notification, Notifier, SEVERITY_ORDER
 from .templates import DEFAULT_TEMPLATES, render_template

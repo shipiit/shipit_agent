@@ -6,13 +6,13 @@ import pytest
 
 from shipit_agent import Agent
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.lockdown import (
+from shipit_agent.safety.lockdown import (
     LockdownPolicy,
     LockdownState,
     coerce_lockdown,
 )
-from shipit_agent.models import ToolCall
-from shipit_agent.permissions import PermissionEngine
+from shipit_agent.core.models import ToolCall
+from shipit_agent.safety.permissions import PermissionEngine
 from shipit_agent.tools.base import ToolOutput
 
 

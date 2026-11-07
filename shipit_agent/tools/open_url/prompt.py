@@ -1,3 +1,5 @@
+"""What the model is told about the open url tool: when to use it and how."""
+
 from __future__ import annotations
 
 OPEN_URL_PROMPT = """

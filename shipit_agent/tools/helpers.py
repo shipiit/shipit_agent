@@ -1,3 +1,6 @@
+"""Describing tools to the model: capability families and the tools section of the system prompt.
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -14,6 +17,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "edit_file",
         "multi_edit",
         "bash_job",
+        "task_stop",
         "glob_files",
         "grep_files",
         "notebook_edit",
@@ -133,40 +137,21 @@ TOOL_SECTION_HEADER = """
 # Tools
 
 How to use them:
-- Read tool descriptions and guidance carefully before calling them.
-- Use the smallest correct tool for the job.
-- Call several tools in ONE response when they do not depend on each other.
-  Reading three files, or searching two sources, is one turn with three
-  calls — not three turns. Every turn re-sends the whole conversation, so
-  splitting independent work across turns costs the user real money and
-  time for nothing.
+- Call several tools in ONE response when they do not depend on each other:
+  reading three files is one turn with three calls. Every turn re-sends the
+  whole conversation, so splitting independent work costs real money and time.
 - Call them one at a time only when a call needs the previous result.
-- **A search is the beginning of the work, not the end of it.** When a search
-  returns several relevant items and the question asked for detail, depth or
-  "more", open enough relevant items to support the answer, respecting the
-  model's tool-call limit. One item out of fifteen is a sample, and an answer
-  written from it is a guess presented as a finding.
-- Before you answer, ask whether you looked at enough to be right. If the
-  answer rests on one result out of many, say so plainly or go back and read
-  the others. Confident summaries from partial evidence are the failure mode
-  that matters most here.
-- **Ask for what you need, not for everything.** Always pass the query, filter
-  or range the question calls for. A call with no arguments asks a tool for
-  its entire contents — it is slow, it costs the user, and an answer written
-  from it is about everything rather than about the question.
-- Never repeat a call you have already made with the same arguments. Its
-  result is already in this conversation — read it again rather than
-  fetching it again. If a result was not what you wanted, change the
-  arguments; calling again unchanged returns the same thing.
-- Say what you are about to do, in one short sentence, in the SAME response as
-  the tool call. This is a public progress update, not private chain-of-thought.
-  Never stop after merely announcing a tool: call it in that response.
-- If you need more information or another tool part-way through, call it —
-  stopping early with a partial answer is worse than taking another turn.
-- When information may be outdated, prefer web and external tools over stale
-  assumptions.
-- When a task needs files, artifacts, or code execution, use the relevant
-  tools instead of simulating output.
+- **A search is the beginning of the work, not the end of it.** When the
+  question asks for detail, open enough of the relevant results to support the
+  answer: one item out of fifteen is a sample, not a finding. If the answer
+  rests on one result out of many, say so or read the others.
+- **Ask for what you need, not for everything.** Pass the query, filter or
+  range the question calls for; a call with no arguments returns everything.
+- Never repeat a call with the same arguments: its result is already above.
+  If it was not what you wanted, change the arguments.
+- Say in one short sentence what you are about to do, in the SAME response as
+  the call, and make the call; never stop after only announcing it. If you need
+  more information part-way, call again rather than answer partially.
 """.strip()
 
 
@@ -182,11 +167,9 @@ _GENERIC_MCP_GUIDANCE = frozenset(
     }
 )
 
-_PARALLEL_TOOL_GUIDANCE = """- Call several tools in ONE response when they do not depend on each other.
-  Reading three files, or searching two sources, is one turn with three
-  calls — not three turns. Every turn re-sends the whole conversation, so
-  splitting independent work across turns costs the user real money and
-  time for nothing.
+_PARALLEL_TOOL_GUIDANCE = """- Call several tools in ONE response when they do not depend on each other:
+  reading three files is one turn with three calls. Every turn re-sends the
+  whole conversation, so splitting independent work costs real money and time.
 - Call them one at a time only when a call needs the previous result."""
 
 _SERIAL_TOOL_GUIDANCE = """- This model supports exactly ONE tool call per response. Never emit a batch
@@ -201,6 +184,7 @@ def build_tools_prompt(
     mcps: Iterable[Any] = (),
     supports_parallel_tool_calls: bool = True,
 ) -> str:
+    """Render the tools section of the system prompt, grouped by capability family."""
     if not tools:
         return ""
 
@@ -221,14 +205,12 @@ def build_tools_prompt(
         header,
         "",
         f"Available capabilities ({len(tools)} tools across {len(grouped)} families):",
-        "Answer directly when the conversation already contains sufficient evidence "
-        "or the request needs no external data or action. Use a loaded tool when "
-        "fresh evidence, exact source content, or an authorized action is needed. "
-        "If none fits and a discovery tool is available, search by the missing "
-        "capability, then call the matching tool. MCP tools are ordinary attached "
-        "capabilities: select by purpose, scope, and arguments, not transport. "
-        "Check connection status only when missing or unavailable access requires it. "
-        "A search match is not a completed action; wait for actual tool results.",
+        "Answer directly when the conversation already holds the evidence or no "
+        "outside data or action is needed. If no loaded tool fits and a discovery "
+        "tool is available, search for the capability, then call the match. MCP "
+        "tools are ordinary tools: choose by purpose and arguments, not transport. "
+        "Check connection status only when access is missing. A search match is "
+        "not a completed action; wait for the tool's result.",
     ]
     for family, entries in grouped.items():
         lines.append(f"\n## {family.title()}")

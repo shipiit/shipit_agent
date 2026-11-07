@@ -16,20 +16,25 @@ import inspect
 
 import pytest
 
-from shipit_agent.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.async_runtime import AsyncAgentRuntime
+from shipit_agent.core.models import ToolCall
+from shipit_agent.core.runtime import AgentRuntime
+from shipit_agent.core.runtime_core import RuntimeCore
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.lockdown import LockdownState
-from shipit_agent.models import ToolCall
-from shipit_agent.permissions import PermissionEngine
-from shipit_agent.runtime import AgentRuntime
-from shipit_agent.runtime_core import RuntimeCore
+from shipit_agent.safety.lockdown import LockdownState
+from shipit_agent.safety.permissions import PermissionEngine
 from shipit_agent.tools.base import ToolOutput
 
-SHARED = [
-    name
-    for name in vars(RuntimeCore)
-    if not name.startswith("__") and name != "_init_core"
-]
+# RuntimeCore's decisions live on it and on the mixins it is built from.
+SHARED = sorted(
+    {
+        name
+        for klass in RuntimeCore.__mro__
+        if klass is not object
+        for name in vars(klass)
+        if not name.startswith("__") and name != "_init_core"
+    }
+)
 
 
 def tool(name, *, output="ok", sensitive=False, calls=None):
@@ -323,13 +328,19 @@ class TestSharedStateIsActuallyShared:
     def test_neither_loop_builds_tool_state_inline(self) -> None:
         import pathlib
 
-        for name in ("runtime.py", "async_runtime.py"):
-            src = pathlib.Path("shipit_agent") / name
-            text = src.read_text()
-            assert "build_shared_state(registry" in text, f"{name} must use the core"
-            assert (
-                'shared_state["available_tools"]' not in text
-            ), f"{name} builds tool state inline — it will drift"
+        core = pathlib.Path("shipit_agent") / "core"
+        # The loop is spread across the runtime and its phase modules.
+        loop = (core / "async_runtime.py").read_text() + "".join(
+            path.read_text() for path in sorted((core / "loop").glob("*.py"))
+        )
+        assert "build_shared_state(registry" in loop, "the loop must use the core"
+        assert (
+            'shared_state["available_tools"]' not in loop
+        ), "the loop builds tool state inline — it will drift"
+        # The sync runtime drives the same loop; it must not grow one of its own.
+        facade = (core / "runtime.py").read_text()
+        assert "shared_state" not in facade, "runtime.py has started building its own loop"
+        assert "_run_turn(" in facade, "runtime.py must drive the shared loop"
 
     def test_the_subagent_event_sink_is_published_by_both(self) -> None:
         from shipit_agent.tools.sub_agent.sub_agent_tool import EVENT_SINK_KEY
@@ -367,14 +378,14 @@ class TestBothLoopsSpendTokensTheSameWay:
     """
 
     def test_neither_loop_writes_its_own_step_request(self) -> None:
-        from shipit_agent.async_runtime import AsyncAgentRuntime
-        from shipit_agent.runtime import AgentRuntime
+        from shipit_agent.core.async_runtime import AsyncAgentRuntime
+        from shipit_agent.core.runtime import AgentRuntime
 
         for cls in (AgentRuntime, AsyncAgentRuntime):
             assert "step_request" not in vars(cls)
 
     def test_the_shared_helper_withholds_tools_on_the_last_step(self) -> None:
-        from shipit_agent.runtime_core import RuntimeCore
+        from shipit_agent.core.runtime_core import RuntimeCore
 
         core = RuntimeCore.__new__(RuntimeCore)
         core._init_core()
@@ -385,7 +396,7 @@ class TestBothLoopsSpendTokensTheSameWay:
         assert schemas == []
 
     def test_the_shared_helper_keeps_tools_for_a_single_step_run(self) -> None:
-        from shipit_agent.runtime_core import RuntimeCore
+        from shipit_agent.core.runtime_core import RuntimeCore
 
         core = RuntimeCore.__new__(RuntimeCore)
         core._init_core()
@@ -398,8 +409,8 @@ class TestBothLoopsSpendTokensTheSameWay:
     def test_the_shared_helper_does_not_mutate_the_caller_list(self) -> None:
         """The reminder is rebuilt each step; stacking it would grow the
         context every iteration."""
-        from shipit_agent.models import Message
-        from shipit_agent.runtime_core import RuntimeCore
+        from shipit_agent.core.models import Message
+        from shipit_agent.core.runtime_core import RuntimeCore
 
         core = RuntimeCore.__new__(RuntimeCore)
         core._init_core()

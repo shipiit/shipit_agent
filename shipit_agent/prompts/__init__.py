@@ -1,3 +1,5 @@
+"""System prompts for the default agent and guidance text for the built-in tools."""
+
 from .tool_prompts import (
     ARTIFACT_BUILDER_PROMPT,
     ASK_USER_PROMPT,

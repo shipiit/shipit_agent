@@ -7,7 +7,7 @@ and verifier — previously they were silently dropped.
 from __future__ import annotations
 
 from shipit_agent.deep.deep_agent.factory import DeepAgent
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 from shipit_agent.deep.goal_agent import Goal
 
 

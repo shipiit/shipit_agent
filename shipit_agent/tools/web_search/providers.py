@@ -1,3 +1,6 @@
+"""Web search providers: DuckDuckGo, Playwright, Brave, Serper and Tavily, behind one interface.
+"""
+
 from __future__ import annotations
 
 import json
@@ -17,12 +20,14 @@ def _strip_html(value: str) -> str:
 
 
 class SearchProvider(Protocol):
+    """The interface every web search provider implements."""
     name: str
 
     def search(self, query: str, max_results: int = 5) -> list[dict[str, Any]]: ...
 
 
 class DuckDuckGoSearchProvider:
+    """Web search through DuckDuckGo's HTML results; needs no API key."""
     name = "duckduckgo"
 
     def __init__(
@@ -58,6 +63,7 @@ class DuckDuckGoSearchProvider:
 
 
 class PlaywrightSearchProvider:
+    """Web search by driving a real browser with Playwright."""
     name = "playwright"
 
     def __init__(self, *, timeout_ms: int = 15000) -> None:
@@ -87,6 +93,7 @@ class PlaywrightSearchProvider:
 
 
 class BraveSearchProvider:
+    """Web search through the Brave Search API."""
     name = "brave"
 
     def __init__(self, *, api_key: str, timeout: float = 15.0) -> None:
@@ -117,6 +124,7 @@ class BraveSearchProvider:
 
 
 class SerperSearchProvider:
+    """Web search through the Serper (Google results) API."""
     name = "serper"
 
     def __init__(self, *, api_key: str, timeout: float = 15.0) -> None:
@@ -149,6 +157,7 @@ class SerperSearchProvider:
 
 
 class TavilySearchProvider:
+    """Web search through the Tavily API, built for agents."""
     name = "tavily"
 
     def __init__(self, *, api_key: str, timeout: float = 20.0) -> None:
@@ -213,6 +222,8 @@ def build_search_provider(
     api_key: str | None = None,
     config: dict[str, Any] | None = None,
 ) -> SearchProvider:
+    """The search provider named by *provider* (or the one passed in), configured with *api_key*.
+    """
     if provider and not isinstance(provider, str):
         return provider
 

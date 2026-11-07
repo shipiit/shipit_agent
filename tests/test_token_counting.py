@@ -1,9 +1,9 @@
 """Real per-model token counting, with a safe fall-back."""
 import importlib.util
 
-from shipit_agent.compaction import estimate_tokens
-from shipit_agent.models import Message
-from shipit_agent.token_counting import (
+from shipit_agent.context.compaction import estimate_tokens
+from shipit_agent.core.models import Message
+from shipit_agent.context.token_counting import (
     count_message_tokens,
     count_tokens,
     real_counting_available,
@@ -41,7 +41,7 @@ def test_unknown_model_still_returns_something():
 
 def test_falls_back_to_estimate_when_litellm_unavailable(monkeypatch):
     # Force the litellm path to fail → estimate_tokens is used.
-    import shipit_agent.token_counting as tc
+    import shipit_agent.context.token_counting as tc
 
     tc._litellm_count.cache_clear()
     monkeypatch.setattr(tc, "_litellm_count", lambda model, text: None)

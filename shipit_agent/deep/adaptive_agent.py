@@ -1,3 +1,5 @@
+"""An agent that writes new tools for itself while it works."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -120,7 +122,7 @@ class AdaptiveAgent:
     def stream(self, task: str):
         """Run the adaptive agent and yield events."""
         from shipit_agent.agent import Agent
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         yield AgentEvent(
             type="run_started",

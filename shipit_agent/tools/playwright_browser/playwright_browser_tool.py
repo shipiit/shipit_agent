@@ -1,3 +1,6 @@
+"""The ``playwright_browse`` tool: use Playwright to open a page and return the rendered text content.
+"""
+
 from __future__ import annotations
 
 import importlib.util
@@ -17,6 +20,8 @@ class PlaywrightBrowserTool:
     #: Availability gate: this tool is dead weight without the ``playwright``
     #: package. Declaring it lets the agent hide the tool (and its schema) when
     #: Playwright isn't installed — see ``shipit_agent.tools.availability``.
+    """The ``playwright_browse`` tool: use Playwright to open a page and return the rendered text content.
+    """
     check_fn = staticmethod(_playwright_installed)
 
     def __init__(

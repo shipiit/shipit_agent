@@ -1,0 +1,282 @@
+"""The permission engine: deny, ask, mode, allow, then the callback."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, Sequence
+
+from shipit_agent.safety.permission_rules import (
+    RuleBehavior,
+    is_scoped,
+    rule_matches,
+    rule_names_tool,
+)
+
+from .tool_kinds import _DEFAULT_MUTATING, _DEFAULT_READ_ONLY, _EDIT_TOOLS, _matches_any
+from .values import PermissionDecision, PermissionMode, PermissionResult
+
+
+@dataclass
+class PermissionEngine:
+    """Rule-based gate for tool calls.
+
+    ``allow`` / ``deny`` / ``ask`` are lists of rules: a tool-name glob, or a
+    scoped rule such as ``Bash(rm *)`` or ``Edit(src/**)`` (see
+    :mod:`shipit_agent.safety.permission_rules`). A deny refuses matching
+    calls in every mode, ``bypass`` included; ``hidden`` removes tools.
+    Precedence, as in the Claude Agent SDK: ``deny`` > ``ask`` > mode logic >
+    ``allow`` > ``callback`` > ``default_decision``.
+
+    Because ``deny`` outranks ``allow``, ``deny=["*"]`` denies **everything**,
+    including anything you allow-listed — it is not "deny the rest". To mean
+    "these tools and nothing else", allow-list them and flip the default::
+
+        PermissionEngine(
+            allow=["read_file", "grep_files"],
+            default_decision=PermissionDecision.DENY,
+        )
+    """
+
+    mode: PermissionMode = "default"
+    allow: list[str] = field(default_factory=list)
+    deny: list[str] = field(default_factory=list)
+    ask: list[str] = field(default_factory=list)
+    default_decision: PermissionDecision = PermissionDecision.ALLOW
+    read_only_tools: tuple[str, ...] = _DEFAULT_READ_ONLY
+    mutating_tools: tuple[str, ...] = _DEFAULT_MUTATING
+    edit_tools: tuple[str, ...] = _EDIT_TOOLS
+    # canUseTool-style callback: (name, args) -> PermissionResult | None.
+    # Returning None defers to the default decision.
+    callback: Callable[[str, dict[str, Any]], PermissionResult | None] | None = None
+    #: Calls approved for the session (see ``PermissionResult.scope``).
+    session_grants: set[str] = field(default_factory=set)
+    #: Anchors relative path rules; the working directory when ``None``.
+    root: str | None = None
+    #: Tool-name rules whose tools are taken out of the run altogether, so the
+    #: model never sees them (the Agent's ``disallowed_tools`` bare names). A
+    #: bare ``deny`` rule alone keeps the tool and refuses each call.
+    hidden: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.mode == "bypassPermissions":
+            self.mode = "bypass"
+
+    # ------------------------------------------------------------------
+    # Classification
+    # ------------------------------------------------------------------
+    def is_read_only(self, tool_name: str, tool: Any = None) -> bool:
+        """Is this call an observation?
+
+        Precedence: the tool's own ``read_only`` attribute, then a declared
+        :class:`~shipit_agent.tools.contracts.ToolContract`, then the name
+        globs below. The globs used to be the only answer; they are now the
+        fallback for tools nobody has declared.
+        """
+        ro = getattr(tool, "read_only", None)
+        if isinstance(ro, bool):
+            return ro
+        declared = self._declared_read_only(tool_name)
+        if declared is not None:
+            return declared
+        if _matches_any(tool_name, self.mutating_tools):
+            return False
+        return _matches_any(tool_name, self.read_only_tools)
+
+    @staticmethod
+    def _declared_read_only(tool_name: str) -> bool | None:
+        """``read_only`` from a declared contract, or ``None`` if undeclared.
+
+        Reads the tables directly rather than calling ``contract_for``, which
+        would recurse back here for anything undeclared.
+        """
+        from shipit_agent.tools.contracts import CONTRACTS, registered_contracts
+
+        contract = registered_contracts().get(tool_name) or CONTRACTS.get(tool_name)
+        return None if contract is None else contract.read_only
+
+    def is_edit(self, tool_name: str) -> bool:
+        return _matches_any(tool_name, self.edit_tools)
+
+    # ------------------------------------------------------------------
+    # Decision
+    # ------------------------------------------------------------------
+    def removes(self, tool_name: str) -> bool:
+        """Whether this tool is taken out of the run entirely (see ``hidden``)."""
+        return any(rule_names_tool(rule, tool_name) for rule in self.hidden)
+
+    def discoverable(self, tool_name: str, tool: Any = None) -> bool:
+        """Static catalog visibility, without invoking argument callbacks.
+
+        Discovery is not authorization. Conditional callbacks and approvals
+        are evaluated only when real arguments are available at execution.
+        """
+        if self.removes(tool_name) or any(
+            not is_scoped(rule) and rule_names_tool(rule, tool_name)
+            for rule in self.deny
+        ):
+            return False
+        if self.mode == "bypass":
+            return True
+        if self.mode == "plan":
+            return (
+                tool_name == "present_plan"
+                or self._names(self.allow, tool_name)
+                or self.is_read_only(tool_name, tool)
+            )
+        if self.mode == "acceptEdits" and self.is_edit(tool_name):
+            return True
+        return (
+            self.callback is not None
+            or self._names(self.allow, tool_name)
+            or self._names(self.ask, tool_name)
+            or self.default_decision != PermissionDecision.DENY
+        )
+
+    def check(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        tool: Any = None,
+        *,
+        risk: Sequence[str] = (),
+    ) -> PermissionResult:
+        """Decide one call. *risk* names what makes this call need approval
+        (a shell command that deletes, say): an allow rule or bypass mode
+        still allows it, otherwise only a yes from the callback does."""
+        # 1. Hard deny rules always win.
+        denied_by = self._first_hit(self.deny, tool_name, arguments, "deny")
+        if denied_by is not None:
+            return PermissionResult(
+                PermissionDecision.DENY,
+                reason=f"'{tool_name}' is denied by the rule {denied_by!r}.",
+            )
+
+        # 1b. A tool decorated with @requires_confirmation is a per-tool floor:
+        # it asks for a human "yes" even under bypass/allow, because the tool
+        # itself demands it. Only a hard deny (above) outranks it. The spec may
+        # be conditional (a `when` predicate over the arguments), so a cheap
+        # call runs free and only the dangerous one pauses.
+        if tool is not None:
+            from shipit_agent.tools.confirmation import confirmation_spec
+
+            spec = confirmation_spec(tool)
+            if spec is not None and spec.applies(arguments):
+                asked = self._consult_callback(tool_name, arguments)
+                if asked is not None:
+                    return asked
+                return PermissionResult(
+                    PermissionDecision.ASK,
+                    reason=spec.reason(tool_name),
+                )
+
+        # 2. Ask rules: a request for a human, which no mode or allow overrides.
+        if self._first_hit(self.ask, tool_name, arguments, "ask") is not None:
+            asked = self._consult_callback(tool_name, arguments)
+            if asked is not None:
+                return asked
+            return self._ask_or_refuse(f"'{tool_name}' requires approval (ask rule).")
+
+        # 3. Mode logic.
+        if self.mode == "bypass":
+            return PermissionResult(PermissionDecision.ALLOW, reason="bypass mode")
+
+        if self.mode == "plan":
+            # present_plan is the exit affordance: it produces a plan for
+            # approval, so it is always allowed in plan mode even though it
+            # is the thing plan mode is building toward.
+            if (
+                tool_name == "present_plan"
+                or self._first_hit(self.allow, tool_name, arguments, "allow")
+                is not None
+                or self.is_read_only(tool_name, tool)
+            ):
+                return PermissionResult(
+                    PermissionDecision.ALLOW, reason="read-only (plan mode)"
+                )
+            return PermissionResult(
+                PermissionDecision.DENY,
+                reason=(
+                    "Plan mode is read-only — do not call mutating tools. "
+                    "Research read-only, then call present_plan with your "
+                    "step-by-step plan and stop for approval."
+                ),
+            )
+
+        if self.mode == "acceptEdits" and self.is_edit(tool_name):
+            return PermissionResult(
+                PermissionDecision.ALLOW, reason="auto-approved edit (acceptEdits)"
+            )
+
+        # 4. Allow rules.
+        if self._first_hit(self.allow, tool_name, arguments, "allow") is not None:
+            return PermissionResult(PermissionDecision.ALLOW, reason="allow rule")
+
+        # 5. Callback (canUseTool) as a catch-all, then the default.
+        asked = self._consult_callback(tool_name, arguments)
+        if asked is not None:
+            return asked
+        if risk:
+            return self._ask_or_refuse(
+                f"'{tool_name}' needs approval because " + "; ".join(risk)
+            )
+        if self.mode == "dontAsk":
+            return PermissionResult(
+                PermissionDecision.DENY,
+                reason=f"'{tool_name}' is not pre-approved (dontAsk mode).",
+            )
+        return PermissionResult(self.default_decision, reason="default")
+
+    def _first_hit(
+        self,
+        rules: list[str],
+        tool_name: str,
+        arguments: dict[str, Any],
+        behavior: RuleBehavior,
+    ) -> str | None:
+        """The first of *rules* that covers this call, or ``None``."""
+        for rule in rules:
+            if rule_matches(
+                rule, tool_name, arguments, root=self.root, behavior=behavior
+            ):
+                return rule
+        return None
+
+    @staticmethod
+    def _names(rules: list[str], tool_name: str) -> bool:
+        return any(rule_names_tool(rule, tool_name) for rule in rules)
+
+    def _ask_or_refuse(self, reason: str) -> PermissionResult:
+        """Ask a human, or in ``dontAsk`` mode refuse instead."""
+        if self.mode == "dontAsk":
+            return PermissionResult(
+                PermissionDecision.DENY,
+                reason=f"{reason} Not pre-approved (dontAsk mode).",
+            )
+        return PermissionResult(PermissionDecision.ASK, reason=reason)
+
+    def _consult_callback(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> PermissionResult | None:
+        key = _grant_key(tool_name, arguments)
+        if key in self.session_grants:
+            return PermissionResult(
+                PermissionDecision.ALLOW, reason="approved earlier for this session"
+            )
+        if self.callback is None:
+            return None
+        try:
+            result = self.callback(tool_name, dict(arguments))
+        except Exception:
+            return None
+        if not isinstance(result, PermissionResult):
+            return None
+        if result.allowed and result.scope == "session":
+            self.session_grants.add(key)
+        return result
+
+
+def _grant_key(tool_name: str, arguments: dict[str, Any]) -> str:
+    """One call's identity for a session grant: the tool and its exact arguments."""
+    import json
+
+    return f"{tool_name}\0{json.dumps(arguments, sort_keys=True, default=str)}"

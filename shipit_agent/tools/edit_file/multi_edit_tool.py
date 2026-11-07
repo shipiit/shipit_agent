@@ -12,10 +12,14 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
+
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.file_state import changed_on_disk, missing_text_hint
 
 
 class MultiEditTool:
+    """The ``multi_edit`` tool: apply several exact string-replacement edits to ONE file atomically.
+    """
     read_only = False
 
     def __init__(
@@ -94,46 +98,40 @@ class MultiEditTool:
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         raw = kwargs.get("path") or kwargs.get("file_path")
         if not raw:
-            return ToolOutput(text="multi_edit failed: missing required argument `path`.")
+            return ToolOutput.error("multi_edit failed: missing required argument `path`.", error="missing_path")
         edits = kwargs.get("edits")
         if not isinstance(edits, list) or not edits:
-            return ToolOutput(
-                text="multi_edit failed: `edits` must be a non-empty array of "
-                "{old_text, new_text} objects."
+            return ToolOutput.error(
+                "multi_edit failed: `edits` must be a non-empty array of "
+                "{old_text, new_text} objects.",
+                error="invalid_edits",
             )
         try:
             path = self._resolve(str(raw))
         except ValueError as exc:
-            return ToolOutput(text=str(exc))
+            return ToolOutput.error(str(exc), error="invalid_path")
         if not path.exists():
-            return ToolOutput(text=f"File not found: {path}")
+            return ToolOutput.error(f"File not found: {path}", path=str(path), error="not_found")
         if path.is_dir():
-            return ToolOutput(text=f"Path is a directory, not a file: {path}")
+            return ToolOutput.error(f"Path is a directory, not a file: {path}", path=str(path), error="is_directory")
 
         state = getattr(context, "state", {}) or {}
         if str(path) not in set(state.get("read_files", [])):
-            return ToolOutput(
-                text="multi_edit blocked: read the file first with read_file so "
-                "the edits are based on current contents."
+            return ToolOutput.error(
+                "multi_edit blocked: read the file first with read_file so "
+                "the edits are based on current contents.",
+                path=str(path), error="not_read",
             )
-        recorded_mtime = (state.get("read_file_mtimes") or {}).get(str(path))
-        if recorded_mtime is not None:
-            try:
-                if path.stat().st_mtime_ns != recorded_mtime:
-                    return ToolOutput(
-                        text="multi_edit blocked: the file changed on disk after "
-                        "it was read. Re-read it, then retry.",
-                        metadata={"path": str(path), "error": "stale_read"},
-                    )
-            except OSError:
-                pass
+        # Applied to the file as it is now; only a target that no longer
+        # matches after an outside change needs a fresh read.
+        changed_since_read = changed_on_disk(state, path)
 
         try:
             content = path.read_bytes().decode("utf-8")
         except UnicodeDecodeError as exc:
             return ToolOutput(
                 text=f"multi_edit refused: file is not valid UTF-8 ({exc.reason}).",
-                metadata={"path": str(path), "error": "not_utf8"},
+                metadata={"path": str(path), "error": "not_utf8", "is_error": True},
             )
 
         # Apply to an in-memory copy first — all-or-nothing. A single bad
@@ -143,24 +141,40 @@ class MultiEditTool:
         applied = 0
         for index, edit in enumerate(edits, start=1):
             if not isinstance(edit, dict):
-                return ToolOutput(text=f"multi_edit failed: edit #{index} is not an object.")
+                return ToolOutput.error(f"multi_edit failed: edit #{index} is not an object.", error="invalid_edits")
             old_text = str(edit.get("old_text", ""))
             new_text = str(edit.get("new_text", ""))
             replace_all = bool(edit.get("replace_all", False))
             count = working.count(old_text)
+            if count == 0 and changed_since_read:
+                return ToolOutput(
+                    text=f"multi_edit blocked at edit #{index}: {path.name} changed "
+                    "on disk after it was read and that old_text is no longer in "
+                    "it. Re-read the file, then retry (no changes written).",
+                    metadata={
+                        "path": str(path),
+                        "error": "stale_read",
+                        "failed_edit": index,
+                        "is_error": True,
+                    },
+                )
             if count == 0:
                 return ToolOutput(
                     text=f"multi_edit failed at edit #{index}: old_text not found "
-                    "(no changes written). It may have been altered by an earlier "
-                    "edit in this batch, or never existed.",
-                    metadata={"path": str(path), "failed_edit": index},
+                    "(no changes written)."
+                    + (
+                        missing_text_hint(old_text, working)
+                        or " It may have been altered by an earlier edit in this "
+                        "batch, or never existed."
+                    ),
+                    metadata={"path": str(path), "failed_edit": index, "is_error": True},
                 )
             if count > 1 and not replace_all:
                 return ToolOutput(
                     text=f"multi_edit failed at edit #{index}: old_text is not "
                     "unique (no changes written). Make it specific or set "
                     "replace_all=true for that edit.",
-                    metadata={"path": str(path), "failed_edit": index},
+                    metadata={"path": str(path), "failed_edit": index, "is_error": True},
                 )
             working = (
                 working.replace(old_text, new_text)
@@ -189,7 +203,12 @@ class MultiEditTool:
         if len(diff) > 6000:
             diff = diff[:6000].rstrip() + "\n… (diff truncated)"
         return ToolOutput(
-            text=f"File patched: {path} ({applied} edits applied)\n{diff}",
-            metadata={"path": str(path), "edits_applied": applied},
+            text=("(The file had changed on disk since it was read; the edit was applied to its current contents.)\n" if changed_since_read else "")
+            + f"File patched: {path} ({applied} edits applied)\n{diff}",
+            metadata={
+                "path": str(path),
+                "edits_applied": applied,
+                "changed_since_read": changed_since_read,
+            },
         )
 

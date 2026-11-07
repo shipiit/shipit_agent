@@ -15,10 +15,12 @@ _FRONTMATTER_RE = re.compile(r"^---\n.*?\n---\n", re.DOTALL)
 
 
 def commands_dir(project_root: str | Path) -> Path:
+    """The project's custom slash-command folder: ``.shipit/commands``."""
     return Path(project_root).resolve() / ".shipit" / "commands"
 
 
 def skills_dir(project_root: str | Path) -> Path:
+    """The project's skills folder: ``.shipit/skills``."""
     return Path(project_root).resolve() / ".shipit" / "skills"
 
 

@@ -66,6 +66,7 @@ class Backend:
 
 
 class MacBackend(Backend):
+    """Screen capture and input control on macOS."""
     def __init__(self) -> None:
         super().__init__(platform="darwin")
         self._cliclick = shutil.which("cliclick")
@@ -165,6 +166,7 @@ class MacBackend(Backend):
 
 
 class LinuxBackend(Backend):
+    """Screen capture and input control on Linux."""
     def __init__(self) -> None:
         super().__init__(platform="linux")
         self._shot = shutil.which("scrot") or shutil.which("import")
@@ -226,6 +228,7 @@ class LinuxBackend(Backend):
 
 
 class WindowsBackend(Backend):
+    """Screen capture and input control on Windows."""
     def __init__(self) -> None:
         super().__init__(platform="win32")
 
@@ -248,6 +251,7 @@ class WindowsBackend(Backend):
 
 
 def resolve_backend() -> Backend:
+    """The computer-use backend for the current operating system."""
     if sys.platform == "darwin":
         return MacBackend()
     if sys.platform.startswith("linux"):

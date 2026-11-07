@@ -1,3 +1,6 @@
+"""The model contract: :class:`LLM`, :class:`LLMResponse` and helpers for adapter capabilities.
+"""
+
 from __future__ import annotations
 
 import inspect
@@ -5,7 +8,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.core.models import Message, ToolCall
 
 
 def coerce_message(message: Any) -> Message:
@@ -126,6 +129,10 @@ def accepts_text_delta_callback(complete_fn: Any) -> bool:
 
 @dataclass(slots=True)
 class LLMResponse:
+    """One model completion: its text, any tool calls, reasoning and token usage.
+
+    ``metadata`` carries provider details such as the finish reason.
+    """
     content: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -134,6 +141,8 @@ class LLMResponse:
 
 
 class LLM(Protocol):
+    """The protocol every model adapter implements: ``complete(messages=..., tools=...)``.
+    """
     def complete(
         self,
         *,

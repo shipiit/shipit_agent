@@ -84,7 +84,7 @@ class TestPublicImports:
     def test_namespace_modules(self) -> None:
         # Sub-package access works too
         import shipit_agent.verifier
-        import shipit_agent.structured_output
+        import shipit_agent.core.structured_output
 
         assert hasattr(shipit_agent.verifier, "VerifierNetwork")
         assert hasattr(shipit_agent.structured_output, "StructuredOutput")

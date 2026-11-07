@@ -1,3 +1,5 @@
+"""Typed message channels for agents that talk to each other."""
+
 from __future__ import annotations
 
 import queue

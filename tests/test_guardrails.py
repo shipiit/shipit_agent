@@ -35,7 +35,7 @@ class TestInputRules:
         assert not g.check_input("tell me about the project").blocked
 
     def test_custom_input_hook(self) -> None:
-        from shipit_agent.guardrails import GuardDecision
+        from shipit_agent.safety.guardrails import GuardDecision
 
         g = Guardrails(
             block_prompt_injection=False,

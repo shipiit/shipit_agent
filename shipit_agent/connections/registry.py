@@ -64,6 +64,7 @@ _SECRET_FIELDS = ("api_key", "token", "access_token", "password", "secret")
 
 
 def title_for(key: str) -> str:
+    """A human-readable title for a connection key."""
     return TITLES.get(key) or key.replace("_", " ").title()
 
 

@@ -27,6 +27,8 @@ _ANGLES = [
 
 
 class DeepResearchTool:
+    """The ``deep_research`` tool: deep multi-angle research: several search queries, deduped sources, top pages fetched — returns a structured digest with citations.
+    """
     name = "deep_research"
     description = (
         "Deep multi-angle research: several search queries, deduped sources, "

@@ -1,3 +1,6 @@
+"""The ``decision_matrix`` tool: compare options against explicit criteria and recommend the strongest choice.
+"""
+
 from __future__ import annotations
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -5,6 +8,8 @@ from .prompt import DECISION_MATRIX_PROMPT
 
 
 class DecisionMatrixTool:
+    """The ``decision_matrix`` tool: compare options against explicit criteria and recommend the strongest choice.
+    """
     def __init__(
         self,
         *,

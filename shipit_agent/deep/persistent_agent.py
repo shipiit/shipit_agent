@@ -1,3 +1,5 @@
+"""An agent that saves checkpoints so a long task can stop and resume later."""
+
 from __future__ import annotations
 
 import json
@@ -133,7 +135,7 @@ class PersistentAgent:
         steps so the run can be resumed if interrupted.
         """
         from shipit_agent.agent import Agent
-        from shipit_agent.models import AgentEvent
+        from shipit_agent.core.models import AgentEvent
 
         agent = Agent(llm=self.llm, tools=list(self.tools), **self.agent_kwargs)
         checkpoint = Checkpoint(agent_id=agent_id, step=0, state={"task": task})

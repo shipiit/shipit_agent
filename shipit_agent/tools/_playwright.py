@@ -1,3 +1,5 @@
+"""Run synchronous Playwright safely, even inside a running event loop."""
+
 from __future__ import annotations
 
 import asyncio

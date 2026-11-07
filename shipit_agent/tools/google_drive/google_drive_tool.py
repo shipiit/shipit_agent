@@ -1,3 +1,5 @@
+"""The ``google_drive`` tool: search and list Google Drive files."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,7 @@ from .prompt import GOOGLE_DRIVE_PROMPT
 
 
 class GoogleDriveTool(ConnectorToolBase):
+    """The ``google_drive`` tool: search and list Google Drive files."""
     provider = "google_drive"
 
     def __init__(

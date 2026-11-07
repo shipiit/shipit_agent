@@ -19,8 +19,8 @@ def _ctx(state=None):
 # ── bash ─────────────────────────────────────────────────────────────────
 
 
-def test_bash_default_rejects_redirection_gracefully():
-    tool = BashTool(root_dir="/tmp")
+def test_bash_conservative_mode_rejects_redirection_gracefully():
+    tool = BashTool(root_dir="/tmp", unrestricted=False)
     out = tool.run(_ctx(), command="echo hi > out.txt")
     assert out.metadata.get("error") == "invalid_command"
     assert "redirection" in out.text.lower()

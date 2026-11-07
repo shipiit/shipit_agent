@@ -14,6 +14,7 @@ from shipit_agent.tools.base import ToolOutput
 
 
 class WordCountTool:
+    """The ``word_count`` tool: count the words and characters in a text."""
     name = "word_count"
     description = "Count the words (and characters) in a piece of text."
 
@@ -41,4 +42,5 @@ class WordCountTool:
 
 
 def register(reg: Any) -> None:
+    """Install the word-count plugin's tool."""
     reg.add_tool(WordCountTool())

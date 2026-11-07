@@ -30,7 +30,9 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Iterable, Iterator
+
+from .front_matter import _parse_front_matter
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,7 @@ class SkillParseError(ValueError):
 
 
 def skill_id_from_name(name: str) -> str:
+    """A URL-safe skill id derived from a skill's name."""
     return _ID_SAFE.sub("-", name.strip().lower()).strip("-") or "skill"
 
 
@@ -113,49 +116,6 @@ class Skill:
             "version": self.version,
             "directory": str(self.directory) if self.directory else None,
         }
-
-
-def _parse_front_matter(text: str) -> dict[str, Any]:
-    """YAML when available, a minimal key/value reader when it is not.
-
-    A skill folder must not become unreadable because an optional dependency is
-    missing, so the fallback handles the shapes front-matter actually uses:
-    scalars, inline lists, and dash lists.
-    """
-    try:
-        import yaml  # type: ignore
-
-        loaded = yaml.safe_load(text)
-        return loaded if isinstance(loaded, dict) else {}
-    except ImportError:
-        pass
-
-    data: dict[str, Any] = {}
-    current_key: str | None = None
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith("- ") and current_key:
-            data.setdefault(current_key, [])
-            if isinstance(data[current_key], list):
-                data[current_key].append(stripped[2:].strip().strip("\"'"))
-            continue
-        if ":" not in stripped:
-            continue
-        key, _, value = stripped.partition(":")
-        key = key.strip()
-        value = value.strip()
-        current_key = key
-        if not value:
-            data[key] = []
-        elif value.startswith("[") and value.endswith("]"):
-            data[key] = [v.strip().strip("\"'") for v in value[1:-1].split(",") if v.strip()]
-        elif value.lower() in ("true", "false"):
-            data[key] = value.lower() == "true"
-        else:
-            data[key] = value.strip("\"'")
-    return data
 
 
 def parse_skill_markdown(text: str, *, directory: Path | None = None) -> Skill:

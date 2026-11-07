@@ -22,7 +22,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from shipit_agent.llms.litellm_adapter import BedrockChatLLM, LiteLLMChatLLM
-from shipit_agent.models import Message, ToolCall
+from shipit_agent.core.models import Message, ToolCall
 
 
 # ----------------------------------------------------------------------
@@ -213,7 +213,7 @@ def test_runtime_emits_text_delta_events(fake_litellm):
     """Smoke-test that AgentRuntime._complete_with_retry passes the
     callback to the LLM and that callback emits text_delta events on the
     runtime state."""
-    from shipit_agent.runtime import AgentRuntime
+    from shipit_agent.core.runtime import AgentRuntime
 
     chunks = [
         _make_text_chunk("Hi "),

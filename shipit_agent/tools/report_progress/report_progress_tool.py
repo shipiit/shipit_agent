@@ -20,6 +20,8 @@ __all__ = ["ReportProgressTool"]
 
 
 class ReportProgressTool(ToolBase):
+    """The ``report_progress`` tool: record what is done, what is next and what is blocking.
+    """
     name = "report_progress"
     description = DESCRIPTION
     prompt_instructions = INSTRUCTIONS

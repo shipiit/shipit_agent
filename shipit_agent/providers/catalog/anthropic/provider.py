@@ -16,6 +16,7 @@ from shipit_agent.providers.registry import require_env_any, resolve_model
 
 
 def build(profile: ProviderProfile, config: dict[str, Any], env: Mapping[str, str]) -> Any:
+    """Construct the Anthropic model adapter from *profile*, *config* and *env*."""
     from shipit_agent.llms.anthropic_adapter import AnthropicChatLLM
     from shipit_agent.providers.registry import build_provider
 

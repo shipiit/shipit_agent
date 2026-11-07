@@ -278,7 +278,7 @@ class TestFieldRegistry:
         assert streaming_field_for("some_mcp_tool") is None
 
     def test_every_registered_tool_is_a_real_builtin(self) -> None:
-        from shipit_agent.builtins import get_builtin_tools
+        from shipit_agent.agent_setup.builtins import get_builtin_tools
 
         names = {
             getattr(t, "name", "") for t in get_builtin_tools(llm=None, project_root=".")

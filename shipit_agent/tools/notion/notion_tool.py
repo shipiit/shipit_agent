@@ -1,3 +1,5 @@
+"""The ``notion`` tool: search Notion pages and create Notion pages."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,7 @@ from .prompt import NOTION_PROMPT
 
 
 class NotionTool(HTTPConnectorToolBase):
+    """The ``notion`` tool: search Notion pages and create Notion pages."""
     provider = "notion"
 
     def __init__(

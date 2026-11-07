@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from shipit_agent.askuser_channel import pending_questions
+from shipit_agent.safety.askuser_channel import pending_questions
 from shipit_agent.deep.goal_agent import Goal, GoalAgent
 
 from .artifacts import ArtifactCollector

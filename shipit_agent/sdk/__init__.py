@@ -1,0 +1,92 @@
+"""shipit's SDK: query(), a multi-turn client, typed messages, hooks and approvals.
+
+This is shipit's own code on shipit's own agent loop; it does not use the
+Claude Agent SDK. Its names and shapes follow that SDK's Python package, so
+code written for it ports by changing the import, and it runs on any
+provider shipit supports::
+
+    from shipit_agent.sdk import AgentOptions, ResultMessage, query
+
+    async for message in query(
+        prompt="Fix the failing test in tests/test_api.py",
+        options=AgentOptions(
+            model="claude-opus-5-5",
+            allowed_tools=["Read", "Grep", "Bash(pytest *)"],
+            permission_mode="acceptEdits",
+            cwd="/path/to/repo",
+        ),
+    ):
+        if isinstance(message, ResultMessage):
+            print(message.result, message.total_cost_usd)
+
+Custom tools use :func:`tool` and :func:`create_sdk_mcp_server`; hooks use
+:class:`HookMatcher`; approvals use ``can_use_tool`` with
+:class:`PermissionResultAllow` / :class:`PermissionResultDeny`.
+"""
+
+from __future__ import annotations
+
+from .build import build_agent
+from .client import AgentClient
+from .hooks import HOOK_EVENTS, HookMatcher
+from .options import AgentOptions
+from .permissions import PermissionResultAllow, PermissionResultDeny, ToolPermissionContext
+from .query import query
+from .sessions import (
+    SDKSessionInfo,
+    SessionMessage,
+    fork_session,
+    get_session_info,
+    get_session_messages,
+    list_sessions,
+    rename_session,
+    tag_session,
+)
+from .tools import SdkMcpTool, create_sdk_mcp_server, tool
+from .types import (
+    AssistantMessage,
+    ContentBlock,
+    Message,
+    ResultMessage,
+    StreamEvent,
+    SystemMessage,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+)
+
+__all__ = [
+    "HOOK_EVENTS",
+    "AgentClient",
+    "AgentOptions",
+    "AssistantMessage",
+    "ContentBlock",
+    "HookMatcher",
+    "Message",
+    "PermissionResultAllow",
+    "PermissionResultDeny",
+    "ResultMessage",
+    "SDKSessionInfo",
+    "SdkMcpTool",
+    "SessionMessage",
+    "StreamEvent",
+    "SystemMessage",
+    "TextBlock",
+    "ThinkingBlock",
+    "ToolPermissionContext",
+    "ToolResultBlock",
+    "ToolUseBlock",
+    "UserMessage",
+    "build_agent",
+    "create_sdk_mcp_server",
+    "fork_session",
+    "get_session_info",
+    "get_session_messages",
+    "list_sessions",
+    "query",
+    "rename_session",
+    "tag_session",
+    "tool",
+]

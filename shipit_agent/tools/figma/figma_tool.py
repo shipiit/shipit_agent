@@ -1,3 +1,6 @@
+"""The ``figma`` tool: read Figma files, render node images, browse and post comments, and introspect team projects / components via the Figma REST API.
+"""
+
 from __future__ import annotations
 
 import json
@@ -28,6 +31,8 @@ _ACTIONS = [
 
 
 class FigmaTool(HTTPConnectorToolBase):
+    """The ``figma`` tool: read Figma files, render node images, browse and post comments, and introspect team projects / components via the Figma REST API.
+    """
     provider = "figma"
 
     def __init__(

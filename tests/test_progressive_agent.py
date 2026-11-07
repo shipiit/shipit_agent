@@ -4,8 +4,8 @@ import pytest
 
 from shipit_agent import Agent, FunctionTool, Skill, SkillRegistry
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import ToolCall
-from shipit_agent.permissions import PermissionEngine
+from shipit_agent.core.models import ToolCall
+from shipit_agent.safety.permissions import PermissionEngine
 
 
 def make_agent(llm, **kwargs):

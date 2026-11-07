@@ -1,122 +1,27 @@
+"""OpenAI Chat Completions adapter, also used for OpenAI-compatible endpoints."""
+
 from __future__ import annotations
 
-import re
 from typing import Any
 
+from shipit_agent.core.models import Message, ToolCall
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import Message, ToolCall
 from shipit_agent.llms.litellm_adapter import (
     _extract_reasoning,
-    _iter_with_deadline,
     _parse_tool_arguments,
     _serialize_message,
 )
-
-
-# Models that natively produce reasoning / thinking content.
-# Used to auto-pass `reasoning_effort` when the caller doesn't.
-_REASONING_MODEL_PATTERNS = [
-    re.compile(r"^o1(-|$)"),  # o1, o1-mini, o1-preview
-    re.compile(r"^o3(-|$)"),  # o3, o3-mini
-    re.compile(r"^o4(-|$)"),  # o4, o4-mini
-    re.compile(r"^gpt-5"),  # gpt-5 family
-    re.compile(r"^deepseek-r1"),  # DeepSeek R1 via OpenAI-compatible endpoints
-]
-
-
-def _is_reasoning_model(model: str) -> bool:
-    m = (model or "").lower()
-    return any(p.search(m) for p in _REASONING_MODEL_PATTERNS)
-
-
-#: Genuine ``OpenAI()`` client-constructor parameters. Anything else a caller
-#: passes is a completion/sampling parameter (forwarded to
-#: ``chat.completions.create``) or a non-OpenAI flag we drop. Routing all of
-#: them to the client used to make it reject ``drop_params`` and silently
-#: swallow ``top_p`` (it never reached the model).
-_OPENAI_CLIENT_PARAMS = frozenset(
-    {
-        "base_url",
-        "organization",
-        "project",
-        "timeout",
-        "max_retries",
-        "default_headers",
-        "default_query",
-        "http_client",
-        "websocket_base_url",
-    }
+from shipit_agent.llms.openai_common import (
+    _NON_OPENAI_PARAMS,
+    _OPENAI_CLIENT_PARAMS,
+    _is_reasoning_model,
+    _usage_dict,
 )
-#: LiteLLM-only / non-OpenAI knobs that must never reach the OpenAI SDK.
-_NON_OPENAI_PARAMS = frozenset(
-    {
-        "drop_params",
-        "modify_params",
-        "custom_llm_provider",
-        "api_base",
-        "aws_region_name",
-        "region",
-        "prompt_caching",
-        "num_retries",
-        "aws_bedrock_client",
-        "mock_response",
-    }
-)
-
-# A few OpenAI-compatible gateways acknowledge ``stream=True`` but sometimes
-# return a completed response object (Bedrock Mantle can do this after a
-# reasoning pass). The provider latency cannot be recovered, but emitting the
-# already-buffered text in bounded deltas keeps downstream SSE/rendering
-# contracts consistent and avoids one enormous UI update.
-_BUFFERED_DELTA_CHARS = 48
+from shipit_agent.llms.openai_streaming import OpenAIStreamingMixin
 
 
-def _buffered_deltas(text: str) -> list[str]:
-    return [
-        text[offset:offset + _BUFFERED_DELTA_CHARS]
-        for offset in range(0, len(text), _BUFFERED_DELTA_CHARS)
-    ]
-
-
-def _usage_dict(usage_obj: Any) -> dict[str, int]:
-    """Normalize an OpenAI usage object, including automatic-cache counters.
-
-    OpenAI-compatible endpoints — including the Bedrock Mantle / Gemma route —
-    do *implicit* prompt caching and report the cached portion under
-    ``prompt_tokens_details.cached_tokens`` (and any write under
-    ``cache_write_tokens``). Surface those under the same
-    ``cache_read_input_tokens`` / ``cache_creation_input_tokens`` keys the cost
-    tracker already reads for Anthropic, so cache savings are visible on EVERY
-    path — the streaming path (which the agent loop uses) previously dropped
-    them, so a real 99%-cached prompt reported as if nothing were cached.
-    """
-    if not usage_obj:
-        return {}
-    out: dict[str, int] = {
-        "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0) or 0,
-        "completion_tokens": getattr(usage_obj, "completion_tokens", 0) or 0,
-        "total_tokens": getattr(usage_obj, "total_tokens", 0) or 0,
-    }
-    try:
-        details = getattr(usage_obj, "prompt_tokens_details", None)
-        cached = getattr(details, "cached_tokens", None) if details else None
-        if cached:
-            out["cache_read_input_tokens"] = int(cached)
-        written = getattr(details, "cache_write_tokens", None) if details else None
-        if written:
-            out["cache_creation_input_tokens"] = int(written)
-        out_details = getattr(usage_obj, "completion_tokens_details", None)
-        reasoning = (
-            getattr(out_details, "reasoning_tokens", None) if out_details else None
-        )
-        if reasoning:
-            out["reasoning_tokens"] = int(reasoning)
-    except Exception:
-        pass
-    return out
-
-
-class OpenAIChatLLM:
+class OpenAIChatLLM(OpenAIStreamingMixin):
+    """A model adapter for OpenAI and OpenAI-compatible chat completion APIs."""
     def __init__(
         self,
         model: str,
@@ -157,6 +62,25 @@ class OpenAIChatLLM:
             else:
                 self.extra_completion[_k] = _v
 
+    def _client_for(self, client_class: Any, timeout: float | None) -> Any:
+        """The adapter's SDK client, with *timeout* applied to this call only.
+
+        One client for the adapter's life, so calls share its connection
+        pool; rebuilt only if the SDK's client class itself is replaced.
+        """
+        if getattr(self, "_client_class", None) is not client_class:
+            self._client = client_class(api_key=self.api_key, **self.client_kwargs)
+            self._client_class = client_class
+        if timeout is None:
+            return self._client
+        with_options = getattr(self._client, "with_options", None)
+        if with_options is not None:
+            return with_options(timeout=timeout)
+        # An SDK without per-request options: a one-off client for this call.
+        return client_class(
+            api_key=self.api_key, **{**self.client_kwargs, "timeout": timeout}
+        )
+
     def complete(
         self,
         *,
@@ -175,11 +99,7 @@ class OpenAIChatLLM:
         except ImportError as exc:
             raise RuntimeError("Install `openai` to use OpenAIChatLLM.") from exc
 
-        client_kwargs = dict(self.client_kwargs)
-        if timeout is not None:
-            # Per-request override wins over any client-level default.
-            client_kwargs["timeout"] = timeout
-        client = OpenAI(api_key=self.api_key, **client_kwargs)
+        client = self._client_for(OpenAI, timeout)
         from shipit_agent.llms.capabilities import capabilities_for
 
         caps = capabilities_for(self.model)
@@ -237,7 +157,7 @@ class OpenAIChatLLM:
         if text_delta_callback is not None or tool_input_callback is not None:
             return self._complete_streaming(
                 client, kwargs, text_delta_callback, tool_input_callback,
-                timeout=client_kwargs.get("timeout"),
+                timeout=timeout if timeout is not None else self.client_kwargs.get("timeout"),
             )
 
         try:
@@ -288,248 +208,12 @@ class OpenAIChatLLM:
             usage=usage,
         )
 
-    def _complete_streaming(
-        self,
-        client: Any,
-        kwargs: dict[str, Any],
-        on_delta: Any,
-        on_tool_input: Any = None,
-        timeout: Any = None,
-    ) -> LLMResponse:
-        """Token-by-token completion — same LLMResponse shape as non-streaming.
 
-        Text deltas hit ``on_delta`` the moment they arrive; tool-call
-        fragments are stitched together by index. ``stream_options`` is
-        retried without ``include_usage`` for OpenAI-compatible providers
-        that reject it (e.g. some gateways).
-        """
-        try:
-            stream = client.chat.completions.create(
-                **kwargs, stream=True, stream_options={"include_usage": True}
-            )
-        except Exception as first_exc:
-            exc_name = type(first_exc).__name__
-            status = getattr(first_exc, "status_code", None)
-            if (
-                status in (429, 500, 502, 503, 529)
-                or "RateLimitError" in exc_name
-                or "ServiceUnavailable" in exc_name
-                or "InternalServerError" in exc_name
-            ):
-                raise ConnectionError(f"{exc_name}: {first_exc}") from first_exc
-            try:  # provider may not support stream_options
-                stream = client.chat.completions.create(**kwargs, stream=True)
-            except Exception:
-                raise first_exc from None
+def __getattr__(name: str) -> Any:
+    # BedrockGemmaChatLLM subclasses OpenAIChatLLM, so it lives in its own
+    # module; resolving it lazily keeps this old import path working.
+    if name == "BedrockGemmaChatLLM":
+        from shipit_agent.llms.bedrock_gemma import BedrockGemmaChatLLM
 
-        # Some gateways (and test fakes) ignore stream=True and return a plain
-        # completion object. Detect that and degrade gracefully. The upstream
-        # response was buffered, so this cannot restore time-to-first-token;
-        # bounded synthetic deltas only preserve the consumer/UI contract.
-        if hasattr(stream, "choices"):
-            choice = stream.choices[0].message
-            content = choice.content or ""
-            deltas = _buffered_deltas(content)
-            emitted_deltas = 0
-            stopped = False
-            if on_delta is not None:
-                for delta in deltas:
-                    emitted_deltas += 1
-                    try:
-                        should_continue = on_delta(delta)
-                    except Exception:
-                        # Match native-stream behavior: observers may fail,
-                        # but only an explicit False controls generation.
-                        should_continue = None
-                    if should_continue is False:
-                        # The gateway already generated the full response, so
-                        # we cannot refund those provider tokens. We can still
-                        # enforce the runtime contract: stop publishing and do
-                        # not return the rejected suffix as the final answer.
-                        content = content[:emitted_deltas * _BUFFERED_DELTA_CHARS]
-                        stopped = True
-                        break
-            usage: dict[str, int] = {}
-            if getattr(stream, "usage", None):
-                usage = _usage_dict(stream.usage)
-            tool_calls = []
-            for call in choice.tool_calls or []:
-                arguments = call.function.arguments or "{}"
-                tool_calls.append(
-                    ToolCall(
-                        name=call.function.name,
-                        arguments=_parse_tool_arguments(arguments),
-                        id=str(getattr(call, "id", "") or ""),
-                    )
-                )
-            return LLMResponse(
-                content=content,
-                tool_calls=tool_calls,
-                metadata={
-                    "model": self.model,
-                    "provider": "openai",
-                    "streamed": False,
-                    "buffered_fallback": True,
-                    "finish_reason": getattr(stream.choices[0], "finish_reason", None),
-                    "prompt_tokens_include_cache": True,
-                    "synthetic_deltas": emitted_deltas,
-                    **({"stream_stopped": "callback"} if stopped else {}),
-                },
-                reasoning_content=_extract_reasoning(choice),
-                usage=usage,
-            )
-
-        content_parts: list[str] = []
-        reasoning_parts: list[str] = []
-        calls: dict[int, dict[str, Any]] = {}  # index → {id, name, arguments}
-        usage: dict[str, int] = {}
-        stopped_reason: str | None = None
-        finish_reason: str | None = None
-
-        for chunk in _iter_with_deadline(stream, timeout):
-            if getattr(chunk, "usage", None):
-                usage = _usage_dict(chunk.usage)
-            if not getattr(chunk, "choices", None):
-                continue
-            finish_reason = getattr(chunk.choices[0], "finish_reason", None) or finish_reason
-            delta = chunk.choices[0].delta
-            if delta is None:
-                continue
-            text = getattr(delta, "content", None)
-            if text:
-                content_parts.append(text)
-                # Streaming mode is entered when EITHER callback is set;
-                # a tool-input-only caller has no text callback to invoke.
-                if on_delta is not None:
-                    try:
-                        if on_delta(text) is False:
-                            stopped_reason = "degenerate_repetition"
-                            close = getattr(stream, "close", None)
-                            if callable(close):
-                                close()
-                            break
-                    except Exception:
-                        # A UI subscriber cannot be allowed to kill the model
-                        # stream; the runtime's own stop signal is ``False``.
-                        pass
-            reasoning = getattr(delta, "reasoning_content", None)
-            if reasoning:
-                reasoning_parts.append(str(reasoning))
-            for frag in getattr(delta, "tool_calls", None) or []:
-                idx = getattr(frag, "index", 0) or 0
-                slot = calls.setdefault(
-                    idx, {"id": "", "name": "", "arguments": ""}
-                )
-                if getattr(frag, "id", None):
-                    slot["id"] = frag.id
-                fn = getattr(frag, "function", None)
-                if fn is not None:
-                    if getattr(fn, "name", None):
-                        # Assign, don't concatenate: a provider that repeats
-                        # the name on every fragment would otherwise build
-                        # "get_weatherget_weather". Names arrive whole; only
-                        # ARGUMENTS stream in fragments.
-                        slot["name"] = fn.name
-                    if getattr(fn, "arguments", None):
-                        slot["arguments"] += fn.arguments
-                        if on_tool_input is not None and slot["name"]:
-                            # The provider streams argument JSON in fragments
-                            # exactly as Anthropic does; forward them so a
-                            # renderer can show the file being written. The
-                            # index stands in for a call id — OpenAI does not
-                            # send one until the call completes.
-                            try:
-                                callback_result = on_tool_input(
-                                    slot["id"] or f"call_{idx}",
-                                    slot["name"],
-                                    fn.arguments,
-                                )
-                                if callback_result is False:
-                                    stopped_reason = "tool_argument_guard"
-                                    close = getattr(stream, "close", None)
-                                    if callable(close):
-                                        close()
-                                    break
-                            except Exception:
-                                pass
-            if stopped_reason:
-                break
-
-        tool_calls = []
-        for idx in sorted(calls):
-            raw = calls[idx]["arguments"] or "{}"
-            arguments = _parse_tool_arguments(raw)
-            tool_calls.append(
-                ToolCall(
-                    name=calls[idx]["name"],
-                    arguments=arguments,
-                    id=calls[idx]["id"],
-                    index=idx,
-                ).ensure_id()
-            )
-
-        return LLMResponse(
-            content="".join(content_parts),
-            tool_calls=tool_calls,
-            metadata={
-                "model": self.model,
-                "provider": "openai",
-                "streamed": True,
-                "finish_reason": finish_reason,
-                "prompt_tokens_include_cache": True,
-                **({"stream_stopped": stopped_reason} if stopped_reason else {}),
-            },
-            reasoning_content="".join(reasoning_parts) or None,
-            usage=usage,
-        )
-
-
-def _bedrock_mantle_base_url(region: str) -> str:
-    return f"https://bedrock-mantle.{region}.api.aws/openai/v1"
-
-
-class BedrockGemmaChatLLM(OpenAIChatLLM):
-    """Google **Gemma 4** on Amazon Bedrock — with native agentic tool use.
-
-    Gemma 4 supports *native function calling for agentic workflows*, but on
-    Bedrock it is served through the **OpenAI-compatible** ``bedrock-mantle``
-    endpoint (not the Converse API that :class:`BedrockChatLLM` uses). So it runs
-    on the OpenAI adapter — tool calls, streaming shape, and all — pointed at
-    that endpoint with a **Bedrock API key**::
-
-        # 1. Create a Bedrock API key: AWS console → Amazon Bedrock → API keys
-        # 2. export AWS_BEARER_TOKEN_BEDROCK=...   (and AWS_REGION_NAME)
-        from shipit_agent import Agent
-        from shipit_agent.llms import BedrockGemmaChatLLM
-
-        llm = BedrockGemmaChatLLM(model="google.gemma-4-31b", region="us-east-1")
-        agent = Agent.with_builtins(llm=llm)
-        print(agent.run("What's 2+2? Use a tool if it helps.").output)
-
-    Model ids: ``google.gemma-4-31b`` (dense), ``google.gemma-4-26b-a4b`` (MoE),
-    ``google.gemma-4-e2b`` (small). Regions at launch: us-east-1, us-east-2,
-    us-west-2, eu-central-1. Multimodal (text + image) too.
-    """
-
-    def __init__(
-        self,
-        model: str = "google.gemma-4-31b",
-        *,
-        region: str | None = None,
-        api_key: str | None = None,
-        base_url: str | None = None,
-        **client_kwargs: Any,
-    ) -> None:
-        import os
-
-        resolved_region = (
-            region
-            or os.getenv("AWS_REGION_NAME")
-            or os.getenv("AWS_DEFAULT_REGION")
-            or "us-east-1"
-        )
-        resolved_key = api_key or os.getenv("AWS_BEARER_TOKEN_BEDROCK")
-        client_kwargs.setdefault(
-            "base_url", base_url or _bedrock_mantle_base_url(resolved_region)
-        )
-        super().__init__(model=model, api_key=resolved_key, **client_kwargs)
+        return BedrockGemmaChatLLM
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

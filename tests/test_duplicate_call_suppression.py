@@ -107,7 +107,7 @@ def test_suppressed_call_tells_the_model_to_reuse():
 def _async_run(tool, script):
     import asyncio
 
-    from shipit_agent.async_runtime import AsyncAgentRuntime
+    from shipit_agent.core.async_runtime import AsyncAgentRuntime
 
     runtime = AsyncAgentRuntime(
         llm=_ScriptedLLM(script), prompt="You are helpful.", tools=[tool],

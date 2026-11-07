@@ -1,3 +1,5 @@
+"""Turn a plain Python function into a tool."""
+
 from __future__ import annotations
 
 import inspect
@@ -25,6 +27,11 @@ def _annotation_name(annotation: Any) -> str:
 
 @dataclass(slots=True)
 class FunctionTool:
+    """A tool that calls a Python function.
+
+    :meth:`from_callable` builds the JSON schema from the function's
+    signature, type hints and docstring.
+    """
     name: str
     description: str
     func: Callable[..., Any]

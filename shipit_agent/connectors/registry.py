@@ -83,6 +83,7 @@ def load_catalog() -> None:
 
 
 def get_connector(name: str) -> Connector | None:
+    """The connector named *name* from the catalog, or ``None``."""
     load_catalog()
     return _REGISTRY.get(name)
 
@@ -95,6 +96,7 @@ def list_connectors(*, category: str | None = None) -> list[Connector]:
 
 
 def connector_categories() -> list[str]:
+    """Every connector category in the catalog, sorted."""
     load_catalog()
     return sorted({c.category for c in _REGISTRY.values()})
 

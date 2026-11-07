@@ -1,6 +1,6 @@
 from shipit_agent import MCPServer, MCPTool, RemoteMCPServer, ToolRegistry
 from shipit_agent.llms import SimpleEchoLLM
-from shipit_agent.profiles import AgentProfileBuilder
+from shipit_agent.agent_setup.profiles import AgentProfileBuilder
 
 
 def test_mcp_tools_are_exposed_through_registry() -> None:

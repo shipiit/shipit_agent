@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 
-from shipit_agent.policies import RouterPolicy
+from shipit_agent.core.policies import RouterPolicy
 
 from examples.run_multi_tool_agent import build_demo_agent, build_llm_from_env
 

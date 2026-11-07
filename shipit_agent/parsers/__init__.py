@@ -1,3 +1,5 @@
+"""Parsers that turn a model's text answer into structured data."""
+
 from .base import OutputParser, ParseError
 from .json_parser import JSONParser
 from .markdown_parser import MarkdownParser, MarkdownResult

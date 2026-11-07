@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 
 from shipit_agent import Agent
-from shipit_agent.builtins import get_builtin_tools
+from shipit_agent.agent_setup.builtins import get_builtin_tools
 from shipit_agent.deep import DeepAgent
 from shipit_agent.deep.deep_agent.delegation import AgentDelegationTool
 from shipit_agent.llms import SimpleEchoLLM

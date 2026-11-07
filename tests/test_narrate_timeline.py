@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.narrate.timeline import (
     TimelineBuilder,
     render_markdown,

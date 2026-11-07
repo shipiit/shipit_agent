@@ -62,13 +62,17 @@ SERVER_TOOL_RESULT_BLOCKS = (
 
 
 def is_server_tool(tool: dict[str, Any]) -> bool:
-    """True if ``tool`` is a server-side tool declaration (has a ``type``).
+    """True if ``tool`` is a server-side tool declaration, such as web search.
 
-    Client-side tools follow the OpenAI ``{"function": {...}}`` / flat shape and
-    never carry a top-level ``type``; server-side tools always do. The adapter
-    uses this to decide whether to translate the schema or forward it as-is.
+    Server tools carry a top-level ``type`` naming the tool
+    (``web_search_20250305``). Client tools are either flat or OpenAI-shaped,
+    ``{"type": "function", "function": {...}}``: that ``type`` names the
+    format, not a server tool, and every shipit tool schema has it. The
+    adapter uses this to decide whether to translate a schema or forward it.
     """
-    return isinstance(tool, dict) and "type" in tool
+    if not isinstance(tool, dict) or "type" not in tool:
+        return False
+    return tool["type"] != "function" and "function" not in tool
 
 
 def required_betas(tools: list[dict[str, Any]] | None) -> list[str]:

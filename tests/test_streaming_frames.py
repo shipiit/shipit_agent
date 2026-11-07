@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from shipit_agent.models import AgentEvent
-from shipit_agent.streaming import (
+from shipit_agent.core.models import AgentEvent
+from shipit_agent.observability.streaming import (
     STREAM_GENERATION,
     Durability,
     classify,
@@ -66,7 +66,7 @@ class TestClassification:
     def test_every_declared_event_type_is_classified(self) -> None:
         import typing
 
-        from shipit_agent.models import EventType
+        from shipit_agent.core.models import EventType
 
         for kind in typing.get_args(EventType):
             assert classify(kind) in (Durability.CANONICAL, Durability.PROVISIONAL)
@@ -182,7 +182,7 @@ class TestServerIntegration:
 
         from shipit_agent import Agent
         from shipit_agent.llms.base import LLMResponse
-        from shipit_agent.serve import AgentServer
+        from shipit_agent.cli.serve import AgentServer
 
         class L:
             model = "m"
@@ -295,7 +295,7 @@ class TestAgentSurfaces:
     def _agent(self):
         from shipit_agent import Agent
         from shipit_agent.llms.base import LLMResponse
-        from shipit_agent.models import ToolCall
+        from shipit_agent.core.models import ToolCall
         from shipit_agent.tools.base import ToolOutput
 
         class T:

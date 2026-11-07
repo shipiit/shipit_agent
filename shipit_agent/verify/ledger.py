@@ -36,6 +36,8 @@ Status = str
 
 @dataclass(frozen=True, slots=True)
 class VerificationStatus:
+    """Whether the workspace is verified, with the last check command and its summary.
+    """
     status: Status
     last_command: str = ""
     last_summary: str = ""

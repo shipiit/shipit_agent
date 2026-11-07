@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.narrate.tree import TreeRenderer, render_tree
 
 

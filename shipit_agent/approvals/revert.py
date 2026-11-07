@@ -177,6 +177,8 @@ def register_reverter(tool: str, reverter: Reverter) -> None:
 
 
 def reverter_for(tool: str) -> Reverter | None:
+    """The function that undoes *tool*'s effect, or ``None`` when it cannot be undone.
+    """
     return REVERTERS.get(tool)
 
 

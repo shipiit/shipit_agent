@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from shipit_agent.models import AgentEvent
+from shipit_agent.core.models import AgentEvent
 from shipit_agent.tracing_exporters import LangfuseExporter
 
 

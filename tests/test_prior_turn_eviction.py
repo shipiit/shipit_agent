@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import Message, ToolCall
-from shipit_agent.runtime_core import evict_prior_tool_outputs
+from shipit_agent.core.models import Message, ToolCall
+from shipit_agent.core.runtime_core import evict_prior_tool_outputs
 from shipit_agent.stores import InMemorySessionStore
 
 BIG = "x" * 15_000

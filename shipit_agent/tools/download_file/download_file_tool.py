@@ -23,6 +23,8 @@ _FILENAME_RE = re.compile(r'filename\*?=(?:"([^"]+)"|([^;\s]+))', re.IGNORECASE)
 
 
 class DownloadFileTool:
+    """The ``download_file`` tool: download a file (binary-safe: zip, csv, image, pdf, …) from an http(s) URL to local disk.
+    """
     def __init__(
         self,
         *,

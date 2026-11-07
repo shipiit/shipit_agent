@@ -24,6 +24,8 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 
 
 class NotebookEditTool:
+    """The ``notebook_edit`` tool: read, edit, add, or delete cells in a Jupyter notebook (.ipynb).
+    """
     name = "notebook_edit"
     description = (
         "Read, edit, add, or delete cells in a Jupyter notebook (.ipynb)."

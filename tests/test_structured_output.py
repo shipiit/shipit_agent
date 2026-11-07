@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover
     pytest.skip("pydantic not installed", allow_module_level=True)
 
 from shipit_agent.parsers.base import ParseError
-from shipit_agent.structured_output import (
+from shipit_agent.core.structured_output import (
     StructuredOutput,
     StructuredOutputResult,
     validate_with_retry,

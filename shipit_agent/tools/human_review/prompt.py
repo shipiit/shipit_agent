@@ -1,3 +1,5 @@
+"""What the model is told about the human review tool: when to use it and how."""
+
 from __future__ import annotations
 
 HUMAN_REVIEW_PROMPT = """

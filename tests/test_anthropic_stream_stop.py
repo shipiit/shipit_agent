@@ -12,7 +12,7 @@ import sys
 import types
 
 from shipit_agent.llms.anthropic_adapter import AnthropicChatLLM
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 def _ns(**kwargs):

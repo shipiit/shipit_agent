@@ -1,3 +1,5 @@
+"""The ``slack`` tool: search Slack messages and post Slack messages."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -8,6 +10,7 @@ from .prompt import SLACK_PROMPT
 
 
 class SlackTool(HTTPConnectorToolBase):
+    """The ``slack`` tool: search Slack messages and post Slack messages."""
     provider = "slack"
 
     def __init__(

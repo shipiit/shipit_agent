@@ -1,19 +1,13 @@
+"""What the model is told about the tool search tool: when to use it and how."""
+
 from __future__ import annotations
 
 TOOL_SEARCH_PROMPT = """
-
-## tool_search
-Search the current toolset to find the right tool for a task. Useful when many tools are available.
-
-**When to use:**
-- You have many tools available and are unsure which one fits the current sub-task
-- The user describes a capability need (e.g., "search the web", "edit a file") and you need the right tool name
-- No already loaded tool fits the task; you need another capability
-
-**Rules:**
-- Search by **task intent and capability**, not only exact tool names
-- Review the returned tool descriptions before choosing — pick the most specific tool available
-- Use an already loaded matching tool directly; do not search just to confirm it exists
-- If no tool matches, report the missing capability or ask a focused clarification; never invent a tool or bypass source/access restrictions
-- Do not search repeatedly for the same capability within one run
+Find another tool by what you need it to do, when none loaded fits.
+- Search by task intent and capability, not only by tool name, and pick the
+  most specific match from the results.
+- Use an already loaded tool directly; do not search to confirm it exists.
+- If nothing matches, say which capability is missing; never invent a tool or
+  get around an access restriction.
+- Do not search again for the same capability in one run.
 """.strip()

@@ -59,10 +59,10 @@ from pathlib import Path
 from typing import Any
 
 from shipit_agent.agent import DEFAULT_SKILLS_PATH
-from shipit_agent.builtins import get_builtin_tools
+from shipit_agent.agent_setup.builtins import get_builtin_tools
 from shipit_agent.chat_session import AgentChatSession
-from shipit_agent.models import AgentEvent, AgentResult, Message
-from shipit_agent.policies import RetryPolicy, RouterPolicy
+from shipit_agent.core.models import AgentEvent, AgentResult, Message
+from shipit_agent.core.policies import RetryPolicy, RouterPolicy
 from shipit_agent.skills import Skill, SkillRegistry
 from shipit_agent.stores import InMemorySessionStore, SessionStore
 
@@ -295,7 +295,7 @@ class DeepAgent:
     ) -> "DeepAgent":
         """Build a durable, token-efficient deep agent for one repository."""
         if optimized:
-            from shipit_agent.compaction import get_model_limits
+            from shipit_agent.context.compaction import get_model_limits
             from shipit_agent.stores import FileMemoryStore, FileSessionStore
 
             state_root = Path(project_root) / ".shipit"

@@ -5,10 +5,9 @@ discouraged."""
 
 from __future__ import annotations
 
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 from shipit_agent.prompts.reminders import (
     REANNOUNCE_DAMPER,
-    build_reminder,
     is_reannouncing,
 )
 
@@ -75,7 +74,7 @@ class _Core:
     max_iterations = 6
     reminder = None
 
-    from shipit_agent.runtime_core import RuntimeCore
+    from shipit_agent.core.runtime_core import RuntimeCore
     step_request = RuntimeCore.step_request
     prune_stale_images = staticmethod(lambda msgs: list(msgs))
 

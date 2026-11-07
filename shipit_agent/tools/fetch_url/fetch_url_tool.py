@@ -37,6 +37,7 @@ def html_to_text(html: str) -> str:
 
 
 class FetchUrlTool(ToolBase):
+    """The ``fetch_url`` tool: fetch a URL and return its readable text."""
     name = "fetch_url"
     description = DESCRIPTION
     prompt_instructions = INSTRUCTIONS

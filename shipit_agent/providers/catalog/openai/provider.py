@@ -14,6 +14,7 @@ from shipit_agent.providers.registry import require_env_any, resolve_model
 
 
 def build(profile: ProviderProfile, config: dict[str, Any], env: Mapping[str, str]) -> Any:
+    """Construct the OpenAI model adapter from *profile*, *config* and *env*."""
     from shipit_agent.llms.openai_adapter import OpenAIChatLLM
 
     require_env_any(profile, config, env)

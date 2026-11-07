@@ -152,7 +152,7 @@ def _usage_of(response: Any, call: dict[str, Any], model: Any) -> dict[str, Any]
     usage = dict(getattr(response, "usage", None) or {})
     if usage.get("prompt_tokens") and usage.get("completion_tokens"):
         return usage
-    from shipit_agent.compaction import count_messages, estimate_tokens
+    from shipit_agent.context.compaction import count_messages, estimate_tokens
 
     prompt = count_messages(call["messages"], model) + estimate_tokens(
         call.get("system_prompt") or "") + estimate_tokens(json.dumps(call.get("tools") or []))
@@ -174,7 +174,7 @@ class StepRouter:
     @property
     def model(self) -> Any:
         """The model with the tighter window, so compaction fits both."""
-        from shipit_agent.compaction import get_model_limits
+        from shipit_agent.context.compaction import get_model_limits
 
         fast, strong = getattr(self.fast, "model", None), getattr(self.strong, "model", None)
         if not fast or not strong:

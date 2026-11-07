@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from shipit_agent import Agent, AgentTool
 from shipit_agent.llms import LLMResponse, SimpleEchoLLM
-from shipit_agent.models import ToolCall
+from shipit_agent.core.models import ToolCall
 from shipit_agent.stores import InMemorySessionStore
 from shipit_agent.tools.base import ToolContext
 

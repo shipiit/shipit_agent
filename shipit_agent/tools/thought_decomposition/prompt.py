@@ -1,3 +1,6 @@
+"""What the model is told about the thought decomposition tool: when to use it and how.
+"""
+
 from __future__ import annotations
 
 THOUGHT_DECOMPOSITION_PROMPT = """

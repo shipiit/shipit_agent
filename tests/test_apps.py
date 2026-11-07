@@ -341,14 +341,14 @@ class TestNarration:
 
 class TestBuiltins:
     def test_the_app_tools_ship_by_default(self, tmp_path) -> None:
-        from shipit_agent.builtins import get_builtin_tool_map
+        from shipit_agent.agent_setup.builtins import get_builtin_tool_map
 
         tools = get_builtin_tool_map(llm=None, project_root=str(tmp_path))
         for name in ("create_app", "use_app", "set_app_binding", "list_blueprints"):
             assert name in tools
 
     def test_they_share_one_store_under_the_project(self, tmp_path) -> None:
-        from shipit_agent.builtins import get_builtin_tool_map
+        from shipit_agent.agent_setup.builtins import get_builtin_tool_map
 
         tools = get_builtin_tool_map(llm=None, project_root=str(tmp_path))
         tools["create_app"].run(ctx(), name="weekly", title="W",
@@ -454,7 +454,7 @@ class TestArtifactEvents:
     """The runtime reports files a tool declared — and only those."""
 
     def test_a_declared_path_becomes_an_artifact(self, tmp_path) -> None:
-        from shipit_agent.runtime_core import _artifact_kind, _declared_paths
+        from shipit_agent.core.runtime_core import _artifact_kind, _declared_paths
 
         page = tmp_path / "revenue.html"
         page.write_text("<h1>hi</h1>")
@@ -463,12 +463,12 @@ class TestArtifactEvents:
         assert _artifact_kind(page) == "Page"
 
     def test_a_path_that_does_not_exist_is_not_an_artifact(self, tmp_path) -> None:
-        from shipit_agent.runtime_core import _declared_paths
+        from shipit_agent.core.runtime_core import _declared_paths
 
         assert _declared_paths({"path": str(tmp_path / "nope.html")}) == []
 
     def test_lists_are_read_too(self, tmp_path) -> None:
-        from shipit_agent.runtime_core import _declared_paths
+        from shipit_agent.core.runtime_core import _declared_paths
 
         for name in ("a.csv", "b.csv"):
             (tmp_path / name).write_text("x\n")
@@ -478,14 +478,14 @@ class TestArtifactEvents:
 
     def test_free_text_is_never_scraped(self, tmp_path) -> None:
         """Guessing paths out of output would invent artifacts constantly."""
-        from shipit_agent.runtime_core import _declared_paths
+        from shipit_agent.core.runtime_core import _declared_paths
 
         real = tmp_path / "real.csv"
         real.write_text("x\n")
         assert _declared_paths({"output": f"wrote {real}"}) == []
 
     def test_kinds_are_named_for_people(self) -> None:
-        from shipit_agent.runtime_core import _artifact_kind
+        from shipit_agent.core.runtime_core import _artifact_kind
 
         assert _artifact_kind("a.csv") == "Sheet"
         assert _artifact_kind("a.md") == "Doc"
@@ -524,8 +524,8 @@ class TestReadsAreNotArtifacts:
     """Reading a file does not produce one — the user already had it."""
 
     def test_a_read_declares_no_artifact(self, tmp_path) -> None:
-        from shipit_agent.models import AgentEvent
-        from shipit_agent.runtime_core import RuntimeCore
+        from shipit_agent.core.models import AgentEvent
+        from shipit_agent.core.runtime_core import RuntimeCore
 
         data = tmp_path / "guests.csv"
         data.write_text("name\nDana\n")

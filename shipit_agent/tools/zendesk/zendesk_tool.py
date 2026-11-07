@@ -1,3 +1,6 @@
+"""The ``zendesk`` tool: search / read / comment on Zendesk tickets and users; list and preview macros.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -29,6 +32,8 @@ _WRITE_GATED_ACTIONS = {"create_ticket", "update_ticket", "close_ticket"}
 
 
 class ZendeskTool(HTTPConnectorToolBase):
+    """The ``zendesk`` tool: search / read / comment on Zendesk tickets and users; list and preview macros.
+    """
     provider = "zendesk"
 
     def __init__(

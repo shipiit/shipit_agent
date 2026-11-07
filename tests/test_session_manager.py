@@ -1,5 +1,5 @@
-from shipit_agent.models import Message
-from shipit_agent.session_manager import SessionManager
+from shipit_agent.core.models import Message
+from shipit_agent.sessions.manager import SessionManager
 from shipit_agent.stores.session import InMemorySessionStore
 
 

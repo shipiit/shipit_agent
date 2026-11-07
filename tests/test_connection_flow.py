@@ -11,7 +11,7 @@ from __future__ import annotations
 from shipit_agent import Agent, ConnectionRegistry
 from shipit_agent.integrations import CredentialRecord, InMemoryCredentialStore
 from shipit_agent.llms.base import LLMResponse
-from shipit_agent.models import AgentEvent, ToolCall
+from shipit_agent.core.models import AgentEvent, ToolCall
 from shipit_agent.narrate import (
     ConnectionRow,
     build_transcript,

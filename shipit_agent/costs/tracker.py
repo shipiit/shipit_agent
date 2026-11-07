@@ -8,59 +8,25 @@ the pricing table, enforces budgets, and integrates with
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
 
-from shipit_agent.hooks import AgentHooks
+from shipit_agent.safety.hooks import AgentHooks
 
-from .budget import Budget, BudgetExceededError
-from .pricing import MODEL_ALIASES, MODEL_PRICING, resolve_pricing_key
+from .budget import Budget
+from .budget_checks import BudgetChecksMixin
+from .pricing import MODEL_PRICING
+from .pricing_lookup import PricingLookupMixin
+from .records import CostRecord
+# Re-exported: callers and tests import these from here.
+from .records import _extract_model as _extract_model
+from .records import _extract_usage as _extract_usage
+from .tracker_hooks import tracker_hooks
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(slots=True)
-class CostRecord:
-    """Record of a single LLM call's cost.
-
-    Attributes:
-        call_number:        Monotonically increasing call index.
-        model:              Model identifier used for pricing lookup.
-        input_tokens:       Number of prompt tokens.
-        output_tokens:      Number of completion tokens.
-        cache_read_tokens:  Tokens read from prompt cache (Anthropic).
-        cache_write_tokens: Tokens written to prompt cache (Anthropic).
-        cost_usd:           Computed cost in US dollars.
-        timestamp:          UTC time of the call.
-    """
-
-    call_number: int
-    model: str
-    input_tokens: int
-    output_tokens: int
-    cache_read_tokens: int
-    cache_write_tokens: int
-    cost_usd: float
-    timestamp: datetime
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialise to a plain dictionary."""
-        return {
-            "call_number": self.call_number,
-            "model": self.model,
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "cache_read_tokens": self.cache_read_tokens,
-            "cache_write_tokens": self.cache_write_tokens,
-            "cost_usd": round(self.cost_usd, 6),
-            "timestamp": self.timestamp.isoformat(),
-            "metadata": dict(self.metadata),
-        }
-
-
-class CostTracker:
+class CostTracker(BudgetChecksMixin, PricingLookupMixin):
     """Real-time cost tracking with per-model pricing and budget enforcement.
 
     Integrates with :class:`AgentHooks` to automatically track cost
@@ -237,36 +203,6 @@ class CostTracker:
 
         return record
 
-    def calculate_cost(
-        self,
-        model: str,
-        input_tokens: int,
-        output_tokens: int,
-        *,
-        cache_read_tokens: int = 0,
-        cache_write_tokens: int = 0,
-    ) -> float:
-        """Calculate cost in USD for a given token count.
-
-        If the model is not found in the pricing table the cost is
-        returned as ``0.0`` and a warning is logged.
-        """
-        resolved = self._resolve_model(model)
-        prices = self._pricing.get(resolved)
-
-        if prices is None:
-            logger.warning("No pricing data for model '%s' — cost will be $0.00", model)
-            return 0.0
-
-        per_million = 1_000_000.0
-        cost = (
-            input_tokens * prices.get("input", 0.0) / per_million
-            + output_tokens * prices.get("output", 0.0) / per_million
-            + cache_read_tokens * prices.get("cache_read", 0.0) / per_million
-            + cache_write_tokens * prices.get("cache_write", 0.0) / per_million
-        )
-        return cost
-
     def breakdown(self) -> list[dict[str, Any]]:
         """Return per-call cost attribution as a list of dicts."""
         return [rec.to_dict() for rec in self._calls]
@@ -295,33 +231,6 @@ class CostTracker:
 
         return result
 
-    def add_model(self, model_id: str, pricing: dict[str, float]) -> None:
-        """Register pricing for a custom or new model.
-
-        Args:
-            model_id: The model identifier string.
-            pricing:  Dict with keys like ``"input"``, ``"output"``,
-                      ``"cache_read"``, ``"cache_write"`` mapping to
-                      per-million-token prices in USD.
-        """
-        self._pricing[model_id] = pricing
-
-    def check_budget(self) -> None:
-        """Check if budget is exceeded.
-
-        Raises:
-            BudgetExceededError: If the accumulated cost exceeds the
-                budget limit.
-        """
-        if self._budget and self._budget.is_exceeded(self._total_cost):
-            # Use the most recent model if available.
-            model = self._calls[-1].model if self._calls else "unknown"
-            raise BudgetExceededError(
-                spent=self._total_cost,
-                budget=self._budget.max_dollars,
-                model=model,
-            )
-
     def reset(self) -> None:
         """Reset all tracked costs and call history."""
         self._calls.clear()
@@ -344,127 +253,4 @@ class CostTracker:
                 tracker will attempt to read the model from the
                 response object.
         """
-        hooks = AgentHooks()
-
-        # -- before LLM: pre-call budget check -------------------------
-        def _before_llm(messages: list[Any], tools: list[Any]) -> None:
-            # Raise early if we have already exceeded the budget.
-            self.check_budget()
-
-        hooks.on_before_llm(_before_llm)
-
-        # -- after LLM: record usage -----------------------------------
-        def _after_llm(response: Any) -> None:
-            # Extract usage from the response.  The exact attribute path
-            # depends on the LLM wrapper, so we try several patterns.
-            usage = _extract_usage(response)
-            model = model_name or _extract_model(response) or "unknown"
-
-            if usage:
-                input_tokens = usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0)
-                if (getattr(response, "metadata", {}) or {}).get("prompt_tokens_include_cache"):
-                    input_tokens = max(0, input_tokens
-                        - usage.get("cache_read_input_tokens", 0)
-                        - usage.get("cache_creation_input_tokens", 0))
-                self.record_call(
-                    model=model,
-                    input_tokens=input_tokens,
-                    output_tokens=usage.get("output_tokens", 0)
-                    or usage.get("completion_tokens", 0),
-                    cache_read_tokens=usage.get("cache_read_input_tokens", 0)
-                    or usage.get("cache_read_tokens", 0),
-                    cache_write_tokens=usage.get("cache_creation_input_tokens", 0)
-                    or usage.get("cache_write_tokens", 0),
-                )
-
-        hooks.on_after_llm(_after_llm)
-
-        return hooks
-
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
-
-    def _resolve_model(self, model: str) -> str:
-        """Resolve a model id to its pricing key.
-
-        Returns the id unchanged when nothing matches, so the caller's
-        ``resolved not in self._pricing`` unknown-model check still works.
-        """
-        return resolve_pricing_key(model, self._pricing) or MODEL_ALIASES.get(
-            model, model
-        )
-
-    def _check_warning(self) -> None:
-        """Emit a cost warning if the threshold has been crossed."""
-        if (
-            self._budget
-            and not self._warning_emitted
-            and self._budget.should_warn(self._total_cost)
-        ):
-            self._warning_emitted = True
-            logger.warning(
-                "Cost alert: $%.4f spent of $%.2f budget (%.0f%%)",
-                self._total_cost,
-                self._budget.max_dollars,
-                (self._total_cost / self._budget.max_dollars) * 100,
-            )
-            if self._on_cost_alert:
-                self._on_cost_alert(self._total_cost, self._budget.max_dollars)
-
-
-# ---------------------------------------------------------------------------
-# Helper functions for extracting usage from diverse LLM responses
-# ---------------------------------------------------------------------------
-
-
-def _extract_usage(response: Any) -> dict[str, int] | None:
-    """Best-effort extraction of token usage from an LLM response object."""
-    # Pattern 1: response.usage as a dict-like object.
-    if hasattr(response, "usage"):
-        usage = response.usage
-        if isinstance(usage, dict):
-            return usage
-        # Anthropic / OpenAI SDK objects expose attributes.
-        if hasattr(usage, "input_tokens"):
-            result: dict[str, int] = {
-                "input_tokens": getattr(usage, "input_tokens", 0),
-                "output_tokens": getattr(usage, "output_tokens", 0),
-            }
-            # Anthropic cache fields.
-            for key in (
-                "cache_read_input_tokens",
-                "cache_creation_input_tokens",
-            ):
-                val = getattr(usage, key, 0)
-                if val:
-                    result[key] = val
-            return result
-        if hasattr(usage, "prompt_tokens"):
-            return {
-                "prompt_tokens": getattr(usage, "prompt_tokens", 0),
-                "completion_tokens": getattr(usage, "completion_tokens", 0),
-            }
-
-    # Pattern 2: response.metadata["usage"].
-    if hasattr(response, "metadata") and isinstance(response.metadata, dict):
-        usage = response.metadata.get("usage")
-        if isinstance(usage, dict):
-            return usage
-
-    # Pattern 3: shipit_agent LLMResponse with raw_response.
-    if hasattr(response, "raw_response"):
-        return _extract_usage(response.raw_response)
-
-    return None
-
-
-def _extract_model(response: Any) -> str | None:
-    """Best-effort extraction of the model name from an LLM response."""
-    if hasattr(response, "model"):
-        return str(response.model)
-    if hasattr(response, "metadata") and isinstance(response.metadata, dict):
-        return response.metadata.get("model")
-    if hasattr(response, "raw_response") and hasattr(response.raw_response, "model"):
-        return str(response.raw_response.model)
-    return None
+        return tracker_hooks(self, model_name)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.compaction import (
+from shipit_agent.context.compaction import (
     COMPACTION_SYSTEM_PROMPT,
     TRIGGER_RATIO,
     CompactionCheckpoint,
@@ -17,7 +17,7 @@ from shipit_agent.compaction import (
     should_compact,
     starts_a_turn,
 )
-from shipit_agent.models import Message
+from shipit_agent.core.models import Message
 
 
 def user(text: str, **metadata) -> Message:

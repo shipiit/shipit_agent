@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from ..hooks import AgentHooks
+from shipit_agent.safety.hooks import AgentHooks
 from .base import PluginRegistrar
 from .registry import activate
 

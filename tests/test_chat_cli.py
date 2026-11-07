@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from shipit_agent.chat_cli import (
+from shipit_agent.cli.chat import (
     AGENT_TYPES,
     ChatREPL,
     agent_chat_session,

@@ -1,3 +1,6 @@
+"""The ``claude_memory`` tool: read and write a persistent memory directory (Anthropic memory tool).
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

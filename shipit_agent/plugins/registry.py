@@ -156,6 +156,7 @@ def _load_entry_points() -> None:
 
 
 def get_plugin(name: str) -> Plugin | None:
+    """The plugin named *name*, or ``None``."""
     load_catalog()
     return _REGISTRY.get(name)
 
@@ -167,6 +168,7 @@ def list_plugins() -> list[Plugin]:
 
 
 def plugin_names() -> list[str]:
+    """Names of every available plugin, sorted."""
     load_catalog()
     return sorted(_REGISTRY)
 

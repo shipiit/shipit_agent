@@ -1,3 +1,5 @@
+"""Persistence for memory facts and conversation sessions."""
+
 from .memory import FileMemoryStore, InMemoryMemoryStore, MemoryFact, MemoryStore
 from .session import FileSessionStore, InMemorySessionStore, SessionRecord, SessionStore
 

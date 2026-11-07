@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from live_streaming_gemma import build_mcp, build_tools, load_llm
 from shipit_agent.agent import Agent
-from shipit_agent.policies import RetryPolicy
+from shipit_agent.core.policies import RetryPolicy
 
 
 @dataclass(frozen=True)

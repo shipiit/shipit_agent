@@ -1,3 +1,6 @@
+"""The ``verify_output`` tool: check whether content satisfies a set of required criteria.
+"""
+
 from __future__ import annotations
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -5,6 +8,8 @@ from .prompt import VERIFIER_PROMPT
 
 
 class VerifierTool:
+    """The ``verify_output`` tool: check whether content satisfies a set of required criteria.
+    """
     def __init__(
         self,
         *,

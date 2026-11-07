@@ -1,3 +1,5 @@
+"""What the model is told about the sub agent tool: when to use it and how."""
+
 from __future__ import annotations
 
 #: The delegating parent reads this — when to reach for the tool. It is the

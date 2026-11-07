@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import time
 
-import pytest
 
-from shipit_agent.registry import ToolRegistry
+from shipit_agent.core.registry import ToolRegistry
 
 
 class FakeTool:

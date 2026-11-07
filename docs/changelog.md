@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-See the [canonical changelog](../CHANGELOG.md#unreleased) for automatic tool
+See the [canonical changelog](https://github.com/shipiit/shipit_agent/blob/main/CHANGELOG.md#unreleased) for automatic tool
 discovery, progressive skills, token-budget enforcement, history/compaction,
 cache accounting, plugin isolation and the latest validation results.
 

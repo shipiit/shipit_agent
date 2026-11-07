@@ -11,6 +11,7 @@ from __future__ import annotations
 from urllib import request
 
 from .http import MCPHTTPTransport, MCPStreamableHTTPTransport
+from .sse import MCPSSETransport
 from .server import MCPServer, RemoteMCPServer, discover_mcp_tools
 from .server_resources import MCPPrompt, MCPResource
 from .stdio import (
@@ -36,6 +37,7 @@ __all__ = [
     "MCPServer",
     "MCPStdioTransport",
     "MCPStreamableHTTPTransport",
+    "MCPSSETransport",
     "MCPSubprocessTransport",
     "MCPTool",
     "MCPTransport",

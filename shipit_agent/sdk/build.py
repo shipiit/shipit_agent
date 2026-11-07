@@ -135,6 +135,7 @@ def _with_sdk_questions(tools: list[Any], can_use_tool: Any) -> list[Any]:
 def mcp_servers(spec: dict[str, Any] | list[Any]) -> list[Any]:
     from shipit_agent.mcp import (
         MCPServer,
+        MCPSSETransport,
         MCPStreamableHTTPTransport,
         PersistentMCPSubprocessTransport,
         RemoteMCPServer,
@@ -157,8 +158,11 @@ def mcp_servers(spec: dict[str, Any] | list[Any]) -> list[Any]:
         elif kind == "http":
             transport = MCPStreamableHTTPTransport(str(config["url"]), headers=config.get("headers"))
             servers.append(RemoteMCPServer(name=name, transport=transport, include_server_in_tool_names=True))
+        elif kind == "sse":
+            transport = MCPSSETransport(str(config["url"]), headers=config.get("headers"))
+            servers.append(RemoteMCPServer(name=name, transport=transport, include_server_in_tool_names=True))
         else:
-            raise ValueError(f"MCP server {name!r}: type {kind!r} is not supported (use stdio, http or sdk)")
+            raise ValueError(f"MCP server {name!r}: type {kind!r} is not supported (use stdio, sse, http or sdk)")
     return servers
 
 

@@ -103,7 +103,10 @@ class BashTool(BackgroundJobsMixin):
                     "properties": {
                         "command": {
                             "type": "string",
-                            "description": "Shell command to run",
+                            "description": (
+                                "The shell command to run, e.g. `pytest -q`. Never a placeholder "
+                                "such as `:` or `true`: to plan or explain, write text instead."
+                            ),
                         },
                         "timeout": {
                             "type": "number",

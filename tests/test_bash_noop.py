@@ -49,3 +49,10 @@ def test_a_no_op_is_still_a_safe_command(tmp_path: Path) -> None:
     # to its allowlist and checks exactly this. Only run() refuses it, as useless.
     BashTool(root_dir=tmp_path)._validate_command(":")
     BashTool(root_dir=tmp_path, allowed_command_prefixes=[":"])._validate_command(":")
+
+
+def test_the_command_field_says_a_placeholder_is_not_a_command(tmp_path: Path) -> None:
+    # Gemma 4 sent `:` as a placeholder in a third of its coding runs.
+    field = BashTool(root_dir=tmp_path).schema()["function"]["parameters"]["properties"]["command"]
+    text = field["description"]
+    assert "`:`" in text and "placeholder" in text and "write text" in text

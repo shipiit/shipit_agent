@@ -136,7 +136,11 @@ With the SDK API, pass it through `AgentOptions(agent_options={"clear_tool_resul
 - Clearing goes down to half the trigger, and the point never moves back,
   so the request's prefix changes once per batch and prompt caches keep
   hitting in between. Each batch emits a `tool_results_cleared` event.
-- It is off by default. Measure your workload with the benchmark first:
+- It is off by default. Measured on Gemma 4 31B with clearing at 8,000
+  tokens: a 40-turn run fell from 907k to 574k input tokens (−37%) with the
+  same calls, but on tasks that finish in 11 to 19 turns the difference went
+  both ways (−17% to +22%), within run-to-run variance. Turn it on for long
+  runs, and measure your own workload first:
   `python -m scripts.bench.run <provider> <model> --clear-tool-results 8000`.
 
 On Anthropic, `AnthropicChatLLM(context_management=...)` does the same on

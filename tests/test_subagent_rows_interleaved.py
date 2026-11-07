@@ -46,3 +46,39 @@ def test_two_children_still_get_a_row_each() -> None:
     sub_rows = {r.task: [c.name for c in r.calls] for r in rows if isinstance(r, SubAgentRow)}
     assert sub_rows == {"Summarize auth": ["read_file", "grep_files"],
                         "Summarize billing": ["read_file", "grep_files"]}
+
+
+def _child_done(task: str) -> AgentEvent:
+    return AgentEvent(type="sub_agent_event", message="", payload={
+        "agent": "sub-agent", "task": task, "inner_type": "run_completed", "inner": {"output": "done"}})
+
+
+def _parent(kind: str, **payload: Any) -> AgentEvent:
+    return AgentEvent(type=kind, message="", payload=payload)
+
+
+def test_a_background_child_still_working_when_the_parent_settles_is_shown_whole() -> None:
+    import io
+
+    from shipit_agent.narrate.renderer import NarratorRenderer
+
+    events = [
+        _parent("tool_called", tool="sub_agent", call_id="p1", arguments={"task": "Summarize auth", "background": True}),
+        _parent("tool_completed", tool="sub_agent", call_id="p1", output="started"),
+        _child("Summarize auth", "read_file", path="auth.py"),
+        _parent("tool_group_completed"),                    # the parent's work settles here...
+        _child("Summarize auth", "grep_files", pattern="TODO"),  # ...while the child keeps going
+        _child_done("Summarize auth"),
+        _parent("run_completed", output="Reviewed."),
+    ]
+    buffer = io.StringIO()
+    renderer = NarratorRenderer(file=buffer, style="plain", show_footer=False)
+    for event in events:
+        renderer.feed(event)
+    renderer.close()
+    out = buffer.getvalue()
+    assert "Read auth.py, searched for TODO" in out
+    assert out.count("sub-agent · Summarize auth") == 1
+    rows = build_transcript(events)
+    assert [(r.task, [c.name for c in r.calls]) for r in rows if isinstance(r, SubAgentRow)] == [
+        ("Summarize auth", ["read_file", "grep_files"])]

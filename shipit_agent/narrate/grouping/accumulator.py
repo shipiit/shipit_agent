@@ -62,8 +62,12 @@ class WorkRunAccumulator(ToolEventsMixin, CardEventsMixin):
         self.writing: dict[str, str] = {}
         # Work done by delegated agents, keyed by (agent, task).
         self._sub_agents: dict[tuple[str, str], SubAgentRow] = {}
-        # Rows already emitted, so a child still working when the parent's
-        # work settled keeps adding to its one row instead of starting another.
+        # A background child can outlive the parent work that started it.
+        # Its row is held, not settled, until the child's run ends, so a view
+        # that prints settled rows once still shows the child's whole work.
+        self._held_sub_agents: dict[tuple[str, str], SubAgentRow] = {}
+        self._finished_sub_agents: set[tuple[str, str]] = set()
+        # Rows already settled, in case a child reports after its run ended.
         self._emitted_sub_agents: dict[tuple[str, str], SubAgentRow] = {}
 
     # ── ingest ───────────────────────────────────────────────────────────
@@ -105,10 +109,13 @@ class WorkRunAccumulator(ToolEventsMixin, CardEventsMixin):
         # Whatever that work produced belongs directly under it.
         self._rows.extend(self._pending_artifacts)
         self._pending_artifacts = []
-        # A child's work belongs under the delegation that started it.
+        # A child's work belongs under the delegation that started it; one
+        # still running is held until it finishes.
         for key, row in self._sub_agents.items():
-            self._rows.append(row)
-            self._emitted_sub_agents[key] = row
+            if key in self._finished_sub_agents:
+                self._settle_sub_agent(key, row)
+            else:
+                self._held_sub_agents[key] = row
         self._sub_agents = {}
         self._calls = []
         self._by_id = {}
@@ -156,17 +163,24 @@ class WorkRunAccumulator(ToolEventsMixin, CardEventsMixin):
         pending = self.pending
         if pending is not None:
             rows.append(WorkRow(pending))
-        for row in self._sub_agents.values():
-            rows.append(row)
+        rows.extend(self._held_sub_agents.values())
+        rows.extend(self._sub_agents.values())
         text = self.streaming_text
         if text.strip():
             rows.append(ProseRow(text))
         return rows
 
+    def _settle_sub_agent(self, key: tuple[str, str], row: SubAgentRow) -> None:
+        self._rows.append(row)
+        self._emitted_sub_agents[key] = row
+
     def finish(self) -> list[TranscriptRow]:
         """Close out anything still buffered and return the new rows."""
         before = len(self._rows)
         self._flush_work()
+        for key, row in self._held_sub_agents.items():
+            self._settle_sub_agent(key, row)
+        self._held_sub_agents = {}
         self._flush_prose()
         return self._rows[before:]
 

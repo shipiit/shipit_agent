@@ -19,7 +19,10 @@ class ToolEventsMixin:
     _group_id: str | None
     writing: dict[str, str]
     _sub_agents: dict[tuple[str, str], SubAgentRow]
+    _held_sub_agents: dict[tuple[str, str], SubAgentRow]
+    _finished_sub_agents: set[tuple[str, str]]
     _emitted_sub_agents: dict[tuple[str, str], SubAgentRow]
+    _settle_sub_agent: Callable[[tuple[str, str], SubAgentRow], None]
 
     # Defined by the accumulator.
     _flush_work: Callable[[], None]
@@ -87,15 +90,20 @@ class ToolEventsMixin:
         everything twice.
         """
         payload = event.payload
+        key = (str(payload.get("agent") or "sub-agent"), str(payload.get("task") or ""))
+        if payload.get("inner_type") in ("run_completed", "run_failed", "run_cancelled"):
+            self._finished_sub_agents.add(key)
+            held = self._held_sub_agents.pop(key, None)
+            if held is not None:
+                self._settle_sub_agent(key, held)
+            return
         if payload.get("inner_type") != "tool_called":
             return
         inner = dict(payload.get("inner") or {})
-        agent = str(payload.get("agent") or "sub-agent")
-        task = str(payload.get("task") or "")
+        agent, task = key
         tool = str(inner.get("tool") or "?")
 
-        key = (agent, task)
-        row = self._sub_agents.get(key) or self._emitted_sub_agents.get(key)
+        row = self._sub_agents.get(key) or self._held_sub_agents.get(key) or self._emitted_sub_agents.get(key)
         if row is None:
             row = self._sub_agents[key] = SubAgentRow(agent=agent, task=task)
         row.calls.append(

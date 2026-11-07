@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- More of the Claude Agent SDK's options: MCP servers over SSE
+  (`{"type": "sse"}`), `continue_conversation`, `add_dirs`, `env`, `betas`
+  and `max_thinking_tokens`.
+- A run's usage, and `ResultMessage.usage`, carries the SDK's shape
+  (`input_tokens` uncached, the cache counters, `output_tokens`) for every
+  provider.
+
+### Fixed
+
+- The docs build (`mkdocs --strict`) failed on a link outside the docs folder.
+
 ## [3.0.0] - 2026-11-07
 
 Feature and default parity with the Claude Agent SDK and Claude Code, under

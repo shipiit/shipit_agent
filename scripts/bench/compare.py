@@ -30,6 +30,9 @@ def totals(rows: dict[str, dict[str, Any]]) -> dict[str, float]:
         "turns": sum(r["turns"] for r in values),
         "cost_usd": sum(r["cost_usd"] or 0 for r in values),
         "api_s": sum(r["api_ms"] for r in values) / 1000,
+        # Older result files have neither.
+        "narration_chars": sum(r.get("narration_chars", 0) for r in values),
+        "thinking_chars": sum(r.get("thinking_chars", 0) for r in values),
     }
 
 
@@ -55,7 +58,9 @@ def compare(runs: list[tuple[str, dict[str, dict[str, Any]]]]) -> str:
     lines += ["", f"{'totals':20} " + " ".join(f"{n:>{width}}" for n in names)]
     for key, label, fmt in [("passed", "passed", "{:.0f}"), ("input_tokens", "input tokens", "{:,.0f}"),
                             ("output_tokens", "output tokens", "{:,.0f}"), ("turns", "turns", "{:.0f}"),
-                            ("cost_usd", "cost $", "{:.4f}"), ("api_s", "model seconds", "{:.1f}")]:
+                            ("cost_usd", "cost $", "{:.4f}"), ("api_s", "model seconds", "{:.1f}"),
+                            ("narration_chars", "text beside calls", "{:,.0f}"),
+                            ("thinking_chars", "visible thinking", "{:,.0f}")]:
         lines.append(f"{label:20} " + " ".join(f"{fmt.format(s[key]):>{width}}" for s in sums))
     most = max(range(len(sums)), key=lambda i: sums[i]["input_tokens"])
     least = min(range(len(sums)), key=lambda i: sums[i]["input_tokens"])

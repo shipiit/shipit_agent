@@ -98,6 +98,8 @@ def _row(task: Task, run: Run | None, passed: bool, note: str, started: float) -
         "tool_calls": len(calls),
         "tool_errors": run.tool_errors if run else 0,
         "repeated_calls": repeated_calls(run.tool_uses if run else []),
+        "narration_chars": run.narration_chars if run else 0,
+        "thinking_chars": run.thinking_chars if run else 0,
         "answer": (run.answer if run else "")[:500],
         "trace": _trace(run),
     }

@@ -112,3 +112,16 @@ def test_recovery_passes_on_a_successful_retry_without_the_tracking_number(tmp_p
     assert task.check(run)[0]
     run.tool_results[1] = ("not found", False)
     assert not task.check(run)[0]  # a retry that did not succeed is not a recovery
+
+
+def test_a_row_reports_what_the_model_wrote_beside_its_calls(tmp_path) -> None:
+    from scripts.bench.run import _row
+    from scripts.bench.tasks_basic import Run
+    from shipit_agent.sdk import AssistantMessage, TextBlock, ThinkingBlock, ToolUseBlock
+
+    run = Run(root=tmp_path)
+    run.record(AssistantMessage(content=[TextBlock(text="I'll run the tests."), ThinkingBlock(thinking="hm" * 50, signature=""),
+                                         ToolUseBlock(id="1", name="bash", input={"command": "pytest"})], model="m"))
+    row = _row(TASKS[0], run, True, "ok", 0.0)
+    assert row["narration_chars"] == len("I'll run the tests.")
+    assert row["thinking_chars"] == 100

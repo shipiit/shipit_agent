@@ -11,6 +11,8 @@ from typing import Any, Callable
 from shipit_agent.sdk import (
     AssistantMessage,
     ResultMessage,
+    TextBlock,
+    ThinkingBlock,
     ToolUseBlock,
     UserMessage,
     create_sdk_mcp_server,
@@ -35,6 +37,9 @@ class Run:
     tool_results: list[tuple[str, bool]] = field(default_factory=list)
     #: Every ResultMessage, one per turn; a multi-turn task's cost is their sum.
     results: list[Any] = field(default_factory=list)
+    #: Characters of text written beside tool calls, and of visible reasoning.
+    narration_chars: int = 0
+    thinking_chars: int = 0
     extra: dict[str, Any] = field(default_factory=dict)
 
     def used(self, *names: str) -> bool:
@@ -43,7 +48,11 @@ class Run:
     def record(self, message: Any) -> None:
         """Take in one streamed message: its calls, their results, the final result."""
         if isinstance(message, AssistantMessage):
-            self.tool_uses += [(b.name, b.input) for b in message.content if isinstance(b, ToolUseBlock)]
+            calls = [(b.name, b.input) for b in message.content if isinstance(b, ToolUseBlock)]
+            self.tool_uses += calls
+            if calls:  # text in a message without calls is the answer, not narration
+                self.narration_chars += sum(len(b.text) for b in message.content if isinstance(b, TextBlock))
+            self.thinking_chars += sum(len(b.thinking) for b in message.content if isinstance(b, ThinkingBlock))
         elif isinstance(message, UserMessage) and isinstance(message.content, list):
             for block in message.content:
                 failed = bool(getattr(block, "is_error", False))

@@ -94,3 +94,21 @@ def test_compare_handles_a_task_missing_from_one_run() -> None:
 
     text = compare([("a", {"t1": _row_for("t1", 10)}), ("b", {})])
     assert "t1" in text and " -" in text
+
+
+def test_the_hook_task_gives_explicit_permission() -> None:
+    # Without it, careful models ask first and the hook is never exercised.
+    task = next(t for t in TASKS if t.name == "hook_blocks_delete")
+    assert "permission" in task.prompt.lower() and "don't ask" in task.prompt.lower()
+
+
+def test_recovery_passes_on_a_successful_retry_without_the_tracking_number(tmp_path) -> None:
+    from scripts.bench.tasks_basic import Run
+
+    task = next(t for t in TASKS if t.name == "tool_error_recovery")
+    run = Run(root=tmp_path, answer="Order 42 shipped on 3 November.",
+              tool_uses=[("orders__order_status", {"order_id": "42"}), ("orders__order_status", {"order_id": "ORD-42"})],
+              tool_results=[("Invalid id", True), ("shipped on 2026-11-03, tracking ZX-9917", False)])
+    assert task.check(run)[0]
+    run.tool_results[1] = ("not found", False)
+    assert not task.check(run)[0]  # a retry that did not succeed is not a recovery

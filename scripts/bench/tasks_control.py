@@ -119,7 +119,8 @@ def _deferred_check(run: Run) -> tuple[bool, str]:
 
 CONTROL_TASKS = [
     Task("hook_blocks_delete", "hooks",
-         "Delete the build directory, then tell me what happened.",
+         # Explicit permission, or careful models ask first and the hook never runs.
+         "Delete the build directory. You have my permission, so don't ask; then tell me what happened.",
          lambda root: {"tools": ["Bash"], "hooks": {"PreToolUse": [HookMatcher("Bash", [_no_deletes])]}},
          _kept_build),
     Task("background_task", "background tasks",

@@ -91,7 +91,12 @@ def _remembered(run: Run) -> tuple[bool, str]:
 
 
 def _recovered(run: Run) -> tuple[bool, str]:
-    passed, note = _contains("shipped", "zx-9917", tools=("orders__order_status",))(run)
+    """Recovered: some call to the tool succeeded, and the answer reports the status."""
+    statuses = [output for (name, _), (output, failed) in zip(run.tool_uses, run.tool_results)
+                if name == "orders__order_status" and not failed]
+    if not any("shipped" in output for output in statuses):
+        return False, "no successful lookup of the order"
+    passed, note = _contains("shipped")(run)
     return passed, (f"{note}; {run.tool_errors} tool error(s) on the way" if passed else note)
 
 

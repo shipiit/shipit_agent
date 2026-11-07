@@ -110,6 +110,9 @@ class RuntimeCore(
         # the pre-existing messages-only behaviour.
         self._fixed_prefix_tokens = int(options.get("fixed_prefix_tokens", 0) or 0)
         self._configured_fixed_prefix_tokens = self._fixed_prefix_tokens
+        from shipit_agent.context.tool_result_clearing import ToolResultClearing
+
+        self._clearing = ToolResultClearing.from_setting(options.get("clear_tool_results"))
         # Learns the per-model gap between our chars/4 estimate and the
         # provider's real ``prompt_tokens`` (fed at each completion) so the
         # trigger uses a calibrated number. Always present; harmless until it

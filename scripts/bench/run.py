@@ -50,11 +50,15 @@ def build_llm(provider: str | None, model: str | None, dry_run: bool) -> Any:
 class Runner:
     """Runs one prompt as a query; tasks that drive a client use its options."""
 
-    def __init__(self, llm: Any) -> None:
+    def __init__(self, llm: Any, agent_options: dict[str, Any] | None = None) -> None:
         self.llm = llm
+        #: Agent settings applied to every task, e.g. to compare clearing on and off.
+        self.agent_options = dict(agent_options or {})
 
     def options(self, extra: dict[str, Any], root: Path) -> AgentOptions:
-        return AgentOptions(**{"llm": self.llm, "cwd": root, "max_turns": 12, "max_budget_usd": 0.25, **extra})
+        settings = {"llm": self.llm, "cwd": root, "max_turns": 12, "max_budget_usd": 0.25, **extra}
+        settings["agent_options"] = {**self.agent_options, **settings.get("agent_options", {})}
+        return AgentOptions(**settings)
 
     async def __call__(self, prompt: str, extra: dict[str, Any], root: Path) -> Run:
         run = Run(root=root)
@@ -63,8 +67,8 @@ class Runner:
         return run
 
 
-def make_runner(llm: Any) -> Runner:
-    return Runner(llm)
+def make_runner(llm: Any, agent_options: dict[str, Any] | None = None) -> Runner:
+    return Runner(llm, agent_options)
 
 
 async def run_task(task: Task, run_query: Any) -> dict[str, Any]:
@@ -176,12 +180,20 @@ async def main() -> None:
     parser.add_argument("--tasks", help="comma-separated task names (default: all)")
     parser.add_argument("--out", default="bench-results.json", help="where to write the JSON results")
     parser.add_argument("--dry-run", action="store_true", help="check the wiring with an echo model; no cost")
+    parser.add_argument("--clear-tool-results", type=int, metavar="TOKENS",
+                        help="clear old tool results once they pass TOKENS (off by default)")
     args = parser.parse_args()
     os.environ["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '')}"
     chosen = [t for t in TASKS if not args.tasks or t.name in args.tasks.split(",")]
     llm = build_llm(args.provider, args.model, args.dry_run)
     label = "dry run (echo model)" if args.dry_run else str(getattr(llm, "model", args.model or "default"))
-    run_query = make_runner(llm)
+    agent_options = {}
+    if args.clear_tool_results:
+        from shipit_agent.context.tool_result_clearing import ToolResultClearing
+
+        agent_options["clear_tool_results"] = ToolResultClearing(trigger_tokens=args.clear_tool_results)
+        label += f" · clearing at {args.clear_tool_results:,} tokens"
+    run_query = make_runner(llm, agent_options)
     rows = []
     for task in chosen:
         rows.append(await run_task(task, run_query))

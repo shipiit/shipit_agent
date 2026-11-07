@@ -138,3 +138,10 @@ def test_a_run_that_ended_in_error_reports_the_error(tmp_path) -> None:
     row = _row(TASKS[0], run, False, "answer lacks ['35']", 0.0)
     assert row["note"].startswith("run error: BadRequestError: model rejected")
     assert row["passed"] is False
+
+
+def test_settings_for_every_task_reach_the_agent(tmp_path) -> None:
+    from scripts.bench.run import Runner
+
+    options = Runner(build_llm(None, None, dry_run=True), {"clear_tool_results": True}).options({}, tmp_path)
+    assert options.agent_options == {"clear_tool_results": True}

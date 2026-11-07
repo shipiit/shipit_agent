@@ -52,6 +52,24 @@ class ContextFitMixin:
         if self._compactor_instance is not None:
             self._compactor_instance.fixed_prefix_tokens = self._fixed_prefix_tokens
 
+    def clear_old_tool_results(self, state: Any, messages: Sequence[Message]) -> list[Message]:
+        """The request without old tool results, when clearing is on; the history is untouched."""
+        if self._clearing is None:
+            return list(messages)
+        from shipit_agent.context.compaction import content_tokens
+        from shipit_agent.context.tool_result_clearing import clear_old_tool_results
+
+        model = getattr(self.llm, "model", None)
+        before = self._session_runtime_state.get("tool_results_cleared")
+        view, after = clear_old_tool_results(messages, self._clearing, lambda text: content_tokens(text, model),
+                                             state=before)
+        if after != before:
+            self._session_runtime_state["tool_results_cleared"] = after
+            cleared = sum(1 for m in view if m.metadata.get("cleared"))
+            self.emit(state, "tool_results_cleared", f"Cleared {cleared} old tool results from the request",
+                      cleared=cleared)
+        return view
+
     def fit_provider_request(
         self,
         state: Any,
@@ -64,6 +82,7 @@ class ContextFitMixin:
 
         compactor = self.compactor()
         budget = compactor.limits.input_budget
+        messages = self.clear_old_tool_results(state, messages)
 
         def fits(candidate: Sequence[Message]) -> bool:
             return compactor.estimated_prompt_tokens(candidate) <= budget

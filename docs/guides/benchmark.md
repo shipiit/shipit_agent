@@ -26,6 +26,10 @@ $0.25. The shells it starts
 get the benchmark's own Python first on `PATH`, as an activated virtualenv
 would.
 
+`--clear-tool-results TOKENS` turns on clearing of old tool results for every
+task, starting at that many tokens; run once with it and once without to
+see what it saves.
+
 To compare runs:
 
 ```bash

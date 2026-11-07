@@ -47,6 +47,10 @@ says each rule once. The fixed prompt a default agent sends on every turn
 is about 42% smaller (~6,440 to ~3,710 tokens). If you pass your own
 `prompt=` to a tool, nothing changes for that tool.
 
+**New: clearing old tool results.** `Agent(clear_tool_results=True)` drops
+old tool results from each request on long tasks (the history keeps them).
+Off by default; see [context management](context-management.md).
+
 **Skills load on demand.** `progressive_skills` defaults to `True`: the prompt
 lists each skill in one line and the model loads one with `load_skill`.
 Skills named in `skills=[...]` are still applied in full. The packaged

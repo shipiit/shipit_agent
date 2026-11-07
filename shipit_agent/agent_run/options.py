@@ -127,6 +127,7 @@ class RunOptionsMixin:
             "max_tool_concurrency": self.max_tool_concurrency,
             "hooks": self.hooks,
             "context_window_tokens": self.context_window_tokens,
+            "clear_tool_results": self.clear_tool_results,
             "fixed_prefix_tokens": self.fixed_prefix_tokens,
             "max_tool_output_chars": self.max_tool_output_chars,
             "max_tool_output_group_chars": self.max_tool_output_group_chars,

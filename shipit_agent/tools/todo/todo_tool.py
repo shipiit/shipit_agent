@@ -16,14 +16,11 @@ _STATUS_GLYPHS = {
 }
 
 _PROMPT_INSTRUCTIONS = (
-    "Use a checklist for work with three or more distinct steps, so a long run "
-    "stays on course and observable. Skip it for a single, simple change or a "
-    "question: just do the work. Write ALL the steps up front as todo items, then keep the list "
-    "current as you work: mark exactly ONE item as 'in_progress' at a time, and "
-    "flip an item to 'completed' the moment you finish it. Every call REPLACES "
-    "the entire list, so always pass the full, updated set of todos (not just the "
-    "delta). Each item is {content, status} where status is one of "
-    "'pending' | 'in_progress' | 'completed' (defaults to 'pending')."
+    "Use a checklist for work with three or more distinct steps; skip it for a "
+    "single, simple change or a question and just do the work. Write all the "
+    "steps first, keep exactly one 'in_progress', and mark each 'completed' as "
+    "soon as it is done. Each call replaces the whole list, so pass every item "
+    "as {content, status}, status being 'pending', 'in_progress' or 'completed'."
 )
 
 

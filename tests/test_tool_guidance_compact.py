@@ -37,7 +37,9 @@ RULES = {
     "edit_file": ["read the file first", "exactly", "line-number prefix", "replace_all", "write_file"],
     "write_file": ["edit_file", "read the existing file first"],
     # A live run spent its first call on `python3 test_cart.py`, which runs no tests.
-    "bash": ["pytest -q", "npm test", "read_file", "grep_files", "edit_file", "approval", "do not retry", "bash_job",
+    # Claude Sonnet 5.5 asked in text for approval to delete instead of calling,
+    # so the permission system (which asks for approval itself) never ran.
+    "bash": ["make the call", "pytest -q", "npm test", "read_file", "grep_files", "edit_file", "approval", "do not retry", "bash_job",
              "background: true", "working_directory", "&&"],
     "glob_files": ["**/*.py", "grep_files"],
     "grep_files": ["glob", "regex", "case_sensitive", "max_matches"],

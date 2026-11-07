@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from shipit_agent.core.models import Message
@@ -31,6 +30,14 @@ __all__ = [
     "INTERLEAVED_THINKING_BETA",
     "_pump_stream_events",
 ]
+
+#: Raised at the first call when the package is missing; the provider
+#: factory also matches its leading "Install `anthropic`".
+_MISSING_PACKAGE = (
+    "Install `anthropic` to use AnthropicChatLLM: "
+    "pip install anthropic (or shipit-agent[anthropic])."
+)
+
 
 class AnthropicChatLLM(
     AnthropicRequestMixin, AnthropicMessagesMixin, AnthropicResponseMixin
@@ -106,34 +113,6 @@ class AnthropicChatLLM(
         self._client: Any = None
         self._client_module: Any = None
 
-    def _fallback_to_bedrock(
-        self,
-        *,
-        messages: list[Message],
-        tools: list[dict[str, Any]] | None,
-        system_prompt: str | None,
-        metadata: dict[str, Any] | None,
-        response_format: dict[str, Any] | None,
-    ) -> LLMResponse:
-        from shipit_agent.llms.litellm_adapter import BedrockChatLLM
-
-        fallback = BedrockChatLLM(
-            model=os.getenv("SHIPIT_BEDROCK_MODEL", "bedrock/openai.gpt-oss-120b-1:0")
-        )
-        response = fallback.complete(
-            messages=messages,
-            tools=tools,
-            system_prompt=system_prompt,
-            metadata=metadata,
-            response_format=response_format,
-        )
-        response.metadata = {
-            **dict(response.metadata),
-            "provider": "bedrock",
-            "fallback_from": "anthropic",
-        }
-        return response
-
     def _client_for(self, anthropic: Any, timeout: float | None) -> Any:
         """The adapter's SDK client, with *timeout* applied to this call only."""
         if self._client is None or self._client_module is not anthropic:
@@ -166,18 +145,9 @@ class AnthropicChatLLM(
         try:
             import anthropic
         except ImportError as exc:
-            try:
-                return self._fallback_to_bedrock(
-                    messages=messages,
-                    tools=tools,
-                    system_prompt=system_prompt,
-                    metadata=metadata,
-                    response_format=response_format,
-                )
-            except Exception:
-                raise RuntimeError(
-                    "Install `anthropic` to use AnthropicChatLLM."
-                ) from exc
+            # Never answer with another provider instead: a missing package
+            # once turned "Claude" into gpt-oss on Bedrock, silently.
+            raise RuntimeError(_MISSING_PACKAGE) from exc
 
         client = self._client_for(anthropic, timeout)
 

@@ -1,7 +1,7 @@
 profile_version: 1
 name: anthropic
 display_name: Anthropic Claude
-description: Claude models via the native Anthropic API (falls back to Bedrock).
+description: Claude models via the native Anthropic API (needs the anthropic package).
 icon: "🟤"
 adapter: shipit_agent.llms.anthropic_adapter:AnthropicChatLLM
 default_model: claude-opus-5-5

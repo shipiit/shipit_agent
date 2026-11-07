@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import builtins
 
 from shipit_agent.llms import build_llm_from_settings
-from shipit_agent.llms.base import LLMResponse
-from shipit_agent.core.models import Message
 
 
 def test_build_llm_from_settings_supports_bedrock(monkeypatch) -> None:
@@ -95,33 +92,3 @@ def test_build_llm_from_settings_keeps_explicit_anthropic_error(monkeypatch) -> 
         assert "Install `anthropic`" in str(exc)
     else:
         raise AssertionError("Expected explicit anthropic provider to keep failing")
-
-
-def test_anthropic_adapter_falls_back_to_bedrock_when_sdk_missing(monkeypatch) -> None:
-    from shipit_agent.llms import anthropic_adapter as adapter_module
-    from shipit_agent.llms import litellm_adapter as litellm_module
-
-    class FakeBedrock:
-        def __init__(self, model):
-            self.model = model
-
-        def complete(self, **kwargs):
-            return LLMResponse(content="ok", metadata={"model": self.model})
-
-    real_import = builtins.__import__
-
-    def fake_import(name, *args, **kwargs):
-        if name == "anthropic":
-            raise ImportError("missing anthropic")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(litellm_module, "BedrockChatLLM", FakeBedrock)
-    monkeypatch.setenv("SHIPIT_BEDROCK_MODEL", "bedrock/fallback-model")
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-
-    llm = adapter_module.AnthropicChatLLM(model="claude-sonnet-4")
-    response = llm.complete(messages=[Message(role="user", content="hello")])
-
-    assert response.content == "ok"
-    assert response.metadata["provider"] == "bedrock"
-    assert response.metadata["fallback_from"] == "anthropic"

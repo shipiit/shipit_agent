@@ -107,7 +107,7 @@ def test_results_are_rendered_with_the_snippet_caveat():
         return [{"title": "A", "url": "https://a.test", "snippet": "about a"}]
 
     output = WebSearchTool(backend).run(query="a")
-    assert "https://a.test" in output.text
+    assert "https://a.test" in output.text.split()  # the URL is shown whole
     assert "Fetch a page before relying on it" in output.text
     assert output.metadata["urls"] == ["https://a.test"]
 

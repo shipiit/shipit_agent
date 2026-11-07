@@ -16,14 +16,12 @@ from shipit_agent.core.policies import RetryPolicy, RouterPolicy
 from shipit_agent.integrations import CredentialStore
 from shipit_agent.observability.tracing import TraceStore
 from shipit_agent.prompts.default_agent_prompt import DEFAULT_AGENT_PROMPT
-from shipit_agent.skills import Skill, SkillRegistry
+from shipit_agent.skills import SkillRegistry
 from shipit_agent.stores import MemoryStore, SessionStore
 
-# The packaged skills catalog, shipped with the library.
-DEFAULT_SKILLS_PATH = Path(__file__).resolve().parent.parent / "skills" / "skills.json"
+from .skill_refs import DEFAULT_SKILLS_PATH as DEFAULT_SKILLS_PATH
+from .skill_refs import SkillLike as SkillLike
 
-# A skill reference: a resolved ``Skill``, or an id looked up in the registry.
-SkillLike = str | Skill
 
 
 @dataclass(slots=True)
@@ -136,6 +134,9 @@ class AgentSettings:
     gate_unavailable_tools: bool = True
     # 0 = automatic model limit; positive = explicit limit; -1 = disabled.
     context_window_tokens: int = 0
+    #: Clear old tool results from each request on long tasks (the history
+    #: keeps them): True, or a ToolResultClearing. See context/tool_result_clearing.py.
+    clear_tool_results: Any = None
     #: The fixed prompt prefix (system prompt + tool schemas) is sent on every
     #: call but lives outside ``messages``, so the compaction trigger under-counts
     #: the real prompt by this whole prefix unless it is told. A host that knows

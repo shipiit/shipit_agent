@@ -85,6 +85,9 @@ async def run_task(task: Task, run_query: Any) -> dict[str, Any]:
 def _row(task: Task, run: Run | None, passed: bool, note: str, started: float) -> dict[str, Any]:
     result = run.result if run else None
     results = run.results if run else []
+    errors = [e for r in results if r.is_error for e in r.errors]
+    if errors:  # the check saw an empty answer; the reason is the run's own error
+        passed, note = False, f"run error: {errors[0]}"
     calls = [(name, json.dumps(args, sort_keys=True)) for name, args in (run.tool_uses if run else [])]
     return {
         "task": task.name, "feature": task.feature, "passed": bool(passed), "note": note,

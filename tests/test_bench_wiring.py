@@ -125,3 +125,16 @@ def test_a_row_reports_what_the_model_wrote_beside_its_calls(tmp_path) -> None:
     row = _row(TASKS[0], run, True, "ok", 0.0)
     assert row["narration_chars"] == len("I'll run the tests.")
     assert row["thinking_chars"] == 100
+
+
+def test_a_run_that_ended_in_error_reports_the_error(tmp_path) -> None:
+    from scripts.bench.run import _row
+    from scripts.bench.tasks_basic import Run
+    from shipit_agent.sdk import ResultMessage
+
+    run = Run(root=tmp_path)
+    run.record(ResultMessage(subtype="error_during_execution", duration_ms=5, duration_api_ms=0, is_error=True,
+                             num_turns=0, session_id="s", errors=["BadRequestError: model rejected the request"]))
+    row = _row(TASKS[0], run, False, "answer lacks ['35']", 0.0)
+    assert row["note"].startswith("run error: BadRequestError: model rejected")
+    assert row["passed"] is False

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import threading
 import time
+from collections import deque
 from typing import Any
 
 from shipit_agent.core.models import Message
@@ -59,10 +61,25 @@ class ModelCallMixin:
             self.guardrails is None or not self.guardrails.modifies_output()
         )
 
+        # Callbacks may run on the adapter's thread, so they queue their
+        # events and the loop emits them in order. The call drains the queue
+        # once more when it returns: otherwise the turn could emit
+        # assistant_message and run_completed before the streamed text.
+        queued: deque[tuple[str, str, dict[str, Any]]] = deque()
+        queue_lock = threading.Lock()
+
+        def _drain() -> None:
+            while True:
+                with queue_lock:
+                    if not queued:
+                        return
+                    event_type, message, payload = queued.popleft()
+                self.emit(state, event_type, message, **payload)
+
         def _schedule_emit(event_type: str, message: str, **payload: Any) -> None:
-            loop.call_soon_threadsafe(
-                lambda: self.emit(state, event_type, message, **payload)
-            )
+            with queue_lock:
+                queued.append((event_type, message, payload))
+            loop.call_soon_threadsafe(_drain)
 
         def _on_text_delta(chunk: str) -> bool | None:
             nonlocal provisional_chars
@@ -170,13 +187,16 @@ class ModelCallMixin:
         ):
             complete_kwargs["response_format"] = self.response_format
 
-        if callable(async_complete):
-            result = async_complete(**complete_kwargs)
-            if inspect.isawaitable(result):
-                return await result
-            return result
-        # asyncio.to_thread propagates contextvars; run_in_executor does not.
-        return await asyncio.to_thread(self.llm.complete, **complete_kwargs)
+        try:
+            if callable(async_complete):
+                result = async_complete(**complete_kwargs)
+                if inspect.isawaitable(result):
+                    return await result
+                return result
+            # asyncio.to_thread propagates contextvars; run_in_executor does not.
+            return await asyncio.to_thread(self.llm.complete, **complete_kwargs)
+        finally:
+            _drain()
 
     async def _complete_with_retry(
         self,

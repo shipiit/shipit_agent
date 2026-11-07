@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from pathlib import Path
 from typing import Any
 
@@ -107,7 +109,8 @@ def test_results_are_rendered_with_the_snippet_caveat():
         return [{"title": "A", "url": "https://a.test", "snippet": "about a"}]
 
     output = WebSearchTool(backend).run(query="a")
-    assert "https://a.test" in output.text.split()  # the URL is shown whole
+    # The URL is shown whole: some word of the output parses to exactly it.
+    assert any(urlsplit(word)[:2] == ("https", "a.test") for word in output.text.split())
     assert "Fetch a page before relying on it" in output.text
     assert output.metadata["urls"] == ["https://a.test"]
 

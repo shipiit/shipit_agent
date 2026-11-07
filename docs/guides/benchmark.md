@@ -21,7 +21,8 @@ python -m scripts.bench.run bedrock google.gemma-4-31b --tasks fix_failing_test,
 
 The first argument is the provider, the second the model id; credentials
 come from the environment as for any shipit agent. Each task runs in a fresh
-temporary folder and is capped at 12 turns and $0.25. The shells it starts
+temporary folder and is capped at 12 turns (40 for the two long tasks) and
+$0.25. The shells it starts
 get the benchmark's own Python first on `PATH`, as an activated virtualenv
 would.
 
@@ -54,6 +55,8 @@ passed, ✗ a failure) and each model's totals.
 | `cross_module_bug` | files + bash | a bug in another module is fixed where it lives |
 | `tool_error_recovery` | MCP errors | after a rejected id, a retry succeeds |
 | `needle_in_log` | large files | one line of a 6,000-line log, by number |
+| `rename_across_modules` | long: refactor | a function renamed across eight modules and tests; tests pass, old name gone |
+| `add_feature` | long: feature | coupons implemented from a spec; the prewritten tests pass |
 
 Connectors that need real accounts (Slack, Jira, ...) are not covered.
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 BASH_PROMPT = """
 Run a shell command in the project root: tests, builds, package managers,
 git, scripts, pipes and redirections.
+- Run tests with the project's runner (`pytest -q`, `npm test`, `go test ./...`);
+  running a test file with `python` executes no tests.
 - Use the dedicated tools when they fit: `read_file` not `cat`, `glob_files`
   not `find`, `grep_files` not `grep -r`, `edit_file` or `write_file` not
   `sed -i` or `echo >`. They track reads and keep output bounded.

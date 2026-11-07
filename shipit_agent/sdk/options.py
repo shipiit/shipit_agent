@@ -67,11 +67,20 @@ class AgentOptions:
     #: Continue a saved session from ``session_store``; with ``fork_session``,
     #: continue a copy of it under a new id instead.
     resume: str | None = None
+    #: Continue the most recently saved session in ``session_store``.
+    continue_conversation: bool = False
     fork_session: bool = False
     session_store: Any = None
     #: Passed to the model adapter when it takes them (Anthropic does).
     effort: str | None = None
     thinking: str | dict[str, Any] | None = None
+    #: A thinking budget, for models that take one (adaptive thinking otherwise).
+    max_thinking_tokens: int | None = None
+    #: Anthropic beta headers to send with every request.
+    betas: list[str] = field(default_factory=list)
+    #: Environment variables for the commands the tools run (bash, code).
+    #: They never enter this process's own environment.
+    env: dict[str, str] = field(default_factory=dict)
     #: Any other :class:`~shipit_agent.Agent` setting, by its shipit name.
     agent_options: dict[str, Any] = field(default_factory=dict)
 

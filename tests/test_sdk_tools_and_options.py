@@ -175,8 +175,8 @@ def test_mcp_configs_become_servers() -> None:
 
 
 def test_an_unsupported_mcp_type_is_refused() -> None:
-    with pytest.raises(ValueError, match="sse"):
-        mcp_servers({"old": {"type": "sse", "url": "https://example.com/sse"}})
+    with pytest.raises(ValueError, match="websocket.*stdio, sse, http or sdk"):
+        mcp_servers({"old": {"type": "websocket", "url": "wss://example.com/mcp"}})
 
 
 def test_output_format_must_be_a_json_schema() -> None:

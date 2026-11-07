@@ -59,6 +59,7 @@ class AnthropicChatLLM(
         thinking: str | dict[str, Any] | None = None,
         effort: str | None = None,
         thinking_budget_tokens: int | None = None,
+        betas: list[str] | None = None,
         prompt_caching: bool = True,
         interleaved_thinking: bool = False,
         context_management: dict[str, Any] | None = None,
@@ -81,6 +82,8 @@ class AnthropicChatLLM(
         # The pre-adaptive way to think. Kept for older models; on models that
         # reject a budget it is sent as adaptive thinking instead of a 400.
         self.thinking_budget_tokens = thinking_budget_tokens
+        #: Beta headers sent with every request, beside those features need.
+        self.betas: list[str] = list(betas or [])
         # Interleaved thinking (#10): when on AND thinking is enabled, attach the
         # ``interleaved-thinking-2025-05-14`` beta header so the model can think
         # between tool calls. The adapter side of the round-trip is wired:

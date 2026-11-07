@@ -6,6 +6,8 @@ the methods run on the runtime instance.
 
 from __future__ import annotations
 
+import time
+
 from shipit_agent.core.loop.turn import Turn
 from shipit_agent.core.models import Message
 from shipit_agent.core.state import (
@@ -145,6 +147,7 @@ class TurnFinishMixin:
             session_metadata["deferred_tool_use"] = dict(self._deferred_tool_use)
         else:
             session_metadata.pop("deferred_tool_use", None)
+        session_metadata["updated_at"] = time.time()
         self.session_store.save(
             SessionRecord(
                 session_id=self.session_id,

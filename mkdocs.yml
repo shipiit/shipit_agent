@@ -146,6 +146,7 @@ nav:
       - Sessions & Memory: agent/sessions.md
       - SDK API: guides/agent-sdk.md
       - Upgrading from 2.2: guides/upgrading.md
+      - Benchmark: guides/benchmark.md
   - Build with SHIPIT:
       # Core concepts
       - Streaming Events: guides/streaming.md

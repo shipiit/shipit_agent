@@ -40,10 +40,32 @@ at its timeout keeps going as a background job instead of being killed. A
 command that does nothing (`:` or `true` on its own) is refused, with a note
 telling the model to put the real command there.
 
+**Shorter guidance.** Each core tool's guidance in the system prompt is now
+what it does plus the rules that prevent mistakes; the "when to use",
+"decision tree" and "anti-patterns" sections are gone, and the base prompt
+says each rule once. The fixed prompt a default agent sends on every turn
+is about 42% smaller (~6,440 to ~3,710 tokens). If you pass your own
+`prompt=` to a tool, nothing changes for that tool.
+
 **Skills load on demand.** `progressive_skills` defaults to `True`: the prompt
 lists each skill in one line and the model loads one with `load_skill`.
 Skills named in `skills=[...]` are still applied in full. The packaged
 marketplace skills are listed only with `advertise_packaged_skills=True`.
+
+## Providers
+
+**No silent switch away from Anthropic.** Without the `anthropic` package,
+`AnthropicChatLLM` used to answer with gpt-oss-120b on Bedrock instead, even
+for an explicit `provider="anthropic"`, and the run's cost was computed at
+Claude's prices. It now raises at the first call, naming the fix:
+
+```
+pip install anthropic          # or: pip install "shipit-agent[anthropic]"
+```
+
+**Consecutive user turns are joined for Anthropic.** A message added right
+after tool results (a background task's notification) is sent in the same
+user message as the results, rather than as a second user turn in a row.
 
 ## Permissions
 
@@ -57,6 +79,8 @@ before; check any `deny` or `allow` list you pass.
 - `disallowed_tools` with a bare name removes the tool from the run, so the
   model never sees it. A scoped rule keeps the tool and denies matching
   calls in every mode.
+- Bash's guidance tells the model to make a call that needs approval
+  rather than ask for permission in text: the runtime (or your hook) asks.
 - A `PreToolUse` hook may return `permissionDecision: "defer"`. The run then
   stops with `stop_reason == "tool_deferred"` and the call in
   `result.deferred_tool_use`; resuming the session runs it after checking it
@@ -83,7 +107,8 @@ switches back for the session.
 
 ## Checking an upgrade
 
-The benchmark runs real tasks against a model and reports what each cost:
+The benchmark runs real tasks against a model and reports what each cost;
+see [the benchmark guide](benchmark.md):
 
 ```
 python -m scripts.bench.run --dry-run                    # wiring only, free

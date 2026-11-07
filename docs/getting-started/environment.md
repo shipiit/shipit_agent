@@ -79,6 +79,11 @@ If any required var is missing, `build_llm_from_env('openai')` raises:
 RuntimeError: Missing environment variable for openai. Set one of: OPENAI_API_KEY
 ```
 
+Each provider also needs its client package. For `anthropic` that is
+`pip install anthropic` (or `shipit-agent[anthropic]`); without it the first
+call raises ``Install `anthropic` to use AnthropicChatLLM ...``, and shipit
+never answers with another provider instead.
+
 ## Switching providers without restarting
 
 ```python

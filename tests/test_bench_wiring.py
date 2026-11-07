@@ -21,7 +21,7 @@ def test_each_task_runs_and_is_checked(task) -> None:
 
 
 def test_task_names_are_unique() -> None:
-    assert len({t.name for t in TASKS}) == len(TASKS) == 16
+    assert len({t.name for t in TASKS}) == len(TASKS) == 18
 
 
 def test_a_check_after_an_edit_is_not_a_repeat() -> None:

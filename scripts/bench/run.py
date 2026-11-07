@@ -32,8 +32,9 @@ from shipit_agent.sdk import AgentOptions, query
 from .tasks_basic import BASIC_TASKS, Run, Task
 from .tasks_control import CONTROL_TASKS
 from .tasks_hard import HARD_TASKS
+from .tasks_long import LONG_TASKS
 
-TASKS = BASIC_TASKS + CONTROL_TASKS + HARD_TASKS
+TASKS = BASIC_TASKS + CONTROL_TASKS + HARD_TASKS + LONG_TASKS
 
 
 def build_llm(provider: str | None, model: str | None, dry_run: bool) -> Any:

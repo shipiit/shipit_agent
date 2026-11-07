@@ -115,7 +115,12 @@ _RESEND_KINDS = frozenset(
 #: do not subclass the built-in ConnectionError or TimeoutError.
 _TRANSPORT_ERROR_SUFFIXES = ("ConnectionError", "TimeoutError")
 _TRANSIENT_ERROR_NAMES = frozenset(
-    {"RateLimitError", "OverloadedError", "InternalServerError", "ServiceUnavailableError"}
+    {"RateLimitError", "OverloadedError", "InternalServerError", "ServiceUnavailableError",
+     # A connection that dropped or stalled mid-request: httpx (Read/Write/
+     # Connect/CloseError share NetworkError), botocore, http.client. Not
+     # httpx's UnsupportedProtocol or LocalProtocolError: those are our bugs.
+     "NetworkError", "RemoteProtocolError", "TimeoutException",
+     "ConnectionClosedError", "IncompleteRead"}
 )
 
 _MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], ThrottleKind], ...] = (

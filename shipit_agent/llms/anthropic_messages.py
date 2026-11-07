@@ -90,6 +90,15 @@ class AnthropicMessagesMixin:
                     )
                 converted.append({"role": "assistant", "content": blocks})
                 continue
+            if message.role == "user" and converted and converted[-1].get("role") == "user":
+                # A user turn right after another (a task notification after
+                # tool results) joins it: one message, the earlier part first.
+                blocks = _as_blocks(converted[-1])
+                if isinstance(message.content, list):  # already Anthropic blocks
+                    blocks.extend(message.content)
+                elif message.content:
+                    blocks.append({"type": "text", "text": message.content})
+                continue
             converted.append(
                 {
                     "role": message.role,
@@ -142,3 +151,13 @@ class AnthropicMessagesMixin:
         if isinstance(content, str):
             content = [{"type": "text", "text": content}] if content else []
         target["content"] = [*documents, *content]
+
+
+def _as_blocks(message: dict[str, Any]) -> list[dict[str, Any]]:
+    """The message's content as a block list, converting a bare string in place."""
+    content = message.get("content")
+    if not isinstance(content, list):
+        content = [{"type": "text", "text": content}] if content else []
+        message["content"] = content
+    return content
+

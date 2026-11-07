@@ -58,6 +58,8 @@ docs/guides/upgrading.md, and docs/releases/3.0.0.md for the full notes.
 - Current Claude models, gpt-oss and Gemma 4 on Bedrock are priced at their
   own rates.
 - The docs build (`mkdocs --strict`) failed on a link outside the docs folder.
+- The installed package now includes the packaged skills catalog and agents
+  (`skills/skills.json`, `agents/agents.json`); the wheel had left them out.
 
 ## [2.2.1] - 2026-10-07
 

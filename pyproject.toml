@@ -54,6 +54,7 @@ connectors = ["pyyaml>=6.0"]
 # --- Tools / browser ---------------------------------------------------------
 playwright = ["playwright>=1.45.0"]
 pdf = ["pypdf>=4.0"]
+browser = ["pypdf>=4.0", "google-auth>=2.0", "google-auth-oauthlib>=1.2", "requests>=2.31"]
 
 # --- Advanced file reading ---------------------------------------------------
 # read_file extracts office/web documents to Markdown. CSV/TSV need nothing;

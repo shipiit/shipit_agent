@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from contextlib import closing
 from typing import TYPE_CHECKING, Any, Callable
 
 from shipit_agent.core.models import AgentEvent, AgentResult, Message
@@ -66,10 +67,18 @@ class AgentChatSession:
             self._emit_event(event)
         return result
 
-    def stream(self, user_prompt: str):
-        for event in self._session_agent().stream(user_prompt):
-            self._emit_event(event)
-            yield event
+    def stream(self, user_prompt: str, *, images: list[str] | None = None,
+               files: list[str] | None = None):
+        """Stream a turn with optional media while retaining this chat's history."""
+        options = {}
+        if images:
+            options["images"] = images
+        if files:
+            options["files"] = files
+        with closing(self._session_agent().stream(user_prompt, **options)) as events:
+            for event in events:
+                self._emit_event(event)
+                yield event
 
     def stream_packets(self, user_prompt: str, *, transport: str = "websocket"):
         if transport == "sse":

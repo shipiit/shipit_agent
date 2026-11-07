@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Local Chrome Workspace companion with a docked, height-aware chat panel,
+  compact composer, streamed replies, page snapshots, screenshots and bounded
+  image/document uploads. Default model selection includes Gemma 4 31B and
+  26B-A4B on Bedrock; model changes preserve backend chat history.
+- Optional Google Docs, Sheets and Slides API tool with per-chat change
+  proposals, explicit Apply controls, revision checks for Docs/Slides and
+  best-effort conflict detection for Sheets. Added the `browser` install extra
+  and local setup documentation.
+- Browser bridge validation and session-isolation tests, Workspace proposal
+  tests, attachment tests, streaming decoder tests and an opt-in five-turn
+  real Bedrock HTTP/SSE smoke test.
+
+### Fixed
+
+- Browser connection failures remain visible inside the settings dialog and
+  failed token changes preserve the displayed conversation. Unfinished runs
+  are no longer presented as complete; malformed model selections return a
+  client error without losing the chat.
+- Chat-session streaming forwards images and files and closes its underlying
+  stream when the consumer disconnects.
+
 ## [3.0.0] - 2026-11-07
 
 Feature and default parity with the Claude Agent SDK and Claude Code, under

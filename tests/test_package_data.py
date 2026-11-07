@@ -36,6 +36,7 @@ def _shipped(path: Path, patterns: dict[str, list[str]]) -> bool:
 def test_every_runtime_data_file_is_in_package_data() -> None:
     patterns = _patterns()
     data = [p for p in PACKAGE.rglob("*") if p.is_file() and p.suffix not in {".py", ".pyc", *NOT_SHIPPED}
-            and "__pycache__" not in p.parts]
+            and "__pycache__" not in p.parts
+            and not any(part.startswith(".") for part in p.relative_to(PACKAGE).parts)]
     missing = [str(p.relative_to(ROOT)) for p in data if not _shipped(p, patterns)]
     assert not missing, f"not shipped in the wheel: {missing}"

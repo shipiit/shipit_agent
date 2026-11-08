@@ -48,6 +48,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client error without losing the chat.
 - Chat-session streaming forwards images and files and closes its underlying
   stream when the consumer disconnects.
+- **A call that needs approval no one can give** now says it was not run and
+  what to do instead: finish the task and name what still needs approval.
+  Told only "requires human approval", Gemma retried `rm` and then asked for
+  confirmation in text until it ran out of turns.
+- **Renames across many files**: the bash guidance names one portable
+  `perl -pi -e` call, then a `grep_files` check, instead of a read and an edit
+  per file, and puts throwaway scripts in a temp folder. Gemma's rename across
+  eight modules passed 5 of 5 runs in 7-12 turns (before: 3 of 6, up to 40
+  turns and 863k input tokens). All 18 benchmark tasks pass on Gemma 4 and
+  Claude Sonnet 5.5; Claude's input tokens fell 11%.
+- **The benchmark paired tool results with calls by position**, so one call
+  without a result shifted every later one in the trace; it pairs by id.
 
 ## [3.0.0] - 2026-11-07
 

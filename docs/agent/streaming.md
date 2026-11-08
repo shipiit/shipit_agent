@@ -1,168 +1,139 @@
 ---
-title: Agent — Streaming
-description: Real-time event streaming from shipit_agent.Agent — event types, terminal renderers, SSE and WebSocket transports.
+title: Streaming
+description: Watch a run as it happens, render it in a terminal, notebook or web UI, and stream tool output and answer text.
 ---
 
-# Agent — Streaming
+# Streaming
 
-`agent.stream(prompt)` is a generator that yields `AgentEvent`s the
-**instant** they're emitted. There is no buffering: each `tool_called`
-event arrives before the tool runs, each `tool_completed` arrives the
-moment the tool returns, and `run_completed` is the very last event.
-
-## Event types
-
-| Type | Emitted when | Useful payload fields |
-| --- | --- | --- |
-| `run_started` | The agent receives a user prompt | `prompt` |
-| `step_started` | The runtime begins an LLM iteration | `iteration`, `tool_count` |
-| `reasoning_started` | The model surfaces a thinking block | `iteration` |
-| `reasoning_completed` | The thinking block is finalised | `content` |
-| `planning_started` | Auto-planner is invoked | — |
-| `planning_completed` | Planner output is ready | `plan` |
-| `tool_called` | A tool is about to run | `tool_name`, `arguments` |
-| `tool_completed` | A tool returned successfully | `tool_name`, `metadata`, `output` |
-| `tool_failed` | A tool raised | `tool_name`, `error` |
-| `interactive_request` | The agent needs the human to answer | `question`, `options` |
-| `mcp_attached` | An MCP server has been wired in | `server_name` |
-| `llm_retry` | The LLM call is being retried | `attempt`, `error` |
-| `tool_retry` | A tool call is being retried | `attempt`, `error` |
-| `context_snapshot` | Token usage update | `usage`, `compaction_ratio` |
-| `rag_sources` | RAG sources captured during the run | `sources` |
-| `run_completed` | The run is over | `output`, `iterations` |
-
-See the [Event Types reference](../reference/events.md) for the
-complete schema.
-
----
-
-## Minimal example
+`agent.stream()` runs the same loop as `run()` and yields an event for each step as it happens: the model's responses, every tool call and its output, the answer as it is written, and a summary at the end. The run executes on a background thread and events reach your loop the moment they are emitted.
 
 ```python
-for event in agent.stream("Search the web for SQLite news"):
-    print(f"[{event.type}] {event.message}")
-```
-
----
-
-## Coloured terminal renderer
-
-```python
-RESET = "\033[0m"
-DIM   = "\033[2m"
-BOLD  = "\033[1m"
-CYAN  = "\033[36m"
-GREEN = "\033[32m"
-YELL  = "\033[33m"
-
-for event in agent.stream("Find today's BTC price"):
-    if event.type == "run_started":
-        print(BOLD + "🚀 run started" + RESET)
-    elif event.type == "step_started":
-        print(DIM + f"  · iter {event.payload.get('iteration')}" + RESET)
-    elif event.type == "reasoning_started":
-        print(YELL + "  🧠 thinking…" + RESET)
-    elif event.type == "reasoning_completed":
-        print(YELL + "  🧠 " + event.payload.get('content', '')[:80] + RESET)
-    elif event.type == "tool_called":
-        print(CYAN + "  ▶ " + event.message + RESET)
-    elif event.type == "tool_completed":
-        print(GREEN + "  ✓ " + event.message + RESET)
-    elif event.type == "rag_sources":
-        for s in event.payload.get("sources", []):
-            print(DIM + f"    📎 [{s['index']}] {s['source']}" + RESET)
-    elif event.type == "run_completed":
-        print(BOLD + "✅ done" + RESET)
-        print((event.payload.get('output') or '')[:300])
-```
-
-`examples/02_streaming_with_reasoning.py` ships a more polished
-version of this you can copy verbatim.
-
----
-
-## Server-Sent Events (SSE)
-
-For web UIs, every event has a built-in SSE encoder
-(`shipit_agent.packets.sse_event_packet`):
-
-```python
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-
 from shipit_agent import Agent
-from shipit_agent.packets import sse_event_packet, sse_result_packet
+from shipit_agent.llms import build_llm_from_env
 
-app = FastAPI()
-agent = Agent.with_builtins(llm=llm)
+agent = Agent.with_builtins(llm=build_llm_from_env(), project_root=".")
 
-@app.get("/stream")
-async def stream(q: str):
-    def gen():
-        for event in agent.stream(q):
-            yield sse_event_packet(event)
-        # Final marker — useful for clients that watch for `event: done`
-        yield "event: done\ndata: {}\n\n"
-    return StreamingResponse(gen(), media_type="text/event-stream")
+for event in agent.stream("Run the tests and summarise what fails."):
+    print(f"{event.type:22} {event.message}")
 ```
 
-The browser side reads it with `EventSource("/stream?q=…")` and renders
-events as they arrive.
-
----
-
-## WebSocket
+## An event
 
 ```python
-from shipit_agent.packets import websocket_event_packet
-
-@app.websocket("/ws")
-async def ws(websocket):
-    await websocket.accept()
-    user_msg = await websocket.receive_text()
-    for event in agent.stream(user_msg):
-        await websocket.send_json(websocket_event_packet(event))
+event.type       # "tool_called"
+event.message    # "Tool called: bash"
+event.payload    # {"tool": "bash", "call_id": "...", "arguments": {"command": "pytest -q"}}
+event.timestamp
+event.to_dict()  # for JSON, SSE or WebSocket
 ```
 
-`websocket_event_packet` returns a JSON-friendly dict; pair it with
-`send_json` for a clean transport.
+## The events you will use most
 
----
+| Event | When | Payload |
+| :- | :- | :- |
+| `run_started` | The run begins. | `prompt` |
+| `step_started` | Before each model call. | `iteration` |
+| `text_delta` | A piece of the model's text as it is written. | `chunk` |
+| `reasoning_completed` | The model's visible thinking, on models that show it. | `content` |
+| `assistant_message` | A complete model response. | the response's text and tool calls |
+| `tool_called` | A tool is about to run. | `tool`, `call_id`, `arguments` |
+| `tool_output_delta` | A piece of a tool's output, for tools that stream. | `call_id`, `chunk` |
+| `tool_completed` | A tool finished; the full result. | `tool`, `call_id`, `output` |
+| `tool_failed` | A tool raised, or the model called a tool that does not exist. | `error` |
+| `tool_denied` | The permission gate refused a call. | `tool`, `reason` |
+| `context_compacted` | Older turns were summarised to stay within the window. | token counts |
+| `run_summary` | How the run went: turns, tool calls, tokens, cost, how it ended. | the run summary |
+| `run_completed` | The run is over. | `output` |
 
-## Streaming inside a chat session
+[Event types](../reference/events.md) lists all of them with every payload field.
 
-`AgentChatSession.stream` mirrors `Agent.stream` but also persists each
-turn to the session store:
+`text_delta` and `tool_output_delta` are provisional: show them as they arrive, then replace them with the complete `assistant_message` or `tool_completed`. A client that reconnects should drop provisional text it has not seen completed.
+
+## In a terminal
+
+`run_live()` streams a run with a ready-made renderer: tool calls, their results and the answer, with a summary at the end.
 
 ```python
-session = agent.chat_session(session_id="user-42")
-
-for event in session.stream("Hi, what can you do?"):
-    print(event.message)
-
-# Next turn — same session, same history
-for event in session.stream("Search the web for SQLite news"):
-    print(event.message)
+answer = agent.run_live("Refactor utils.py into smaller functions.")
 ```
 
-Subscribe to events programmatically with `session.add_event_callback`
-or `session.add_packet_callback` if you want a callback API instead of
-a generator.
+For your own loop, `StreamRenderer` renders events one at a time, and `format_event_line(event)` turns one event into one line.
 
----
+```python
+from shipit_agent import StreamRenderer
 
-## Stopping a stream
+renderer = StreamRenderer(show_tool_output=False)
+for event in agent.stream("Find dead code in src/"):
+    renderer.feed(event)
+renderer.close()
+```
 
-A `for event in agent.stream(...):` loop can be exited with `break` —
-the runtime cleans up the background thread automatically. For
-explicit cancellation from another thread, raise `StopIteration` or
-close the generator (`stream.close()`).
+## In a notebook
 
----
+```python
+from IPython.display import Markdown, clear_output, display
 
-## See also
+lines = []
+for event in agent.stream("Compare these two CSV files.", files=["a.csv", "b.csv"]):
+    lines.append(f"`{event.type}` {event.message}")
+    clear_output(wait=True)
+    display(Markdown("\n\n".join(lines)))
+```
 
-- [Examples](examples.md) — every snippet you can copy
-- [Event Types reference](../reference/events.md)
-- [Packets module](../reference/architecture.md) — SSE / WebSocket helpers
-- [Streaming guide](../guides/streaming.md) — deeper background on the runtime
+## Over the web
+
+A chat session streams packets ready to send: event dicts for a WebSocket, or SSE-formatted strings.
+
+```python
+chat = agent.chat_session(session_id="web-42")
+
+for packet in chat.stream_packets("Summarise the incident report.", transport="sse"):
+    send_to_browser(packet)  # your transport
+```
+
+`shipit serve` exposes an agent as an OpenAI-compatible HTTP endpoint with SSE streaming, if you would rather not write the server.
+
+## From async code
+
+```python
+async for event in agent.astream("Draft the release notes."):
+    print(event.type)
+```
+
+## Streaming a tool's output
+
+A tool that yields its output instead of returning it streams to the client as `tool_output_delta` events. The model still receives one complete result.
+
+```python
+from shipit_agent import ToolOutputChunk
+from shipit_agent.tools import FunctionTool
+
+
+def follow_build():
+    """Run the build and report each phase as it finishes."""
+    yield ToolOutputChunk("compiling...\n", {"phase": "compile"})
+    yield ToolOutputChunk("testing...\n", {"phase": "test"})
+    yield "passed\n"
+
+
+build_tool = FunctionTool.from_callable(follow_build)
+```
+
+With guardrails on, a tool's output is checked as a whole before any of it is streamed, so nothing unchecked reaches a client.
+
+## Errors and stopping
+
+An error inside the run is raised in your loop when the stream ends, never swallowed. Stopping early is safe: leave the loop, and the run is cancelled.
+
+```python
+try:
+    for event in agent.stream("Migrate the database schema."):
+        if event.type == "tool_denied":
+            break
+except RuntimeError as error:
+    print("The run failed:", error)
+```
+
+## With the SDK API
+
+`query()` yields typed messages instead of events: `AssistantMessage`, `UserMessage` with tool results, and a final `ResultMessage`. Set `include_partial_messages=True` for `StreamEvent`s carrying text as it is written. [Agent SDK API](../guides/agent-sdk.md#messages).

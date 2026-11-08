@@ -1,9 +1,9 @@
 ---
-title: Agent — Memory
+title: Memory
 description: Add long-term memory to a shipit_agent.Agent — conversation summaries, semantic facts, entity tracking, and the AgentMemory unified facade.
 ---
 
-# Agent — Memory
+# Memory
 
 Plain `Agent.run` is stateless: it sends the prompt + the agent's
 configured `history` to the LLM and returns the result. shipit_agent
@@ -21,7 +21,11 @@ individually or together:
 > below.
 
 For session-level chat persistence within one conversation, see
-[Sessions & Memory](sessions.md).
+[Sessions](sessions.md).
+
+## Project instructions
+
+Before memory you manage, there is the project's own: at the start of each run the agent reads `SHIPIT.md`, `AGENTS.md` or `CLAUDE.md` from `project_root` (and the same names under `.shipit/`), plus your personal `~/.shipit/SHIPIT.md`. Put conventions there that every run should follow: how to run the tests, what not to touch, the code style. `auto_project_memory=False` turns this off.
 
 ---
 
@@ -100,7 +104,7 @@ mem = ConversationMemory(strategy="buffer")
 mem = ConversationMemory(strategy="window", window_size=10)
 
 # Token — keep within a token budget
-mem = ConversationMemory(strategy="token", token_budget=4000)
+mem = ConversationMemory(strategy="token", max_tokens=4000)
 
 # Summary — LLM rolls older turns into a running summary
 mem = ConversationMemory(strategy="summary", summary_llm=llm)
@@ -178,7 +182,7 @@ from shipit_agent.stores import FileMemoryStore
 
 agent = Agent.with_builtins(
     llm=llm,
-    memory_store=FileMemoryStore(root="~/.shipit/memory"),
+    memory_store=FileMemoryStore(".shipit/memory.json"),
 )
 
 agent.run("Remember that my favourite colour is teal.")
@@ -214,8 +218,8 @@ profile = AgentMemory.default(llm=llm, embedding_fn=embed)
 
 agent = Agent.with_builtins(
     llm=llm,
-    memory_store=FileMemoryStore(root="~/.shipit/memory"),         # LLM-writable
-    session_store=FileSessionStore(root="~/.shipit/sessions"),     # chat history
+    memory_store=FileMemoryStore(".shipit/memory.json"),         # LLM-writable
+    session_store=FileSessionStore(".shipit/sessions"),     # chat history
     history=profile.get_conversation_messages(),                   # prior context
 )
 
@@ -235,8 +239,8 @@ profile.add_fact("user_timezone=Europe/Berlin")
 
 agent = Agent.with_builtins(
     llm=llm,
-    memory_store=FileMemoryStore(root="~/.shipit/memory"),
-    session_store=FileSessionStore(root="~/.shipit/sessions"),
+    memory_store=FileMemoryStore(".shipit/memory.json"),
+    session_store=FileSessionStore(".shipit/sessions"),
     history=profile.get_conversation_messages(),
 )
 
@@ -301,7 +305,7 @@ rag.index_file("docs/manual.pdf")
 
 agent = Agent.with_builtins(
     llm=llm,
-    memory_store=FileMemoryStore(root="~/.shipit/memory"),  # LLM-writable
+    memory_store=FileMemoryStore(".shipit/memory.json"),  # LLM-writable
     history=profile.get_conversation_messages(),            # curated context
     rag=rag,                                                # indexed documents
 )

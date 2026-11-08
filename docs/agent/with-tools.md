@@ -1,257 +1,111 @@
 ---
-title: Agent — With Tools
-description: Extend an Agent with the built-in tool catalogue, custom Python functions, full Tool classes, and MCP servers.
+title: Tools
+description: The built-in tools, how to choose which an agent gets, and how to add your own, MCP servers and other agents.
 ---
 
-# Agent — With Tools
+# Tools
 
-Tools are how an `Agent` *does things*. Every tool is an object that
-implements four members:
+A tool is something the model can do: read a file, run a command, search the web, post to Slack. shipit has 66 built in, and you can add your own as functions, classes, MCP servers or other agents.
 
-```python
-class Tool(Protocol):
-    name: str
-    description: str
-    prompt_instructions: str
-    def schema(self) -> dict[str, Any]: ...
-    def run(self, context: ToolContext, **kwargs: Any) -> ToolOutput: ...
-```
+## The built-in tools
 
-`Agent` doesn't care where a tool comes from — anything implementing
-that protocol works. This page walks through the four most common
-shapes.
+`Agent.with_builtins()` gives an agent all of them. Tools whose service is not configured (no token, no package) stay hidden from the model.
 
----
+| Group | Tools |
+| :- | :- |
+| **Files and code** | `read_file`, `write_file`, `edit_file`, `multi_edit`, `notebook_edit`, `glob_files`, `grep_files`, `bash`, `bash_job`, `run_code`, `git_ops`, `workspace_files`, `download_file`, `present_file`, `pdf` |
+| **The web** | `web_search`, `open_url`, `playwright_browse`, `deep_research` |
+| **Planning and checking** | `todo`, `plan_task`, `present_plan`, `decompose_problem`, `decision_matrix`, `synthesize_evidence`, `verify_output`, `build_prompt`, `give_up` |
+| **People** | `ask_user`, `ask_user_async`, `human_review` |
+| **Agents and tools** | `sub_agent`, `task_stop`, `tool_search` |
+| **Memory** | `memory` |
+| **Media** | `vision`, `image_generate`, `text_to_speech`, `video_generate` |
+| **Documents and apps** | `build_artifact`, `build_document`, `render_dashboard`, `create_app`, `use_app`, `list_blueprints`, `set_app_binding`, `describe_binding` |
+| **Services** | `github`, `gitlab`, `jira`, `linear`, `notion`, `confluence`, `slack`, `gmail_search`, `google_calendar`, `google_drive`, `google_sheets`, `figma`, `salesforce`, `stripe`, `zendesk`, `linkedin_search`, `sql`, `custom_api`, `connections` |
 
-## 1. The built-in catalogue
+The [Tools catalog](../tools/index.md) documents each one. The file tools share some rules:
 
-`Agent.with_builtins()` ships ~30 tools out of the box:
+- They work inside `project_root` and any `add_dirs`, and refuse paths outside.
+- `edit_file` needs the file to have been read first, and refuses if it changed on disk since.
+- Long output is clipped to its start and end, and the full text is saved to a file the model can read.
 
-```python
-from shipit_agent import Agent
+## Choosing the tools
 
-agent = Agent.with_builtins(llm=llm)
-print([t.name for t in agent.tools])
-# ['web_search', 'open_url', 'code_execution', 'workspace_files',
-#  'plan_task', 'tool_search', 'sub_agent', 'verify_output',
-#  'gmail', 'slack', 'jira', 'linear', 'notion', 'confluence',
-#  'google_calendar', 'google_drive', 'playwright_browser', ...]
-```
-
-Highlights:
-
-| Tool | What it does |
-| --- | --- |
-| `web_search` | Pluggable search providers (DuckDuckGo default; Brave, Tavily, Serper, Playwright) |
-| `open_url` | Fetches a URL with the same provider's headless browser |
-| `playwright_browser` | Full browser automation |
-| `code_execution` | Runs untrusted Python in a subprocess |
-| `workspace_files` | Read/write/list files in `.shipit_workspace` |
-| `plan_task` | Planner — produces an ordered execution plan |
-| `tool_search` | Search the tool registry by description |
-| `sub_agent` | Spawn a fresh inner agent for a side-task |
-| `gmail`, `slack`, `jira`, `linear`, `notion`, `confluence` | OAuth-aware connectors |
-
-See the [Tools manifest](../reference/tools.md) for the full list with
-parameter shapes.
-
----
-
-## 2. Custom Python function as a tool
-
-`FunctionTool.from_callable` reads the function's signature and
-docstring and produces a fully-formed `Tool`:
+Give an agent only what it needs: fewer tools mean smaller requests and fewer wrong choices.
 
 ```python
 from shipit_agent import Agent
-from shipit_agent.tools import FunctionTool
-
-def get_weather(city: str, unit: str = "celsius") -> str:
-    """Return the current weather for the given city.
-
-    Args:
-        city: City name (e.g., "Paris").
-        unit: "celsius" or "fahrenheit".
-    """
-    return f"It's 18°{unit[0].upper()} in {city}."
+from shipit_agent.llms import build_llm_from_env
+from shipit_agent.tools import BashTool, EditFileTool, FileReadTool, GrepSearchTool
 
 agent = Agent(
-    llm=llm,
-    tools=[FunctionTool.from_callable(get_weather)],
+    llm=build_llm_from_env(),
+    project_root=".",
+    tools=[FileReadTool(root_dir="."), GrepSearchTool(root_dir="."), EditFileTool(root_dir="."), BashTool(root_dir=".")],
 )
-agent.run("What's the weather in Paris?")
 ```
 
-Argument names, defaults, and the docstring are auto-extracted into the
-tool's `schema()`. No manual JSON schema needed.
+With the SDK API, name them: `AgentOptions(tools=["read_file", "grep_files", "edit_file", "bash"])`. Leaving `tools` out gives the core set: files, bash, search, the web, todos, questions and memory.
 
----
+To keep every built-in except a few, use `disallowed_tools=["bash", "playwright_browse"]`.
 
-## 3. Full `Tool` class
+## Your own tools
 
-When you need full control — custom error handling, side effects,
-streaming, async work — implement the protocol directly:
+Any function becomes a tool; its docstring and type hints become the schema.
 
 ```python
-from shipit_agent.tools.base import Tool, ToolContext, ToolOutput
+from shipit_agent.tools import FunctionTool
 
-class WeatherTool(Tool):
-    name = "weather"
-    description = "Look up current weather for a city."
-    prompt_instructions = "Use this when the user asks about weather conditions."
 
-    def __init__(self, api_key: str) -> None:
-        self.api_key = api_key
+def exchange_rate(base: str, quote: str) -> str:
+    """The current exchange rate from one currency to another, e.g. USD to EUR."""
+    return f"1 {base} = 0.92 {quote}"
 
-    def schema(self) -> dict:
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "city": {"type": "string", "description": "City name"},
-                        "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
-                    },
-                    "required": ["city"],
-                },
-            },
-        }
 
-    def run(self, context: ToolContext, *, city: str, unit: str = "celsius") -> ToolOutput:
-        # … call your API …
-        text = f"It's 18°{unit[0].upper()} in {city}."
-        return ToolOutput(text=text, metadata={"city": city, "unit": unit})
-
-agent = Agent(llm=llm, tools=[WeatherTool(api_key="…")])
+rate_tool = FunctionTool.from_callable(exchange_rate, read_only=True)
 ```
 
-The `metadata` you return on `ToolOutput` is surfaced in the
-`tool_completed` event payload — handy for tracing and analytics.
+Pass it in `tools=[rate_tool]`. For full control (a hand-written schema, rich output, errors the model can act on), write a tool class. [Custom tools](../guides/custom-tools.md).
 
----
+## MCP servers
 
-## 4. MCP server (Model Context Protocol)
-
-MCP servers expose tools over stdio or HTTP. `shipit_agent` connects to
-them with one of three transports:
+An MCP server's tools join the agent's own. Connect one from the catalog, or point at any server:
 
 ```python
-from shipit_agent import Agent, MCPServer
-from shipit_agent.mcp import MCPSubprocessTransport, MCPHTTPTransport
+from shipit_agent import Agent, MCPStdioTransport, RemoteMCPServer, connect_mcp
+from shipit_agent.llms import build_llm_from_env
 
-# Local subprocess MCP
-fs = MCPServer(
-    name="filesystem",
-    transport=MCPSubprocessTransport(
-        command="npx",
-        args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp/work"],
-    ),
+github = connect_mcp("github")  # reads GITHUB_TOKEN
+files = RemoteMCPServer(
+    name="files",
+    transport=MCPStdioTransport(command=["npx", "-y", "@modelcontextprotocol/server-filesystem", "."]),
 )
-
-# Remote HTTP MCP
-github = MCPServer(
-    name="github",
-    transport=MCPHTTPTransport(url="https://mcp.example.com/github"),
-)
-
-agent = Agent.with_builtins(llm=llm, mcps=[fs, github])
+agent = Agent.with_builtins(llm=build_llm_from_env(), mcps=[github, files])
 ```
 
-The runtime automatically handshakes with each MCP server, discovers
-its tools, and merges them into the agent's tool registry. Failed
-discoveries log a warning and continue — they don't take down the
-agent.
+[MCP servers](../guides/mcp.md) covers HTTP and SSE servers, filtering their tools and in-process servers.
 
-See the [MCP guide](../guides/mcp.md) for OAuth-protected MCP servers,
-persistent subprocess transports, and reconnection policies.
+## Other agents as tools
 
-## Agents as tools
-
-A normal `Agent` can be a typed specialist tool for another normal `Agent`.
-Nested events are re-emitted as `sub_agent_event`; `session_id` gives the
-specialist a durable conversation across repeated calls.
-
-```python
-researcher = Agent.for_project(
-    llm=research_llm,
-    project_root="/repo",
-    optimized=True,
-).clone(name="researcher", description="Investigates repository questions.")
-
-lead = Agent.for_project(
-    llm=lead_llm,
-    project_root="/repo",
-    tools=[researcher.as_tool(session_id="research-thread")],
-    optimized=True,
-)
-```
-
----
-
-## 5. Mixing custom tools, builtins, and MCP
+An agent can call another as a tool: a reviewer, a researcher, a specialist with its own prompt and model.
 
 ```python
 from shipit_agent import Agent
-from shipit_agent.tools import FunctionTool
+from shipit_agent.llms import build_llm_from_env
 
-def my_secret_calculator(a: int, b: int) -> int:
-    """Compute a*b + 42."""
-    return a * b + 42
-
-agent = Agent.with_builtins(
-    llm=llm,
-    mcps=[fs, github],                                # MCP tools
-    # extra_tools is forwarded to with_builtins via **kwargs:
-    tools=[FunctionTool.from_callable(my_secret_calculator)],
-)
+llm = build_llm_from_env()
+reviewer = Agent.with_builtins(llm=llm, name="reviewer", prompt="Review code for bugs. Be specific.")
+lead = Agent.with_builtins(llm=llm, tools=[reviewer.as_tool(description="Reviews a diff for bugs.")])
 ```
 
-When tool names collide, the **last** registered tool wins. The deep
-agent's `merge_tools` helper enforces the same rule for `DeepAgent`.
+[Agents as tools](../guides/agents-as-tools.md) and [Sub-agents](../guides/delegation.md).
 
----
+## Many tools, small requests
 
-## 6. Tool search — coping with 30+ tools
-
-When the registry grows past ~10 tools, the model starts wasting tokens
-just *reading* the schema list. Add `tool_search` to the prompt and
-instruct the model to call it first:
+Tool schemas are sent with every request. With dozens of tools, that is thousands of tokens per turn. `deferred_tools=True` keeps a small core loaded and lists the rest by name; the model loads one with `tool_search` when it needs it.
 
 ```python
-agent.prompt += (
-    "\n\nBefore calling any other tool, first call `tool_search` to "
-    "find the right one. Then proceed."
-)
+agent = Agent.with_builtins(llm=llm, deferred_tools=True)
 ```
 
-The model gets a ranked shortlist of 5 relevant tools instead of
-seeing all 30. See the [Tool Search guide](../guides/tool-search.md).
-
----
-
-## 7. Disabling the planner
-
-The auto-planner runs `plan_task` once before the first LLM call. To
-turn it off:
-
-```python
-from shipit_agent.policies import RouterPolicy
-
-agent = Agent.with_builtins(llm=llm, router_policy=RouterPolicy(auto_plan=False))
-```
-
-`plan_task` is still in the registry — the model can still call it
-explicitly — but the runtime won't auto-invoke it.
-
----
-
-## See also
-
-- [Custom tools guide](../guides/custom-tools.md) — protocol details
-- [Tools manifest](../reference/tools.md) — every built-in tool
-- [MCP guide](../guides/mcp.md) — OAuth, HTTP, and persistent transports
-- [Tool search guide](../guides/tool-search.md) — scaling past 30 tools
-- [Parameters Reference](../reference/parameters.md#agent)
+[Tool search](../guides/tool-search.md).

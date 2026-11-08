@@ -142,7 +142,6 @@ nav:
       - Tools: agent/with-tools.md
       - Custom tools: guides/custom-tools.md
       - Streaming: agent/streaming.md
-      - Streaming events: guides/streaming.md
       - Sessions: agent/sessions.md
       - Memory: agent/memory.md
       - Advanced memory: guides/advanced-memory.md

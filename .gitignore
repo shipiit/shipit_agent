@@ -78,3 +78,6 @@ ANNOUNCEMENT_1.0.4.md
 planning/
 bench-results.json
 bench-*.json
+
+# Local browser verification output
+.playwright-mcp/

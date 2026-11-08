@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Local Chrome Workspace companion with a docked, height-aware chat panel,
+  compact composer, streamed replies, page snapshots, screenshots and bounded
+  image/document uploads. Default model selection includes Gemma 4 31B and
+  26B-A4B on Bedrock; model changes preserve backend chat history.
+- Optional Google Docs, Sheets and Slides API tool with per-chat change
+  proposals, explicit Apply controls, revision checks for Docs/Slides and
+  best-effort conflict detection for Sheets. Added the `browser` install extra
+  and local setup documentation.
+- Browser bridge validation and session-isolation tests, Workspace proposal
+  tests, attachment tests, streaming decoder tests and an opt-in five-turn
+  real Bedrock HTTP/SSE smoke test.
 - **`sandbox`**, the Claude Agent SDK option: bash and `run_code` run under
   Seatbelt on macOS or bubblewrap on Linux, writing only in the project, the
   `add_dirs` folders, temp and `filesystem.allowWrite`, with the network off
@@ -31,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Browser connection failures remain visible inside the settings dialog and
+  failed token changes preserve the displayed conversation. Unfinished runs
+  are no longer presented as complete; malformed model selections return a
+  client error without losing the chat.
+- Chat-session streaming forwards images and files and closes its underlying
+  stream when the consumer disconnects.
 - **A call that needs approval no one can give** now says it was not run and
   what to do instead: finish the task and name what still needs approval.
   Told only "requires human approval", Gemma retried `rm` and then asked for

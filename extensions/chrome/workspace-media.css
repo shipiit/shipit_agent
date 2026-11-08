@@ -1,0 +1,104 @@
+/* Workspace layout at narrow, wide and short panel sizes. */
+@media (max-width: 350px) {
+  .compose-footer {
+    gap: 5px;
+  }
+  .compose-footer button {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+  header {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  main {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+@media (min-width: 650px) {
+  body {
+    max-width: 1100px;
+    margin: 0 auto;
+    border-left: 1px solid #e3e8db;
+    border-right: 1px solid #e3e8db;
+  }
+  header {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+  .connection {
+    padding-left: 34px;
+    padding-right: 34px;
+  }
+  main {
+    padding: 28px max(32px, calc((100% - 760px) / 2));
+  }
+  #welcome {
+    padding-top: 30px;
+  }
+  h1 {
+    font-size: 48px;
+  }
+  #welcome > p {
+    max-width: 500px;
+    font-size: 14px;
+  }
+  .suggestions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .suggestions button {
+    min-height: 110px;
+    padding: 40px 16px 16px;
+  }
+  .suggestions span {
+    top: 13px;
+  }
+  .suggestions b {
+    top: 15px;
+  }
+  .privacy {
+    text-align: left;
+    margin-top: 24px;
+  }
+  .compose-zone {
+    width: min(800px, 100%);
+    align-self: center;
+    padding-bottom: 22px;
+  }
+  #proposals {
+    width: min(770px, calc(100% - 32px));
+    align-self: center;
+  }
+  #status {
+    width: min(800px, 100%);
+    align-self: center;
+  }
+}
+@media (max-height: 700px) {
+  #welcome {
+    padding-top: 3px;
+  }
+  h1 {
+    margin: 12px 0;
+    font-size: 29px;
+  }
+  #welcome > p {
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+  .suggestions {
+    gap: 7px;
+  }
+  .suggestions button {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .privacy {
+    margin-top: 12px;
+  }
+  textarea {
+    min-height: 50px;
+  }
+}

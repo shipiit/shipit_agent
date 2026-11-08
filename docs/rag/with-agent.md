@@ -129,9 +129,9 @@ agent = Agent.with_builtins(llm=my_llm, rag=rag)
 
 ## Multiple agents sharing one `RAG`
 
-A single `RAG` instance is reusable across many `Agent`s. The internal
-source tracker uses thread-local state so concurrent runs on different
-threads don't bleed citations into each other:
+A single `RAG` instance is reusable across many `Agent`s. Each run tracks
+its sources separately, so concurrent runs on different threads don't bleed
+citations into each other:
 
 ```python
 researcher = Agent(llm=my_llm, prompt="You research the codebase.", rag=rag)

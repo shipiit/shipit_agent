@@ -228,7 +228,7 @@ for s in sources:
     print(f"    {s.text}")
 ```
 
-`begin_run` / `end_run` use thread-local state, so concurrent runs on the
+Each `begin_run` starts its own tracking scope, so concurrent runs on the
 same `RAG` do not bleed citations into each other.
 
 ---

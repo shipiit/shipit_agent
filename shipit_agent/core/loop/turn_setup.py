@@ -68,7 +68,7 @@ class TurnSetupMixin:
             base_prompt = (
                 self.prompt if not tool_prompt else f"{self.prompt}\n\n{tool_prompt}"
             )
-        self._open_transcript(
+        base_prompt = self._open_transcript(
             state,
             base_prompt=base_prompt,
             prior=prior,
@@ -123,7 +123,11 @@ class TurnSetupMixin:
 
         from shipit_agent.verify import VerifyGate
 
-        root = VerifyGate.project_root_from_output_dir(self.tool_output_dir)
+        # The agent's own project first: the process may run from anywhere (a
+        # server, a notebook), and its working directory isn't the project.
+        root = getattr(self, "project_root", "") or VerifyGate.project_root_from_output_dir(
+            self.tool_output_dir
+        )
         db = (
             str(Path(root) / ".shipit" / "verify.db")
             if root not in ("", ".")

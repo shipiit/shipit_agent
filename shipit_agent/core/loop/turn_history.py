@@ -101,14 +101,23 @@ class TurnHistoryMixin:
         prior: PriorTurns,
         user_prompt: str,
         user_content: list[dict[str, Any]] | None,
-    ) -> None:
+    ) -> str:
         """Seed the transcript: system prompt, earlier turns, known facts, the request.
 
         Exactly one fresh system message leads. System messages stored by
-        earlier turns are dropped, so a long session doesn't stack them.
+        earlier turns are dropped, so a long session doesn't stack them. A
+        caller's own ``history=`` may carry system context, such as a
+        conversation summary: that is folded into the one system message.
+        Returns that system text, the prompt the model calls of this turn send.
         """
+        carried = [
+            str(m.content)
+            for m in prior.messages
+            if prior.session is None and m.role == "system" and m.content and m.content != base_prompt
+        ]
+        system_text = "\n\n".join([base_prompt, *carried]) if carried else base_prompt
         state.messages.append(
-            Message(role="system", content=base_prompt, metadata=dict(self.metadata))
+            Message(role="system", content=system_text, metadata=dict(self.metadata))
         )
         state.messages.extend(m for m in prior.messages if m.role != "system")
         rendered_facts = prior.fact_ledger.render()
@@ -127,3 +136,4 @@ class TurnHistoryMixin:
                 metadata={"turn_start": True},
             )
         )
+        return system_text

@@ -6,6 +6,7 @@ refuse, so a sandbox that silently stopped working fails here.
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from shipit_agent.sandbox import SandboxPolicy, available_backend
+from shipit_agent.sandbox.backends import writable_paths
 from shipit_agent.tools.base import ToolContext
 from shipit_agent.tools.bash import BashTool
 from shipit_agent.tools.code_execution.code_execution_tool import CodeExecutionTool
@@ -56,6 +58,35 @@ def test_deny_write_and_added_folders(tmp_path: Path) -> None:
     tool.extra_roots = (shared,)
     assert run(tool, f"echo x > {kept}/x.txt")[0] != 0 and not (kept / "x.txt").exists()
     assert run(tool, f"echo x > {shared}/x.txt")[0] == 0
+
+
+def test_relative_paths_resolve_against_the_project_not_the_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, elsewhere = tmp_path / "project", tmp_path / "elsewhere"
+    (root / "shared").mkdir(parents=True)
+    elsewhere.mkdir()
+    (root / ".env").write_text("KEY=1\n")
+    (root / "secret.txt").write_text("hidden\n")
+    monkeypatch.chdir(elsewhere)
+    tool = bash(root, filesystem={"denyWrite": [".env"], "denyRead": ["secret.txt"]})
+    assert run(tool, "echo changed >> .env")[0] != 0
+    assert (root / ".env").read_text() == "KEY=1\n"
+    code, _, text = run(tool, "cat secret.txt")
+    assert code != 0 and "hidden" not in text
+    assert run(tool, "echo ok > notes.txt")[0] == 0
+
+
+def test_relative_allow_write_resolves_against_the_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root, cache, elsewhere = tmp_path / "project", tmp_path / "cache", tmp_path / "elsewhere"
+    for folder in (root, cache, elsewhere):
+        folder.mkdir()
+    monkeypatch.chdir(elsewhere / "..")
+    policy = SandboxPolicy.from_settings({"enabled": True, "filesystem": {"allowWrite": ["../cache"]}})
+    writable = [os.path.realpath(p) for p in writable_paths([root], policy)]
+    # The system temp folder is always writable, so check the resolved rule itself.
+    assert os.path.realpath(cache) in writable
+    assert os.path.realpath(tmp_path.parent / "cache") not in writable
 
 
 def test_network_is_off_unless_allowed(tmp_path: Path) -> None:

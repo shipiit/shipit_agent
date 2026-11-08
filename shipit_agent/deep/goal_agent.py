@@ -35,6 +35,9 @@ class GoalResult:
     criteria_met: list[bool] = field(default_factory=list)
     steps_taken: int = 0
     step_outputs: list[dict[str, Any]] = field(default_factory=list)
+    #: ``usage`` (tokens summed over the step runs), ``model`` and ``tool_calls``:
+    #: what Autopilot's budget meters read.
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -147,9 +150,11 @@ class GoalAgent(_GoalSteps, _GoalStream):
         subtasks = self._decompose()
         work_done: list[str] = []
         step_outputs: list[dict[str, Any]] = []
+        meter = _UsageMeter(model=str(getattr(self.llm, "model", "") or ""))
 
         for step_num, task in enumerate(subtasks[: self.goal.max_steps], 1):
             result = agent.run(task)
+            meter.add(result)
             work_done.append(result.output)
             self._save_to_memory("assistant", f"Step {step_num}: {result.output[:500]}")
             step_outputs.append(
@@ -167,6 +172,7 @@ class GoalAgent(_GoalSteps, _GoalStream):
                     criteria_met=criteria_met,
                     steps_taken=step_num,
                     step_outputs=step_outputs,
+                    metadata=meter.metadata(),
                 )
 
         final_eval = self._evaluate(work_done)
@@ -187,4 +193,28 @@ class GoalAgent(_GoalSteps, _GoalStream):
             criteria_met=criteria_met,
             steps_taken=len(work_done),
             step_outputs=step_outputs,
+            metadata=meter.metadata(),
         )
+
+
+class _UsageMeter:
+    """Token usage and tool calls summed over a goal's step runs."""
+
+    _KEYS = ("prompt_tokens", "completion_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+
+    def __init__(self, *, model: str) -> None:
+        self.model = model
+        self.usage = dict.fromkeys(self._KEYS, 0)
+        self.tool_calls = 0
+
+    def add(self, result: Any) -> None:
+        usage = (getattr(result, "metadata", None) or {}).get("usage") or {}
+        for key in self._KEYS:
+            value = usage.get(key)
+            if isinstance(value, int):
+                self.usage[key] += value
+        self.tool_calls += len(getattr(result, "tool_results", None) or [])
+
+    def metadata(self) -> dict[str, Any]:
+        usage = {**self.usage, "total_tokens": self.usage["prompt_tokens"] + self.usage["completion_tokens"]}
+        return {"usage": usage, "model": self.model, "tool_calls": self.tool_calls}

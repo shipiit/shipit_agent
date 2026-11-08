@@ -34,12 +34,17 @@ def available_backend() -> Backend | None:
 
 def writable_paths(roots: Iterable[Path], policy: SandboxPolicy) -> list[str]:
     """Every folder a sandboxed command may write to, resolved, without repeats."""
-    paths = [*roots, Path(tempfile.gettempdir()), Path("/tmp"), *map(Path, policy.allow_write)]
+    roots = list(roots)
+    base = roots[0] if roots else None
+    paths = [*roots, Path(tempfile.gettempdir()), Path("/tmp")]
     seen: list[str] = []
     for path in paths:
         for form in (str(path.expanduser()), os.path.realpath(path.expanduser())):
             if form not in seen:
                 seen.append(form)
+    for form in _resolved(policy.allow_write, base):
+        if form not in seen:
+            seen.append(form)
     return seen
 
 
@@ -47,16 +52,22 @@ def _quote(path: str) -> str:
     return '"' + path.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _resolved(paths: Iterable[str]) -> list[str]:
+def _resolved(paths: Iterable[str], base: Path | None = None) -> list[str]:
+    """Policy paths as absolute forms. A relative path is relative to the project
+    root (*base*), never to the Python process's working directory: that would
+    point a rule such as ``denyWrite: [".env"]`` at the wrong file."""
     out: list[str] = []
     for path in paths:
-        for form in (os.path.expanduser(path), os.path.realpath(os.path.expanduser(path))):
+        expanded = os.path.expanduser(path)
+        if base is not None and not os.path.isabs(expanded):
+            expanded = os.path.join(str(base), expanded)
+        for form in (os.path.normpath(expanded), os.path.realpath(expanded)):
             if form not in out:
                 out.append(form)
     return out
 
 
-def seatbelt_profile(policy: SandboxPolicy, writable: list[str]) -> str:
+def seatbelt_profile(policy: SandboxPolicy, writable: list[str], base: Path | None = None) -> str:
     """A Seatbelt profile: reads allowed, writes and network as the policy says.
 
     In Seatbelt the last matching rule wins, so the denies for
@@ -67,9 +78,9 @@ def seatbelt_profile(policy: SandboxPolicy, writable: list[str]) -> str:
     allowed += [f"(literal {_quote(p)})" for p in _DEVICE_WRITES]
     allowed += ['(regex #"^/dev/tty")', '(regex #"^/dev/fd/")']
     rules.append("(allow file-write*\n  " + "\n  ".join(allowed) + ")")
-    for path in _resolved(policy.deny_write):
+    for path in _resolved(policy.deny_write, base):
         rules.append(f"(deny file-write* (subpath {_quote(path)}))")
-    for path in _resolved(policy.deny_read):
+    for path in _resolved(policy.deny_read, base):
         rules.append(f"(deny file-read* (subpath {_quote(path)}))")
     if not policy.allow_network:
         rules.append("(deny network*)")
@@ -78,12 +89,12 @@ def seatbelt_profile(policy: SandboxPolicy, writable: list[str]) -> str:
             rules.append('(allow network-outbound (remote ip "localhost:*"))')
         if policy.allow_all_unix_sockets:
             rules.append("(allow network* (remote unix-socket))")
-        for path in _resolved(policy.allow_unix_sockets):
+        for path in _resolved(policy.allow_unix_sockets, base):
             rules.append(f"(allow network* (remote unix-socket (path-literal {_quote(path)})))")
     return "\n".join(rules) + "\n"
 
 
-def bubblewrap_args(policy: SandboxPolicy, writable: list[str]) -> list[str]:
+def bubblewrap_args(policy: SandboxPolicy, writable: list[str], base: Path | None = None) -> list[str]:
     """bubblewrap options: the filesystem read-only except the writable folders.
 
     Later mounts cover earlier ones, so ``denyWrite`` and ``denyRead`` come
@@ -93,10 +104,10 @@ def bubblewrap_args(policy: SandboxPolicy, writable: list[str]) -> list[str]:
     for path in writable:
         if os.path.isdir(path):
             args += ["--bind", path, path]
-    for path in _resolved(policy.deny_write):
+    for path in _resolved(policy.deny_write, base):
         if os.path.exists(path):
             args += ["--ro-bind", path, path]
-    for path in _resolved(policy.deny_read):
+    for path in _resolved(policy.deny_read, base):
         if os.path.isdir(path):
             args += ["--tmpfs", path]
         elif os.path.exists(path):
@@ -108,7 +119,9 @@ def bubblewrap_args(policy: SandboxPolicy, writable: list[str]) -> list[str]:
 
 def sandbox_prefix(backend: Backend, policy: SandboxPolicy, roots: Iterable[Path]) -> list[str]:
     """The argv to put before a command to run it in *backend*'s sandbox."""
+    roots = list(roots)
+    base = roots[0] if roots else None
     writable = writable_paths(roots, policy)
     if backend == "seatbelt":
-        return [SANDBOX_EXEC, "-p", seatbelt_profile(policy, writable)]
-    return ["bwrap", *bubblewrap_args(policy, writable), "--"]
+        return [SANDBOX_EXEC, "-p", seatbelt_profile(policy, writable, base)]
+    return ["bwrap", *bubblewrap_args(policy, writable, base), "--"]

@@ -13,6 +13,9 @@ class _AutopilotAccounting:
 
     @staticmethod
     def _count_tool_calls(result: Any) -> int:
+        meta = getattr(result, "metadata", None)
+        if isinstance(meta, dict) and isinstance(meta.get("tool_calls"), int):
+            return meta["tool_calls"]
         for attr in ("step_outputs", "steps", "events"):
             items = getattr(result, attr, None)
             if items is not None:

@@ -73,6 +73,26 @@ class TestVerifyGate:
         assert _runtime(verify_before_stop=True)._open_verify_gate() is None
 
 
+class TestVerifyGateRoot:
+    """The gate reads the agent's project, not the process's working directory."""
+
+    def test_the_project_root_option_is_used(self, tmp_path, monkeypatch) -> None:
+        project, elsewhere = tmp_path / "project", tmp_path / "elsewhere"
+        project.mkdir()
+        elsewhere.mkdir()
+        (project / "pytest.ini").write_text("[pytest]\n")
+        monkeypatch.chdir(elsewhere)
+        gate = _runtime(verify_before_stop=True, project_root=str(project))._open_verify_gate()
+        assert gate is not None
+        assert gate.root == str(project)
+        assert gate.commands == ["pytest"]
+
+    def test_without_a_project_root_it_falls_back_as_before(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        gate = _runtime(verify_before_stop=True)._open_verify_gate()
+        assert gate is not None and gate.root == "."
+
+
 class TestCompactionCheckpoint:
     def test_restored_when_it_fits_the_stored_history(self) -> None:
         runtime = _runtime()

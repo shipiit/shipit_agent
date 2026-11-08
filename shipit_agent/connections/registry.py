@@ -8,67 +8,32 @@ that maintained its own list would drift from the tools that exist.
 
 from __future__ import annotations
 
-import time
 from typing import Any, Iterable
 
-from .models import AuthKind, Connection, ConnectionRequest, ConnectionState
+from .discovery import _ConnectionDiscovery
+from .models import AuthKind, Connection, ConnectionRequest
+from .registry_support import (
+    AUTH_KINDS as AUTH_KINDS,
+)
+from .registry_support import (
+    TITLES as TITLES,
+)
+from .registry_support import (
+    title_for as title_for,
+)
 
 __all__ = ["ConnectionRegistry", "AUTH_KINDS", "TITLES"]
 
 # How each provider authenticates. Wrong-but-plausible guidance is worse than
 # none — "it needs you to sign in" for something that wants a pasted API key
 # sends the user looking for a button that does not exist.
-AUTH_KINDS: dict[str, AuthKind] = {
-    "gmail": AuthKind.OAUTH,
-    "google_calendar": AuthKind.OAUTH,
-    "google_drive": AuthKind.OAUTH,
-    "google_sheets": AuthKind.OAUTH,
-    "slack": AuthKind.OAUTH,
-    "salesforce": AuthKind.OAUTH,
-    "linkedin": AuthKind.OAUTH,
-    "github": AuthKind.TOKEN,
-    "gitlab": AuthKind.TOKEN,
-    "figma": AuthKind.TOKEN,
-    "notion": AuthKind.TOKEN,
-    "linear": AuthKind.API_KEY,
-    "jira": AuthKind.API_KEY,
-    "confluence": AuthKind.API_KEY,
-    "stripe": AuthKind.API_KEY,
-    "zendesk": AuthKind.API_KEY,
-    "custom_api": AuthKind.API_KEY,
-}
 
 # Display names. A user recognizes "Google Sheets", not "google_sheets".
-TITLES: dict[str, str] = {
-    "gmail": "Gmail",
-    "google_calendar": "Google Calendar",
-    "google_drive": "Google Drive",
-    "google_sheets": "Google Sheets",
-    "slack": "Slack",
-    "linear": "Linear",
-    "jira": "Jira",
-    "notion": "Notion",
-    "confluence": "Confluence",
-    "github": "GitHub",
-    "gitlab": "GitLab",
-    "figma": "Figma",
-    "salesforce": "Salesforce",
-    "stripe": "Stripe",
-    "zendesk": "Zendesk",
-    "linkedin": "LinkedIn",
-    "custom_api": "Custom API",
-}
 
 # Credential fields that count as "there is a credential here".
-_SECRET_FIELDS = ("api_key", "token", "access_token", "password", "secret")
 
 
-def title_for(key: str) -> str:
-    """A human-readable title for a connection key."""
-    return TITLES.get(key) or key.replace("_", " ").title()
-
-
-class ConnectionRegistry:
+class ConnectionRegistry(_ConnectionDiscovery):
     """The connection state of everything this agent could reach."""
 
     def __init__(
@@ -90,113 +55,7 @@ class ConnectionRegistry:
 
     # ── discovery ────────────────────────────────────────────────────────
 
-    def _connector_connections(self) -> list[Connection]:
-        by_key: dict[str, Connection] = {}
-        for tool in self._tools:
-            key = getattr(tool, "credential_key", None)
-            if not key:
-                continue
-            existing = by_key.get(key)
-            tool_name = str(getattr(tool, "name", "") or "")
-            if existing is not None:
-                # Several tools can share one credential (the Google family).
-                existing.tools = (*existing.tools, tool_name)
-                continue
-            by_key[key] = Connection(
-                id=key,
-                title=title_for(key),
-                kind="connector",
-                auth=AUTH_KINDS.get(key, AuthKind.UNKNOWN),
-                description=str(getattr(tool, "description", "") or "")[:200],
-                tools=(tool_name,) if tool_name else (),
-            )
-        return list(by_key.values())
-
-    def _mcp_connections(self) -> list[Connection]:
-        connections: list[Connection] = []
-        for mcp in self._mcps:
-            name = str(getattr(mcp, "name", "") or "mcp")
-            # An attached MCP server is reachable by definition — it was
-            # constructed and handed to the agent. Whether its *transport* is
-            # alive is a different question, answered by refresh().
-            connections.append(
-                Connection(
-                    id=name,
-                    title=name.replace("_", " ").title(),
-                    kind="mcp",
-                    state=ConnectionState.CONNECTED,
-                    auth=AuthKind.NONE,
-                    description=str(getattr(mcp, "description", "") or ""),
-                )
-            )
-
-        if self.include_catalog:
-            from shipit_agent.mcp_catalog import MCP_CATALOG
-
-            attached = {c.id for c in connections}
-            for name, entry in MCP_CATALOG.items():
-                if name in attached:
-                    continue
-                needs_env = bool(getattr(entry, "env", None))
-                connections.append(
-                    Connection(
-                        id=name,
-                        title=name.replace("_", " ").title(),
-                        kind="mcp",
-                        state=ConnectionState.DISCONNECTED,
-                        auth=AuthKind.API_KEY if needs_env else AuthKind.NONE,
-                        description=str(getattr(entry, "description", "") or ""),
-                    )
-                )
-        return connections
-
     # ── state resolution ─────────────────────────────────────────────────
-
-    def _resolve_state(self, connection: Connection) -> Connection:
-        """Fill in the real state from the credential store."""
-        if connection.kind == "mcp":
-            return connection
-        if self.credential_store is None:
-            # No store means no credentials can exist. Saying "needs auth"
-            # here would be wrong — nothing is configured at all.
-            connection.state = ConnectionState.DISCONNECTED
-            return connection
-
-        try:
-            record = self.credential_store.get(connection.id)
-        except Exception as exc:  # noqa: BLE001
-            connection.state = ConnectionState.ERROR
-            connection.error = str(exc)
-            return connection
-
-        if record is None:
-            connection.state = ConnectionState.DISCONNECTED
-            return connection
-
-        secrets = dict(getattr(record, "secrets", {}) or {})
-        metadata = dict(getattr(record, "metadata", {}) or {})
-        connection.account = str(
-            metadata.get("account") or metadata.get("email") or ""
-        )
-
-        if not any(secrets.get(f) for f in _SECRET_FIELDS):
-            # A record exists but carries nothing to authenticate with — the
-            # user started setting this up and did not finish.
-            connection.state = ConnectionState.NEEDS_AUTH
-            return connection
-
-        expires_at = metadata.get("expires_at") or getattr(record, "expires_at", None)
-        if expires_at:
-            try:
-                connection.expires_at = float(expires_at)
-                if connection.expires_at <= time.time():
-                    connection.state = ConnectionState.EXPIRED
-                    return connection
-            except (TypeError, ValueError):
-                pass
-
-        connection.state = ConnectionState.CONNECTED
-        return connection
 
     # ── public surface ───────────────────────────────────────────────────
 

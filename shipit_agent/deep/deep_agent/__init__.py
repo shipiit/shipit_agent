@@ -11,7 +11,8 @@ Public surface:
 """
 
 from .delegation import AgentDelegationTool, build_delegation_tool
-from .factory import DeepAgent, create_deep_agent
+from .create import create_deep_agent
+from .factory import DeepAgent
 from .prompt import DEEP_AGENT_PROMPT
 
 __all__ = [

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Every module is under 300 lines** except the package `__init__`, which
+  is only the public import list. 38 modules split by job into sibling
+  modules and mixins; public names import from the same paths as before.
+  `shipit_agent.apps` is now a package, and `create_deep_agent` lives in
+  `deep/deep_agent/create.py` (still importable from `factory`).
+- **The license is declared as an SPDX expression** (`license = "MIT"`), as
+  setuptools requires from 2027; building now needs setuptools 77 or newer.
+
 ### Fixed
 
 - **A call that needs approval no one can give** now says it was not run and

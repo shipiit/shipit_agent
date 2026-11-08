@@ -83,6 +83,7 @@ def test_background_commands_are_sandboxed_too(tmp_path: Path, outside: Path) ->
 def test_run_code_is_sandboxed(tmp_path: Path, outside: Path) -> None:
     tool = CodeExecutionTool(workspace_root=tmp_path, sandbox_policy=SandboxPolicy.from_settings({"enabled": True}))
     out = tool.run(CONTEXT, language="python", code=f"open({str(outside)!r}, 'w').write('x')")
-    assert not outside.exists() and "not permitted" in out.text.lower()
+    # Seatbelt says "Operation not permitted"; bubblewrap's read-only mounts say "Read-only file system".
+    assert not outside.exists() and any(s in out.text.lower() for s in ("not permitted", "read-only file system"))
     ok = tool.run(CONTEXT, language="python", code="open('inside.txt', 'w').write('x'); print('done')")
     assert "done" in ok.text

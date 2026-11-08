@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from shipit_agent.sandbox import SandboxPolicy, SandboxUnavailable
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.formatting import clip_text
 from shipit_agent.tools.subprocess_env import build_tool_env
@@ -19,9 +20,10 @@ from .conservative import (
 from .jobs import BackgroundJobsMixin, BashJobTool, is_long_running
 from .prompt import BASH_PROMPT
 from .runner import StillRunning, run_command
+from .sandboxing import UNSANDBOXED_FLAG, SandboxedShellMixin
 
 
-class BashTool(BackgroundJobsMixin):
+class BashTool(SandboxedShellMixin, BackgroundJobsMixin):
     """The ``bash`` tool: run any shell command in the project root.
 
     What may run without approval is decided per command by
@@ -61,6 +63,8 @@ class BashTool(BackgroundJobsMixin):
         env_allowlist: list[str] | None = None,
         extra_env: dict[str, str] | None = None,
         inherit_env: bool = False,
+        #: Run commands in the OS sandbox (``AgentOptions(sandbox=...)``).
+        sandbox_policy: SandboxPolicy | None = None,
     ) -> None:
         self.root_dir = Path(root_dir).resolve()
         self.name = name
@@ -79,6 +83,9 @@ class BashTool(BackgroundJobsMixin):
         self.env_allowlist = list(env_allowlist or [])
         self.extra_env = dict(extra_env or {})
         self.inherit_env = inherit_env
+        self.sandbox_policy = sandbox_policy
+        #: Folders beside the project (``add_dirs``) the sandbox lets commands write to.
+        self.extra_roots: tuple[Path, ...] = ()
         #: Live background jobs, id → {process, log_path, command}, for the
         #: companion poll/kill tool.
         self.background_jobs: dict[str, dict[str, Any]] = {}
@@ -93,7 +100,7 @@ class BashTool(BackgroundJobsMixin):
         self.blocked_substrings = list(blocked_substrings or DEFAULT_BLOCKED_SUBSTRINGS)
 
     def schema(self) -> dict:
-        return {
+        return self._with_sandbox_flag({
             "type": "function",
             "function": {
                 "name": self.name,
@@ -134,7 +141,7 @@ class BashTool(BackgroundJobsMixin):
                     "required": ["command"],
                 },
             },
-        }
+        })
 
     def _resolve_dir(self, relative_path: str | None) -> Path:
         target = self.root_dir if not relative_path else (self.root_dir / relative_path)
@@ -175,7 +182,8 @@ class BashTool(BackgroundJobsMixin):
 
     def assess_command(self, arguments: dict[str, Any]) -> CommandVerdict:
         """How risky the call's command is; the permission gate decides on it."""
-        return assess_command(str(arguments.get("command", "")), root=self.root_dir)
+        verdict = assess_command(str(arguments.get("command", "")), root=self.root_dir)
+        return self._sandbox_verdict(arguments, verdict)
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         command = str(kwargs.get("command", ""))
@@ -194,11 +202,16 @@ class BashTool(BackgroundJobsMixin):
             self.max_timeout,
         )
         cwd = self._resolve_dir(kwargs.get("working_directory"))
+        unsandboxed = bool(kwargs.get(UNSANDBOXED_FLAG))
+        try:
+            wrapped = self._shell_argv(command, unsandboxed=unsandboxed)
+        except SandboxUnavailable as exc:
+            return ToolOutput(text=f"Command not run: {exc}", metadata={"ok": False, "error": "sandbox_unavailable"})
         background = bool(kwargs.get("background"))
         if background or is_long_running(command):
-            return self._run_background(command, cwd)
+            return self._run_background(command, cwd, argv=wrapped.argv)
         outcome = run_command(
-            command, cwd=cwd, env=self._child_env(), timeout=timeout
+            command, cwd=cwd, env=self._child_env(), timeout=timeout, argv=wrapped.argv
         )
         if isinstance(outcome, StillRunning):
             return self._adopt_timed_out(command, cwd, outcome)
@@ -230,6 +243,7 @@ class BashTool(BackgroundJobsMixin):
                 "stdout_path": str(outcome.stdout_path),
                 "stderr_path": str(outcome.stderr_path),
                 "duration_seconds": round(outcome.duration, 4),
+                "sandboxed": wrapped.sandboxed,
             },
         )
 

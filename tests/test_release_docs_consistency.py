@@ -18,14 +18,10 @@ def test_root_changelog_includes_v1_0_5_entry() -> None:
     )
 
 
-def test_docs_homepage_tip_is_updated_to_v1_0_5() -> None:
-    """The docs landing page should not still headline the older v1.0.3 release."""
+def test_docs_homepage_does_not_headline_an_old_release() -> None:
+    """The docs landing page should not headline a 1.x release; the changelog holds those."""
     index_doc = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
-    assert (
-        '!!! tip "v1.0.5 — Prebuilt Agents, ShipCrew, Notifications, Cost Tracking"'
-        in index_doc
-    )
-    assert '!!! tip "v1.0.3 — Super RAG, DeepAgent, live chat REPL"' not in index_doc
+    assert '!!! tip "v1.' not in index_doc
 
 
 def test_docs_changelog_does_not_reference_missing_v1_0_5_guides() -> None:

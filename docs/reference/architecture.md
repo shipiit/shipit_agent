@@ -230,7 +230,7 @@ The `RAG` facade ties them together with a `HybridSearchPipeline`
 pass `rag=` to `Agent`, three tools are auto-wired and a per-run
 `SourceTracker` captures every retrieved chunk into
 `AgentResult.rag_sources`. Adapters in
-`shipit_agent.rag.adapters` (DRK_CACHE, Chroma, Qdrant, pgvector) plug
+your own adapters (Chroma, Qdrant, pgvector) plug
 into the same protocols. See [Super RAG](../rag/index.md).
 
 ### Stores

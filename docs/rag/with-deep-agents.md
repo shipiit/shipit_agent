@@ -181,7 +181,7 @@ per-agent, so:
   worker contributes to the same panel; the supervisor's final result
   surfaces all of them.
 
-This is the same UX you get from DRK_CACHE: a single answer plus a
+This gives a single answer plus a
 single deduplicated panel of `[N]` citations.
 
 ---

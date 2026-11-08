@@ -9,7 +9,7 @@ from shipit_agent import Agent
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent.with_builtins(
-    llm=OpenAIChatLLM(model="gpt-4o"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     max_iterations=10,
     replan_interval=3,   # re-plan every 3 iterations
 )

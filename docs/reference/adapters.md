@@ -75,7 +75,7 @@ want the lowest possible latency on tool calling.
 from shipit_agent.llms import OpenAIChatLLM
 
 llm = OpenAIChatLLM(
-    model="gpt-4o-mini",
+    model="gpt-5.5",
     api_key=None,                  # falls back to OPENAI_API_KEY env var
     reasoning_effort=None,         # auto-set to "medium" for o-series + gpt-5 + DeepSeek R1
     tool_choice=None,              # "auto" | "required" | "none" | dict
@@ -103,7 +103,7 @@ and want extended thinking + Claude's strict tool-use shape.
 from shipit_agent.llms import AnthropicChatLLM
 
 llm = AnthropicChatLLM(
-    model="claude-opus-4-1",
+    model="claude-opus-5-5",
     api_key=None,                    # falls back to ANTHROPIC_API_KEY env var
     max_tokens=4096,
     thinking_budget_tokens=None,     # set to enable extended thinking
@@ -194,7 +194,7 @@ reasoning extraction:
 
 | Adapter | Default model | Notes |
 | --- | --- | --- |
-| `GeminiChatLLM` | `gemini/gemini-1.5-pro` | Needs `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| `GeminiChatLLM` | `gemini/gemini-3.5-flash` | Needs `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
 | `GroqChatLLM` | `groq/llama-3.3-70b-versatile` | Needs `GROQ_API_KEY` |
 | `TogetherChatLLM` | `together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo` | Needs `TOGETHERAI_API_KEY` |
 | `OllamaChatLLM` | `ollama/llama3.1` | Local — runs against `http://localhost:11434` by default |
@@ -202,7 +202,7 @@ reasoning extraction:
 ```python
 from shipit_agent.llms import GeminiChatLLM, GroqChatLLM, OllamaChatLLM
 
-llm = GeminiChatLLM(model="gemini/gemini-1.5-pro")
+llm = GeminiChatLLM(model="gemini/gemini-3.5-flash")
 llm = GroqChatLLM(model="groq/llama-3.3-70b-versatile")
 llm = OllamaChatLLM(model="ollama/llama3.1")
 ```
@@ -233,7 +233,7 @@ llm = LiteLLMChatLLM(
 from shipit_agent.llms import LiteLLMProxyChatLLM
 
 llm = LiteLLMProxyChatLLM(
-    model="gpt-4o-mini",                # whatever the proxy routes to
+    model="gpt-5.5",                # whatever the proxy routes to
     api_base="https://litellm.my-company.internal",
     api_key="sk-proxy-token",
     custom_llm_provider="openai",       # proxy speaks OpenAI
@@ -256,8 +256,8 @@ tests, demos, and offline development.
 ```python
 from shipit_agent.llms import ShipitLLM, SimpleEchoLLM
 
-llm = SimpleEchoLLM()                   # echoes the last user message
-llm = ShipitLLM(prefix="[shipit] ")     # echo with a custom prefix
+llm = SimpleEchoLLM()   # echoes the last user message
+llm = ShipitLLM()       # the default stub for local development
 ```
 
 Both are 100% deterministic — perfect for unit tests that need a

@@ -100,7 +100,7 @@ Three ways, pick whichever fits:
 from shipit_agent import Agent
 from shipit_agent.llms import OpenAIChatLLM
 
-agent = Agent.with_builtins(llm=OpenAIChatLLM(model="gpt-4o-mini"))
+agent = Agent.with_builtins(llm=OpenAIChatLLM(model="gpt-5.5"))
 # All 25+ built-in tools registered automatically
 ```
 
@@ -111,7 +111,7 @@ from shipit_agent import Agent, WebSearchTool, OpenURLTool, ToolSearchTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[
         WebSearchTool(),
         OpenURLTool(),
@@ -131,9 +131,9 @@ def my_pricing_lookup(sku: str) -> str:
     return get_pricing_from_db(sku)
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[
-        *get_builtin_tools(llm=OpenAIChatLLM(model="gpt-4o-mini")),
+        *get_builtin_tools(llm=OpenAIChatLLM(model="gpt-5.5")),
         FunctionTool.from_callable(my_pricing_lookup),
     ],
 )

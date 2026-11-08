@@ -6,7 +6,7 @@ Wire the Super RAG subsystem into a regular `shipit_agent.Agent` using
 prompt is augmented with citation instructions automatically.
 
 After every `agent.run(...)` the result carries a `rag_sources` field —
-the DRK_CACHE-style citation panel.
+a citation panel.
 
 ---
 

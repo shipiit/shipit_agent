@@ -5,7 +5,7 @@ description: Use packaged skills, attach prebuilt skills to Agent and DeepAgent,
 
 # Skills
 
-SHIPIT Agent supports a **skills layer** on top of the normal runtime.
+ShipIt Agent supports a **skills layer** on top of the normal runtime.
 A skill is a reusable instruction block plus metadata that can be:
 
 - loaded from a packaged JSON catalog
@@ -180,7 +180,7 @@ Complete example:
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -215,7 +215,7 @@ More explicit end-to-end example:
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -418,7 +418,7 @@ assert errors == []  # no unknown tool references
 
 ```python
 from shipit_agent import DeepAgent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -454,7 +454,7 @@ Detailed DeepAgent example:
 
 ```python
 from shipit_agent import DeepAgent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -515,7 +515,7 @@ Both `Agent` and `DeepAgent` support `stream()` for real-time event output. Skil
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -780,7 +780,7 @@ Detailed custom-catalog Agent example:
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -835,7 +835,7 @@ Detailed custom-catalog DeepAgent example:
 
 ```python
 from shipit_agent import DeepAgent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -901,7 +901,7 @@ The agent can scaffold an entire project from scratch.
 ```python
 from shipit_agent import Agent
 from shipit_agent.stores import InMemoryMemoryStore
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 

@@ -31,10 +31,10 @@ All connectors share the same `CredentialStore` interface. You set up credential
 from shipit_agent import Agent, FileCredentialStore, GmailTool, SlackTool
 from shipit_agent.llms import OpenAIChatLLM
 
-credentials = FileCredentialStore(path=".shipit_credentials.json")
+credentials = FileCredentialStore(".shipit_credentials.json")
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[GmailTool(), SlackTool()],
     credential_store=credentials,
 )
@@ -46,12 +46,15 @@ agent = Agent(
 from shipit_agent import InMemoryCredentialStore, CredentialRecord
 
 store = InMemoryCredentialStore()
-store.put(CredentialRecord(
-    name="gmail",
-    type="oauth2",
-    token="ya29....",
-    refresh_token="1//...",
-    metadata={"client_id": "...", "client_secret": "..."},
+store.set(CredentialRecord(
+    key="gmail",
+    provider="gmail",
+    secrets={
+        "access_token": "ya29....",
+        "refresh_token": "1//...",
+        "client_id": "...",
+        "client_secret": "...",
+    },
 ))
 ```
 
@@ -60,26 +63,29 @@ store.put(CredentialRecord(
 For services that need OAuth flows (Google, Slack), shipit-agent ships helpers:
 
 ```python
-from shipit_agent import GoogleOAuthHelper, OAuthClientConfig
+from shipit_agent import CredentialRecord, GoogleOAuthHelper, InMemoryOAuthStateStore
 
 helper = GoogleOAuthHelper(
-    config=OAuthClientConfig(
-        client_id="...",
-        client_secret="...",
-        redirect_uri="http://localhost:8080/callback",
-        scopes=["https://www.googleapis.com/auth/gmail.readonly"],
-    ),
-    credential_store=credentials,
+    client_id="...",
+    client_secret="...",
+    redirect_uri="http://localhost:8080/callback",
+    scopes=["https://www.googleapis.com/auth/gmail.readonly"],
     state_store=InMemoryOAuthStateStore(),
 )
 
-# Generate authorization URL
-auth_url = helper.build_authorization_url()
-print(f"Visit: {auth_url}")
+# 1. Send the user to Google.
+request = helper.create_authorization_url()
+print("Visit:", request["url"])
 
-# After user authorizes and you receive the callback:
-helper.exchange_code(code="...", state="...")
-# Token is now in credentials, ready for GmailTool to use
+# 2. Google redirects back with ?code=...&state=...; exchange the code for tokens.
+tokens = helper.exchange_code(code="...", state="...")
+
+# 3. Save them where GmailTool looks.
+credentials.set(CredentialRecord(
+    key="gmail",
+    provider="gmail",
+    secrets={**tokens, "client_id": "...", "client_secret": "..."},
+))
 ```
 
 See [`notebooks/06_agent_connectors_gmail_and_others.ipynb`](https://github.com/shipiit/shipit_agent/blob/main/notebooks/06_agent_connectors_gmail_and_others.ipynb) for a complete OAuth walk-through.
@@ -389,11 +395,11 @@ The credential record holds the base URL, auth type, and auth value:
 ```python
 from shipit_agent import CredentialRecord, FileCredentialStore
 
-store = FileCredentialStore(path=".shipit_credentials.json")
-store.put(CredentialRecord(
-    name="custom_api",
-    type="bearer",
-    token="my-secret-token",
+store = FileCredentialStore(".shipit_credentials.json")
+store.set(CredentialRecord(
+    key="custom_api",
+    provider="custom_api",
+    secrets={"token": "my-secret-token"},
     metadata={
         "base_url": "https://api.mycompany.internal",
         "default_headers": {"X-Client": "shipit-agent"},
@@ -415,17 +421,20 @@ agent.run(
 
 ## Building your own connector
 
-The connector pattern is simple — subclass `BaseConnectorTool` and implement `run()`. See `shipit_agent/tools/connector_base.py` for the base class and `shipit_agent/tools/linear/linear_tool.py` for a worked example.
+Subclass `HTTPConnectorToolBase` for a REST service. It finds the credential record, builds the auth headers and makes JSON requests; you write the schema and what each action does. `shipit_agent/tools/linear/linear_tool.py` is a complete example.
 
 ```python
-from shipit_agent.tools.connector_base import BaseConnectorTool
 from shipit_agent.tools.base import ToolContext, ToolOutput
+from shipit_agent.tools.connector_base import HTTPConnectorToolBase
 
-class MyServiceTool(BaseConnectorTool):
-    name = "my_service"
-    description = "Search and update records in MyService."
 
-    def __init__(self, *, credential_key="my_service", credential_store=None):
+class StatusPageTool(HTTPConnectorToolBase):
+    name = "status_page"
+    description = "Read the current incidents on our status page."
+    provider = "status_page"
+    read_only = True
+
+    def __init__(self, *, credential_key: str = "status_page", credential_store=None):
         super().__init__(credential_key=credential_key, credential_store=credential_store)
 
     def schema(self) -> dict:
@@ -434,20 +443,20 @@ class MyServiceTool(BaseConnectorTool):
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": {...},
+                "parameters": {"type": "object", "properties": {}},
             },
         }
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
-        credential = self._get_credential(context)
-        # Use credential.token to call the API
-        ...
-        return ToolOutput(text="...", metadata={...})
+        record = self._get_record(context)
+        if record is None:
+            return self._not_connected_output(context)
+        incidents = self._request_json(record=record, method="GET", path="/v1/incidents", query={"status": "open"})
+        lines = [f"{i['name']} ({i['status']})" for i in incidents]
+        return ToolOutput(text="\n".join(lines) or "No open incidents.", metadata={"incidents": incidents})
 ```
 
-Once registered, your connector behaves identically to the built-in ones — same credential store, same event lifecycle, indexed by `tool_search`, paired correctly for Bedrock.
-
----
+Store its credential with `secrets={"token": "..."}` and `metadata={"base_url": "https://api.statuspage.example"}`. The tool then behaves like the built-in connectors: the same credential store, the same events, found by `tool_search`.
 
 ## Security notes
 

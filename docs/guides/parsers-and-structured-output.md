@@ -153,7 +153,7 @@ parser.parse("Range: 10-20")
 
 Extract structured content from markdown-formatted output:
 
-```python
+````python
 from shipit_agent.parsers import MarkdownParser
 
 parser = MarkdownParser()
@@ -185,7 +185,7 @@ result.code_blocks
 
 result.lists
 # ["Revenue increased 15%", "Customer satisfaction at 92%", "Positive outlook for Q1"]
-```
+````
 
 ## Error Handling
 

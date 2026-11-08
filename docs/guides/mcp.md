@@ -1,6 +1,6 @@
 # MCP Integration
 
-The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) lets you attach remote tool servers to your agent without writing any client code. SHIPIT Agent has native MCP support via three transports, plus a prebuilt catalog of well-known servers.
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) lets you attach remote tool servers to your agent without writing any client code. ShipIt Agent has native MCP support via three transports, plus a prebuilt catalog of well-known servers.
 
 ## Prebuilt MCP catalog (recommended)
 
@@ -35,7 +35,7 @@ mcp = RemoteMCPServer(
 )
 
 agent = Agent.with_builtins(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     mcps=[mcp],
 )
 

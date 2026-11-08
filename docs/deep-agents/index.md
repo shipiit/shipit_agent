@@ -1,6 +1,6 @@
 # Deep Agents Overview
 
-SHIPIT Agent's deep agent system provides autonomous, self-directing agent capabilities that go beyond LangChain. All deep agents support **MCP servers**, **built-in tools**, **real-time streaming**, and **memory**.
+ShipIt Agent's deep agent system provides autonomous, self-directing agent capabilities that go beyond LangChain. All deep agents support **MCP servers**, **built-in tools**, **real-time streaming**, and **memory**.
 
 Deep agents also support the same **skills** system as plain `Agent`, including packaged skills, custom skill catalogs, explicit `skills=[...]`, and prompt-based auto-matching. See the [Skills guide](../guides/skills.md).
 

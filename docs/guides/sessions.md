@@ -15,7 +15,7 @@ from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
     llm=OpenAIChatLLM(model="gpt-4o-mini"),
-    session_store=FileSessionStore(root=".shipit_sessions"),
+    session_store=FileSessionStore(".shipit_sessions"),
     session_id="user-42-chat-1",
 )
 
@@ -56,7 +56,7 @@ from shipit_agent import Agent, FileMemoryStore
 
 agent = Agent(
     llm=llm,
-    memory_store=FileMemoryStore(root=".shipit_memory"),
+    memory_store=FileMemoryStore(".shipit_memory.json"),
 )
 ```
 
@@ -80,7 +80,7 @@ from shipit_agent import Agent, FileTraceStore
 
 agent = Agent(
     llm=llm,
-    trace_store=FileTraceStore(root=".shipit_traces"),
+    trace_store=FileTraceStore(".shipit_traces"),
     trace_id="run-2026-04-09-alice",
 )
 ```

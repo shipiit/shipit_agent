@@ -252,14 +252,12 @@ candidates 0–10. Scores are normalised to `[0, 1]`.
 
 ### `HybridSearchPipeline`
 
-```python
-HybridSearchPipeline(
-    vector_store: VectorStore,
-    embedder: Embedder,
-    keyword_store: KeywordStore | None = None,
-    reranker: Reranker | None = None,
-)
-```
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `vector_store` | required | Where chunk embeddings are searched |
+| `embedder` | required | Embeds the query |
+| `keyword_store` | `None` | Adds BM25 keyword search, fused with the vector results |
+| `reranker` | `None` | Re-scores the fused candidates |
 
 Method: `search(query: SearchQuery) -> RAGContext`.
 

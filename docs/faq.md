@@ -308,7 +308,7 @@ from shipit_agent import Agent, FileTraceStore
 
 agent = Agent(
     llm=llm,
-    trace_store=FileTraceStore(root="/var/log/shipit/traces"),
+    trace_store=FileTraceStore("/var/log/shipit/traces"),
     trace_id=f"run-{request_id}",
 )
 ```

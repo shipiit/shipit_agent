@@ -10,24 +10,29 @@ Autonomous agent that decomposes goals into sub-tasks and tracks progress agains
 
 ### Constructor
 
-```python
-GoalAgent(
-    *,
-    llm: LLM,                              # required — LLM adapter
-    goal: Goal,                             # required — goal with criteria
-    tools: list[Tool] | None = None,        # custom tools
-    mcps: list[MCPServer] | None = None,    # MCP servers
-    use_builtins: bool = False,             # attach all 30+ built-in tools
-    prompt: str = "You are a helpful...",   # system prompt for inner agent
-    **agent_kwargs,                          # extra Agent kwargs
-)
-```
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | LLM adapter |
+| `tools` | `None` | Custom tools |
+| `mcps` | `None` | MCP servers |
+| `goal` | required | Goal with criteria |
+| `use_builtins` | `False` | Attach every built-in tool |
+| `prompt` | see code | System prompt for inner agent |
+| `memory` | `None` | Memory for the inner agent |
+| `rag` | `None` | A RAG the agent cites from |
+| `**agent_kwargs` | | Passed to the inner Agent |
 
 ### Factory
 
-```python
-GoalAgent.with_builtins(*, llm, goal, mcps=None, **kwargs) -> GoalAgent
-```
+`GoalAgent.with_builtins()` builds the agent with every built-in tool attached:
+
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | The model adapter |
+| `goal` | required | The goal and its success criteria |
+| `mcps` | `None` | MCP servers |
+| `rag` | `None` | A RAG the agent cites from |
+| `**kwargs` | | Passed to the inner Agent |
 
 ### Methods
 
@@ -74,26 +79,28 @@ Agent that produces output, reflects critically, and revises until quality thres
 
 ### Constructor
 
-```python
-ReflectiveAgent(
-    *,
-    llm: LLM,
-    tools: list[Tool] | None = None,
-    mcps: list[MCPServer] | None = None,
-    reflection_prompt: str = "Check for accuracy...",
-    max_reflections: int = 3,
-    quality_threshold: float = 0.8,
-    use_builtins: bool = False,
-    prompt: str = "You are a helpful...",
-    **agent_kwargs,
-)
-```
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | The model adapter |
+| `tools` | `None` | Custom tools |
+| `mcps` | `None` | MCP servers |
+| `reflection_prompt` | see code | What the critique checks |
+| `max_reflections` | `3` | Critique rounds at most |
+| `quality_threshold` | `0.8` | Score that ends the loop |
+| `use_builtins` | `False` | Attach every built-in tool |
+| `prompt` | `'You are a helpful assistant.'` | System prompt for the inner agent |
+| `memory` | `None` | Memory for the inner agent |
+| `**agent_kwargs` | | Passed to the inner Agent |
 
 ### Factory
 
-```python
-ReflectiveAgent.with_builtins(*, llm, mcps=None, **kwargs) -> ReflectiveAgent
-```
+`ReflectiveAgent.with_builtins()` builds the agent with every built-in tool attached:
+
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | The model adapter |
+| `mcps` | `None` | MCP servers |
+| `**kwargs` | | Passed to the inner Agent |
 
 ### Methods
 
@@ -138,25 +145,26 @@ Agent that can create new tools at runtime from Python code.
 
 ### Constructor
 
-```python
-AdaptiveAgent(
-    *,
-    llm: LLM,
-    tools: list[Tool] | None = None,
-    mcps: list[MCPServer] | None = None,
-    can_create_tools: bool = True,
-    sandbox: bool = True,
-    use_builtins: bool = False,
-    prompt: str = "You are a helpful...",
-    **agent_kwargs,
-)
-```
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | The model adapter |
+| `tools` | `None` | Custom tools |
+| `mcps` | `None` | MCP servers |
+| `can_create_tools` | `True` | Let the agent write new tools at run time |
+| `sandbox` | `True` | Run tools the agent creates in a sandbox |
+| `use_builtins` | `False` | Attach every built-in tool |
+| `prompt` | `'You are a helpful assistant.'` | System prompt for the inner agent |
+| `**agent_kwargs` | | Passed to the inner Agent |
 
 ### Factory
 
-```python
-AdaptiveAgent.with_builtins(*, llm, mcps=None, **kwargs) -> AdaptiveAgent
-```
+`AdaptiveAgent.with_builtins()` builds the agent with every built-in tool attached:
+
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | The model adapter |
+| `mcps` | `None` | MCP servers |
+| `**kwargs` | | Passed to the inner Agent |
 
 ### Methods
 
@@ -181,28 +189,27 @@ Hierarchical agent that plans, delegates to workers, reviews quality, and combin
 
 ### Constructor
 
-```python
-Supervisor(
-    *,
-    llm: LLM,
-    workers: list[Worker],
-    strategy: str = "plan_and_delegate",
-    allow_parallel: bool = False,
-    max_delegations: int = 15,
-)
-```
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | The model adapter |
+| `workers` | required | The workers to delegate to |
+| `strategy` | `'plan_and_delegate'` | How the supervisor delegates |
+| `allow_parallel` | `False` | Run independent delegations at once |
+| `max_delegations` | `15` | Delegations before it stops |
+| `rag` | `None` | A RAG the agent cites from |
+| `**agent_kwargs` | | Passed to the inner Agent |
 
 ### Factory
 
-```python
-Supervisor.with_builtins(
-    *,
-    llm: LLM,
-    worker_configs: list[dict],    # [{"name": "...", "prompt": "...", "capabilities": [...]}]
-    mcps: list[MCPServer] | None = None,
-    **kwargs,
-) -> Supervisor
-```
+`Supervisor.with_builtins()` builds the agent with every built-in tool attached:
+
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | The model adapter |
+| `worker_configs` | required | [{"name": "...", "prompt": "...", "capabilities": [...]}] |
+| `mcps` | `None` | MCP servers |
+| `rag` | `None` | A RAG the agent cites from |
+| `**kwargs` | | Passed to the inner Agent |
 
 ### Methods
 
@@ -246,16 +253,15 @@ Agent with checkpoint/resume capability for long-running tasks.
 
 ### Constructor
 
-```python
-PersistentAgent(
-    *,
-    llm: LLM,
-    tools: list[Tool] | None = None,
-    checkpoint_dir: str = ".shipit_checkpoints",
-    checkpoint_interval: int = 5,
-    max_steps: int = 50,
-)
-```
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `llm` | required | The model adapter |
+| `tools` | `None` | Custom tools |
+| `checkpoint_dir` | `'.shipit_checkpoints'` | Where checkpoints are saved |
+| `checkpoint_interval` | `5` | Steps between checkpoints |
+| `max_steps` | `50` | Steps before the run stops |
+| `rag` | `None` | A RAG the agent cites from |
+| `**agent_kwargs` | | Passed to the inner Agent |
 
 ### Methods
 
@@ -273,9 +279,9 @@ Typed communication channel for agent-to-agent message passing.
 
 ### Constructor
 
-```python
-Channel(name: str = "default")
-```
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `name` | `'default'` | Channel name |
 
 ### Methods
 
@@ -306,9 +312,10 @@ Systematic testing framework for agents.
 
 ### Constructor
 
-```python
-AgentBenchmark(*, name: str, cases: list[TestCase])
-```
+| Parameter | Default | Description |
+| :- | :- | :- |
+| `name` | required | The benchmark name |
+| `cases` | required | The test cases to run |
 
 ### TestCase
 

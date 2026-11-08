@@ -29,7 +29,7 @@ def log_tool_end(name, result):
     print(f"{name} returned {len(result.output)} chars")
 
 agent = Agent.with_builtins(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     hooks=hooks,
 )
 

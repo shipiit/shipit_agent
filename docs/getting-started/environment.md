@@ -1,105 +1,71 @@
-# Environment Setup
+---
+description: Choose a model provider and model, from code or from environment variables.
+---
 
-SHIPIT Agent uses environment variables for provider selection, credentials, and runtime knobs. Everything loads automatically from a `.env` file walking upward from your current working directory — so the same notebook, script, or CLI works regardless of where you run it from.
+# Configure a model
 
-## Minimal `.env`
+An agent needs a model adapter, its `llm`. You can build one in code or let shipit build it from environment variables.
 
-```bash
-SHIPIT_LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-```
+## From a model name
 
-## Full `.env.example`
-
-```bash
-# Core agent settings
-SHIPIT_LLM_PROVIDER=bedrock           # or openai|anthropic|gemini|groq|together|ollama
-SHIPIT_AGENT_PROMPT=You are a decisive engineering agent.
-SHIPIT_STREAM=0
-SHIPIT_SESSION_ID=demo-session
-SHIPIT_TRACE_ID=demo-trace
-SHIPIT_WORKSPACE_ROOT=.shipit_workspace
-
-# Web search
-SHIPIT_WEB_SEARCH_PROVIDER=duckduckgo
-BRAVE_SEARCH_API_KEY=
-SERPER_API_KEY=
-TAVILY_API_KEY=
-
-# OpenAI
-SHIPIT_OPENAI_MODEL=gpt-4o-mini
-SHIPIT_OPENAI_TOOL_CHOICE=            # "required" forces at least one tool call per turn
-OPENAI_API_KEY=
-
-# Anthropic
-SHIPIT_ANTHROPIC_MODEL=claude-opus-4-1
-ANTHROPIC_API_KEY=
-
-# AWS Bedrock via LiteLLM
-SHIPIT_BEDROCK_MODEL=bedrock/openai.gpt-oss-120b-1:0
-AWS_REGION_NAME=us-east-1
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_SESSION_TOKEN=
-AWS_PROFILE=
-
-# Google Gemini
-SHIPIT_GEMINI_MODEL=gemini/gemini-1.5-pro
-GOOGLE_API_KEY=
-```
-
-## How `.env` is discovered
-
-`build_llm_from_env()` walks upward from the current working directory looking for the first `.env` file it finds. That means:
-
-| CWD | `.env` location | Works? |
-|---|---|---|
-| `/path/to/project/` | `/path/to/project/.env` | ✅ |
-| `/path/to/project/notebooks/` | `/path/to/project/.env` | ✅ (walks up) |
-| `/path/to/project/deep/nested/dir/` | `/path/to/project/.env` | ✅ (walks up) |
-| `/tmp/scratch/` | (none) | ❌ — raises "Missing environment variable" |
-
-Existing shell environment variables always take precedence over `.env` — `.env` only *fills in* missing values, it never overrides.
-
-## Provider credential requirements
-
-| Provider | Required env vars |
-|---|---|
-| `openai` | `OPENAI_API_KEY` |
-| `anthropic` | `ANTHROPIC_API_KEY` |
-| `bedrock` | `AWS_REGION_NAME` (or `AWS_DEFAULT_REGION`) + one of `AWS_ACCESS_KEY_ID`+`AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`, or instance role |
-| `gemini` | `GOOGLE_API_KEY` |
-| `groq` | `GROQ_API_KEY` |
-| `together` | `TOGETHER_API_KEY` |
-| `ollama` | *None* (requires local Ollama server running) |
-
-If any required var is missing, `build_llm_from_env('openai')` raises:
-
-```
-RuntimeError: Missing environment variable for openai. Set one of: OPENAI_API_KEY
-```
-
-Each provider also needs its client package. For `anthropic` that is
-`pip install anthropic` (or `shipit-agent[anthropic]`); without it the first
-call raises ``Install `anthropic` to use AnthropicChatLLM ...``, and shipit
-never answers with another provider instead.
-
-## Switching providers without restarting
+The quickest way is a model name. The provider is read from it: `claude-*` uses Anthropic, `gpt-*`, `o1`, `o3`, `o4` and `chatgpt-*` use OpenAI, `bedrock/...` uses Bedrock, and anything else goes through LiteLLM.
 
 ```python
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.sdk import AgentOptions, query
 
-# Explicit override (ignores SHIPIT_LLM_PROVIDER):
-llm_openai = build_llm_from_env('openai')
-llm_bedrock = build_llm_from_env('bedrock')
-
-# Uses SHIPIT_LLM_PROVIDER from .env:
-llm = build_llm_from_env()
+options = AgentOptions(model="claude-sonnet-5-5")
 ```
 
-## Security notes
+With the `Agent` class, build the adapter from the environment, choosing the provider explicitly or leaving it to `SHIPIT_LLM_PROVIDER`:
 
-- **Never commit `.env`.** The shipped `.gitignore` already excludes `.env`, `.env.local`, and `.env.*.local`.
-- **Use `.env.example` as a template.** Commit it with all values blank so contributors know which vars to set.
-- **The credential visibility printer in the sample notebooks never prints the actual value** — only `✓ set` / `✗ missing`. Safe to share.
-- **API keys are never written to logs or events.** Adapters only report the provider name and model on `LLMResponse.metadata`.
+```python
+from shipit_agent import Agent
+from shipit_agent.llms import build_llm_from_env
+
+agent = Agent.with_builtins(llm=build_llm_from_env("anthropic"))
+```
+
+## Environment variables
+
+`build_llm_from_env()` reads `SHIPIT_LLM_PROVIDER`, the provider's model variable and its credentials. It also loads the first `.env` file it finds walking up from the working directory. Variables already set in the shell win over the file.
+
+| Provider | `SHIPIT_LLM_PROVIDER` | Model variable (default) | Credentials |
+| :- | :- | :- | :- |
+| Anthropic | `anthropic` | `SHIPIT_ANTHROPIC_MODEL` (`claude-opus-5-5`) | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `SHIPIT_OPENAI_MODEL` (`gpt-5.5`) | `OPENAI_API_KEY` |
+| AWS Bedrock | `bedrock` | `SHIPIT_BEDROCK_MODEL` (`bedrock/openai.gpt-oss-120b-1:0`) | `AWS_REGION_NAME` plus keys, a profile or a role |
+| Google Gemini | `gemini` | `SHIPIT_GEMINI_MODEL` (`gemini/gemini-3.5-flash`) | `GOOGLE_API_KEY` or `GEMINI_API_KEY` |
+| Vertex AI | `vertex` | `SHIPIT_VERTEX_MODEL` (`vertex_ai/gemini-3.5-flash`) | `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` |
+| Groq | `groq` | `SHIPIT_GROQ_MODEL` | `GROQ_API_KEY` |
+| Together | `together` | `SHIPIT_TOGETHER_MODEL` | `TOGETHER_API_KEY` |
+| Ollama | `ollama` | `SHIPIT_OLLAMA_MODEL` (`ollama/llama3.1`) | none; a local Ollama server |
+| LiteLLM | `litellm` | `SHIPIT_LITELLM_MODEL` | the provider's own |
+
+When `SHIPIT_LLM_PROVIDER` is unset, the provider is `bedrock`.
+
+A minimal `.env`:
+
+```bash
+SHIPIT_LLM_PROVIDER=anthropic
+SHIPIT_ANTHROPIC_MODEL=claude-sonnet-5-5
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+If a credential is missing, building the adapter raises and names the variable to set. If the provider's package is missing, it raises with the `pip install` command. shipit never answers with a different provider than the one you chose.
+
+## Picking a model
+
+Any model that supports tool calling works. Two measured points from the [benchmark](../guides/benchmark.md), running all 18 tasks:
+
+| Model | Passed | Input tokens | Cost |
+| :- | -: | -: | -: |
+| Gemma 4 31B on Bedrock | 18/18 | 216k | $0.03 |
+| Claude Sonnet 5.5 | 18/18 | 190k | $0.20 |
+
+Strong models finish in fewer turns; small open models cost less per run. Run the benchmark against your own candidates before choosing.
+
+## Keep keys out of code
+
+- Never commit `.env`. Commit a `.env.example` with the names and no values.
+- shipit does not write keys to logs, events or traces. Adapters report only the provider and model.
+- Commands the agent runs get a scrubbed environment: host secrets are not visible to `printenv`. Pass the variables a tool needs with `AgentOptions(env={...})`.

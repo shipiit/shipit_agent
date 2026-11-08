@@ -305,27 +305,7 @@ options = AgentOptions(session_store=store, resume=branch)
 
 ## Sandbox
 
-`sandbox` runs bash and code execution inside the operating system's sandbox: Seatbelt (`sandbox-exec`) on macOS, bubblewrap (`bwrap`) on Linux. It takes the SDK's `SandboxSettings`:
-
-```python
-options = AgentOptions(sandbox={
-    "enabled": True,
-    "excludedCommands": ["docker *"],
-    "filesystem": {"denyWrite": ["/home/me/project/.env"]},
-})
-```
-
-With it on, a command can:
-
-- **write** only in the project, the `add_dirs` folders, the temp folder and `filesystem.allowWrite`. `filesystem.denyWrite` paths are refused even inside those. `run_code` writes in its own workspace instead of the project.
-- **read** everywhere except `filesystem.denyRead`.
-- **use the network** only when `network.allowedDomains` has an entry. `allowLocalBinding` lets a sandboxed dev server listen on localhost; `allowUnixSockets` (macOS) and `allowAllUnixSockets` open sockets.
-
-Commands that run sandboxed need no approval (`autoAllowBashIfSandboxed`, on by default); blocked commands stay blocked. A command matching `excludedCommands` in every part runs outside the sandbox. With `allowUnsandboxedCommands` (on by default) the model can set `dangerouslyDisableSandbox` on one bash call; that call needs approval.
-
-When no sandbox can run (Windows, or Linux without bubblewrap), commands run unsandboxed with a warning, as in the Python SDK; set `failIfUnavailable` to make `build_agent` and `query()` fail instead. A misspelt setting is an error, not ignored.
-
-Accepted for compatibility, with no effect: `ignoreViolations`, `enableWeakerNestedSandbox`, `allowManagedDomainsOnly`, `allowMachLookup`, `httpProxyPort` and `socksProxyPort`.
+`sandbox` runs bash and `run_code` inside the operating system's sandbox, with the SDK's `SandboxSettings`: writes only in the project, the network off unless allowed, and no approval needed for sandboxed commands. See [Sandbox](sandbox.md) for every setting and its limits.
 
 ## Where shipit differs
 

@@ -129,90 +129,87 @@ not_in_nav: |
   /guides/prebuilt-tools.md
 
 nav:
-  - Getting started:
+  - Get started:
       - Overview: index.md
-      - Installation: getting-started/install.md
-      - Quick Start: getting-started/quickstart.md
-      - Environment Setup: getting-started/environment.md
+      - Install: getting-started/install.md
+      - Quickstart: getting-started/quickstart.md
+      - Configure a model: getting-started/environment.md
+      - Core concepts: getting-started/concepts.md
+      - Upgrading to 3.0: guides/upgrading.md
       - Changelog: changelog.md
-  - Agent:
-      - Overview: agent/index.md
-      - Examples: agent/examples.md
-      - Skills: guides/skills.md
+  - Build an agent:
+      - The Agent: agent/index.md
+      - Tools: agent/with-tools.md
+      - Custom tools: guides/custom-tools.md
       - Streaming: agent/streaming.md
-      - With RAG: agent/with-rag.md
-      - With Tools: agent/with-tools.md
+      - Streaming events: guides/streaming.md
+      - Sessions: agent/sessions.md
       - Memory: agent/memory.md
-      - Sessions & Memory: agent/sessions.md
+      - Advanced memory: guides/advanced-memory.md
+      - Structured output: guides/structured-output.md
+      - Reasoning: guides/reasoning.md
+      - Context management: guides/context-management.md
+      - Examples: agent/examples.md
+  - Agent SDK:
       - SDK API: guides/agent-sdk.md
-      - Upgrading from 2.2: guides/upgrading.md
-      - Benchmark: guides/benchmark.md
-  - Build with SHIPIT:
-      # Core concepts
-      - Streaming Events: guides/streaming.md
-      - Reasoning & Thinking: guides/reasoning.md
-      - Creating Custom Tools: guides/custom-tools.md
+      - Permissions: guides/permissions.md
+      - Hooks: guides/hooks.md
+      - Sandbox: guides/sandbox.md
+      - MCP servers: guides/mcp.md
       - Skills: guides/skills.md
-      - Tool Search: guides/tool-search.md
-      - MCP Integration: guides/mcp.md
-      - Sessions & Memory: guides/sessions.md
-      - Scheduled Agents: guides/scheduled-agents.md
-      - Agents as Tools: guides/agents-as-tools.md
-      - Delegation: guides/delegation.md
+      - Sub-agents: guides/delegation.md
+      - Agents as tools: guides/agents-as-tools.md
+      - Tool search: guides/tool-search.md
+  - Orchestration:
+      - Parallel execution: guides/parallel-execution.md
+      - Async runtime: guides/async-runtime.md
+      - Error recovery: guides/error-recovery.md
+      - Re-planning: guides/replanning.md
+      - Parsers: guides/parsers-and-structured-output.md
+      - Pipelines and teams: guides/pipelines-and-teams.md
+      - Scheduled agents: guides/scheduled-agents.md
       - Triggers: guides/triggers.md
-      # Power features
-      - Parallel Execution: guides/parallel-execution.md
-      - Hooks & Middleware: guides/hooks.md
-      - Async Runtime: guides/async-runtime.md
-      - Context Management: guides/context-management.md
-      - Error Recovery: guides/error-recovery.md
-      - Re-Planning: guides/replanning.md
-      - Structured Output: guides/structured-output.md
-  - Composition:
-      - Parsers & Structured Output: guides/parsers-and-structured-output.md
-      - Pipelines & Teams: guides/pipelines-and-teams.md
-  - Deep Agents:
+  - Deep agents:
       - Overview: deep-agents/index.md
-      - DeepAgent (create_deep_agent): deep-agents/deep-agent.md
+      - DeepAgent: deep-agents/deep-agent.md
       - GoalAgent: deep-agents/goal-agent.md
       - ReflectiveAgent: deep-agents/reflective-agent.md
-      - Supervisor & Workers: deep-agents/supervisor.md
+      - Supervisor and workers: deep-agents/supervisor.md
       - AdaptiveAgent: deep-agents/adaptive-agent.md
       - PersistentAgent: deep-agents/persistent-agent.md
       - Channels: deep-agents/channels.md
       - Benchmarking: deep-agents/benchmarking.md
-      - All Examples: guides/deep-agents.md
-      - API Reference: reference/deep-agents-api.md
-  - Memory:
-      - Advanced Memory: guides/advanced-memory.md
-  - Super RAG:
+      - Recipes: guides/deep-agents.md
+  - RAG:
       - Overview: rag/index.md
       - Standalone RAG: rag/standalone.md
-      - Files, Chunks & Sources: rag/files-and-chunks.md
-      - RAG + Agent: rag/with-agent.md
-      - RAG + Deep Agents: rag/with-deep-agents.md
+      - Files, chunks and sources: rag/files-and-chunks.md
+      - RAG with an agent: rag/with-agent.md
+      - RAG with deep agents: rag/with-deep-agents.md
       - Adapters: rag/adapters.md
-      - API Reference: rag/api.md
+      - API: rag/api.md
+      - Agent with RAG: agent/with-rag.md
+  - Tools catalog:
+      - Overview: tools/index.md
+      - Core tools: tools/core-tools.md
+      - Bash: tools/bash.md
+      - Read file: tools/read-file.md
+      - Edit file: tools/edit-file.md
+      - Write file: tools/write-file.md
+      - Glob files: tools/glob-files.md
+      - Grep files: tools/grep-files.md
+      - Code and files: tools/code-and-files.md
+      - Reasoning helpers: tools/reasoning-helpers.md
+      - Connectors: tools/connectors.md
   - Reference:
       - Architecture: reference/architecture.md
-      - Parameters Reference: reference/parameters.md
-      - Event Types: reference/events.md
-      - Model Adapters: reference/adapters.md
-      - Deep Agents API: reference/deep-agents-api.md
-      - Tools Manifest: reference/tools.md
-  - Tools:
-      - Catalog Overview: tools/index.md
-      - Core Tools: tools/core-tools.md
-      - Reasoning Helpers: tools/reasoning-helpers.md
-      - Code & Files: tools/code-and-files.md
-      - Bash: tools/bash.md
-      - Read File: tools/read-file.md
-      - Edit File: tools/edit-file.md
-      - Write File: tools/write-file.md
-      - Glob Files: tools/glob-files.md
-      - Grep Files: tools/grep-files.md
-      - Connectors: tools/connectors.md
+      - Agent parameters: reference/parameters.md
+      - Events: reference/events.md
+      - Model adapters: reference/adapters.md
+      - Deep agents API: reference/deep-agents-api.md
+      - Tools manifest: reference/tools.md
   - Resources:
+      - Benchmark: guides/benchmark.md
       - FAQ: faq.md
       - Glossary: glossary.md
       - Security: security.md

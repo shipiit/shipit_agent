@@ -1,9 +1,5 @@
 <p align="center">
-  <img src="banner.svg" alt="SHIPIT Agent — production-grade Python agent runtime" width="100%" />
-</p>
-
-<p align="center">
-  <img src="shipit-icon.svg" alt="SHIPIT" width="120" height="120" />
+  <img src="banner.svg" alt="shipit agent: agents that finish the job. Open-source Python agent runtime." width="100%" />
 </p>
 
 <h1 align="center">SHIPIT Agent</h1>

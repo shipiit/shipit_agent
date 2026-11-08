@@ -38,7 +38,7 @@ from shipit_agent.tools.github import GitHubTool
 from shipit_agent.integrations import InMemoryCredentialStore, CredentialRecord
 
 store = InMemoryCredentialStore()
-store.put(CredentialRecord(key="github", provider="github",
+store.set(CredentialRecord(key="github", provider="github",
     secrets={"api_key": "ghp_xxxxxxxxxxxxxxxxxxxx"},
     metadata={},   # base_url defaults to https://api.github.com
 ))

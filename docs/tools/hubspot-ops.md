@@ -112,7 +112,7 @@ from shipit_agent import Agent
 from shipit_agent.agents import AgentRegistry
 from shipit_agent.tools.hubspot import HubspotTool
 
-sales_def = AgentRegistry().get("sales-outreach")
+sales_def = AgentRegistry.default().get("sales-outreach")
 sales = Agent(
     llm=llm,
     prompt=sales_def.prompt,

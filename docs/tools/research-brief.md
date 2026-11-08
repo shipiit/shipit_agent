@@ -108,7 +108,7 @@ from shipit_agent import Agent
 from shipit_agent.agents import AgentRegistry
 from shipit_agent.tools.research_brief import ResearchBriefTool
 
-researcher_def = AgentRegistry().get("researcher")
+researcher_def = AgentRegistry.default().get("researcher")
 researcher = Agent(
     llm=llm,
     prompt=researcher_def.prompt,

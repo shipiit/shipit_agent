@@ -222,7 +222,7 @@ from shipit_agent import Agent
 from shipit_agent.plugins import get_plugin
 
 # By name — resolved from the catalog:
-agent = Agent(llm=llm, plugins=["audit-log", "redact-secrets"])
+agent = Agent(llm=llm, plugins=["audit-log", "word-count"])
 
 # By object — build one inline, no catalog needed:
 from shipit_agent.plugins import Plugin

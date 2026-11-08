@@ -112,7 +112,7 @@ from shipit_agent import Agent
 from shipit_agent.agents import AgentRegistry
 from shipit_agent.tools.computer_use import ComputerUseTool
 
-registry = AgentRegistry()
+registry = AgentRegistry.default()
 def_ = registry.get("design-reviewer")
 ui_agent = Agent(
     llm=llm,

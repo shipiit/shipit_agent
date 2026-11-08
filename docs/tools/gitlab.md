@@ -39,7 +39,7 @@ from shipit_agent.tools.gitlab import GitLabTool
 from shipit_agent.integrations import InMemoryCredentialStore, CredentialRecord
 
 store = InMemoryCredentialStore()
-store.put(CredentialRecord(key="gitlab", provider="gitlab",
+store.set(CredentialRecord(key="gitlab", provider="gitlab",
     secrets={"api_key": "glpat-xxxxxxxxxxxxxxxxxxxx"},
     metadata={"base_url": "https://gitlab.com"},  # optional
 ))

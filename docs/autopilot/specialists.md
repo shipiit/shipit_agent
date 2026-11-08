@@ -10,7 +10,7 @@ shipit_agent ships with **47 prebuilt role specialists** loaded from
 `AgentDefinition` — role, goal, backstory, model preference, tool
 preset, and a production-quality system prompt.
 
-> **TL;DR** — `AgentRegistry().get("<id>")` gives you a specialist.
+> **TL;DR** — `AgentRegistry.default().get("<id>")` gives you a specialist.
 > Drop it into `Agent(prompt=spec.prompt, tools=...)` or hand the
 > prompt to an Autopilot for long-running role-aligned work.
 
@@ -40,14 +40,14 @@ from shipit_agent import Agent
 from shipit_agent.agents import AgentRegistry
 from shipit_agent.builtins import get_builtin_tools
 
-registry = AgentRegistry()
+registry = AgentRegistry.default()
 dev = registry.get("generalist-developer")
 
 agent = Agent(
     llm=llm,
     prompt=dev.prompt,
     tools=get_builtin_tools(project_root="."),
-    max_iterations=dev.maxIterations or 40,
+    max_iterations=dev.max_iterations or 40,
     name=dev.name,
 )
 
@@ -68,7 +68,7 @@ from shipit_agent import Goal
 from shipit_agent.autopilot import Autopilot, BudgetPolicy
 from shipit_agent.tools.research_brief import ResearchBriefTool
 
-researcher = AgentRegistry().get("researcher")
+researcher = AgentRegistry.default().get("researcher")
 autopilot = Autopilot(
     llm=llm,
     goal=Goal(
@@ -134,7 +134,7 @@ autopilot.run(run_id="type-checkers-brief")
 
 ### … plus 18 more (data, docs, QA, support, writing)
 
-Run `AgentRegistry().all()` to enumerate the full list or inspect
+Run `AgentRegistry.default().all()` to enumerate the full list or inspect
 `shipit_agent/agents/agents.json` directly.
 
 ---
@@ -162,7 +162,7 @@ Drop a JSON object into `agents.json`:
 }
 ```
 
-`AgentRegistry()` picks it up automatically. Commit the JSON to share
+`AgentRegistry.default()` picks it up automatically. Commit the JSON to share
 the specialist with your team.
 
 ---

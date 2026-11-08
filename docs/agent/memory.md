@@ -189,8 +189,10 @@ agent.run("Remember that my favourite colour is teal.")
 agent.run("What's my favourite colour?")
 ```
 
-The runtime registers a `memory` tool whenever `memory_store` is set,
-so the LLM can read and write facts as part of its normal tool loop.
+`Agent.with_builtins()` includes the `memory` tool, which reads and writes
+the `memory_store`, so the LLM can save and look up facts as part of its
+normal tool loop. With a plain `Agent`, add it yourself:
+`Agent(llm=llm, memory_store=store, tools=[MemoryTool()])`.
 `InMemoryMemoryStore` is the test/demo backend; `FileMemoryStore`
 persists across processes.
 

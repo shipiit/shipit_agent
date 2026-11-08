@@ -44,7 +44,6 @@ agent = Agent(
     tools=[FileReadTool(root_dir="."), GrepSearchTool(root_dir="."), EditFileTool(root_dir="."), BashTool(root_dir=".")],
 )
 ```
-
 With the SDK API, name them: `AgentOptions(tools=["read_file", "grep_files", "edit_file", "bash"])`. Leaving `tools` out gives the core set: files, bash, search, the web, todos, questions and memory.
 
 To keep every built-in except a few, use `disallowed_tools=["bash", "playwright_browse"]`.
@@ -64,7 +63,6 @@ def exchange_rate(base: str, quote: str) -> str:
 
 rate_tool = FunctionTool.from_callable(exchange_rate, read_only=True)
 ```
-
 Pass it in `tools=[rate_tool]`. For full control (a hand-written schema, rich output, errors the model can act on), write a tool class. [Custom tools](../guides/custom-tools.md).
 
 ## MCP servers
@@ -72,17 +70,18 @@ Pass it in `tools=[rate_tool]`. For full control (a hand-written schema, rich ou
 An MCP server's tools join the agent's own. Connect one from the catalog, or point at any server:
 
 ```python
+import os
+
 from shipit_agent import Agent, MCPStdioTransport, RemoteMCPServer, connect_mcp
 from shipit_agent.llms import build_llm_from_env
 
-github = connect_mcp("github")  # reads GITHUB_TOKEN
+github = connect_mcp("github", token=os.environ["GITHUB_TOKEN"])
 files = RemoteMCPServer(
     name="files",
     transport=MCPStdioTransport(command=["npx", "-y", "@modelcontextprotocol/server-filesystem", "."]),
 )
 agent = Agent.with_builtins(llm=build_llm_from_env(), mcps=[github, files])
 ```
-
 [MCP servers](../guides/mcp.md) covers HTTP and SSE servers, filtering their tools and in-process servers.
 
 ## Other agents as tools
@@ -97,7 +96,6 @@ llm = build_llm_from_env()
 reviewer = Agent.with_builtins(llm=llm, name="reviewer", prompt="Review code for bugs. Be specific.")
 lead = Agent.with_builtins(llm=llm, tools=[reviewer.as_tool(description="Reviews a diff for bugs.")])
 ```
-
 [Agents as tools](../guides/agents-as-tools.md) and [Sub-agents](../guides/delegation.md).
 
 ## Many tools, small requests
@@ -107,5 +105,4 @@ Tool schemas are sent with every request. With dozens of tools, that is thousand
 ```python
 agent = Agent.with_builtins(llm=llm, deferred_tools=True)
 ```
-
 [Tool search](../guides/tool-search.md).

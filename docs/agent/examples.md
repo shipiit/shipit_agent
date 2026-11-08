@@ -18,7 +18,6 @@ from shipit_agent.llms import build_llm_from_env
 agent = Agent.with_builtins(llm=build_llm_from_env(), project_root=".", permission_mode="plan")
 print(agent.run("How does a request reach the database in this project? Name the files.").output)
 ```
-
 ## Fix a failing test, in a sandbox
 
 Edits are allowed, and commands run in the OS sandbox, so the agent works without approvals and cannot write outside the project.
@@ -45,7 +44,6 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
-
 ## Review code into a structured report
 
 ```python
@@ -74,7 +72,6 @@ review = agent.run("Review the changes in `git diff main` for bugs.", output_sch
 for f in review.findings:
     print(f"{f.severity:7} {f.file}:{f.line}  {f.problem}")
 ```
-
 ## Research with sources
 
 ```python
@@ -89,7 +86,6 @@ agent = Agent(
 )
 print(agent.run("What changed in Python 3.14's free-threaded build?").output)
 ```
-
 ## A support agent with your tools and a person in the loop
 
 Read-only lookups run freely; a refund waits for a person.
@@ -125,7 +121,6 @@ agent = Agent(
 )
 print(agent.run("Order A-1043 arrived broken. I'd like my $40 back.").output)
 ```
-
 ## A chat that remembers
 
 ```python
@@ -138,23 +133,23 @@ chat = agent.chat_session(session_id="planning")
 while (line := input("you › ")) != "quit":
     print("agent ›", chat.send(line).output)
 ```
-
 Run it again tomorrow with the same `session_id` and the conversation continues.
 
 ## Triage GitHub issues over MCP
 
 ```python
+import os
+
 from shipit_agent import Agent, connect_mcp
 from shipit_agent.llms import build_llm_from_env
 
 agent = Agent(
     llm=build_llm_from_env(),
-    mcps=[connect_mcp("github")],  # reads GITHUB_TOKEN
+    mcps=[connect_mcp("github", token=os.environ["GITHUB_TOKEN"])],
     prompt="You triage issues for shipiit/shipit_agent. Label, never close.",
 )
 print(agent.run("Label the issues opened this week as bug, feature or question.").output)
 ```
-
 ## An audit log, and a hard block on secrets
 
 ```python
@@ -175,7 +170,6 @@ def audit(name: str, arguments: dict):
 agent = Agent.with_builtins(llm=build_llm_from_env(), project_root=".", hooks=hooks)
 agent.run("Check that the config loader handles a missing file.")
 ```
-
 ## A lead with specialist sub-agents
 
 The lead hands work to sub-agents, each with its own prompt and tools. Only their summaries enter the lead's context.
@@ -202,7 +196,6 @@ agent = Agent.with_builtins(
 )
 print(agent.run("Add input validation to src/api/users.py, then have it reviewed and tested.").output)
 ```
-
 ## Survive a flaky provider
 
 Retries for transient errors, then a fallback model.
@@ -217,7 +210,6 @@ agent = Agent.with_builtins(
     retry_policy=RetryPolicy(max_llm_retries=3, llm_retry_max_delay=20.0),
 )
 ```
-
 ## More
 
 - [Deep agent recipes](../guides/deep-agents.md): goal-driven, reflective and supervised agents.

@@ -288,6 +288,38 @@ In both, the manager is created **once** and shared; only the `TokenStore` /
 `OAuthStateStore` change per framework. Everything else — refresh, status, 401
 recovery — is identical.
 
+## The OAuth flow by hand
+
+`OAuthCredentialManager` runs the whole flow for you. When you need the steps yourself, for a provider without a preset or a custom login page, `OAuthHelper` is the authorization-code flow on its own:
+
+```python
+from shipit_agent import FileOAuthStateStore, OAuthClientConfig, OAuthHelper
+
+oauth = OAuthHelper(
+    OAuthClientConfig(
+        client_id="...",
+        client_secret="...",
+        redirect_uri="https://app.example.com/oauth/callback",
+        scopes=["read", "write"],
+        authorize_url="https://provider.example.com/oauth/authorize",
+        token_url="https://provider.example.com/oauth/token",
+    ),
+    state_store=FileOAuthStateStore(".shipit/oauth-state.json"),
+)
+
+# 1. Send the user to the provider. The state is a one-time nonce, saved with your payload.
+start = oauth.create_authorization_url(state_payload={"user_id": "u_812"})
+redirect_to(start["url"])
+
+# 2. On the callback, exchange the code. Passing the state checks it against the saved nonce.
+tokens = oauth.exchange_code(code=request.args["code"], state=request.args["state"])
+
+# 3. Later, renew an expired access token.
+tokens = oauth.refresh_token(tokens["refresh_token"])
+```
+
+`FileOAuthStateStore` keeps the nonces in a JSON file, so the start and the callback can run in different processes. Any object with `save(state, payload)`, `load(state)` and `delete(state)` works instead, such as the cache-backed store in the Django example above.
+
 ## Adding a connector
 
 Drop a directory under `connectors/catalog/` with one `manifest.yaml`:

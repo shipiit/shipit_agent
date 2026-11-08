@@ -17,6 +17,11 @@ print(f"Total cost: ${tracker.total_cost:.4f}")
 print(f"Tokens: {tracker.total_tokens}")
 ```
 
+```text
+Total cost: $0.0412
+Tokens: {'input_tokens': 16820, 'output_tokens': 1820, 'cache_read_tokens': 0, 'cache_write_tokens': 0}
+```
+
 ## How pricing works
 
 `CostTracker` uses a built-in pricing table (`MODEL_PRICING`) with per-million-token prices in USD. Prices cover input tokens, output tokens, and Anthropic prompt cache tokens.

@@ -83,6 +83,33 @@ print(result.attempts)  # 1 when the first answer validated
 
 `result.raw_text` is the model's final text and `result.history` the failed attempts. `coerce=True` (the default) lets Pydantic convert compatible types, such as `"3"` for an `int` field.
 
+## Building blocks
+
+`StructuredOutput` and `output_schema=` are built from three helpers you can use directly, for example with a model call you make yourself:
+
+```python
+from pydantic import BaseModel
+
+from shipit_agent import build_schema_prompt, parse_structured_output, schema_to_response_format
+
+
+class Ticket(BaseModel):
+    category: str
+    priority: str
+
+
+instructions = build_schema_prompt(Ticket)        # text that asks for JSON in this shape
+response_format = schema_to_response_format(Ticket)  # a provider-native response_format
+ticket = parse_structured_output('{"category": "billing", "priority": "high"}', Ticket)
+print(ticket)
+```
+
+```text
+category='billing' priority='high'
+```
+
+`parse_structured_output` returns a model instance for a Pydantic schema, or a dict or list for a JSON Schema, and raises when the text doesn't fit.
+
 ## Streaming partial JSON
 
 `stream()` yields the object as it fills in, so an interface can show fields as they arrive. Each yield has at least what the one before had; the last is the validated object.

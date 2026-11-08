@@ -119,8 +119,10 @@ agent.run("Post the release notes to #eng.")
 
 for action in queue.pending():
     print(action.tool, action.arguments)
-queue.approve_all(by="rahul")
+queue.approve_all(by="lead")
 ```
+
+Only calls whose result the agent can do without are queued: built-ins such as `slack`, `linear`, `jira` and `notion`, and your own tools that set `await_decision = False`. Calls the agent reasons over, such as `bash` or file edits, are refused instead, because the agent would carry on against a state that never happened.
 
 ## See also
 

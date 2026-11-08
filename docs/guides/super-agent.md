@@ -19,7 +19,6 @@ agent = Agent.for_role("marketing-writer", llm=llm)
 agent = Agent.for_role("researcher", llm=llm)
 agent = Agent.for_role("generalist-developer", llm=llm)
 ```
-
 The definition's `tools` list selects matching built-ins automatically —
 the finance analyst gets `sql`, `google_sheets`, `pdf`, `render_dashboard`,
 `stripe`, and `build_document`; the developer gets file ops, `bash`, and
@@ -32,7 +31,6 @@ from shipit_agent.agents import AgentRegistry
 for d in AgentRegistry.default().list_all():
     print(d.id, "—", d.category)
 ```
-
 Pass extra `tools=[...]`, a custom `prompt=`, or any other `Agent` kwarg to
 customize.
 
@@ -42,15 +40,16 @@ Connect well-known MCP servers by name instead of hand-writing transport
 commands:
 
 ```python
+import os
+
 from shipit_agent import Agent, connect_mcp
 
-github = connect_mcp("github")                      # needs GITHUB_TOKEN
+github = connect_mcp("github", token=os.environ["GITHUB_TOKEN"])
 files  = connect_mcp("filesystem", args=["/my/project"])
 db     = connect_mcp("postgres", args=["postgresql://localhost/app"])
 
 agent = Agent.with_builtins(llm=llm, mcps=[github, files, db])
 ```
-
 The catalog covers `filesystem`, `github`, `gitlab`, `slack`, `postgres`,
 `sqlite`, `puppeteer`, `brave-search`, `fetch`, `memory`, `sentry`, and
 `google-maps`. Each entry validates required env vars and the launcher
@@ -73,7 +72,6 @@ result = agent.run(
     "and a 5-slide summary deck for the board."
 )
 ```
-
 The tool structures content as `title` + `sections` (heading, body,
 bullets, tables) or `sheets` for Excel, and the renderers handle the
 polish: accent-colored headings, zebra-striped tables, bold frozen header
@@ -93,7 +91,6 @@ from shipit_agent import format_activity
 result = agent.run("Close Q2 and hand me the workbook.")
 print(format_activity(result))
 ```
-
 ```
 ⚙ build_document(kind="xlsx", title="Q2 Close", …) ✓ 228ms
   └ Created XLSX 'Q2 Close' → .shipit_workspace/documents/q2_close.xlsx (5,108 bytes)
@@ -111,7 +108,6 @@ for event in agent.stream("..."):
     if line:
         print(line)
 ```
-
 Decision and observation lines are included. Decisions contain only public text
 the model actually produced; observations are factual summaries of tool results,
 not hidden model reasoning.
@@ -133,7 +129,6 @@ sched.add("Weekly competitor brief.", cron="0 8 * * 1")   # pip install croniter
 
 sched.run_forever()   # blocks, firing jobs as they come due
 ```
-
 Jobs support `on_result` callbacks, `max_runs` caps, and `session_id` for
 persistent-conversation runs. The `clock`/`sleep` hooks are injectable, so
 schedules are unit-testable with zero real waiting.
@@ -147,7 +142,6 @@ from shipit_agent import AgentScheduler, SQLiteJobStore
 
 sched = AgentScheduler(agent, store=SQLiteJobStore())
 ```
-
 ## 6. Run metrics, background subagents, deeper MCP
 
 Three more v1.0.15 capabilities that round out the picture:
@@ -160,7 +154,6 @@ result.summary()
 #  "tool_failures": 0, "usage": {...},
 #  "tools": {"bash": {"calls": 2, "failures": 0, "total_ms": 2140.0}}}
 ```
-
 **Background subagents** — the `sub_agent` tool fans work out like Claude
 Code's task tool: `background=true` returns a task id immediately (thread
 pool), `collect="task-1"` fetches the result when needed.
@@ -174,7 +167,6 @@ server.read_resource("file:///repo/README.md")
 server.get_prompt("review", {"file": "app.py"})
 agent = Agent(llm=llm, mcps=[server], tools=[server.resource_tool()])
 ```
-
 For hosted servers, `MCPStreamableHTTPTransport(url, bearer_token=...)`
 speaks the 2025 streamable-HTTP spec (JSON + SSE responses, session
 affinity). See the [MCP guide](mcp.md) for details.
@@ -199,6 +191,5 @@ sched.add(
 )
 sched.run_forever()
 ```
-
 One sector specialist, live database access over MCP, polished Excel and
 PowerPoint out, readable logs, on a schedule — with any LLM provider.

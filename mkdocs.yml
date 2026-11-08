@@ -245,6 +245,11 @@ nav:
       - Computer use tool: tools/computer-use.md
       - Document builder: tools/document-builder.md
       - Dashboard render: tools/dashboard-render.md
+      - Web search: tools/web-search.md
+      - Deep research: tools/deep-research.md
+      - Download file: tools/download-file.md
+      - Git operations: tools/git-ops.md
+      - Notebook edit: tools/notebook-edit.md
       - Research brief: tools/research-brief.md
       - HubSpot ops: tools/hubspot-ops.md
   - Reference:
@@ -257,6 +262,7 @@ nav:
   - Resources:
       - Deployment: guides/deployment.md
       - The shipit CLI: guides/shipit-cli.md
+      - Show a run: guides/show-a-run.md
       - Live UI: guides/live-ui.md
       - Timeline: guides/timeline.md
       - Tree view: guides/tree-view.md

@@ -6,10 +6,12 @@ from typing import Any
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.connector_base import HTTPConnectorToolBase
+
+from .actions import _SlackActions
 from .prompt import SLACK_PROMPT
 
 
-class SlackTool(HTTPConnectorToolBase):
+class SlackTool(_SlackActions, HTTPConnectorToolBase):
     """The ``slack`` tool: search Slack messages and post Slack messages."""
     provider = "slack"
 
@@ -117,196 +119,15 @@ class SlackTool(HTTPConnectorToolBase):
         if record is None:
             return self._not_connected_output(context)
         action = str(kwargs.get("action", "search_messages"))
-        if action == "search_messages":
-            data = self._unwrap_ok(
-                self._request_json(
-                    record=record,
-                    method="GET",
-                    path="/search.messages",
-                    query={
-                        "query": str(kwargs.get("query", "")),
-                        "count": int(kwargs.get("limit", 10)),
-                    },
-                )
-            )
-            matches = data.get("messages", {}).get("matches", [])
-            lines = [self._format_message(item) for item in matches]
-            return ToolOutput(
-                text="\n".join(lines) if lines else "No Slack messages found.",
-                metadata={
-                    "provider": self.provider,
-                    "connected": True,
-                    "action": action,
-                    "items": matches,
-                    "count": len(matches),
-                },
-            )
-        if action == "post_message":
-            payload = {"channel": kwargs.get("channel"), "text": kwargs.get("text", "")}
-            thread_ts = str(kwargs.get("thread_ts", "")).strip()
-            if thread_ts:
-                payload["thread_ts"] = thread_ts
-            data = self._unwrap_ok(
-                self._request_json(
-                    record=record, method="POST", path="/chat.postMessage", body=payload
-                )
-            )
-            return ToolOutput(
-                text=f"Slack message posted to {kwargs.get('channel')}",
-                metadata={
-                    "provider": self.provider,
-                    "connected": True,
-                    "action": action,
-                    "result": data,
-                },
-            )
-        if action == "list_channels":
-            data = self._unwrap_ok(
-                self._request_json(
-                    record=record,
-                    method="GET",
-                    path="/conversations.list",
-                    query={"limit": int(kwargs.get("limit", 10))},
-                )
-            )
-            channels = data.get("channels", [])
-            return ToolOutput(
-                text="\n".join(
-                    f"{item.get('name', '?')} ({item.get('id', '?')})"
-                    for item in channels
-                ),
-                metadata={
-                    "provider": self.provider,
-                    "connected": True,
-                    "action": action,
-                    "items": channels,
-                    "count": len(channels),
-                },
-            )
-        if action == "channel_history":
-            channel = str(kwargs.get("channel", "")).strip()
-            if not channel:
-                return ToolOutput(
-                    text="channel is required for channel_history.",
-                    metadata={"provider": self.provider, "action": action},
-                )
-            data = self._unwrap_ok(
-                self._request_json(
-                    record=record,
-                    method="GET",
-                    path="/conversations.history",
-                    query={"channel": channel, "limit": int(kwargs.get("limit", 10))},
-                )
-            )
-            messages = data.get("messages", [])
-            lines = [
-                self._format_message({**item, "channel_id": channel})
-                for item in messages
-            ]
-            return ToolOutput(
-                text="\n\n".join(lines)
-                if lines
-                else f"No Slack history found for channel {channel}.",
-                metadata={
-                    "provider": self.provider,
-                    "connected": True,
-                    "action": action,
-                    "channel": channel,
-                    "items": messages,
-                    "count": len(messages),
-                },
-            )
-        if action == "get_thread_replies":
-            channel = str(kwargs.get("channel", "")).strip()
-            thread_ts = str(kwargs.get("thread_ts", "")).strip()
-            if not channel or not thread_ts:
-                return ToolOutput(
-                    text="channel and thread_ts are required for get_thread_replies.",
-                    metadata={"provider": self.provider, "action": action},
-                )
-            data = self._unwrap_ok(
-                self._request_json(
-                    record=record,
-                    method="GET",
-                    path="/conversations.replies",
-                    query={
-                        "channel": channel,
-                        "ts": thread_ts,
-                        "limit": int(kwargs.get("limit", 20)),
-                    },
-                )
-            )
-            replies = data.get("messages", [])
-            lines = [
-                self._format_message({**item, "channel_id": channel})
-                for item in replies
-            ]
-            return ToolOutput(
-                text="\n\n".join(lines)
-                if lines
-                else f"No replies found for thread {thread_ts}.",
-                metadata={
-                    "provider": self.provider,
-                    "connected": True,
-                    "action": action,
-                    "channel": channel,
-                    "thread_ts": thread_ts,
-                    "items": replies,
-                    "count": len(replies),
-                },
-            )
-        if action == "user_lookup":
-            email = str(kwargs.get("email", "")).strip()
-            query = str(kwargs.get("user_query", "")).strip().lower()
-            if email:
-                data = self._unwrap_ok(
-                    self._request_json(
-                        record=record,
-                        method="GET",
-                        path="/users.lookupByEmail",
-                        query={"email": email},
-                    )
-                )
-                user = data.get("user", {})
-                return ToolOutput(
-                    text=self._format_user(user)
-                    if user
-                    else f"No Slack user found for {email}.",
-                    metadata={
-                        "provider": self.provider,
-                        "connected": True,
-                        "action": action,
-                        "user": user,
-                    },
-                )
-            data = self._unwrap_ok(
-                self._request_json(
-                    record=record,
-                    method="GET",
-                    path="/users.list",
-                    query={"limit": int(kwargs.get("limit", 50))},
-                )
-            )
-            members = data.get("members", [])
-            if query:
-                members = [
-                    item
-                    for item in members
-                    if query in str(item.get("name", "")).lower()
-                    or query in str(item.get("real_name", "")).lower()
-                    or query
-                    in str(item.get("profile", {}).get("real_name", "")).lower()
-                    or query in str(item.get("profile", {}).get("email", "")).lower()
-                ]
-            lines = [self._format_user(item) for item in members]
-            return ToolOutput(
-                text="\n".join(lines) if lines else "No Slack users found.",
-                metadata={
-                    "provider": self.provider,
-                    "connected": True,
-                    "action": action,
-                    "items": members,
-                    "count": len(members),
-                },
-            )
+        handlers = {
+            "search_messages": self._search_messages,
+            "post_message": self._post_message,
+            "list_channels": self._list_channels,
+            "channel_history": self._channel_history,
+            "get_thread_replies": self._get_thread_replies,
+            "user_lookup": self._user_lookup,
+        }
+        handler = handlers.get(action)
+        if handler is not None:
+            return handler(record, action, kwargs)
         raise ValueError(f"Unsupported Slack action: {action}")

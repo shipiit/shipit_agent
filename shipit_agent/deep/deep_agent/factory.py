@@ -59,23 +59,28 @@ from pathlib import Path
 from typing import Any
 
 from shipit_agent.agent import DEFAULT_SKILLS_PATH
-from shipit_agent.agent_setup.builtins import get_builtin_tools
 from shipit_agent.chat_session import AgentChatSession
-from shipit_agent.core.models import AgentEvent, AgentResult, Message
+from shipit_agent.core.models import AgentEvent, Message
 from shipit_agent.core.policies import RetryPolicy, RouterPolicy
 from shipit_agent.skills import Skill, SkillRegistry
 from shipit_agent.stores import InMemorySessionStore, SessionStore
 
-from ..goal_agent import Goal, GoalAgent, GoalResult
-from ..reflective_agent import ReflectionResult, ReflectiveAgent
-from .delegation import AgentDelegationTool, build_delegation_tool
+from ..goal_agent import Goal
+from .assembly import _DeepAgentAssembly
+from .builders import _DeepAgentBuilders
+from .modes import _DeepAgentModes
 from .prompt import DEEP_AGENT_PROMPT
-from .toolset import deep_tool_set, merge_tools
+from .registry import _DeepAgentRegistry
 from .verification import verify_text
 
 
 @dataclass(slots=True)
-class DeepAgent:
+class DeepAgent(
+    _DeepAgentBuilders,
+    _DeepAgentAssembly,
+    _DeepAgentModes,
+    _DeepAgentRegistry,
+):
     """Power-user ``create_deep_agent``-style factory.
 
     Wraps :class:`shipit_agent.Agent` and bundles the full deep-agent
@@ -166,160 +171,6 @@ class DeepAgent:
     # Factories
     # ====================================================================
 
-    @classmethod
-    def with_builtins(
-        cls,
-        *,
-        llm: Any,
-        decision_llm: Any = None,
-        progress_summaries: bool = False,
-        prompt: str = DEEP_AGENT_PROMPT,
-        name: str = "shipit-deep-agent",
-        description: str = "A deep agent that plans, verifies, and uses a workspace.",
-        metadata: dict[str, Any] | None = None,
-        history: list[Message] | None = None,
-        extra_tools: list[Any] | None = None,
-        mcps: list[Any] | None = None,
-        workspace_root: str = ".shipit_workspace",
-        project_root: str | Path = "/tmp",
-        web_search_provider: str = "duckduckgo",
-        web_search_api_key: str | None = None,
-        web_search_config: dict[str, Any] | None = None,
-        rag: Any = None,
-        memory: Any = None,
-        memory_store: Any = None,
-        session_store: SessionStore | None = None,
-        session_id: str | None = None,
-        verify: bool = False,
-        reflect: bool = False,
-        reflect_threshold: float = 0.8,
-        reflect_max_iterations: int = 3,
-        goal: Goal | None = None,
-        agents: Any = None,
-        max_iterations: int = 8,
-        parallel_tool_execution: bool = True,
-        max_tool_concurrency: int | None = None,
-        context_window_tokens: int = 0,
-        max_tool_output_chars: int = 0,
-        replan_interval: int = 0,
-        retry_policy: RetryPolicy | None = None,
-        router_policy: RouterPolicy | None = None,
-        hooks: Any = None,
-        trace_store: Any = None,
-        trace_id: str | None = None,
-        credential_store: Any = None,
-        permission_mode: str = "default",
-        permissions: Any = None,
-        permission_callback: Any = None,
-        guardrails: Any = None,
-        approvals: Any = None,
-        code_mode: bool = False,
-        lockdown: Any = None,
-        heal_tool_calls: bool = True,
-        skill_registry: SkillRegistry | None = None,
-        skill_source: str | Path | None = DEFAULT_SKILLS_PATH,
-        auto_use_skills: bool = True,
-        auto_project_skills: bool = True,
-        skills: list[str | Skill] | None = None,
-        default_skill_ids: list[str] | None = None,
-        skill_match_limit: int = 3,
-        **agent_kwargs: Any,
-    ) -> "DeepAgent":
-        """Build a DeepAgent that also bundles the full built-in tool catalogue."""
-        return cls(
-            llm=llm,
-            decision_llm=decision_llm,
-            progress_summaries=progress_summaries,
-            name=name,
-            description=description,
-            prompt=prompt,
-            metadata=metadata or {},
-            history=list(history or []),
-            extra_tools=list(extra_tools or []),
-            mcps=list(mcps or []),
-            workspace_root=workspace_root,
-            project_root=project_root,
-            web_search_provider=web_search_provider,
-            web_search_api_key=web_search_api_key,
-            web_search_config=web_search_config,
-            rag=rag,
-            memory=memory,
-            memory_store=memory_store,
-            session_store=session_store,
-            session_id=session_id,
-            verify=verify,
-            reflect=reflect,
-            reflect_threshold=reflect_threshold,
-            reflect_max_iterations=reflect_max_iterations,
-            goal=goal,
-            agents=agents,
-            max_iterations=max_iterations,
-            parallel_tool_execution=parallel_tool_execution,
-            max_tool_concurrency=max_tool_concurrency,
-            context_window_tokens=context_window_tokens,
-            max_tool_output_chars=max_tool_output_chars,
-            replan_interval=replan_interval,
-            retry_policy=retry_policy,
-            router_policy=router_policy,
-            hooks=hooks,
-            trace_store=trace_store,
-            trace_id=trace_id,
-            credential_store=credential_store,
-            permission_mode=permission_mode,
-            permissions=permissions,
-            permission_callback=permission_callback,
-            guardrails=guardrails,
-            approvals=approvals,
-            code_mode=code_mode,
-            lockdown=lockdown,
-            heal_tool_calls=heal_tool_calls,
-            skill_registry=skill_registry,
-            skill_source=skill_source,
-            auto_use_skills=auto_use_skills,
-            auto_project_skills=auto_project_skills,
-            skills=list(skills or []),
-            default_skill_ids=list(default_skill_ids or []),
-            skill_match_limit=skill_match_limit,
-            use_builtins=True,
-            agent_kwargs=agent_kwargs,
-        )
-
-    @classmethod
-    def for_project(
-        cls,
-        *,
-        llm: Any,
-        project_root: str | Path = ".",
-        optimized: bool = True,
-        **kwargs: Any,
-    ) -> "DeepAgent":
-        """Build a durable, token-efficient deep agent for one repository."""
-        if optimized:
-            from shipit_agent.context.compaction import get_model_limits
-            from shipit_agent.stores import FileMemoryStore, FileSessionStore
-
-            state_root = Path(project_root) / ".shipit"
-            kwargs.setdefault(
-                "session_store", FileSessionStore(state_root / "sessions")
-            )
-            kwargs.setdefault(
-                "memory_store", FileMemoryStore(state_root / "memory.json")
-            )
-            kwargs.setdefault("code_mode", True)
-            kwargs.setdefault(
-                "context_window_tokens",
-                get_model_limits(getattr(llm, "model", None)).context_window,
-            )
-            kwargs.setdefault("max_tool_output_chars", 16_000)
-            kwargs.setdefault("max_iterations", 12)
-            kwargs.setdefault("parallel_tool_execution", True)
-            kwargs.setdefault("max_tool_concurrency", 4)
-        return cls.with_builtins(
-            llm=llm,
-            project_root=project_root,
-            **kwargs,
-        )
-
     # ====================================================================
     # Lifecycle
     # ====================================================================
@@ -328,168 +179,9 @@ class DeepAgent:
         self._agent = self._build_agent()
         self.skills = list(self._agent.skills)
 
-    def _builtin_tools(self) -> list[Any]:
-        if not self.use_builtins:
-            return []
-        return get_builtin_tools(
-            llm=self.llm,
-            project_root=str(self.project_root),
-            workspace_root=self.workspace_root,
-            web_search_provider=self.web_search_provider,
-            web_search_api_key=self.web_search_api_key,
-            web_search_config=self.web_search_config,
-        )
-
-    def _resolve_memory(self) -> tuple[Any, list[Any]]:
-        """Return ``(memory_store, history_messages)`` derived from ``self.memory``.
-
-        ``AgentMemory.knowledge`` is a :class:`SemanticMemory`, not a
-        :class:`MemoryStore` — they have different interfaces. So when
-        ``self.memory`` is an :class:`AgentMemory` we **only** hydrate
-        ``history`` from ``memory.get_conversation_messages()`` and leave
-        ``memory_store`` alone. Pass ``memory_store=`` explicitly if you
-        want the runtime's memory tool wired up too.
-        """
-        memory_store = self.memory_store
-        history: list[Any] = []
-        if self.memory is None:
-            return memory_store, history
-        if hasattr(self.memory, "get_conversation_messages"):
-            history = list(self.memory.get_conversation_messages())
-        return memory_store, history
-
-    def _agent_kwargs(self, tools: list[Any]) -> dict[str, Any]:
-        memory_store, history = self._resolve_memory()
-        kwargs: dict[str, Any] = {
-            "llm": self.llm,
-            "decision_llm": self.decision_llm,
-            "progress_summaries": self.progress_summaries,
-            "prompt": self.prompt,
-            "tools": tools,
-            "mcps": list(self.mcps),
-            "name": self.name,
-            "description": self.description,
-            "metadata": dict(self.metadata),
-            "rag": self.rag,
-            "memory_store": memory_store,
-            "session_store": self.session_store,
-            "session_id": self.session_id,
-            "max_iterations": self.max_iterations,
-            "parallel_tool_execution": self.parallel_tool_execution,
-            "max_tool_concurrency": self.max_tool_concurrency,
-            "context_window_tokens": self.context_window_tokens,
-            "max_tool_output_chars": self.max_tool_output_chars,
-            "replan_interval": self.replan_interval,
-            "skill_registry": self.skill_registry,
-            "skill_source": self.skill_source,
-            "auto_use_skills": self.auto_use_skills,
-            "auto_project_skills": self.auto_project_skills,
-            "skills": list(self.skills),
-            "default_skill_ids": list(self.default_skill_ids),
-            "skill_match_limit": self.skill_match_limit,
-            "project_root": self.project_root,
-            "verifier": self.verifier,
-            "permission_mode": self.permission_mode,
-            "permissions": self.permissions,
-            "permission_callback": self.permission_callback,
-            "guardrails": self.guardrails,
-            "approvals": self.approvals,
-            "code_mode": self.code_mode,
-            "lockdown": self.lockdown,
-            "heal_tool_calls": self.heal_tool_calls,
-        }
-        combined_history = [*list(self.history), *history]
-        if combined_history:
-            kwargs["history"] = combined_history
-        for name, value in (
-            ("retry_policy", self.retry_policy),
-            ("router_policy", self.router_policy),
-            ("hooks", self.hooks),
-            ("trace_store", self.trace_store),
-            ("trace_id", self.trace_id),
-            ("credential_store", self.credential_store),
-        ):
-            if value is not None:
-                kwargs[name] = value
-        kwargs.update(self.agent_kwargs)
-        return kwargs
-
-    def _delegation_tool_list(self) -> list[Any]:
-        tool = build_delegation_tool(self.agents)
-        return [tool] if tool is not None else []
-
-    def _build_agent(self) -> Any:
-        from shipit_agent.agent import Agent
-
-        tools = merge_tools(
-            self.extra_tools,
-            self._builtin_tools(),
-            deep_tool_set(llm=self.llm, workspace_root=self.workspace_root),
-            self._delegation_tool_list(),
-        )
-        return Agent(**self._agent_kwargs(tools))
-
     # ====================================================================
     # Inner-agent passthroughs
     # ====================================================================
-
-    @property
-    def agent(self) -> Any:
-        """Return the underlying :class:`shipit_agent.Agent`."""
-        return self._agent
-
-    @property
-    def tools(self) -> list[Any]:
-        return self._agent.tools
-
-    @property
-    def skills_catalog(self) -> list[Skill]:
-        return self._agent.available_skills()
-
-    def search_skills(self, query: str) -> list[Skill]:
-        return self._agent.search_skills(query)
-
-    def add_skill(self, skill: str | Skill) -> Skill:
-        added = self._agent.add_skill(skill)
-        self.skills = list(self._agent.skills)
-        return added
-
-    @property
-    def delegation_tool(self) -> AgentDelegationTool | None:
-        """Return the active :class:`AgentDelegationTool`, if any."""
-        for tool in self._agent.tools:
-            if isinstance(tool, AgentDelegationTool):
-                return tool
-        return None
-
-    @property
-    def sub_agents(self) -> dict[str, Any]:
-        """Return the dict of named sub-agents wired through ``agents=``."""
-        delegate = self.delegation_tool
-        return dict(delegate.agents) if delegate is not None else {}
-
-    def add_tool(self, tool: Any) -> None:
-        existing = {getattr(t, "name", None) for t in self._agent.tools}
-        if getattr(tool, "name", None) not in existing:
-            self._agent.tools.append(tool)
-
-    def add_mcp(self, mcp: Any) -> None:
-        if mcp not in self._agent.mcps:
-            self._agent.mcps.append(mcp)
-
-    def add_sub_agent(self, name: str, agent: Any) -> None:
-        """Register a new sub-agent at runtime.
-
-        If a delegation tool is already wired, the agent is added to it.
-        Otherwise a fresh delegation tool is created and appended to the
-        underlying agent's tool list.
-        """
-        delegate = self.delegation_tool
-        if delegate is None:
-            delegate = AgentDelegationTool(agents={name: agent})
-            self._agent.tools.append(delegate)
-            return
-        delegate.add(name, agent)
 
     # ====================================================================
     # Run / stream
@@ -539,75 +231,7 @@ class DeepAgent:
                 payload={"verification": verdict},
             )
 
-    # ---- goal-driven mode ----------------------------------------------
-
-    def _inner_agent_extras(self) -> dict[str, Any]:
-        """Kwargs forwarded to GoalAgent/ReflectiveAgent so the inner Agent
-        gets the factory's ``history`` and ``verifier`` (memory is passed
-        explicitly via ``memory=``). Only non-empty values are forwarded so we
-        don't override the inner agent's memory-derived history with an empty
-        list."""
-        extras: dict[str, Any] = {}
-        if self.history:
-            extras["history"] = list(self.history)
-        if self.verifier is not None:
-            extras["verifier"] = self.verifier
-        return extras
-
-    def _build_goal_agent(self) -> GoalAgent:
-        return GoalAgent(
-            llm=self.llm,
-            tools=list(self._agent.tools),
-            mcps=list(self.mcps),
-            goal=self.goal,
-            prompt=self.prompt,
-            rag=self.rag,
-            memory=self.memory,
-            **self._inner_agent_extras(),
-        )
-
-    def _run_goal(self) -> GoalResult:
-        return self._build_goal_agent().run()
-
-    def _stream_goal(self):
-        yield from self._build_goal_agent().stream()
-
-    # ---- reflective mode -----------------------------------------------
-
-    def _build_reflective_agent(self) -> ReflectiveAgent:
-        return ReflectiveAgent(
-            llm=self.llm,
-            tools=list(self._agent.tools),
-            mcps=list(self.mcps),
-            quality_threshold=self.reflect_threshold,
-            max_reflections=self.reflect_max_iterations,
-            prompt=self.prompt,
-            rag=self.rag,
-            memory=self.memory,
-            **self._inner_agent_extras(),
-        )
-
-    def _run_reflective(self, user_prompt: str) -> ReflectionResult:
-        return self._build_reflective_agent().run(user_prompt)
-
-    def _stream_reflective(self, user_prompt: str):
-        agent = self._build_reflective_agent()
-        if hasattr(agent, "stream"):
-            yield from agent.stream(user_prompt)
-            return
-        result = agent.run(user_prompt)
-        yield AgentEvent(
-            type="run_completed",
-            message="reflective run completed",
-            payload={"output": getattr(result, "output", str(result))},
-        )
-
     # ---- verification --------------------------------------------------
-
-    def _post_verify(self, result: AgentResult) -> None:
-        result.metadata["verification"] = verify_text(
-            result.output or "", goal=self.goal
-        )
 
     # ====================================================================
     # Live chat
@@ -635,91 +259,13 @@ class DeepAgent:
 # ----------------------------------------------------------------------------
 
 
-def create_deep_agent(
-    *,
-    llm: Any,
-    tools: list[Any] | None = None,
-    agents: Any = None,
-    system_prompt: str = DEEP_AGENT_PROMPT,
-    rag: Any = None,
-    use_builtins: bool = False,
-    verify: bool = False,
-    reflect: bool = False,
-    goal: Goal | None = None,
-    memory: Any = None,
-    max_iterations: int = 8,
-    verifier: Any = None,
-    **kwargs: Any,
-) -> DeepAgent:
-    """LangChain-style ``create_deep_agent`` factory function — but more powerful.
-
-    Drop-in alternative to :class:`DeepAgent` with the keyword names
-    LangChain users expect plus the power-user flags this library
-    exposes.
-
-    Example::
-
-        from shipit_agent.deep import create_deep_agent
-
-        def get_weather(city: str) -> str:
-            \"\"\"Get weather for a given city.\"\"\"
-            return f"It's always sunny in {city}!"
-
-        agent = create_deep_agent(
-            tools=[get_weather],
-            llm=llm,
-            system_prompt="You are a helpful weather assistant.",
-            verify=True,
-            reflect=True,
-            rag=my_rag,
-        )
-
-        result = agent.run("what is the weather in sf")
-
-    Sub-agents — wire your own agents as delegates::
-
-        researcher = Agent.with_builtins(llm=llm, prompt="You research.")
-        writer     = Agent.with_builtins(llm=llm, prompt="You write.")
-        critic     = ReflectiveAgent.with_builtins(llm=llm)
-
-        agent = create_deep_agent(
-            llm=llm,
-            agents=[researcher, writer, critic],   # ← named sub-agents
-            use_builtins=True,
-        )
-
-        # The deep agent now has a `delegate_to_agent` tool it can call
-        # to hand off well-scoped sub-tasks to any of the named agents.
-        # This makes it behave like a Supervisor — but more powerful,
-        # since it still has the full deep-agent toolset itself.
-        result = agent.run("Investigate the auth bug, draft a fix, then review.")
-    """
-    explicit_extra_tools = list(kwargs.pop("extra_tools", []) or [])
-    extra_tools: list[Any] = []
-    for tool in tools or []:
-        if callable(tool) and not hasattr(tool, "schema"):
-            from shipit_agent.tools import FunctionTool
-
-            extra_tools.append(FunctionTool.from_callable(tool))
-        else:
-            extra_tools.append(tool)
-    extra_tools.extend(explicit_extra_tools)
-
-    factory = DeepAgent.with_builtins if use_builtins else DeepAgent
-    return factory(
-        llm=llm,
-        prompt=system_prompt,
-        extra_tools=extra_tools,
-        agents=agents,
-        rag=rag,
-        verify=verify,
-        reflect=reflect,
-        goal=goal,
-        memory=memory,
-        max_iterations=max_iterations,
-        verifier=verifier,
-        **kwargs,
-    )
+__all__ = ["DeepAgent"]
 
 
-__all__ = ["DeepAgent", "create_deep_agent"]
+def __getattr__(name: str) -> Any:
+    # create_deep_agent moved to .create, which imports DeepAgent from here.
+    if name == "create_deep_agent":
+        from .create import create_deep_agent
+
+        return create_deep_agent
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

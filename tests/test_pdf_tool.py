@@ -266,7 +266,7 @@ class TestIntegration:
             return _FakeResponse(raw)
 
         with patch(
-            "shipit_agent.tools.pdf.pdf_tool.urllib.request.urlopen",
+            "shipit_agent.tools.pdf.actions.urllib.request.urlopen",
             side_effect=fake_urlopen,
         ):
             out = PDFTool().run(

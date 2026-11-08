@@ -23,7 +23,7 @@ path — the agent can then send the image back to the model for vision-
 based interpretation.
 """
 
-from .computer_use_tool import ComputerUseTool, TAKE_SCREENSHOT_ACTIONS
+from .computer_use_tool import TAKE_SCREENSHOT_ACTIONS, ComputerUseTool
 from .prompt import COMPUTER_USE_PROMPT
 
 __all__ = ["ComputerUseTool", "COMPUTER_USE_PROMPT", "TAKE_SCREENSHOT_ACTIONS"]

@@ -16,6 +16,7 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 from .backends import BackendError, resolve_backend
 from .prompt import COMPUTER_USE_PROMPT
 
+
 TAKE_SCREENSHOT_ACTIONS = frozenset({"screenshot", "capture"})
 _ACTIONS = frozenset(
     {

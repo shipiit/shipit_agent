@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from shipit_agent.stores import MemoryFact
 from shipit_agent.tools.base import ToolContext, ToolOutput
-
 from .prompt import MEMORY_TOOL_PROMPT
 
 

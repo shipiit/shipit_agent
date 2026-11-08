@@ -210,6 +210,6 @@ every event. They remain available on the canonical `ToolResult`.
 
 ## Related
 
-- [The super agent](super-agent.md)
+- [The super agent](../agent/index.md)
 - [MCP spec](https://modelcontextprotocol.io/)
-- [Prebuilt tools](prebuilt-tools.md)
+- [Prebuilt tools](../agent/with-tools.md)

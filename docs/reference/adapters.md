@@ -10,7 +10,7 @@ all implement the same `LLM` protocol, return the same
 `LLMResponse` shape, and populate `LLMResponse.reasoning_content`
 when the underlying model exposes reasoning blocks. Switching providers
 is **one line in `.env`** — see the
-[Quickstart](../getting-started/quickstart.md#6-switch-providers).
+[Configure a model](../getting-started/environment.md).
 
 ---
 
@@ -55,10 +55,10 @@ protocol — the runtime doesn't care where the response came from.
 | [`GroqChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Groq's hosted Llama / Mixtral |
 | [`TogetherChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Together AI |
 | [`OllamaChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Local Ollama |
-| [`LiteLLMChatLLM`](#litellmchatllm--litellmproxychatllm) | `shipit_agent.llms` | `litellm` | Generic LiteLLM SDK escape hatch |
-| [`LiteLLMProxyChatLLM`](#litellmchatllm--litellmproxychatllm) | `shipit_agent.llms` | `litellm` | Self-hosted LiteLLM proxy server |
-| [`SimpleEchoLLM`](#simpleecho-llm--shipitllm) | `shipit_agent.llms` | stdlib | Tests, demos, offline |
-| [`ShipitLLM`](#simpleecho-llm--shipitllm) | `shipit_agent.llms` | stdlib | Echo with a custom prefix |
+| [`LiteLLMChatLLM`](#litellmchatllm-litellmproxychatllm) | `shipit_agent.llms` | `litellm` | Generic LiteLLM SDK escape hatch |
+| [`LiteLLMProxyChatLLM`](#litellmchatllm-litellmproxychatllm) | `shipit_agent.llms` | `litellm` | Self-hosted LiteLLM proxy server |
+| [`SimpleEchoLLM`](#simpleechollm-shipitllm) | `shipit_agent.llms` | stdlib | Tests, demos, offline |
+| [`ShipitLLM`](#simpleechollm-shipitllm) | `shipit_agent.llms` | stdlib | Default stub for local development |
 
 The fastest way to wire any of these is `build_llm_from_env()` —
 provider switching becomes one env var. See
@@ -87,7 +87,7 @@ llm = OpenAIChatLLM(
 `gpt-5*`, `deepseek-r1*`.
 
 **Lazy `gpt-4o-mini`** — set `tool_choice="required"` to force at least
-one tool call per turn. See [the FAQ](../faq.md#gpt-4o-mini-describes-a-plan-instead-of-calling-tools)
+one tool call per turn. See [the FAQ](../faq.md#the-model-describes-what-it-will-do-instead-of-doing-it)
 for the full set of fixes.
 
 `SHIPIT_OPENAI_TOOL_CHOICE=required` is the env-var equivalent.
@@ -240,10 +240,9 @@ llm = LiteLLMProxyChatLLM(
 )
 ```
 
-`build_llm_from_env('litellm')` auto-detects proxy mode when
-`SHIPIT_LITELLM_API_BASE` is set. See the
-[FAQ entry](../faq.md#how-do-i-use-my-own-litellm-proxy-server) for
-the env-var contract.
+`build_llm_from_env('litellm')` switches to proxy mode when
+`SHIPIT_LITELLM_API_BASE` is set. It also reads `SHIPIT_LITELLM_MODEL`,
+`SHIPIT_LITELLM_API_KEY` and `SHIPIT_LITELLM_CUSTOM_PROVIDER`.
 
 ---
 
@@ -328,5 +327,5 @@ treats it like any other adapter.
 - [Reasoning guide](../guides/reasoning.md) — what reasoning looks like end-to-end
 - [Environment setup](../getting-started/environment.md) — credential configuration
 - [Architecture](architecture.md) — where adapters fit in the runtime
-- [Quickstart — switch providers](../getting-started/quickstart.md#6-switch-providers)
-- [FAQ — providers](../faq.md#providers)
+- [Configure a model](../getting-started/environment.md)
+- [FAQ — models](../faq.md#models)

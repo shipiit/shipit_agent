@@ -374,7 +374,7 @@ for entity in memory.search_entities("growth"):
 - [Sessions & Memory](sessions.md) — multi-turn chat persistence
 - [Advanced Memory guide](../guides/advanced-memory.md) — every memory
   strategy with worked examples
-- [DeepAgent → Memory](../deep-agents/deep-agent.md#memory)
+- [DeepAgent → Memory](../deep-agents/deep-agent.md#memory-memory-and-memory_store)
 - [Parameters Reference → Agent](../reference/parameters.md#agent)
 - [Examples](examples.md) — copy-paste recipes
 - Notebook: `notebooks/26_agent_memory.ipynb` — every example on this

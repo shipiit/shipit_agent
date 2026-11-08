@@ -31,7 +31,7 @@ A named file output (markdown report, JSON blob, generated code) produced by the
 ## B
 
 ### Background thread
-The pattern shipit-agent uses for `agent.stream()`. The runtime runs on a daemon thread and pushes events through a `queue.Queue` so the consumer (your code) yields events the instant they're emitted. See [architecture](reference/architecture.md#4-background-thread-for-stream).
+The pattern shipit-agent uses for `agent.stream()`. The runtime runs on a daemon thread and pushes events through a `queue.Queue` so the consumer (your code) yields events the instant they're emitted. See [architecture](reference/architecture.md#streaming-guarantees-in-one-paragraph).
 
 ### Bedrock tool pairing
 AWS Bedrock's Converse API enforces strict 1:1 pairing between `toolUse` blocks in an assistant turn and `toolResult` blocks in the next user turn. shipit-agent guarantees this invariant — see [tool lifecycle](reference/architecture.md#1-tool-useresult-pairing).
@@ -44,7 +44,7 @@ AWS Bedrock's Converse API enforces strict 1:1 pairing between `toolUse` blocks 
 Pluggable storage for OAuth tokens and API keys used by connector tools. Implementations: `InMemoryCredentialStore`, `FileCredentialStore`. Custom stores implement the `CredentialStore` protocol.
 
 ### `ChatSession`
-A thin wrapper around `Agent` that manages conversation state across multiple turns and exposes WebSocket/SSE packet streaming. See [sessions guide](guides/sessions.md).
+A thin wrapper around `Agent` that manages conversation state across multiple turns and exposes WebSocket/SSE packet streaming. See [sessions guide](agent/sessions.md).
 
 ---
 
@@ -123,7 +123,7 @@ The internal state object the runtime mutates during a run — holds messages, e
 ## S
 
 ### `SessionStore`
-Pluggable storage for conversation history. Implementations: `InMemorySessionStore`, `FileSessionStore`. Persists messages so the agent can resume across script restarts. See [sessions guide](guides/sessions.md).
+Pluggable storage for conversation history. Implementations: `InMemorySessionStore`, `FileSessionStore`. Persists messages so the agent can resume across script restarts. See [sessions guide](agent/sessions.md).
 
 ### Streaming
 Yielding `AgentEvent` objects incrementally as they're emitted, via `agent.stream()`. Distinct from "non-streaming" `agent.run()` which returns a complete `AgentResult` at the end.

@@ -357,7 +357,7 @@ When called, returns a `ToolOutput` with `metadata.interactive=True`. The runtim
 }
 ```
 
-Your UI catches this event, renders a prompt, collects the user's response, and feeds it back into the next turn. See the [streaming guide](../guides/streaming.md) for the full event pattern.
+Your UI catches this event, renders a prompt, collects the user's response, and feeds it back into the next turn. See the [streaming guide](../agent/streaming.md) for the full event pattern.
 
 ### Example
 

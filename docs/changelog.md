@@ -252,7 +252,7 @@ All of it works with **any** LLM provider.
   turns are summarized (user/assistant content included, not dropped) and a
   `context_compacted` event reports before/after message counts.
 
-See the [Super agent guide](guides/super-agent.md) for the full tour.
+See the [Super agent guide](agent/index.md) for the full tour.
 
 ---
 

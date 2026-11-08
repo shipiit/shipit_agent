@@ -131,5 +131,5 @@ prompt = (
 
 ## Related
 
-- [Prebuilt tools](prebuilt-tools.md) — full list of built-in tools
+- [Prebuilt tools](../agent/with-tools.md) — full list of built-in tools
 - [Custom tools](custom-tools.md) — add your own discoverable tools

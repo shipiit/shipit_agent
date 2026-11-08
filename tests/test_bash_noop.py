@@ -21,7 +21,9 @@ from shipit_agent.tools.bash.runner import Finished
 def ran(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     commands: list[str] = []
 
-    def record(command: str, *, cwd: Path, env: dict[str, str], timeout: float) -> Finished:
+    def record(
+        command: str, *, cwd: Path, env: dict[str, str], timeout: float, argv: list[str] | None = None
+    ) -> Finished:
         commands.append(command)
         log = tmp_path / "log"
         log.write_text("")

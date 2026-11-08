@@ -93,7 +93,9 @@ class BackgroundJobsMixin:
             },
         )
 
-    def _run_background(self, command: str, cwd: Path) -> ToolOutput:
+    def _run_background(
+        self, command: str, cwd: Path, *, argv: list[str] | None = None
+    ) -> ToolOutput:
         """Spawn a long-running command detached, log to a file the LLM can tail.
 
         We never block on the process — `subprocess.Popen` returns immediately
@@ -107,7 +109,7 @@ class BackgroundJobsMixin:
         log_path = log_dir / f"bg_{int(time.time())}_{uuid.uuid4().hex[:6]}.log"
         with open(log_path, "wb") as log_file:
             process = subprocess.Popen(
-                ["/bin/bash", "-lc", command],
+                argv or ["/bin/bash", "-lc", command],
                 cwd=str(cwd),
                 env=self._child_env(),
                 stdout=log_file,

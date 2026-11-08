@@ -42,16 +42,24 @@ class StillRunning:
 
 
 def run_command(
-    command: str, *, cwd: Path, env: dict[str, str], timeout: float
+    command: str,
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: float,
+    argv: list[str] | None = None,
 ) -> Finished | StillRunning:
-    """Run *command* with bash, waiting up to *timeout* seconds for it to exit."""
+    """Run *command* with bash, waiting up to *timeout* seconds for it to exit.
+
+    *argv*, when given, is how to run it instead, such as wrapped in a sandbox.
+    """
     log_dir = Path(tempfile.mkdtemp(prefix="shipit-bash-"))
     stdout_path = log_dir / "stdout.log"
     stderr_path = log_dir / "stderr.log"
     started = time.monotonic()
     with open(stdout_path, "wb") as stdout, open(stderr_path, "wb") as stderr:
         process = subprocess.Popen(
-            ["/bin/bash", "-lc", command],
+            argv or ["/bin/bash", "-lc", command],
             cwd=str(cwd),
             env=env,
             stdout=stdout,

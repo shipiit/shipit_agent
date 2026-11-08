@@ -44,6 +44,14 @@ def build_agent(options: AgentOptions) -> Any:
         for tool in tools:
             if hasattr(tool, "extra_roots"):
                 tool.extra_roots = extra_roots
+    if options.sandbox is not None:
+        from shipit_agent.sandbox import SandboxPolicy, check_available
+
+        policy = SandboxPolicy.from_settings(options.sandbox)
+        check_available(policy)
+        for tool in tools:
+            if hasattr(tool, "sandbox_policy"):
+                tool.sandbox_policy = policy
     settings: dict[str, Any] = {
         "llm": llm,
         "prompt": system_prompt(options.system_prompt),

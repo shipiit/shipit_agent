@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Browser bridge validation and session-isolation tests, Workspace proposal
   tests, attachment tests, streaming decoder tests and an opt-in five-turn
   real Bedrock HTTP/SSE smoke test.
+- **`sandbox`**, the Claude Agent SDK option: bash and `run_code` run under
+  Seatbelt on macOS or bubblewrap on Linux, writing only in the project, the
+  `add_dirs` folders, temp and `filesystem.allowWrite`, with the network off
+  unless `network.allowedDomains` is set. `excludedCommands`,
+  `allowUnsandboxedCommands` (`dangerouslyDisableSandbox`, approved like a
+  risky command), `autoAllowBashIfSandboxed`, `failIfUnavailable`,
+  `filesystem.denyWrite`/`denyRead`, `allowLocalBinding` and Unix sockets are
+  enforced. Domains are not filtered one by one. Also usable directly as
+  `BashTool(sandbox_policy=...)`.
 
 ### Changed
 

@@ -83,6 +83,10 @@ class AgentOptions:
     #: Environment variables for the commands the tools run (bash, code).
     #: They never enter this process's own environment.
     env: dict[str, str] = field(default_factory=dict)
+    #: Run bash and code execution in the OS sandbox: the SDK's
+    #: ``SandboxSettings`` (``{"enabled": True, ...}``). See
+    #: :mod:`shipit_agent.sandbox` for what is enforced on each platform.
+    sandbox: dict[str, Any] | None = None
     #: Any other :class:`~shipit_agent.Agent` setting, by its shipit name.
     agent_options: dict[str, Any] = field(default_factory=dict)
 

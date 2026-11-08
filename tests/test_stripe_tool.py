@@ -405,7 +405,7 @@ def test_create_customer_post_body_is_form_urlencoded(monkeypatch):
         return FakeResp(b'{"id":"cus_new","email":"alice@acme.com","name":"Alice"}')
 
     monkeypatch.setattr(
-        "shipit_agent.tools.stripe.stripe_tool.request.urlopen", fake_urlopen
+        "shipit_agent.tools.stripe.http_helpers.request.urlopen", fake_urlopen
     )
     out = tool.run(
         context=_ctx(_store()),
@@ -452,7 +452,7 @@ def test_cancel_subscription_uses_delete_path(monkeypatch):
         return FakeResp()
 
     monkeypatch.setattr(
-        "shipit_agent.tools.stripe.stripe_tool.request.urlopen", fake_urlopen
+        "shipit_agent.tools.stripe.http_helpers.request.urlopen", fake_urlopen
     )
     out = tool.run(
         context=_ctx(_store()), action="cancel_subscription", id="sub_1"

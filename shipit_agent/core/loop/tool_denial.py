@@ -60,7 +60,12 @@ class ToolDenialMixin:
             "it, or pursue the same goal another way. Silence is not consent. "
             "Stop and tell the user the action was declined."
             if decision.denied
-            else f"Tool '{tool_call.name}' requires human approval — {reason}"
+            # Nobody could be asked (no approvals queue, no callback). Without
+            # a next step, models retry the call or ask for approval in text.
+            else f"Tool '{tool_call.name}' requires human approval — {reason}. "
+            "It was NOT run, and no one can approve it in this run: do not retry "
+            "it or ask for approval in text. Finish the rest of the task, and say "
+            "in your answer what still needs approval."
         )
         msg = Message(
             role="tool",

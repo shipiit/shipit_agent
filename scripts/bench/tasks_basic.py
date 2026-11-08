@@ -33,8 +33,12 @@ class Run:
     result: Any = None
     tool_uses: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     tool_errors: int = 0
-    #: Each tool result's text and whether it failed, in order (for the trace).
+    #: Each call's result text and whether it failed, aligned with tool_uses:
+    #: results are matched to calls by id, so a missing one cannot shift the rest.
     tool_results: list[tuple[str, bool]] = field(default_factory=list)
+    #: Results whose tool_use_id matched no call.
+    unmatched_results: int = 0
+    _slots: dict[str, int] = field(default_factory=dict)
     #: Every ResultMessage, one per turn; a multi-turn task's cost is their sum.
     results: list[Any] = field(default_factory=list)
     #: Characters of text written beside tool calls, and of visible reasoning.
@@ -48,7 +52,11 @@ class Run:
     def record(self, message: Any) -> None:
         """Take in one streamed message: its calls, their results, the final result."""
         if isinstance(message, AssistantMessage):
-            calls = [(b.name, b.input) for b in message.content if isinstance(b, ToolUseBlock)]
+            blocks = [b for b in message.content if isinstance(b, ToolUseBlock)]
+            calls = [(b.name, b.input) for b in blocks]
+            for block in blocks:
+                self._slots[block.id] = len(self.tool_results)
+                self.tool_results.append(("(no result)", False))
             self.tool_uses += calls
             if calls:  # text in a message without calls is the answer, not narration
                 self.narration_chars += sum(len(b.text) for b in message.content if isinstance(b, TextBlock))
@@ -57,7 +65,11 @@ class Run:
             for block in message.content:
                 failed = bool(getattr(block, "is_error", False))
                 self.tool_errors += failed
-                self.tool_results.append((str(getattr(block, "content", "")), failed))
+                slot = self._slots.get(getattr(block, "tool_use_id", ""))
+                if slot is None:
+                    self.unmatched_results += 1
+                else:
+                    self.tool_results[slot] = (str(getattr(block, "content", "")), failed)
         elif isinstance(message, ResultMessage):
             self.results.append(message)
             self.result, self.answer = message, message.result or ""

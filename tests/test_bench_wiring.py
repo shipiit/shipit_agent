@@ -174,3 +174,18 @@ def test_repeat_runs_each_task_that_many_times() -> None:
     assert [(r["task"], r["trial"]) for r in rows] == [
         (TASKS[0].name, 0), (TASKS[0].name, 1), (TASKS[0].name, 2),
         (TASKS[1].name, 0), (TASKS[1].name, 1), (TASKS[1].name, 2)]
+
+
+def test_results_pair_with_their_calls_by_id_not_by_order(tmp_path) -> None:
+    from scripts.bench.tasks_basic import Run
+    from shipit_agent.sdk import AssistantMessage, ToolResultBlock, ToolUseBlock, UserMessage
+
+    run = Run(root=tmp_path)
+    run.record(AssistantMessage(content=[ToolUseBlock(id="a", name="read_file", input={}),
+                                         ToolUseBlock(id="b", name="grep_files", input={})], model="m"))
+    run.record(UserMessage(content=[ToolResultBlock(tool_use_id="b", content="grep out"),
+                                    ToolResultBlock(tool_use_id="zz", content="stray")]))
+    run.record(AssistantMessage(content=[ToolUseBlock(id="c", name="bash", input={})], model="m"))
+    run.record(UserMessage(content=[ToolResultBlock(tool_use_id="c", content="bash out", is_error=True)]))
+    assert run.tool_results == [("(no result)", False), ("grep out", False), ("bash out", True)]
+    assert run.unmatched_results == 1

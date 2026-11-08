@@ -17,6 +17,7 @@ from .issues import _IssueActions
 from .prompt import GITHUB_PROMPT
 from .pulls import _PullActions
 from .repo_actions import _RepoActions
+from .reviews import _ReviewActions
 
 _ACTIONS = [
     "search_issues",
@@ -38,7 +39,14 @@ _ACTIONS = [
 ]
 
 
-class GitHubTool(_GitHubHTTP, _IssueActions, _PullActions, _RepoActions, HTTPConnectorToolBase):
+class GitHubTool(
+    _GitHubHTTP,
+    _IssueActions,
+    _PullActions,
+    _ReviewActions,
+    _RepoActions,
+    HTTPConnectorToolBase,
+):
     """The ``github`` tool: work with GitHub issues, pull requests, file contents, and Actions workflow runs via the REST API.
     """
     provider = "github"

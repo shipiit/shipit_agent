@@ -31,7 +31,13 @@ _ACTIONS = [
 _WRITE_GATED_ACTIONS = {"create_ticket", "update_ticket", "close_ticket"}
 
 
-class ZendeskTool(_ZendeskHTTP, _TicketReads, _TicketWrites, _UserMacroActions, HTTPConnectorToolBase):
+class ZendeskTool(
+    _ZendeskHTTP,
+    _TicketReads,
+    _TicketWrites,
+    _UserMacroActions,
+    HTTPConnectorToolBase,
+):
     """The ``zendesk`` tool: search / read / comment on Zendesk tickets and users; list and preview macros.
     """
     provider = "zendesk"

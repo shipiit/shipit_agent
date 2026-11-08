@@ -26,7 +26,12 @@ _ACTIONS = [
 ]
 
 
-class SalesforceTool(_SalesforceHTTP, _SalesforceReads, _SalesforceWrites, HTTPConnectorToolBase):
+class SalesforceTool(
+    _SalesforceHTTP,
+    _SalesforceReads,
+    _SalesforceWrites,
+    HTTPConnectorToolBase,
+):
     """The ``salesforce`` tool: search Salesforce records; query SOQL/SOSL; read accounts/opportunities/contacts; log activities.
     """
     provider = "salesforce"

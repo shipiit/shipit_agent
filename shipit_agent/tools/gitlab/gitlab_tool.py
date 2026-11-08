@@ -15,7 +15,13 @@ from .prompt import GITLAB_PROMPT
 from .repo_actions import _RepoActions
 
 
-class GitLabTool(_GitLabHTTP, _IssueActions, _MergeRequestActions, _RepoActions, HTTPConnectorToolBase):
+class GitLabTool(
+    _GitLabHTTP,
+    _IssueActions,
+    _MergeRequestActions,
+    _RepoActions,
+    HTTPConnectorToolBase,
+):
     """The ``gitlab`` tool: search GitLab issues, manage merge requests, read files, and control CI pipelines.
     """
     provider = "gitlab"

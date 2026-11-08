@@ -27,7 +27,12 @@ _WRITE_ACTIONS = {
 _ACTIONS = sorted(_READ_ACTIONS | _WRITE_ACTIONS)
 
 
-class GoogleSheetsTool(_SheetsHTTP, _ValueActions, _SpreadsheetActions, HTTPConnectorToolBase):
+class GoogleSheetsTool(
+    _SheetsHTTP,
+    _ValueActions,
+    _SpreadsheetActions,
+    HTTPConnectorToolBase,
+):
     """The ``google_sheets`` tool: read / write Google Sheets cells, ranges, formulas, and sheet structure.
     """
     provider = "google_sheets"

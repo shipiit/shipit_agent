@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import threading
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,10 +31,11 @@ class _SourceTracker:
     seen: dict[str, int] = field(default_factory=dict)
     sources: list[RAGSource] = field(default_factory=list)
 
-    def record(self, result: SearchResult) -> None:
+    def record(self, result: SearchResult) -> int:
+        """Track *result*; returns its citation number for this run."""
         chunk = result.chunk
         if chunk.id in self.seen:
-            return
+            return self.seen[chunk.id]
         index = len(self.sources) + 1
         self.seen[chunk.id] = index
         self.sources.append(
@@ -48,11 +49,10 @@ class _SourceTracker:
                 metadata=dict(chunk.metadata),
             )
         )
+        return index
 
-    def record_chunk(self, chunk: Chunk, score: float) -> None:
-        if chunk.id in self.seen:
-            return
-        self.record(SearchResult(chunk=chunk, score=score))
+    def record_chunk(self, chunk: Chunk, score: float) -> int:
+        return self.record(SearchResult(chunk=chunk, score=score))
 
 
 class RAG(_RAGIndexing):
@@ -65,7 +65,7 @@ class RAG(_RAGIndexing):
     and a query surface (``search``, ``fetch_chunk``, ``list_sources``).
 
     The instance also tracks every chunk retrieved during an active
-    *agent run* through a thread-local :class:`_SourceTracker`. Agents
+    *agent run* through a per-run :class:`_SourceTracker`. Agents
     call :meth:`begin_run` at the start of a run and
     :meth:`end_run` at the end to collect citations, which are then
     attached to :attr:`shipit_agent.models.AgentResult.rag_sources`.
@@ -94,7 +94,14 @@ class RAG(_RAGIndexing):
             keyword_store=self.keyword_store,
             reranker=self.reranker,
         )
-        self._tracker_state = threading.local()
+        # A context variable, not a thread-local: the agent loop runs on a
+        # worker thread that inherits the caller's context, so a thread-local
+        # set in begin_run() was invisible to the tools. Each concurrent run
+        # still gets its own tracker, because each begin_run() sets it in
+        # that run's own context.
+        self._tracker: ContextVar[_SourceTracker | None] = ContextVar(
+            f"shipit_rag_tracker_{id(self)}", default=None
+        )
 
     # ---- factories -------------------------------------------------------
 
@@ -178,26 +185,33 @@ class RAG(_RAGIndexing):
     # ---- source tracking (agent integration) ----------------------------
 
     def begin_run(self) -> None:
-        """Start a new source-tracking scope for the current thread."""
-        self._tracker_state.tracker = _SourceTracker()
+        """Start a new source-tracking scope for the current run."""
+        self._tracker.set(_SourceTracker())
 
     def end_run(self) -> list[RAGSource]:
         """Return (and clear) the sources recorded since :meth:`begin_run`."""
-        tracker: _SourceTracker | None = getattr(self._tracker_state, "tracker", None)
+        tracker = self._tracker.get()
         if tracker is None:
             return []
-        self._tracker_state.tracker = None
+        self._tracker.set(None)
         return list(tracker.sources)
 
     def current_sources(self) -> list[RAGSource]:
         """Peek at sources captured so far during the current run."""
-        tracker: _SourceTracker | None = getattr(self._tracker_state, "tracker", None)
+        tracker = self._tracker.get()
         if tracker is None:
             return []
         return list(tracker.sources)
 
+    def citation_index(self, chunk_id: str) -> int | None:
+        """The [N] this run gave *chunk_id*, or ``None`` outside a run or if unseen."""
+        tracker = self._tracker.get()
+        if tracker is None:
+            return None
+        return tracker.seen.get(chunk_id)
+
     def _get_tracker(self) -> _SourceTracker | None:
-        return getattr(self._tracker_state, "tracker", None)
+        return self._tracker.get()
 
     # ---- tool wiring ----------------------------------------------------
 

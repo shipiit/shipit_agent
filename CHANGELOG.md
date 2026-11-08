@@ -42,6 +42,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **RAG sources are reported again.** `result.rag_sources` and the streamed
+  `rag_sources` event were always empty in an agent run: the source tracker
+  was thread-local and the agent loop runs on a worker thread. It is now a
+  context variable, which the worker inherits; concurrent runs still keep
+  their own sources.
+- **RAG citation numbers match the sources.** `rag_search` numbered each
+  search's results from `[1]`, so after a second search the model's `[1]`
+  and `rag_sources[0]` were different chunks. Inside a run, every hit is now
+  labelled with its run-wide number, a chunk found again keeps its first
+  number, and `rag_fetch_chunk` includes the chunk's `citation`.
+
 - Browser connection failures remain visible inside the settings dialog and
   failed token changes preserve the displayed conversation. Unfinished runs
   are no longer presented as complete; malformed model selections return a

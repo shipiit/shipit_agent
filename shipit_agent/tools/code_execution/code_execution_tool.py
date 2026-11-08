@@ -10,6 +10,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import ClassVar
 
+from shipit_agent.sandbox import SandboxPolicy, SandboxUnavailable, wrap_argv
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.formatting import clip_text
 from shipit_agent.tools.subprocess_env import build_tool_env
@@ -78,6 +79,7 @@ class CodeExecutionTool:
         env_allowlist: list[str] | None = None,
         extra_env: dict[str, str] | None = None,
         inherit_env: bool = False,
+        sandbox_policy: SandboxPolicy | None = None,
     ) -> None:
         self.workspace_root = Path(workspace_root)
         self.name = name
@@ -88,6 +90,10 @@ class CodeExecutionTool:
         self.env_allowlist = list(env_allowlist or [])
         self.extra_env = dict(extra_env or {})
         self.inherit_env = inherit_env
+        #: The OS sandbox for local runs (``AgentOptions(sandbox=...)``); the
+        #: Docker ``sandbox`` argument is separate and unaffected.
+        self.sandbox_policy = sandbox_policy
+        self.extra_roots: tuple[Path, ...] = ()
 
     def schema(self) -> dict:
         return {
@@ -214,6 +220,12 @@ class CodeExecutionTool:
             else:
                 command = self._command_for_language(language, script_path)
                 cwd = workspace_root
+                try:
+                    command = wrap_argv(
+                        command, "", self.sandbox_policy, [workspace_root, *self.extra_roots]
+                    ).argv
+                except SandboxUnavailable as exc:
+                    return ToolOutput(text=f"Error: {exc}", metadata={"ok": False, "error": "sandbox_unavailable"})
             child_env = build_tool_env(
                 allowlist=self.env_allowlist,
                 extra_env=self.extra_env,

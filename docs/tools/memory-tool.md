@@ -1,11 +1,11 @@
 ---
 title: Claude-style memory tool
-description: ClaudeMemoryTool — the Anthropic memory_20250818 tool shape, a single command-driven tool the model uses to read and write a sandboxed, cross-session memory directory. New in v1.0.11.
+description: ClaudeMemoryTool — the Anthropic memory_20250818 tool shape, a single command-driven tool the model uses to read and write a sandboxed, cross-session memory directory.
 ---
 
 # `ClaudeMemoryTool`
 
-New in **v1.0.11**, `ClaudeMemoryTool` is shipit_agent's implementation of
+`ClaudeMemoryTool` is shipit_agent's implementation of
 Anthropic's **`memory_20250818`** tool shape: a single tool the model invokes
 with a `command` argument to read and write a persistent, **sandboxed**
 memory directory that survives across sessions. It's how an agent builds up

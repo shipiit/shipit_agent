@@ -112,7 +112,7 @@ The daemon picks the earliest `pending` entry at each tick.
 | Env | Default | Description |
 | --- | --- | --- |
 | `SHIPIT_LLM` | `bedrock` | Provider: `bedrock`, `openai`, `anthropic`, `ollama`, `groq`, `gemini` |
-| `SHIPIT_MODEL` | provider default | Override model id (e.g. `claude-sonnet-4-5`) |
+| `SHIPIT_MODEL` | provider default | Override model id (e.g. `claude-sonnet-5-5`) |
 | `AWS_REGION` / `AWS_PROFILE` | — | Standard Bedrock auth |
 | `OPENAI_API_KEY` | — | OpenAI key |
 | `ANTHROPIC_API_KEY` | — | Anthropic key |

@@ -105,7 +105,7 @@ from shipit_agent.llms import OpenAIChatLLM
 from shipit_agent.tools.sql import SQLTool
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[SQLTool(url="postgresql+psycopg://ro_user:...@analytics-replica/prod")],
     prompt=(
         "You are a revenue analyst. Use the sql tool to answer questions "

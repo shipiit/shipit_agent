@@ -1,11 +1,11 @@
 ---
 title: Prompt caching
-description: Cache the stable prefix (system prompt + tools) on Anthropic, Bedrock, and Vertex so repeated turns read it back at ~10% of the input price. On by default for Claude-family models (v1.0.11); cross-provider cost accounting — OpenAI's automatic cache reads surfaced — added in v1.0.12.
+description: Cache the stable prefix (system prompt + tools) on Anthropic, Bedrock, and Vertex so repeated turns read it back at ~10% of the input price. On by default for Claude-family models; cross-provider cost accounting — OpenAI's automatic cache reads surfaced.
 ---
 
 # Prompt caching
 
-New in **v1.0.11**, shipit_agent caches the **stable prefix** of every
+Shipit_agent caches the **stable prefix** of every
 request — the system prompt plus the tool definitions — so repeated turns
 don't re-pay full input price for tokens that never change. On a tool-using
 agent the prefix is large and identical across iterations, so this is one of
@@ -37,14 +37,14 @@ flag is exposed so you can be explicit or opt out:
 from shipit_agent.llms import AnthropicChatLLM, LiteLLMChatLLM
 
 # Anthropic adapter — caching on by default.
-llm = AnthropicChatLLM(model="claude-sonnet-4-20250514", prompt_caching=True)
+llm = AnthropicChatLLM(model="claude-sonnet-5-5", prompt_caching=True)
 
 # LiteLLM adapter — caching applied only to Anthropic/Claude models it routes
 # to (Bedrock and Vertex Claude included); a no-op for other providers.
-llm = LiteLLMChatLLM(model="anthropic/claude-sonnet-4-20250514", prompt_caching=True)
+llm = LiteLLMChatLLM(model="anthropic/claude-sonnet-5-5", prompt_caching=True)
 
 # Opt out:
-llm = AnthropicChatLLM(model="claude-sonnet-4-20250514", prompt_caching=False)
+llm = AnthropicChatLLM(model="claude-sonnet-5-5", prompt_caching=False)
 ```
 
 Under the hood the adapter injects `cache_control: {"type": "ephemeral"}`
@@ -102,7 +102,7 @@ from shipit_agent import Agent, CostTracker
 from shipit_agent.llms import AnthropicChatLLM
 
 tracker = CostTracker()
-llm = AnthropicChatLLM(model="claude-sonnet-4-20250514")  # caching on
+llm = AnthropicChatLLM(model="claude-sonnet-5-5")  # caching on
 agent = Agent(llm=llm, tools=[...], hooks=tracker.as_hooks())
 
 agent.run("First task.")    # writes the prefix into the cache

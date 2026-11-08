@@ -84,11 +84,11 @@ llm = build_llm_from_env()             # reads SHIPIT_LLM_PROVIDER from .env
 
 | Provider | `SHIPIT_LLM_PROVIDER` | Adapter class | Required env vars | Default model |
 | --- | --- | --- | --- | --- |
-| OpenAI | `openai` | `OpenAIChatLLM` | `OPENAI_API_KEY` | `gpt-4o-mini` |
-| Anthropic | `anthropic` | `AnthropicChatLLM` | `ANTHROPIC_API_KEY` | `claude-3-5-sonnet-latest` |
+| OpenAI | `openai` | `OpenAIChatLLM` | `OPENAI_API_KEY` | `gpt-5.5` |
+| Anthropic | `anthropic` | `AnthropicChatLLM` | `ANTHROPIC_API_KEY` | `claude-opus-5-5` |
 | AWS Bedrock | `bedrock` | `BedrockChatLLM` | `AWS_REGION_NAME` (or `AWS_DEFAULT_REGION`) or `AWS_PROFILE` | `bedrock/openai.gpt-oss-120b-1:0` |
-| Google Vertex | `vertex` | `VertexAIChatLLM` | creds file + `VERTEXAI_PROJECT` + `VERTEXAI_LOCATION` | `vertex_ai/gemini-1.5-pro` |
-| Google Gemini | `gemini` | `GeminiChatLLM` | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | `gemini/gemini-1.5-pro` |
+| Google Vertex | `vertex` | `VertexAIChatLLM` | creds file + `VERTEXAI_PROJECT` + `VERTEXAI_LOCATION` | `vertex_ai/gemini-3.5-flash` |
+| Google Gemini | `gemini` | `GeminiChatLLM` | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | `gemini/gemini-3.5-flash` |
 | Groq | `groq` | `GroqChatLLM` | `GROQ_API_KEY` | `groq/llama-3.3-70b-versatile` |
 | Together | `together` | `TogetherChatLLM` | `TOGETHERAI_API_KEY` or `TOGETHER_API_KEY` | `together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo` |
 | Ollama (local) | `ollama` | `OllamaChatLLM` | *none* — needs a local Ollama server | `ollama/llama3.1` |
@@ -125,8 +125,8 @@ for p in list_providers():
 
 openai = get_profile("openai")           # by name or alias (e.g. "gpt")
 openai.require_env        # ['OPENAI_API_KEY']
-openai.default_model      # 'gpt-4o-mini'
-openai.fallback_models    # ['gpt-4o']
+openai.default_model      # 'gpt-5.5'
+openai.fallback_models    # ['gpt-5.5']
 openai.signup_url         # where a user gets a key
 ```
 
@@ -138,7 +138,7 @@ call — say you have the settings as a dict — use `build_provider`:
 ```python
 from shipit_agent.providers import build_provider
 
-llm = build_provider("openai", config={"model": "gpt-4o"})
+llm = build_provider("openai", config={"model": "gpt-5.5"})
 llm = build_provider("bedrock", env={"AWS_REGION_NAME": "us-east-1"})
 ```
 
@@ -192,9 +192,9 @@ and `litellm` directories are the reference.
 from shipit_agent.llms import OpenAIChatLLM, build_llm_from_env
 
 # Direct:
-llm = OpenAIChatLLM(model="gpt-4o-mini")
+llm = OpenAIChatLLM(model="gpt-5.5")
 # Force at least one tool call per turn (lazy models):
-llm = OpenAIChatLLM(model="gpt-4o-mini", tool_choice="required")
+llm = OpenAIChatLLM(model="gpt-5.5", tool_choice="required")
 
 # From env:
 llm = build_llm_from_env("openai")
@@ -203,7 +203,7 @@ llm = build_llm_from_env("openai")
 ```bash
 SHIPIT_LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
-SHIPIT_OPENAI_MODEL=gpt-4o-mini          # optional
+SHIPIT_OPENAI_MODEL=gpt-5.5          # optional
 SHIPIT_OPENAI_TOOL_CHOICE=               # optional — "required" forces a tool call
 ```
 
@@ -218,9 +218,9 @@ OpenAI does **automatic** prompt caching; shipit surfaces the cache reads. See
 from shipit_agent.llms import AnthropicChatLLM, build_llm_from_env
 
 # Direct (prompt caching on by default for Claude):
-llm = AnthropicChatLLM(model="claude-sonnet-4-20250514")
+llm = AnthropicChatLLM(model="claude-sonnet-5-5")
 # Extended thinking:
-llm = AnthropicChatLLM(model="claude-opus-4-1", thinking_budget_tokens=2048)
+llm = AnthropicChatLLM(model="claude-opus-5-5", thinking_budget_tokens=2048)
 
 # From env:
 llm = build_llm_from_env("anthropic")
@@ -229,7 +229,7 @@ llm = build_llm_from_env("anthropic")
 ```bash
 SHIPIT_LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
-SHIPIT_ANTHROPIC_MODEL=claude-3-5-sonnet-latest    # optional
+SHIPIT_ANTHROPIC_MODEL=claude-sonnet-5-5    # optional
 ```
 
 ---
@@ -245,7 +245,7 @@ from shipit_agent.llms import BedrockChatLLM, build_llm_from_env
 # Direct:
 llm = BedrockChatLLM(model="bedrock/openai.gpt-oss-120b-1:0")
 # Claude on Bedrock (tool-pairing handled automatically):
-llm = BedrockChatLLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0")
+llm = BedrockChatLLM(model="bedrock/google.gemma-4-31b")
 
 # From env:
 llm = build_llm_from_env("bedrock")
@@ -271,7 +271,7 @@ from shipit_agent.llms import VertexAIChatLLM, build_llm_from_env
 
 # Direct:
 llm = VertexAIChatLLM(
-    model="vertex_ai/gemini-1.5-pro",
+    model="vertex_ai/gemini-3.5-flash",
     service_account_file="/path/to/sa.json",
     project_id="my-gcp-project",
     location="us-central1",
@@ -286,7 +286,7 @@ SHIPIT_LLM_PROVIDER=vertex
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json   # or SHIPIT_VERTEX_CREDENTIALS_FILE
 VERTEXAI_PROJECT=my-gcp-project                    # or GOOGLE_CLOUD_PROJECT
 VERTEXAI_LOCATION=us-central1                      # or VERTEX_LOCATION / GOOGLE_CLOUD_LOCATION
-SHIPIT_VERTEX_MODEL=vertex_ai/gemini-1.5-pro       # optional
+SHIPIT_VERTEX_MODEL=vertex_ai/gemini-3.5-flash       # optional
 ```
 
 The Vertex adapter handles the full Vertex catalog — Gemini, Claude-on-Vertex,
@@ -300,7 +300,7 @@ Llama-on-Vertex, etc. Claude-on-Vertex gets `cache_control` prompt caching too.
 from shipit_agent.llms import GeminiChatLLM, build_llm_from_env
 
 # Direct:
-llm = GeminiChatLLM(model="gemini/gemini-1.5-pro")
+llm = GeminiChatLLM(model="gemini/gemini-3.5-flash")
 
 # From env:
 llm = build_llm_from_env("gemini")
@@ -309,7 +309,7 @@ llm = build_llm_from_env("gemini")
 ```bash
 SHIPIT_LLM_PROVIDER=gemini
 GEMINI_API_KEY=...                        # or GOOGLE_API_KEY
-SHIPIT_GEMINI_MODEL=gemini/gemini-1.5-pro    # optional
+SHIPIT_GEMINI_MODEL=gemini/gemini-3.5-flash    # optional
 ```
 
 ---
@@ -393,11 +393,11 @@ from shipit_agent.llms import (
 )
 
 # Direct — any LiteLLM model string:
-llm = LiteLLMChatLLM(model="anthropic/claude-sonnet-4-20250514")
+llm = LiteLLMChatLLM(model="anthropic/claude-sonnet-5-5")
 
 # Direct — self-hosted LiteLLM proxy gateway:
 llm = LiteLLMProxyChatLLM(
-    model="gpt-4o-mini",                            # whatever the proxy routes to
+    model="gpt-5.5",                            # whatever the proxy routes to
     api_base="https://litellm.my-company.internal",
     api_key="sk-proxy-token",
     custom_llm_provider="openai",                   # proxy speaks OpenAI format
@@ -409,7 +409,7 @@ llm = build_llm_from_env("litellm")
 
 ```bash
 SHIPIT_LLM_PROVIDER=litellm
-SHIPIT_LITELLM_MODEL=anthropic/claude-sonnet-4-20250514    # required
+SHIPIT_LITELLM_MODEL=anthropic/claude-sonnet-5-5    # required
 SHIPIT_LITELLM_API_KEY=                                    # optional
 SHIPIT_LITELLM_API_BASE=                                   # set → LiteLLMProxyChatLLM
 SHIPIT_LITELLM_CUSTOM_PROVIDER=                            # optional

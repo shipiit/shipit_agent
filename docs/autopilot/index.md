@@ -76,7 +76,7 @@ the requested duration.
 ```python
 from shipit_agent import Goal
 from shipit_agent.autopilot import Autopilot, BudgetPolicy
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")     # defaults to Llama 4 Scout
 

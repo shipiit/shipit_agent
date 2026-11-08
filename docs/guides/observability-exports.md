@@ -80,7 +80,7 @@ from shipit_agent.tracing_exporters.langsmith_exporter import LangSmithExporter
 exporter = LangSmithExporter(project="shipit-agent/prod")
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     trace_store=exporter,
 )
 agent.run("Why is the sky blue?")
@@ -186,7 +186,7 @@ from shipit_agent import Agent
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     trace_store=otel,
 )
 agent.run("Summarise the latest release notes.")
@@ -337,7 +337,7 @@ Common production setup: litellm callback for token/cost analytics **plus**
 `LangfuseExporter` for step-level agent debugging — they land in the same
 Langfuse project.
 
-## Built-in run metrics (v1.0.15)
+## Built-in run metrics
 
 Before reaching for an exporter, two zero-setup options cover the common
 cases. Every event carries a `timestamp`, tool events carry `duration_ms`

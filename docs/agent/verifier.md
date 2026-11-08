@@ -1,9 +1,9 @@
 ---
-title: Agent — Verifier Network
+title: Verifier Network
 description: Process supervision for agent runs. A second cheap LLM vetoes hallucinated tool calls before they fire and detects when the main agent is stalling. Catches whole classes of failures that observability alone can't fix.
 ---
 
-# Agent — Verifier Network
+# Verifier Network
 
 A second, typically cheap LLM (Haiku, gpt-oss-20b) sits next to your
 main agent and answers two questions:

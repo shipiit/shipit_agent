@@ -1,9 +1,9 @@
 ---
-title: Agent — Tracing
+title: Tracing
 description: Record, inspect, and visualise every step of an agent run with FileTraceStore, InMemoryTraceStore, and TraceRecord.
 ---
 
-# Agent — Tracing
+# Tracing
 
 Tracing captures every `AgentEvent` emitted during a run — tool calls,
 reasoning, retries, planning, and the final output — into a persistent
@@ -330,7 +330,7 @@ Combine tracing with token usage to estimate costs:
 ```python
 MODEL_COSTS = {
     "bedrock/openai.gpt-oss-120b-1:0": {"input": 0.15, "output": 0.60},
-    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "gpt-5.5": {"input": 2.50, "output": 10.00},
 }
 
 store = FileTraceStore(root_dir=".shipit_traces")
@@ -343,7 +343,7 @@ if done:
     completion_tokens = usage.get("completion_tokens", 0)
 
     # Adjust the model key to match yours
-    rates = MODEL_COSTS.get("gpt-4o", {"input": 0, "output": 0})
+    rates = MODEL_COSTS.get("gpt-5.5", {"input": 0, "output": 0})
     cost = (
         prompt_tokens / 1_000_000 * rates["input"]
         + completion_tokens / 1_000_000 * rates["output"]

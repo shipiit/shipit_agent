@@ -1,11 +1,11 @@
 ---
 title: Interleaved thinking & context editing
-description: Let Claude think between tool calls with interleaved_thinking + thinking_budget_tokens, and have Anthropic clear stale tool results server-side with context_management. Thinking blocks and budget surface in LLMResponse.metadata. New in v1.0.12.
+description: Let Claude think between tool calls with interleaved_thinking + thinking_budget_tokens, and have Anthropic clear stale tool results server-side with context_management. Thinking blocks and budget surface in LLMResponse.metadata.
 ---
 
 # Interleaved thinking & context editing
 
-New in **v1.0.12**, `AnthropicChatLLM` exposes two more Claude-API power
+`AnthropicChatLLM` exposes two more Claude-API power
 features: **interleaved thinking** (the model reasons *between* tool calls, not
 just before its first answer) and **server-side context editing** (Anthropic
 clears stale tool results for you, on its side of the wire).
@@ -21,7 +21,7 @@ two kwargs on `AnthropicChatLLM`:
 from shipit_agent.llms import AnthropicChatLLM
 
 llm = AnthropicChatLLM(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-5-5",
     thinking_budget_tokens=2048,     # turns on extended thinking
     interleaved_thinking=True,       # allow thinking between tool calls
 )
@@ -60,7 +60,7 @@ transcript yourself.
 from shipit_agent.llms import AnthropicChatLLM
 
 llm = AnthropicChatLLM(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-5-5",
     context_management={"edits": [{"type": "clear_tool_uses_20250919"}]},
 )
 ```

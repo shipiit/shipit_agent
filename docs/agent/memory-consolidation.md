@@ -1,9 +1,9 @@
 ---
-title: Agent — Episodic Memory Consolidation
+title: Episodic Memory Consolidation
 description: Distill long conversations into durable facts. Apply forgetting curves so old facts decay. Promote frequently-retrieved facts to a "core memory" set always visible to the agent. ChatGPT-style memory built into shipit.
 ---
 
-# Agent — Episodic Memory Consolidation
+# Episodic Memory Consolidation
 
 Today, an agent restarted next week starts cold even if you kept its
 session history. Plain RAG over old transcripts is high-noise. With

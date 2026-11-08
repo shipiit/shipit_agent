@@ -31,26 +31,50 @@ for model, prices in MODEL_PRICING.items():
 
 ### Supported models
 
-| Provider | Model | Input $/M | Output $/M | Cache Read $/M | Cache Write $/M |
-|----------|-------|-----------|------------|----------------|-----------------|
-| Anthropic | `claude-opus-4` | 15.00 | 75.00 | 1.50 | 18.75 |
-| Anthropic | `claude-sonnet-4` | 3.00 | 15.00 | 0.30 | 3.75 |
+These are the prices in `shipit_agent/costs/pricing.py`, which the cost tracker uses:
+
+| Provider | Model | Input $/M | Output $/M | Cache read $/M | Cache write $/M |
+| :- | :- | -: | -: | -: | -: |
+| Anthropic | `claude-fable-5` | 10.00 | 50.00 | 1.00 | 12.50 |
+| Anthropic | `claude-fable-5-1` | 10.00 | 50.00 | 0.25 | 12.50 |
 | Anthropic | `claude-haiku-4` | 0.80 | 4.00 | 0.08 | 1.00 |
-| OpenAI | `gpt-4o` | 2.50 | 10.00 | -- | -- |
-| OpenAI | `gpt-4o-mini` | 0.15 | 0.60 | -- | -- |
+| Anthropic | `claude-haiku-4-20250514` | 0.80 | 4.00 | 0.08 | 1.00 |
+| Anthropic | `claude-haiku-4-5` | 1.00 | 5.00 | 0.10 | 1.25 |
+| Anthropic | `claude-haiku-5-5` | 0.10 | 0.50 | 0.01 | 0.12 |
+| Anthropic | `claude-mythos-5` | 10.00 | 50.00 | 1.00 | 12.50 |
+| Anthropic | `claude-mythos-5-1` | 10.00 | 50.00 | 0.25 | 12.50 |
+| Anthropic | `claude-opus-4` | 15.00 | 75.00 | 1.50 | 18.75 |
+| Anthropic | `claude-opus-4-20250514` | 15.00 | 75.00 | 1.50 | 18.75 |
+| Anthropic | `claude-opus-4-6` | 5.00 | 25.00 | 0.50 | 6.25 |
+| Anthropic | `claude-opus-4-7` | 5.00 | 25.00 | 0.50 | 6.25 |
+| Anthropic | `claude-opus-4-8` | 5.00 | 25.00 | 0.50 | 6.25 |
+| Anthropic | `claude-opus-5` | 5.00 | 25.00 | 0.50 | 6.25 |
+| Anthropic | `claude-opus-5-5` | 4.00 | 20.00 | 0.20 | 5.00 |
+| Anthropic | `claude-sonnet-4` | 3.00 | 15.00 | 0.30 | 3.75 |
+| Anthropic | `claude-sonnet-5-5` | 3.00 | 15.00 | 0.30 | 3.75 |
+| Anthropic | `claude-sonnet-4-6` | 3.00 | 15.00 | 0.30 | 3.75 |
+| Anthropic | `claude-sonnet-5` | 2.00 | 10.00 | 0.20 | 2.50 |
+| Anthropic | `claude-sonnet-5-5` | 2.00 | 10.00 | 0.20 | 2.50 |
+| Google | `gemini-2.0-flash` | 0.10 | 0.40 | -- | -- |
+| Google | `gemini-2.5-flash` | 0.15 | 0.60 | -- | -- |
+| Google | `gemini-2.5-pro` | 1.25 | 10.00 | -- | -- |
+| Meta / open | `llama-4-maverick` | 0.50 | 0.77 | -- | -- |
+| Meta / open | `llama-4-scout` | 0.11 | 0.34 | -- | -- |
 | OpenAI | `gpt-4.1` | 2.00 | 8.00 | -- | -- |
 | OpenAI | `gpt-4.1-mini` | 0.40 | 1.60 | -- | -- |
 | OpenAI | `gpt-4.1-nano` | 0.10 | 0.40 | -- | -- |
+| OpenAI | `gpt-4o` | 2.50 | 10.00 | -- | -- |
+| OpenAI | `gpt-5.5` | 0.15 | 0.60 | -- | -- |
+| OpenAI | `gpt-oss-120b` | 0.15 | 0.60 | -- | -- |
+| OpenAI | `gpt-oss-20b` | 0.07 | 0.30 | -- | -- |
 | OpenAI | `o3` | 10.00 | 40.00 | -- | -- |
 | OpenAI | `o3-mini` | 1.10 | 4.40 | -- | -- |
 | OpenAI | `o4-mini` | 1.10 | 4.40 | -- | -- |
-| Google | `gemini-2.5-pro` | 1.25 | 10.00 | -- | -- |
-| Google | `gemini-2.5-flash` | 0.15 | 0.60 | -- | -- |
-| Google | `gemini-2.0-flash` | 0.10 | 0.40 | -- | -- |
-| Meta | `llama-4-scout` | 0.11 | 0.34 | -- | -- |
-| Meta | `llama-4-maverick` | 0.50 | 0.77 | -- | -- |
-| AWS Bedrock | `anthropic.claude-sonnet-4-20250514-v1:0` | 3.00 | 15.00 | -- | -- |
-| AWS Bedrock | `anthropic.claude-haiku-4-20250514-v1:0` | 0.80 | 4.00 | -- | -- |
+| Other | `anthropic.claude-haiku-4-20250514-v1:0` | 0.80 | 4.00 | 0.08 | 1.00 |
+| Other | `anthropic.claude-sonnet-5-5-v1:0` | 3.00 | 15.00 | 0.30 | 3.75 |
+| Other | `google.gemma-4-26b-a4b` | 0.13 | 0.40 | 0.03 | 0.00 |
+| Other | `google.gemma-4-31b` | 0.14 | 0.40 | 0.04 | 0.00 |
+| Other | `google.gemma-4-e2b` | 0.05 | 0.10 | 0.01 | 0.00 |
 
 ## Model aliases
 
@@ -60,11 +84,11 @@ Short aliases map to canonical model IDs for convenience.
 from shipit_agent.costs.pricing import MODEL_ALIASES
 
 # Built-in aliases
-# "opus"      -> "claude-opus-4"
-# "sonnet"    -> "claude-sonnet-4"
+# "opus"      -> "claude-opus-5-5"
+# "sonnet"    -> "claude-sonnet-5-5"
 # "haiku"     -> "claude-haiku-4"
-# "gpt4o"     -> "gpt-4o"
-# "gpt4o-mini" -> "gpt-4o-mini"
+# "gpt4o"     -> "gpt-5.5"
+# "gpt4o-mini" -> "gpt-5.5"
 ```
 
 Aliases are resolved automatically in `calculate_cost` and `record_call`.
@@ -72,7 +96,7 @@ Aliases are resolved automatically in `calculate_cost` and `record_call`.
 ```python
 # These are equivalent
 tracker.calculate_cost("opus", input_tokens=1000, output_tokens=500)
-tracker.calculate_cost("claude-opus-4", input_tokens=1000, output_tokens=500)
+tracker.calculate_cost("claude-opus-5-5", input_tokens=1000, output_tokens=500)
 ```
 
 ## Calculating costs
@@ -81,7 +105,7 @@ Calculate cost without recording a call.
 
 ```python
 cost = tracker.calculate_cost(
-    model="claude-sonnet-4",
+    model="claude-sonnet-5-5",
     input_tokens=10_000,
     output_tokens=2_000,
     cache_read_tokens=5_000,
@@ -103,7 +127,7 @@ If a model is not found in the pricing table, the cost returns `$0.00` and a war
 
 ```python
 record = tracker.record_call(
-    model="claude-sonnet-4",
+    model="claude-sonnet-5-5",
     input_tokens=8_000,
     output_tokens=1_500,
     cache_read_tokens=3_000,
@@ -111,7 +135,7 @@ record = tracker.record_call(
 )
 
 print(record.call_number)      # 1
-print(record.model)            # "claude-sonnet-4"
+print(record.model)            # "claude-sonnet-5-5"
 print(f"${record.cost_usd:.6f}")  # cost for this call
 print(record.timestamp)        # UTC datetime
 ```
@@ -235,7 +259,7 @@ Summary structure:
         "cache_write_tokens": 5000,
     },
     "calls": [
-        {"call_number": 1, "model": "claude-sonnet-4", "cost_usd": 0.045, ...},
+        {"call_number": 1, "model": "claude-sonnet-5-5", "cost_usd": 0.045, ...},
         ...
     ],
     "budget": {
@@ -278,7 +302,7 @@ Override built-in pricing at construction time:
 ```python
 tracker = CostTracker(
     pricing={
-        "claude-sonnet-4": {
+        "claude-sonnet-5-5": {
             "input": 2.50,   # your negotiated rate
             "output": 12.00,
         },
@@ -307,7 +331,7 @@ What the hooks do:
 The model name is auto-detected from the response object. Override with an explicit name:
 
 ```python
-hooks = tracker.as_hooks(model_name="claude-sonnet-4")
+hooks = tracker.as_hooks(model_name="claude-sonnet-5-5")
 ```
 
 ### Usage extraction patterns
@@ -346,9 +370,9 @@ A single tracker handles calls across different models. The pricing table is con
 tracker = CostTracker(budget=Budget(max_dollars=20.00))
 
 # Track calls to different models
-tracker.record_call(model="claude-opus-4", input_tokens=5000, output_tokens=1000)
-tracker.record_call(model="claude-sonnet-4", input_tokens=20000, output_tokens=5000)
-tracker.record_call(model="gpt-4o", input_tokens=15000, output_tokens=3000)
+tracker.record_call(model="claude-opus-5-5", input_tokens=5000, output_tokens=1000)
+tracker.record_call(model="claude-sonnet-5-5", input_tokens=20000, output_tokens=5000)
+tracker.record_call(model="gpt-5.5", input_tokens=15000, output_tokens=3000)
 
 # Breakdown shows per-call model attribution
 for call in tracker.breakdown():

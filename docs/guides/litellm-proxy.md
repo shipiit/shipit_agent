@@ -20,7 +20,7 @@ proxy — shipit-agent just speaks OpenAI-compatible HTTP to it.
 
 | Field | What it is | Example |
 | --- | --- | --- |
-| `model` | The model alias the proxy routes — whatever shows up in your proxy's `config.yaml` `model_list:` | `gpt-4o-mini`, `claude-sonnet-4-5`, `internal-router-v2` |
+| `model` | The model alias the proxy routes — whatever shows up in your proxy's `config.yaml` `model_list:` | `gpt-4o-mini`, `claude-sonnet-5-5`, `internal-router-v2` |
 | `api_base` | Your proxy URL, the HTTP(S) endpoint that speaks OpenAI format | `https://litellm.my-company.internal` |
 | `api_key` | Bearer token the proxy accepts for this caller | `sk-proxy-abc123...` |
 
@@ -39,7 +39,7 @@ from shipit_agent.llms import build_llm_from_settings
 
 llm = build_llm_from_settings({
     "provider": "litellm",
-    "model": "gpt-4o-mini",
+    "model": "gpt-5.5",
     "api_base": "https://litellm.my-company.internal",
     "api_key": "sk-proxy-abc123...",
     "custom_llm_provider": "openai",   # proxy speaks OpenAI format
@@ -54,7 +54,7 @@ Best when you need full control or are building your own factory.
 from shipit_agent.llms import LiteLLMProxyChatLLM
 
 llm = LiteLLMProxyChatLLM(
-    model="gpt-4o-mini",
+    model="gpt-5.5",
     api_base="https://litellm.my-company.internal",
     api_key="sk-proxy-abc123...",
     custom_llm_provider="openai",
@@ -69,7 +69,7 @@ when `SHIPIT_LITELLM_API_BASE` is present.
 
 ```bash
 export SHIPIT_LLM_PROVIDER=litellm
-export SHIPIT_LITELLM_MODEL=gpt-4o-mini
+export SHIPIT_LITELLM_MODEL=gpt-5.5
 export SHIPIT_LITELLM_API_BASE=https://litellm.my-company.internal
 export SHIPIT_LITELLM_API_KEY=sk-proxy-abc123...
 ```
@@ -132,7 +132,7 @@ use `LiteLLMChatLLM` directly. Any model string LiteLLM accepts works.
 from shipit_agent.llms import LiteLLMChatLLM
 
 llm = LiteLLMChatLLM(
-    model="openai/gpt-4o-mini",
+    model="openai/gpt-5.5",
     api_key=os.environ["OPENAI_API_KEY"],
 )
 

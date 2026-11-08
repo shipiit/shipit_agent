@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Deploy SHIPIT Agent to production with confidence. This guide covers containerization, scaling, monitoring, and best practices for running agents in production environments.
+Deploy ShipIt Agent to production with confidence. This guide covers containerization, scaling, monitoring, and best practices for running agents in production environments.
 
 ---
 

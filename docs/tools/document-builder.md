@@ -5,7 +5,7 @@ description: build_document — polished PDF reports, Excel workbooks with live 
 
 # Document Builder — `build_document`
 
-**New in v1.0.15.** The agent's deliverable engine: structure content once,
+**** The agent's deliverable engine: structure content once,
 pick an output `kind`, and get a finished, shareable file — not a text dump.
 Attached automatically by `Agent.with_builtins`, `Agent.for_role`, and
 `Agent.for_project`.

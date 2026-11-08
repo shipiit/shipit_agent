@@ -1,9 +1,9 @@
 ---
-title: Agent — Multimodal Chat (inline media references)
+title: Multimodal Chat (inline media references)
 description: Users paste [url] or ![alt](url) anywhere in their prompt — the agent extracts the media, builds a multimodal content message, and the vision LLM sees the image right where the user mentioned it. Works with Anthropic, OpenAI, Bedrock, Gemini through one API.
 ---
 
-# Agent — Multimodal Chat
+# Multimodal Chat
 
 > Users write `"Hey what is this [https://example.com/cat.png] about?"` and the
 > agent automatically converts that into a real multimodal message — image
@@ -192,7 +192,7 @@ supports them and the parser detects them automatically.
 from shipit_agent import Agent, MediaParser
 from shipit_agent.llms import AnthropicChatLLM
 
-llm = AnthropicChatLLM(model="claude-sonnet-4-5")
+llm = AnthropicChatLLM(model="claude-sonnet-5-5")
 parser = MediaParser(allowlist_domains=["*.s3.amazonaws.com", "github.com"])
 agent = Agent(llm=llm, media_parser=parser)
 
@@ -598,7 +598,7 @@ for r in refs:
 
 ---
 
-## Combining with other v1.0.8 features
+## Combining with other features
 
 ### + Verifier network
 ```python

@@ -1,9 +1,9 @@
 ---
-title: Agent — Time-Travel Replay
+title: Time-Travel Replay
 description: Load any saved trace, fork from any event, edit the prompt, and resume on a fresh agent. Side-by-side diff between two traces. Replay.io for AI agents — open, in-memory, no SaaS required.
 ---
 
-# Agent — Time-Travel Replay
+# Time-Travel Replay
 
 Agent debugging today is brutal: you read 2000 lines of logs and guess
 what went wrong. **Time-travel replay** turns it into "click the bad

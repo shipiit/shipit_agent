@@ -1,11 +1,11 @@
 ---
 title: Server-side tools
-description: Anthropic-hosted tools — web_search, code_execution, computer_use, bash, text_editor — that run inside Anthropic's own sandbox. Zero local infrastructure; server tool use and results surface in LLMResponse.metadata; required beta headers are attached automatically. New in v1.0.12.
+description: Anthropic-hosted tools — web_search, code_execution, computer_use, bash, text_editor — that run inside Anthropic's own sandbox. Zero local infrastructure; server tool use and results surface in LLMResponse.metadata; required beta headers are attached automatically.
 ---
 
 # Server-side tools
 
-New in **v1.0.12**, shipit_agent can declare **Anthropic-hosted server-side
+Shipit_agent can declare **Anthropic-hosted server-side
 tools**. Unlike ordinary client-side tools — which the model *requests* and your
 process *executes* in a tool loop — server-side tools run inside **Anthropic's
 own sandbox**. The model invokes them, Anthropic runs them, and the results come
@@ -35,7 +35,7 @@ Anthropic API shape, verified against the `anthropic` 0.79.0 SDK:
 ```python
 from shipit_agent.llms import AnthropicChatLLM, web_search, code_execution
 
-llm = AnthropicChatLLM(model="claude-sonnet-4-20250514")
+llm = AnthropicChatLLM(model="claude-sonnet-5-5")
 
 response = llm.complete(
     messages=[...],
@@ -115,7 +115,7 @@ matches the model you're calling.
 
 ## See also
 
-- [Citations & Batch API](./citations-and-batch.md) — the other v1.0.12
+- [Citations & Batch API](./citations-and-batch.md) — the other
   Claude-API passthroughs.
 - [Interleaved thinking & context editing](./interleaved-thinking.md) — extended
   thinking between tool calls and server-side context editing.

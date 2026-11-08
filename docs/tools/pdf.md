@@ -90,7 +90,7 @@ from shipit_agent.llms import OpenAIChatLLM
 from shipit_agent.tools.pdf import PDFTool
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[PDFTool()],
     prompt=(
         "You are a contract reviewer. Use the pdf tool to extract the "

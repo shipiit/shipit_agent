@@ -1,11 +1,11 @@
 ---
 title: The SHIPIT Workspace
-description: Point an agent at a repo and it just works — auto-loaded SHIPIT.md / AGENTS.md project memory, file-based /slash commands from .shipit/commands/, and a checked-in .shipit/settings.json policy wired straight into the permission engine. New in v1.0.14.
+description: Point an agent at a repo and it just works — auto-loaded SHIPIT.md / AGENTS.md project memory, file-based /slash commands from .shipit/commands/, and a checked-in .shipit/settings.json policy wired straight into the permission engine.
 ---
 
 # The SHIPIT Workspace
 
-New in **v1.0.14**, the **SHIPIT Workspace** lets you point an agent at a
+The **SHIPIT Workspace** lets you point an agent at a
 repository and have it *just work* — no glue code. Drop a few conventional
 files in the repo and every agent rooted there picks them up automatically:
 
@@ -150,7 +150,7 @@ user-global `~/.shipit/settings.json` is merged **underneath** the project file
 
 ```json
 {
-  "model": "bedrock/us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+  "model": "bedrock/google.gemma-4-31b",
   "permissions": {
     "mode": "default",
     "allow": ["read*", "grep*"],

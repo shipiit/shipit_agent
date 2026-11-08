@@ -33,7 +33,7 @@ long-running workload immediately benefits.
 from shipit_agent.routing import CostRouter, Tier
 from shipit_agent.autopilot import Autopilot, BudgetPolicy
 from shipit_agent.deep import Goal
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 haiku  = build_llm_from_env("bedrock")   # cheap — Llama 4 Scout / Claude Haiku
 sonnet = build_llm_from_env("bedrock")   # swap to Sonnet 4.5 in real use

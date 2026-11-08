@@ -4,7 +4,7 @@
 data, finance, and support categories. Load by name, customize, or bring
 your own.
 
-## Quick start — `Agent.for_role` (v1.0.15)
+## Quick start — `Agent.for_role`
 
 The fastest path: one line turns any definition into a runnable agent. The
 role's prompt (role + goal + backstory + playbook) becomes the system prompt,
@@ -42,7 +42,7 @@ agent = Agent.with_builtins(
 result = agent.run("Audit my authentication module")
 ```
 
-## What's new — v1.0.7 added 9 persona specialists
+## Persona specialists
 
 | Persona | Built for | Tools auto-wired |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ result = agent.run("Audit my authentication module")
 | `finance-analyst`   | Stripe/Sheets/PDF/SQL number-crunching | Stripe + PDF + SQL + render_dashboard |
 | `customer-support-agent` | Triage + resolve tickets | Zendesk + vision + Slack |
 
-Total roster after v1.0.7 → **56 specialists**. Load any of them the
+Total roster: **56 specialists**. Load any of them the
 same way:
 
 ```python
@@ -70,7 +70,7 @@ The `spec` is a profile — name, description, system prompt, tool list,
 suggested model. Hand it to your `Agent` constructor along with your
 LLM and a project root.
 
-## Per-persona examples (v1.0.7)
+## Per-persona examples
 
 ### Code reviewer bot — review a PR
 

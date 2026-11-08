@@ -1,9 +1,9 @@
 ---
-title: Agent — ComputerUseAgent (browser automation)
+title: ComputerUseAgent (browser automation)
 description: Drive a real browser by showing screenshots to a vision-capable LLM. Anthropic's computer-use API works natively; OpenAI / Bedrock / Gemini work via plain-text fallback. Covers form filling, scraping, end-to-end testing, web apps without APIs.
 ---
 
-# Agent — ComputerUseAgent
+# ComputerUseAgent
 
 `ComputerUseAgent` runs a screenshot → reason → act loop:
 
@@ -257,7 +257,7 @@ continues. Production-ready recovery without extra code.
 
 ---
 
-## Combining with other v1.0.8 features
+## Combining with other features
 
 ### + Verifier network (process supervision)
 ```python

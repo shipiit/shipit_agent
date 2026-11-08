@@ -1,11 +1,11 @@
 ---
 title: Citations & Batch API
-description: Attach source documents with citations enabled and parse Claude's citations back out of metadata for verifiable RAG. Plus the Batch API runtime — BatchRequest / BatchResult / BatchRuntime.run() — for ~50%-cheaper bulk runs. New in v1.0.12.
+description: Attach source documents with citations enabled and parse Claude's citations back out of metadata for verifiable RAG. Plus the Batch API runtime — BatchRequest / BatchResult / BatchRuntime.run() — for ~50%-cheaper bulk runs.
 ---
 
 # Citations & Batch API
 
-New in **v1.0.12**, shipit_agent ships two Claude-API passthroughs for
+Shipit_agent ships two Claude-API passthroughs for
 production-grade workloads: **document citations** (verifiable, grounded
 answers) and a **Batch API runtime** (bulk runs at roughly half price).
 
@@ -37,7 +37,7 @@ from shipit_agent.llms import AnthropicChatLLM, text_document, url_pdf_document
 
 # Attach default documents to every call on this adapter…
 llm = AnthropicChatLLM(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-5-5",
     documents=[
         text_document("Refunds are processed within 5 business days.",
                       title="Refund policy"),
@@ -107,7 +107,7 @@ One request to include in a batch:
 | `messages` | Explicit `[{"role", "content"}]` list; takes precedence over `prompt`. |
 | `system` | Optional system prompt (omitted from the payload when `None`). |
 | `max_tokens` | Max output tokens for this request (default `1024`). |
-| `model` | Model id for this request (default `claude-3-5-sonnet-latest`). |
+| `model` | Model id for this request (default `claude-opus-5-5`). |
 | `metadata` | Optional `metadata` object forwarded to the API. |
 
 ### `BatchResult`
@@ -155,7 +155,7 @@ the roadmap**.
 - [Server-side tools](./server-side-tools.md) — Anthropic-hosted
   `web_search` / `code_execution` / `bash` / `text_editor` / `computer_use`.
 - [Interleaved thinking & context editing](./interleaved-thinking.md) — the
-  third v1.0.12 Claude-API passthrough.
+  third Claude API passthrough.
 - [With RAG](./with-rag.md) — the built-in retrieval pipeline that pairs with
   citation-grounded answers.
 - [Cost tracking](../guides/cost-tracking.md) — track spend across normal and

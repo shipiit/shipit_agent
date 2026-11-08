@@ -37,7 +37,7 @@ from shipit_agent.tools.base import ToolContext
 from shipit_agent.tools.vision import VisionTool
 from shipit_agent.llms import OpenAIChatLLM
 
-vision = VisionTool(llm=OpenAIChatLLM(model="gpt-4o-mini"))
+vision = VisionTool(llm=OpenAIChatLLM(model="gpt-5.5"))
 ctx = ToolContext(prompt="demo")
 
 out = vision.run(
@@ -57,7 +57,7 @@ It needs a vision-capable LLM adapter, supplied one of two ways:
 
 ```python
 # Option 1 — explicit at construction time
-vision = VisionTool(llm=OpenAIChatLLM(model="gpt-4o"))
+vision = VisionTool(llm=OpenAIChatLLM(model="gpt-5.5"))
 
 # Option 2 — share the agent's LLM via context state
 ctx = ToolContext(prompt="demo", state={"llm": my_llm})
@@ -100,7 +100,7 @@ from shipit_agent.llms import OpenAIChatLLM
 from shipit_agent.tools.vision import VisionTool
 from shipit_agent.tools.computer_use import ComputerUseTool
 
-llm = OpenAIChatLLM(model="gpt-4o")
+llm = OpenAIChatLLM(model="gpt-5.5")
 agent = Agent(
     llm=llm,
     tools=[ComputerUseTool(), VisionTool(llm=llm)],
@@ -120,7 +120,7 @@ ToolOutput(
     text="<the LLM's analysis>",
     metadata={
         "provider": "vision",
-        "model": "gpt-4o",             # from llm.model
+        "model": "gpt-5.5",             # from llm.model
         "usage": {...},                # whatever the adapter returns
         "detail": "high",
         "image_url": "data:image/png;base64,...",
@@ -147,6 +147,6 @@ on `metadata["parts"]` for vision-aware adapters to consume.
   capture → analyse loop.
 - [Tool catalog](index.md) — every built-in tool.
 - [Notebook 45 — cost router, async ask, vision, sandbox](https://github.com/shipiit/shipit_agent/blob/main/notebooks/45_cost_router_async_ask_vision_sandbox.ipynb)
-  — worked `VisionTool` examples alongside the other v1.0.7 tools.
+  — worked `VisionTool` examples alongside the other tools.
 - [Specialists](../autopilot/specialists.md) — design-review /
   desktop-automation roles that benefit from vision.

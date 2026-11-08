@@ -149,6 +149,16 @@ nav:
       - Reasoning: guides/reasoning.md
       - Context management: guides/context-management.md
       - Examples: agent/examples.md
+      - Images and files: agent/multimodal-chat.md
+      - Workspace: agent/workspace.md
+      - Tracing: agent/tracing.md
+      - Human in the loop: guides/human-in-the-loop.md
+      - Progress narration: guides/progress-narration.md
+      - Verifier: agent/verifier.md
+      - Memory consolidation: agent/memory-consolidation.md
+      - Time-travel replay: agent/time-travel-replay.md
+      - Computer use: agent/computer-use.md
+      - Testing agents: guides/testing.md
   - Agent SDK:
       - SDK API: guides/agent-sdk.md
       - Permissions: guides/permissions.md
@@ -159,6 +169,12 @@ nav:
       - Sub-agents: guides/delegation.md
       - Agents as tools: guides/agents-as-tools.md
       - Tool search: guides/tool-search.md
+      - Plugins: guides/plugins.md
+  - Claude API features:
+      - Prompt caching: agent/prompt-caching.md
+      - Server-side tools: agent/server-side-tools.md
+      - Citations and batch: agent/citations-and-batch.md
+      - Interleaved thinking: agent/interleaved-thinking.md
   - Orchestration:
       - Parallel execution: guides/parallel-execution.md
       - Async runtime: guides/async-runtime.md
@@ -168,6 +184,15 @@ nav:
       - Pipelines and teams: guides/pipelines-and-teams.md
       - Scheduled agents: guides/scheduled-agents.md
       - Triggers: guides/triggers.md
+  - Autopilot:
+      - Overview: autopilot/index.md
+      - Command line: autopilot/cli.md
+      - Critic: autopilot/critic.md
+      - Fan-out: autopilot/fanout.md
+      - Specialists: autopilot/specialists.md
+      - Artifacts: autopilot/artifacts.md
+      - Asking the user: autopilot/ask-user-async.md
+      - Scheduler daemon: autopilot/scheduler-daemon.md
   - Deep agents:
       - Overview: deep-agents/index.md
       - DeepAgent: deep-agents/deep-agent.md
@@ -179,6 +204,8 @@ nav:
       - Channels: deep-agents/channels.md
       - Benchmarking: deep-agents/benchmarking.md
       - Recipes: guides/deep-agents.md
+      - Prebuilt agents: guides/prebuilt-agents.md
+      - ShipCrew: deep-agents/ship-crew.md
   - RAG:
       - Overview: rag/index.md
       - Standalone RAG: rag/standalone.md
@@ -188,6 +215,13 @@ nav:
       - Adapters: rag/adapters.md
       - API: rag/api.md
       - Agent with RAG: agent/with-rag.md
+  - Integrations:
+      - Model providers: getting-started/llm-providers.md
+      - LiteLLM proxy: guides/litellm-proxy.md
+      - Connections: guides/connections.md
+      - Connecting SaaS apps: guides/connecting-saas.md
+      - Apps: guides/apps.md
+      - Notifications: guides/notifications.md
   - Tools catalog:
       - Overview: tools/index.md
       - Core tools: tools/core-tools.md
@@ -200,6 +234,19 @@ nav:
       - Code and files: tools/code-and-files.md
       - Reasoning helpers: tools/reasoning-helpers.md
       - Connectors: tools/connectors.md
+      - Todo: tools/todo-tool.md
+      - Memory tool: tools/memory-tool.md
+      - Code execution sandbox: tools/code-execution-sandbox.md
+      - GitHub: tools/github.md
+      - GitLab: tools/gitlab.md
+      - SQL: tools/sql.md
+      - PDF: tools/pdf.md
+      - Vision: tools/vision.md
+      - Computer use tool: tools/computer-use.md
+      - Document builder: tools/document-builder.md
+      - Dashboard render: tools/dashboard-render.md
+      - Research brief: tools/research-brief.md
+      - HubSpot ops: tools/hubspot-ops.md
   - Reference:
       - Architecture: reference/architecture.md
       - Agent parameters: reference/parameters.md
@@ -208,6 +255,14 @@ nav:
       - Deep agents API: reference/deep-agents-api.md
       - Tools manifest: reference/tools.md
   - Resources:
+      - Deployment: guides/deployment.md
+      - The shipit CLI: guides/shipit-cli.md
+      - Live UI: guides/live-ui.md
+      - Timeline: guides/timeline.md
+      - Tree view: guides/tree-view.md
+      - Cost tracking: guides/cost-tracking.md
+      - Cost router: routing/cost-router.md
+      - Observability exports: guides/observability-exports.md
       - Benchmark: guides/benchmark.md
       - FAQ: faq.md
       - Glossary: glossary.md

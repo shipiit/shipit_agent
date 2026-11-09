@@ -26,6 +26,13 @@ class SearchProvider(Protocol):
     def search(self, query: str, max_results: int = 5) -> list[dict[str, Any]]: ...
 
 
+def _is_bot_check(raw: str, status: int) -> bool:
+    """DuckDuckGo's challenge page: HTTP 202 or its anomaly form, with no results on it."""
+    if 'class="result__a"' in raw:
+        return False
+    return status == 202 or "anomaly" in raw.lower()
+
+
 class DuckDuckGoSearchProvider:
     """Web search through DuckDuckGo's HTML results; needs no API key."""
     name = "duckduckgo"
@@ -41,6 +48,13 @@ class DuckDuckGoSearchProvider:
         request = Request(url, headers={"User-Agent": self.user_agent})
         with urlopen(request, timeout=self.timeout) as response:  # nosec B310
             raw = response.read().decode("utf-8", errors="replace")
+            status = getattr(response, "status", 200)
+
+        if _is_bot_check(raw, status):
+            raise RuntimeError(
+                "DuckDuckGo answered with a bot check instead of results, so this search found nothing. "
+                "Use a search API instead: web_search_provider='brave', 'serper' or 'tavily' with its API key."
+            )
 
         pattern = re.compile(
             r'<a[^>]*class="result__a"[^>]*href="(?P<url>[^"]+)"[^>]*>(?P<title>.*?)</a>.*?'

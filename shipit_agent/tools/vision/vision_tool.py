@@ -157,16 +157,13 @@ class VisionTool:
             },
         ]
 
-        # Keep content a string (Message.content is typed str), but make it
-        # obvious both the prompt and the image reference are present — the
-        # shortened data-URL form keeps things readable in logs/tests.
-        content_str = (
-            f"{prompt_text}\n\n[image_url: {_shorten(resolved)}]"
-        )
+        # The image goes in the content as an image block, which every adapter
+        # sends to its model; parts stay in metadata for callers that read them.
+        from shipit_agent.multimodal.builder import image_block_from
 
         message = Message(
             role="user",
-            content=content_str,
+            content=[{"type": "text", "text": prompt_text}, image_block_from(resolved)],
             metadata={
                 "parts": parts,
                 "image_url": resolved,
@@ -259,9 +256,3 @@ def _guess_mime(path: Path) -> str:
     if guessed and guessed.startswith("image/"):
         return guessed
     return "image/png"
-
-
-def _shorten(url: str, head: int = 48, tail: int = 8) -> str:
-    if len(url) <= head + tail + 3:
-        return url
-    return f"{url[:head]}...{url[-tail:]}"

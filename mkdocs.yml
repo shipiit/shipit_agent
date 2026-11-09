@@ -259,6 +259,7 @@ nav:
       - Model adapters: reference/adapters.md
       - Deep agents API: reference/deep-agents-api.md
       - Tools manifest: reference/tools.md
+      - Public API: reference/api.md
   - Resources:
       - Deployment: guides/deployment.md
       - The shipit CLI: guides/shipit-cli.md

@@ -78,7 +78,9 @@ class WorkspaceFilesTool:
             target = path if path.exists() else self.root_dir
             items = (
                 sorted(
-                    str(item.relative_to(self.root_dir)) for item in target.iterdir()
+                    # Relative to the resolved root: target is resolved, and the root
+                    # may be reached through a symlink (macOS's /var is one).
+                    str(item.relative_to(self.root_dir.resolve())) for item in target.iterdir()
                 )
                 if target.exists()
                 else []

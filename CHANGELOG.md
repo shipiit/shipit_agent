@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The vision tool sends the image.** `VisionTool` put the image in message
+  metadata that no adapter reads and sent only a shortened text placeholder, so
+  the model never saw the picture. The image is now an image block in the
+  message content, which every provider receives.
+- **Web search reports DuckDuckGo's bot check.** DuckDuckGo's keyless results
+  page answers automated requests with a bot check; the provider read that as
+  "no results", so searches silently found nothing. It now raises an error that
+  names the providers that work with a key (Brave, Serper, Tavily).
+- **`workspace_files` lists a workspace reached through a symlink**, such as
+  macOS's temp folder, instead of raising `ValueError`.
 
 ---
 

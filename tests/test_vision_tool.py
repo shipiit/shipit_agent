@@ -186,9 +186,9 @@ class TestHappyPath:
         messages = stub.calls[0]
         assert len(messages) == 1
         assert messages[0].role == "user"
-        # Both the text prompt and the image URL reference are present.
-        assert "Is there a Login button?" in messages[0].content
-        assert "image_url" in messages[0].content
+        # The prompt and the image itself are both in the content.
+        assert messages[0].content[0] == {"type": "text", "text": "Is there a Login button?"}
+        assert messages[0].content[1] == {"type": "image", "source": {"type": "url", "url": "https://example.com/foo.png"}}
         # Structured parts are stashed in metadata for vision adapters.
         parts = messages[0].metadata["parts"]
         assert parts[0] == {"type": "text", "text": "Is there a Login button?"}
@@ -236,3 +236,29 @@ class TestDetail:
             ctx, image="https://example.com/foo.png", detail="ultra-mega"
         )
         assert out.metadata["detail"] == "auto"
+
+
+class TestImageReachesTheModel:
+    """The image is sent as an image block in the message content, which every
+    adapter understands; before, only a shortened text placeholder reached the
+    model and the image itself sat in metadata no adapter read."""
+
+    def test_a_local_file_arrives_whole_as_a_base64_image_block(self, ctx: ToolContext, tmp_path: Path, png_bytes: bytes) -> None:
+        image = tmp_path / "shot.png"
+        image.write_bytes(png_bytes)
+        stub = _StubVisionLLM()
+        VisionTool(llm=stub).run(ctx, image=str(image), prompt="What is this?")
+        content = stub.calls[0][0].content
+        assert isinstance(content, list)
+        assert content[0] == {"type": "text", "text": "What is this?"}
+        assert content[1] == {
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": base64.b64encode(png_bytes).decode("ascii")},
+        }
+
+    def test_a_url_arrives_as_a_url_image_block(self, ctx: ToolContext) -> None:
+        stub = _StubVisionLLM()
+        VisionTool(llm=stub).run(ctx, image="https://example.com/foo.png", prompt="Describe it.")
+        content = stub.calls[0][0].content
+        assert content[1] == {"type": "image", "source": {"type": "url", "url": "https://example.com/foo.png"}}
+        assert not any("..." in str(block) for block in content)

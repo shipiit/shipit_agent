@@ -27,7 +27,7 @@ TIMEOUT_SECONDS = 300
 
 
 #: Real addresses never reach a saved output; example domains stay readable.
-_EMAIL = re.compile(r"[\w.+-]+@(?!example\.(?:com|org|net)\b)[\w-]+(?:\.[\w-]+)+")
+_EMAIL = re.compile(r"[\w.+-]+@(?!example\.(?:com|org|net)\b)[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b(?![\w/-])")
 
 
 def git_user_name() -> str:

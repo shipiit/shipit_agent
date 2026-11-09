@@ -51,7 +51,7 @@ CELLS = [
         customer_email: str
 
     result = Agent(llm=haiku).run(
-        "From: ana@shop.com — Checkout charges me twice since this morning!!", output_schema=Ticket)
+        "From: ana@example.com — Checkout charges me twice since this morning!!", output_schema=Ticket)
     print(repr(result.parsed))
     print(type(result.parsed).__name__, "| priority:", result.parsed.priority)
     """),
@@ -168,9 +168,9 @@ CELLS = [
 
     extract = StructuredOutput(llm=haiku, schema=Ticket, max_retries=2)
     emails = [
-        "From: ana@shop.com. Checkout charges me twice since this morning!!",
-        "lin@corp.io here — could you add dark mode at some point? No rush.",
-        "From raj@media.net: the export button 500s for every report. Board meeting in an hour.",
+        "From: ana@example.com. Checkout charges me twice since this morning!!",
+        "lin@example.org here — could you add dark mode at some point? No rush.",
+        "From raj@example.net: the export button 500s for every report. Board meeting in an hour.",
     ]
     for email in emails:
         r = extract.run(email)
@@ -183,7 +183,7 @@ CELLS = [
     is the validated object.
     """),
     code("""
-    for partial in extract.stream("From mo@acme.dev: the app crashes when I upload a photo."):
+    for partial in extract.stream("From mo@example.com: the app crashes when I upload a photo."):
         print(partial)
     """),
     md("""
@@ -224,7 +224,7 @@ CELLS = [
 
     print(build_schema_prompt(Ticket)[:300], "…\\n")
     print(json.dumps(schema_to_response_format(Ticket))[:200], "…\\n")
-    print(parse_structured_output('Here you go: {"category": "billing", "priority": "high", "customer_email": "a@b.co"}', Ticket))
+    print(parse_structured_output('Here you go: {"category": "billing", "priority": "high", "customer_email": "a@example.com"}', Ticket))
     try:
         parse_structured_output('{"category": "billing"}', Ticket)
     except Exception as error:

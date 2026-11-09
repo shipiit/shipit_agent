@@ -40,13 +40,14 @@ dev = [
 # --- LLM providers -----------------------------------------------------------
 openai = ["openai>=1.30.0"]
 anthropic = ["anthropic>=0.34.0"]
-litellm = ["litellm>=1.42.0"]
+litellm = ["litellm>=1.42.0", "mcp>=2.3.0,<3"]
 bedrock = ["boto3>=1.34.0"]
-# Gemini, Groq, Together and Ollama run through the LiteLLM adapter.
-google = ["litellm>=1.42.0"]
-groq = ["litellm>=1.42.0"]
-together = ["litellm>=1.42.0"]
-ollama = ["litellm>=1.42.0"]
+# Gemini, Groq, Together and Ollama run through the LiteLLM adapter. LiteLLM 1.106+
+# imports mcp whenever tools are passed but doesn't install it, so these extras do.
+google = ["litellm>=1.42.0", "mcp>=2.3.0,<3"]
+groq = ["litellm>=1.42.0", "mcp>=2.3.0,<3"]
+together = ["litellm>=1.42.0", "mcp>=2.3.0,<3"]
+ollama = ["litellm>=1.42.0", "mcp>=2.3.0,<3"]
 
 # --- Connectors --------------------------------------------------------------
 # The connector catalog reads one manifest.yaml per integration.
@@ -135,6 +136,7 @@ all = [
   "openai>=1.30.0",
   "anthropic>=0.34.0",
   "litellm>=1.42.0",
+  "mcp>=2.3.0,<3",
   "boto3>=1.34.0",
   # Tools
   "playwright>=1.45.0",

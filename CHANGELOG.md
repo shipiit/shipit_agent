@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names the providers that work with a key (Brave, Serper, Tavily).
 - **`workspace_files` lists a workspace reached through a symlink**, such as
   macOS's temp folder, instead of raising `ValueError`.
+- **The LiteLLM extras install `mcp`.** LiteLLM 1.106 and later import `mcp`
+  on every call that passes tools, but install it only with their own `[mcp]`
+  extra, so an agent on `[litellm]`, `[google]`, `[groq]`, `[together]` or
+  `[ollama]` failed on its first call with `No module named 'mcp'`. Those extras,
+  and `[all]`, now install it.
 
 ---
 

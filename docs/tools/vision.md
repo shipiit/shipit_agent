@@ -5,8 +5,8 @@ description: Send an image (file path, URL, data URL, or raw base64) to a vision
 
 # `vision`
 
-Hand any image to a vision-capable LLM adapter (Claude, GPT-4o,
-Gemini, Bedrock Claude, LiteLLM in OpenAI-compatible mode) and get
+Hand any image to a vision-capable LLM adapter (Anthropic, GPT-4o,
+Gemini, Anthropic on Bedrock, LiteLLM in OpenAI-compatible mode) and get
 structured text back. Input can be a filesystem path, an `http(s)`
 URL, a `data:image/...;base64,...` data URL, or raw base64 — the
 tool normalises all four into the OpenAI-compatible `image_url` parts

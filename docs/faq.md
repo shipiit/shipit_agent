@@ -10,9 +10,9 @@ description: Answers to the questions people ask most about ShipIt Agent, from c
 
 An open-source Python runtime for agents: a model that calls tools in a loop until a task is done. It ships the loop, 66 tools, permissions, hooks, sessions, memory, context management and an OS sandbox, and it works with any model that supports tool calling. See the [Overview](index.md).
 
-### How does it relate to the Claude Agent SDK?
+### What is the SDK API?
 
-shipit implements the Claude Agent SDK's API under the same names: `query()`, `AgentClient`, `AgentOptions`, hooks, permission modes, `@tool` and `create_sdk_mcp_server`. The difference is underneath. The SDK drives the Claude Code CLI as a subprocess and runs Claude; shipit runs its own loop in your process and runs any model. [Agent SDK API](guides/agent-sdk.md#where-shipit-differs) lists every difference.
+`shipit_agent.sdk` is an async API on the same loop as `Agent`: `query()`, `AgentClient`, `AgentOptions`, hooks, permission modes, `@tool` and `create_sdk_mcp_server`. It runs in your process, on any model. [Agent SDK API](guides/agent-sdk.md) covers every option, and [Good to know](guides/agent-sdk.md#good-to-know) the details worth knowing.
 
 ### How is it different from LangChain, LangGraph or CrewAI?
 
@@ -30,7 +30,7 @@ It is used in production, with over 5,000 tests and a benchmark of 18 agent task
 
 ### Which model should I use?
 
-Any model with tool calling. On the 18-task benchmark, Claude Sonnet 5.5 and Gemma 4 31B both pass every task: Claude in fewer turns, Gemma at about a seventh of the cost. Start with a strong model; move to a cheaper one once your task works, and check it with the [benchmark](guides/benchmark.md).
+Any model with tool calling. On the 18-task benchmark, Anthropic Sonnet 5.5 and Gemma 4 31B both pass every task: Sonnet in fewer turns, Gemma at about a seventh of the cost. Start with a strong model; move to a cheaper one once your task works, and check it with the [benchmark](guides/benchmark.md).
 
 ### How do I switch models?
 
@@ -46,7 +46,7 @@ Some models narrate a tool call instead of making it. Set `require_tool_call=Tru
 
 ### Why do I see the model's thinking on one provider and not another?
 
-Only some models expose their reasoning, and only when it is turned on (`thinking=` for Claude). Where it exists, it arrives as `reasoning_completed` events. [Reasoning](guides/reasoning.md).
+Only some models expose their reasoning, and only when it is turned on (`thinking=` for Anthropic models). Where it exists, it arrives as `reasoning_completed` events. [Reasoning](guides/reasoning.md).
 
 ## Tools
 

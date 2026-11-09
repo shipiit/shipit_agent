@@ -122,8 +122,7 @@ def block_dangerous_tools(name, arguments):
 ## Keep going until it's really done (stop hooks)
 
 A stop hook runs when the agent is about to give its final answer. Return
-`None` to let it finish, or a reason to send it back to work, in the spirit of
-Claude Code's `Stop` hooks:
+`None` to let it finish, or a reason to send it back to work:
 
 ```python
 hooks = AgentHooks()

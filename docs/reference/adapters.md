@@ -48,8 +48,8 @@ protocol — the runtime doesn't care where the response came from.
 | Adapter | Module | Backing SDK | Best at |
 | --- | --- | --- | --- |
 | [`OpenAIChatLLM`](#openaichatllm) | `shipit_agent.llms` | `openai` | OpenAI directly, fastest tool calling |
-| [`AnthropicChatLLM`](#anthropicchatllm) | `shipit_agent.llms` | `anthropic` | Claude directly, extended thinking |
-| [`BedrockChatLLM`](#bedrockchatllm) | `shipit_agent.llms` | `litellm` | AWS Bedrock — gpt-oss / Claude / Llama |
+| [`AnthropicChatLLM`](#anthropicchatllm) | `shipit_agent.llms` | `anthropic` | Anthropic models directly, extended thinking |
+| [`BedrockChatLLM`](#bedrockchatllm) | `shipit_agent.llms` | `litellm` | AWS Bedrock — gpt-oss / Anthropic / Llama |
 | [`VertexAIChatLLM`](#vertexaichatllm) | `shipit_agent.llms` | `litellm` | Google Vertex AI |
 | [`GeminiChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Gemini API |
 | [`GroqChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Groq's hosted Llama / Mixtral |
@@ -97,7 +97,7 @@ for the full set of fixes.
 ## `AnthropicChatLLM`
 
 Native Anthropic SDK adapter. Best when you have an Anthropic API key
-and want extended thinking + Claude's strict tool-use shape.
+and want extended thinking + Anthropic's strict tool-use shape.
 
 ```python
 from shipit_agent.llms import AnthropicChatLLM

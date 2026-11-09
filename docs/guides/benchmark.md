@@ -98,8 +98,8 @@ task fails the suite before it costs anything.
 
 ## Pitfalls
 
-- **Claude needs the `anthropic` package.** Without it the Anthropic adapter
+- **Anthropic models need the `anthropic` package.** Without it the Anthropic adapter
   raises at the first call. (It used to answer with gpt-oss on Bedrock
-  instead, which made a "Claude" run silently test another model.)
+  instead, which made an Anthropic run silently test another model.)
 - **zsh does not split variables into words**, so `B="python -m ..."; $B`
   fails; use a shell function to run several models in one line.

@@ -170,7 +170,7 @@ nav:
       - Agents as tools: guides/agents-as-tools.md
       - Tool search: guides/tool-search.md
       - Plugins: guides/plugins.md
-  - Claude API features:
+  - Anthropic API features:
       - Prompt caching: agent/prompt-caching.md
       - Server-side tools: agent/server-side-tools.md
       - Citations and batch: agent/citations-and-batch.md

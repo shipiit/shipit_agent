@@ -12,7 +12,7 @@ from shipit_agent.sdk import AgentOptions
 options = AgentOptions(sandbox={"enabled": True})
 ```
 
-The settings use the Claude Agent SDK's `SandboxSettings` names, so a settings dict written for that SDK works unchanged.
+The settings are a plain dict, the same shape whether you pass it to `AgentOptions` or build a `SandboxPolicy` from it.
 
 ## What a sandboxed command can do
 

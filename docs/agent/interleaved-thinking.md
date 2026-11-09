@@ -1,18 +1,18 @@
 ---
 title: Interleaved thinking & context editing
-description: Let Claude think between tool calls with interleaved_thinking + thinking_budget_tokens, and have Anthropic clear stale tool results server-side with context_management. Thinking blocks and budget surface in LLMResponse.metadata.
+description: Let Anthropic models think between tool calls with interleaved_thinking + thinking_budget_tokens, and have Anthropic clear stale tool results server-side with context_management. Thinking blocks and budget surface in LLMResponse.metadata.
 ---
 
 # Interleaved thinking & context editing
 
-`AnthropicChatLLM` exposes two more Claude-API power
+`AnthropicChatLLM` exposes two more Anthropic API power
 features: **interleaved thinking** (the model reasons *between* tool calls, not
 just before its first answer) and **server-side context editing** (Anthropic
 clears stale tool results for you, on its side of the wire).
 
 ## Interleaved thinking
 
-Extended thinking lets Claude produce `thinking` blocks before answering.
+Extended thinking lets Anthropic models produce `thinking` blocks before answering.
 **Interleaved** thinking extends that across a tool loop — the model can think,
 call a tool, see the result, think again, and so on. It's enabled by pairing
 two kwargs on `AnthropicChatLLM`:

@@ -1,17 +1,17 @@
 ---
 title: Citations & Batch API
-description: Attach source documents with citations enabled and parse Claude's citations back out of metadata for verifiable RAG. Plus the Batch API runtime — BatchRequest / BatchResult / BatchRuntime.run() — for ~50%-cheaper bulk runs.
+description: Attach source documents with citations enabled and parse Anthropic's citations back out of metadata for verifiable RAG. Plus the Batch API runtime — BatchRequest / BatchResult / BatchRuntime.run() — for ~50%-cheaper bulk runs.
 ---
 
 # Citations & Batch API
 
-Shipit_agent ships two Claude-API passthroughs for
+Shipit_agent ships two Anthropic API passthroughs for
 production-grade workloads: **document citations** (verifiable, grounded
 answers) and a **Batch API runtime** (bulk runs at roughly half price).
 
 ## Citations — verifiable RAG
 
-When you attach a source `document` block with `citations.enabled`, Claude
+When you attach a source `document` block with `citations.enabled`, the model
 **grounds its answer in that document** and emits `citations` on the text blocks
 of its reply — each pointing back at a character, page, or content-block range
 in the source. shipit parses those into `LLMResponse.metadata["citations"]`, so
@@ -69,7 +69,7 @@ cited text block is skipped, so non-citation responses simply yield `[]`.
 
 Citations are an **Anthropic** feature. They work with `AnthropicChatLLM` (and
 Anthropic models reached via Bedrock / LiteLLM). Other providers ground answers
-through their own mechanisms; the document-citation shape here is Claude's.
+through their own mechanisms; the document-citation shape here is Anthropic's.
 
 ## Batch API — ~50%-cheaper bulk runs
 
@@ -155,7 +155,7 @@ the roadmap**.
 - [Server-side tools](./server-side-tools.md) — Anthropic-hosted
   `web_search` / `code_execution` / `bash` / `text_editor` / `computer_use`.
 - [Interleaved thinking & context editing](./interleaved-thinking.md) — the
-  third Claude API passthrough.
+  third Anthropic API passthrough.
 - [With RAG](./with-rag.md) — the built-in retrieval pipeline that pairs with
   citation-grounded answers.
 - [Cost tracking](../guides/cost-tracking.md) — track spend across normal and

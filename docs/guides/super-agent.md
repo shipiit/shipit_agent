@@ -1,6 +1,6 @@
 # The super agent — every sector, clean logs, real deliverables
 
-shipit ships everything needed to build a Claude-Code-grade agent for any
+shipit ships everything needed to build a full coding agent for any
 role — finance, marketing, engineering, design, research, sales, support —
 with five capabilities that compose cleanly. All of them work with **every
 supported LLM provider** (Anthropic, OpenAI, Bedrock, Gemini, Vertex, Groq,
@@ -83,7 +83,7 @@ rows, auto-sized columns. Excel cells starting with `=` are written as
 ## 4. Clean tool-call logs — `format_activity`
 
 Every event now carries a timestamp, and tool events carry the tool name
-and `duration_ms`. Render a run as Claude-Code-style tool cards:
+and `duration_ms`. Render a run as compact tool cards:
 
 ```python
 from shipit_agent import format_activity

@@ -6,7 +6,7 @@ description: The long-running, goal-driven, budget-gated runtime. Runs until eve
 # Autopilot
 
 `Autopilot` is the long-running runtime that turns any shipit_agent
-`Agent` or `GoalAgent` into a **Claude-Desktop-style autonomous runner**:
+`Agent` or `GoalAgent` into a **long-running autonomous runner**:
 goal-driven, budget-gated, checkpointed, and streaming every iteration
 as it happens.
 
@@ -116,7 +116,7 @@ to disable it.
 | --- | --- | --- |
 | `max_seconds` | `1800.0` (30 min) | Hard wall-clock ceiling — your 24h runs must opt in by raising this. |
 | `max_tool_calls` | `100` | Prevents tool-call storms (a common LLM failure mode). |
-| `max_tokens` | `2_000_000` | Coarse token meter. ~$10 on Claude Sonnet 4.5. |
+| `max_tokens` | `2_000_000` | Coarse token meter. ~$10 on Anthropic Sonnet 4.5. |
 | `max_dollars` | `5.0` | Catches runaway cost. You'll want to override this per run. |
 | `max_iterations` | `200` | Safety net against an infinite loop. |
 

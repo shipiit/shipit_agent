@@ -67,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the history, such as a `ConversationMemory` summary, was dropped with the
   stored session prompts; it is now added to the turn's system prompt.
 - The cost alert log line shows the budget to four decimals, like the spend.
+- **Memory search finds facts by their words.** `InMemoryMemoryStore` and
+  `FileMemoryStore` matched only facts containing the exact query text, so the
+  `memory` tool's natural searches ("deploy region") found nothing. Facts now
+  rank by the query words they contain, the exact phrase first.
 - **RAG sources are reported again.** `result.rag_sources` and the streamed
   `rag_sources` event were always empty in an agent run: the source tracker
   was thread-local and the agent loop runs on a worker thread. It is now a

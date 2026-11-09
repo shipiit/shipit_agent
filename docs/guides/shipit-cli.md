@@ -26,7 +26,7 @@ catalog with defaults marked:
 |---|---|---|
 | `anthropic` | `claude-sonnet-5` | `claude-opus-5` (best agentic), `claude-haiku-4-5` |
 | `openai` | `gpt-5.5` | `gpt-5.6`, pinned snapshots |
-| `bedrock` | `google.gemma-4-31b` | `gemma-4-26b-a4b`, `gpt-oss-120b`, Claude-on-Bedrock |
+| `bedrock` | `google.gemma-4-31b` | `gemma-4-26b-a4b`, `gpt-oss-120b`, Anthropic models on Bedrock |
 | `ollama` | `ollama/llama3.1` | any local model |
 
 ## `shipit code` — the coding agent
@@ -130,9 +130,9 @@ reasons it can react to.
 Every command shares one terminal kit: a named 256-color palette,
 `NO_COLOR`/`FORCE_COLOR` respected before TTY detection, encoding-safe
 printing that can't crash a launch, and audience-bucketed banners. Live
-runs render Claude-Code-style ⏺/⎿ tool cards with durations.
+runs render compact ⏺/⎿ tool cards with durations.
 
-`shipit chat` adds the full Claude-Code layout on real TTYs: chat scrolls
+`shipit chat` adds a full-screen layout on real TTYs: chat scrolls
 in a VT100 scroll region while the input stays pinned to the bottom row
 (stdlib-only; `SHIPIT_NO_TUI=1` opts out, pipes/CI fall back to plain
 text automatically). Slash commands autocomplete via Tab.

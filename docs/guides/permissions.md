@@ -29,7 +29,7 @@ With the SDK API, it is `AgentOptions(permission_mode="acceptEdits")`.
 
 ## Rules
 
-Rules name the calls to allow, deny or ask about. They use the Claude Agent SDK's syntax:
+Rules name the calls to allow, deny or ask about. A rule is a tool name, optionally with a pattern:
 
 | Rule | Covers |
 | :- | :- |

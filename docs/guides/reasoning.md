@@ -8,7 +8,7 @@ Some models think before they answer, and some of those show their thinking. Whe
 
 ## Turning it on
 
-**Claude** thinks when you ask it to. Current models use adaptive thinking, where the model decides how much to think; `effort` sets the depth.
+**Anthropic models** think when you ask them to. Current models use adaptive thinking, where the model decides how much to think; `effort` sets the depth.
 
 ```python
 from shipit_agent.llms import AnthropicChatLLM
@@ -16,7 +16,7 @@ from shipit_agent.llms import AnthropicChatLLM
 llm = AnthropicChatLLM(model="claude-sonnet-5-5", thinking="adaptive", effort="high")
 ```
 
-Older Claude models take a fixed budget instead: `thinking_budget_tokens=4000`. Give a budget to a model that rejects budgets and shipit sends adaptive thinking instead. `interleaved_thinking=True` lets the model think between tool calls, not only at the start of a turn.
+Older Anthropic models take a fixed budget instead: `thinking_budget_tokens=4000`. Give a budget to a model that rejects budgets and shipit sends adaptive thinking instead. `interleaved_thinking=True` lets the model think between tool calls, not only at the start of a turn.
 
 With the SDK API: `AgentOptions(model="claude-sonnet-5-5", thinking="adaptive", effort="high")`, or `max_thinking_tokens=` for a budget.
 

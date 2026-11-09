@@ -4,7 +4,7 @@ description: Run your first agent, watch it work, give it a tool of your own, an
 
 # Quickstart
 
-In five minutes you will run an agent, stream what it does, add a tool of your own, and run the same agent through the Claude Agent SDK API.
+In five minutes you will run an agent, stream what it does, add a tool of your own, and run the same agent through the async SDK API.
 
 ## 1. Install and set a key
 
@@ -81,7 +81,7 @@ print(agent.run("Where is order A-1043?").output)
 
 ## 5. The same agent, through the SDK API
 
-If you know the Claude Agent SDK, this is its API. `query()` yields typed messages and ends with a `ResultMessage`.
+The SDK API is the async way in. `query()` yields typed messages and ends with a `ResultMessage`.
 
 ```python
 import asyncio

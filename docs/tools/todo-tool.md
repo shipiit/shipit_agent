@@ -1,11 +1,11 @@
 ---
 title: TodoTool — live task tracking
-description: TodoTool is the SHIPIT equivalent of Claude Code's TodoWrite — a live, replace-on-write checklist the model maintains while it works, so long agentic runs stay observable. Rendered as a checklist and stored on context.state["todos"]. Included in Agent.with_builtins().
+description: TodoTool is a live, replace-on-write checklist the model maintains while it works, so long agentic runs stay observable. Rendered as a checklist and stored on context.state["todos"]. Included in Agent.with_builtins().
 ---
 
 # `TodoTool` — live task tracking
 
-`TodoTool` is the SHIPIT equivalent of Claude Code's **TodoWrite**: a live
+`TodoTool` is a live
 checklist the model maintains while it works through a multi-step task. Every
 call **replaces** the whole list, so the current plan is always one tool call
 behind the model's actual progress — which is exactly what makes long agentic

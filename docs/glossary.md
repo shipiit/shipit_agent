@@ -107,7 +107,7 @@ The built-in `plan_task` tool that generates a structured execution plan before 
 ## R
 
 ### Reasoning content
-The "thinking" or reasoning block surfaced by some LLMs (OpenAI o-series, Claude extended thinking, Bedrock gpt-oss, DeepSeek R1). shipit-agent extracts this automatically and emits it as `reasoning_started` / `reasoning_completed` events. See [reasoning guide](guides/reasoning.md).
+The "thinking" or reasoning block surfaced by some LLMs (OpenAI o-series, Anthropic extended thinking, Bedrock gpt-oss, DeepSeek R1). shipit-agent extracts this automatically and emits it as `reasoning_started` / `reasoning_completed` events. See [reasoning guide](guides/reasoning.md).
 
 ### `RetryPolicy`
 The runtime configuration that controls how transient failures are retried. Configurable: `max_llm_retries`, `max_tool_retries`, and which exception types are retryable.

@@ -7,7 +7,7 @@ description: Every way to present an agent run, from the terminal view to HTML, 
 
 One run, many ways to show it. Every view on this page renders the same events, so pick the one that fits where the run is going: a terminal, a log, a web page, your own UI or another service.
 
-The outputs below are real. They come from one recorded run: Claude Haiku 5.5, given a two-file project whose test fails and the task `"The tests in this repo fail. Find the bug, fix it, and run the tests to confirm they pass."` It finished in 5 turns, 6 tool calls and 782 tokens, for $0.0009.
+The outputs below are real. They come from one recorded run: Anthropic Haiku 5.5, given a two-file project whose test fails and the task `"The tests in this repo fail. Find the bug, fix it, and run the tests to confirm they pass."` It finished in 5 turns, 6 tool calls and 782 tokens, for $0.0009.
 
 ```python
 from shipit_agent import Agent

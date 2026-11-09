@@ -60,7 +60,7 @@ Any model that supports tool calling works. Two measured points from the [benchm
 | Model | Passed | Input tokens | Cost |
 | :- | -: | -: | -: |
 | Gemma 4 31B on Bedrock | 18/18 | 216k | $0.03 |
-| Claude Sonnet 5.5 | 18/18 | 190k | $0.20 |
+| Anthropic Sonnet 5.5 | 18/18 | 190k | $0.20 |
 
 Strong models finish in fewer turns; small open models cost less per run. Run the benchmark against your own candidates before choosing.
 

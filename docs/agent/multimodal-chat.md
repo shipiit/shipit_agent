@@ -263,7 +263,7 @@ pacing, multiple speakers, and hesitation come through.
 
 | Provider | Audio formats | Notes |
 | --- | --- | --- |
-| Anthropic Claude (Sonnet 4.5+) | `.mp3` `.wav` `.m4a` `.ogg` `.flac` | Native audio blocks |
+| Anthropic (Sonnet 4.5+) | `.mp3` `.wav` `.m4a` `.ogg` `.flac` | Native audio blocks |
 | OpenAI GPT-4o (audio preview) | `.mp3` `.wav` | LiteLLM normalises |
 | AWS Bedrock Nova Pro / Lite | `.mp3` `.wav` `.flac` | Bedrock content blocks |
 | Google Gemini 2.x | `.mp3` `.wav` `.aac` `.flac` `.ogg` | Native multipart |
@@ -349,7 +349,7 @@ both cases the same way — you write one prompt and the runtime adapts.
 | Google Gemini 2.x | Native video ingest, audio + frames | ~1 hour @ Gemini Pro, ~10 min @ Flash | Best video support today; reads narration + visuals |
 | AWS Bedrock Nova Pro | Native video ingest | ~30 min | `.mp4` `.mov` `.webm` |
 | OpenAI GPT-4o | Frame sampling (1–2 fps) | a few minutes | Treats as image batch internally |
-| Anthropic Claude | Frame sampling preview | a few minutes | Best-effort; check beta docs |
+| Anthropic | Frame sampling preview | a few minutes | Best-effort; check beta docs |
 
 ### Minimal video setup
 
@@ -663,9 +663,9 @@ back the `MediaStore` with your real upload backend.
 
 | Provider | Image | Audio | Video | Document | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Anthropic Claude | ✅ | preview | preview | ✅ PDF | Native content blocks |
+| Anthropic | ✅ | preview | preview | ✅ PDF | Native content blocks |
 | OpenAI GPT-4o / o-series | ✅ | ✅ | preview | preview | LiteLLM normalises |
-| AWS Bedrock | ✅ Claude / Nova | ✅ Nova | ✅ Nova | ✅ Claude PDF | Via Bedrock content blocks |
+| AWS Bedrock | ✅ Anthropic / Nova | ✅ Nova | ✅ Nova | ✅ Anthropic PDF | Via Bedrock content blocks |
 | Google Gemini | ✅ | ✅ | ✅ | ✅ | Native multipart |
 
 If your model can't read a kind, the fallback path keeps the URL in text so

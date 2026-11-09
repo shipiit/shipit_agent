@@ -61,8 +61,8 @@ Every keyword `Agent(...)`, `Agent.with_builtins(...)` and `Agent.for_project(..
 
 | Parameter | Default | What it does |
 | :- | :- | :- |
-| `max_iterations` | `None` | Most model steps a run may take. `None` (the default) means no limit: the run ends when the model answers without calling a tool, as in the Claude Agent SDK. |
-| `max_turns` | `None` | The Claude Agent SDK's name for `max_iterations`; set either one. |
+| `max_iterations` | `None` | Most model steps a run may take. `None` (the default) means no limit: the run ends when the model answers without calling a tool. |
+| `max_turns` | `None` | Another name for `max_iterations`; set either one. |
 | `retry_policy` | empty | Retries for transient model and tool errors. [RetryPolicy](#retrypolicy). |
 | `fallback_model` | `None` | Used when the model fails after its retries: a model id, ids separated by commas, an adapter, or a list of them (see `llms/fallback.py`). |
 | `router_policy` | empty | When to plan before the first turn. [RouterPolicy](#routerpolicy). |
@@ -171,9 +171,9 @@ Every keyword `Agent(...)`, `Agent.with_builtins(...)` and `Agent.for_project(..
 | `skills` | empty | Skills to attach to every run, by id or object. |
 | `default_skill_ids` | empty | Skill ids always active. |
 | `skill_match_limit` | `3` | Most skills chosen for one prompt. |
-| `progressive_skills` | `True` | Skills load on demand, as in Claude Code: the prompt lists each in one line and the model reads one with `load_skill` when it needs it. False restores keyword matching that injects whole skills. |
+| `progressive_skills` | `True` | Skills load on demand: the prompt lists each in one line and the model reads one with `load_skill` when it needs it. False restores keyword matching that injects whole skills. |
 | `advertise_packaged_skills` | `False` | List the library's packaged skill catalog too. Off by default: the catalog lists the project's own SKILL.md files and any registry you pass; packaged skills stay usable by id through `skills=[...]`. |
-| `agents` | empty | Named sub-agents, as in the Claude Agent SDK: `{"reviewer": { "description": ..., "prompt": ..., "tools": [...], "model": ...}}`. Defining any gives the agent a `sub_agent` tool that lists them. |
+| `agents` | empty | Named sub-agents: `{"reviewer": { "description": ..., "prompt": ..., "tools": [...], "model": ...}}`. Defining any gives the agent a `sub_agent` tool that lists them. |
 | `auto_project_agents` | `True` | Also read sub-agents from `.shipit/agents/*.md` and `.claude/agents/*.md`. |
 | `max_task_tokens` | `None` | Stop the run after this many tokens. |
 | `max_budget_usd` | `None` | Stop a run, between steps, once its estimated cost reaches this many US dollars. Needs pricing data for the model; without it the run stops rather than spend unchecked. |

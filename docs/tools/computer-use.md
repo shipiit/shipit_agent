@@ -5,7 +5,7 @@ description: Drive the local desktop — screenshots, clicks, typing, key chords
 
 # `computer_use`
 
-Claude-Desktop-style desktop automation. Capture screenshots, move the
+Desktop automation. Capture screenshots, move the
 cursor, click, type, press key chords — on macOS, Linux, or Windows.
 When the target has no API, CLI, or web path, `computer_use` is the
 reach of last resort.

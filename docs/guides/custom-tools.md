@@ -98,7 +98,7 @@ Raise only for failures it cannot fix. A raised exception never ends the run: th
 
 ## SDK tools
 
-With the SDK API, decorate an async function with `@tool` and serve it from an in-process MCP server, as in the Claude Agent SDK:
+With the SDK API, decorate an async function with `@tool` and serve it from an in-process MCP server:
 
 ```python
 from shipit_agent.sdk import AgentOptions, create_sdk_mcp_server, tool

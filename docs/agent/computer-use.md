@@ -335,7 +335,7 @@ multi-page workflows (form sequences, e-commerce checkout). Drop to
 Per agent run with the defaults:
 * **Per iteration** — ~5K input tokens (image + prompt + history) + ~100 output
 * **10 iterations** — ~50K input + ~1K output tokens
-* On Claude 4.5 Sonnet ($3 / $15 per Mtok): **~$0.16 per run**
+* On Anthropic Sonnet 4.5 ($3 / $15 per Mtok): **~$0.16 per run**
 * On GPT-4o ($2.50 / $10): **~$0.13 per run**
 * On Bedrock gpt-oss-120b ($0.15 / $0.60): **~$0.008 per run**
 

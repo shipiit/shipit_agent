@@ -102,7 +102,7 @@ matches the model you're calling.
 
 ## When to use
 
-- **Grounded answers without a search stack** — `web_search()` lets Claude
+- **Grounded answers without a search stack** — `web_search()` lets the model
   research in Anthropic's sandbox; no scraper, proxy, or search API to run.
 - **Sandboxed compute with zero infra** — `code_execution()` runs code
   server-side; you never install Docker or manage a runner.
@@ -116,7 +116,7 @@ matches the model you're calling.
 ## See also
 
 - [Citations & Batch API](./citations-and-batch.md) — the other
-  Claude-API passthroughs.
+  Anthropic API passthroughs.
 - [Interleaved thinking & context editing](./interleaved-thinking.md) — extended
   thinking between tool calls and server-side context editing.
 - [Model adapters](../reference/adapters.md) — the LLM adapter surface.

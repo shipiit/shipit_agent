@@ -306,7 +306,7 @@ for skill in agent.skills:
 ## Project-local `SKILL.md` files
 
 Project agents automatically discover the same directory convention used by
-Codex and Claude Code. Put each skill in its own directory:
+other coding agents. Put each skill in its own directory:
 
 ```text
 .shipit/skills/release-audit/SKILL.md

@@ -1,5 +1,5 @@
 ---
-title: Claude-style memory tool
+title: Command-driven memory tool
 description: ClaudeMemoryTool — the Anthropic memory_20250818 tool shape, a single command-driven tool the model uses to read and write a sandboxed, cross-session memory directory.
 ---
 
@@ -93,7 +93,7 @@ manages itself.
 ## When to use
 
 - You want the **Anthropic memory tool shape** specifically (`memory_20250818`)
-  for parity with Claude's native memory behaviour.
+  for parity with Anthropic's native memory behaviour.
 - The agent runs **repeatedly over time** and should carry learnings forward.
 - You want memory the **model controls directly** via tool calls, sandboxed
   to a directory you choose.

@@ -100,7 +100,7 @@ user: "Now analyze the data"
 
 | Model | `context_window_tokens` |
 |---|---|
-| Claude Opus 5.5, Sonnet 5.5 | `1000000` |
+| Anthropic Opus 5.5, Sonnet 5.5 | `1000000` |
 | GPT-5.5 | `400000` |
 | Gemma 4 31B | `256000` |
 | gpt-oss-120b, Llama 3.3 70B | `128000` |

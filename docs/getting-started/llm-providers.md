@@ -289,8 +289,8 @@ VERTEXAI_LOCATION=us-central1                      # or VERTEX_LOCATION / GOOGLE
 SHIPIT_VERTEX_MODEL=vertex_ai/gemini-3.5-flash       # optional
 ```
 
-The Vertex adapter handles the full Vertex catalog — Gemini, Claude-on-Vertex,
-Llama-on-Vertex, etc. Claude-on-Vertex gets `cache_control` prompt caching too.
+The Vertex adapter handles the full Vertex catalog — Gemini, Anthropic models on Vertex,
+Llama-on-Vertex, etc. Anthropic models on Vertex gets `cache_control` prompt caching too.
 
 ---
 

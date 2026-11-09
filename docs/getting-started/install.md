@@ -16,7 +16,7 @@ Install the extra for the provider you use. Several can be installed together.
 
 | Provider | Extra | Environment variables |
 | :- | :- | :- |
-| Anthropic (Claude) | `shipit-agent[anthropic]` | `ANTHROPIC_API_KEY` |
+| Anthropic | `shipit-agent[anthropic]` | `ANTHROPIC_API_KEY` |
 | OpenAI | `shipit-agent[openai]` | `OPENAI_API_KEY` |
 | AWS Bedrock | `shipit-agent[bedrock]` | `AWS_REGION_NAME` and AWS credentials |
 | Google Gemini | `shipit-agent[google]` | `GOOGLE_API_KEY` |

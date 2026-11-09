@@ -1,6 +1,6 @@
 ---
 title: Artifacts — structured deliverables
-description: Claude-Desktop-style deliverable collection. Code blocks and markdown docs auto-extracted from every iteration, tool results with `artifact=True` captured explicitly, optional disk persistence for CI runs.
+description: Deliverable collection. Code blocks and markdown docs auto-extracted from every iteration, tool results with `artifact=True` captured explicitly, optional disk persistence for CI runs.
 ---
 
 # Artifacts — structured deliverables
@@ -8,7 +8,7 @@ description: Claude-Desktop-style deliverable collection. Code blocks and markdo
 The `ArtifactCollector` captures structured deliverables produced during
 an Autopilot run: code blocks, markdown documents, tool outputs. The
 final `AutopilotResult.artifacts` is a list your UI can render as a
-deliverable panel — Claude-Desktop-style.
+deliverable panel.
 
 > **TL;DR** — pass `artifacts=True` (or an `ArtifactCollector()` instance)
 > to Autopilot. After the run, `result.artifacts` is a list of

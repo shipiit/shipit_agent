@@ -5,7 +5,7 @@ description: Render a structured life / finance / research one-pager as a single
 
 # `render_dashboard`
 
-Produce the same Claude-Desktop-style life / finance dashboards an LLM
+Produce polished life / finance dashboards an LLM
 would otherwise hand-write — cards, timeline, bars, chart, verdict —
 from a structured JSON spec. The tool returns a single self-contained
 HTML document (inline CSS; Chart.js via CDN only when a chart section

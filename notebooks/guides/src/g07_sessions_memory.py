@@ -70,7 +70,7 @@ CELLS = [
     """),
     code("""
     record = store.load("ticket-812")
-    print(record.session_id, "|", len(record.messages), "messages")
+    print("ticket-812 |", len(record.messages), "messages")
     for m in record.messages:
         print(f"  {m.role:9} {m.content[:70]!r}")
     """),
@@ -85,17 +85,17 @@ CELLS = [
 
     manager = SessionManager(store)
     Agent(llm=haiku, session_store=store, session_id="ticket-813").run("Customer Lin can't reset a password. Note it.")
-    print("sessions:", [r.session_id for r in manager.list_sessions()])
+    print("sessions in the store:", len(manager.list_sessions()))
 
     trial = manager.fork(later, "ticket-812")
-    print("fork id:", trial.session_id)
+    print("the fork is a new session:", trial.session_id != "ticket-812")
     print(trial.send("Try a different angle: suggest one likely cause in one line.").output)
     print("original still has", len(store.load("ticket-812").messages), "messages")
     """),
     code("""
     manager.archive("ticket-813")   # marks it archived; the history is kept
-    for r in manager.list_sessions():
-        print(f"{r.session_id:38} archived={r.metadata.get('archived', False)}")
+    for name in ("ticket-812", "ticket-813"):
+        print(f"{name}: archived={store.load(name).metadata.get('archived', False)}")
     """),
     md("""
     ## 6 · A token cap per session

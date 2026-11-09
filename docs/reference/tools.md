@@ -53,5 +53,5 @@ All connectors use `shipit_agent.integrations.CredentialStore` for auth.
 
 ## Related
 
-- [Prebuilt tools guide](../guides/prebuilt-tools.md)
+- [Prebuilt tools guide](../agent/with-tools.md)
 - [Custom tools guide](../guides/custom-tools.md)

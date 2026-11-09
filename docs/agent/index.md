@@ -1,131 +1,123 @@
 ---
-title: Agent
-description: The core shipit_agent.Agent class — what it is, when to use it, and how to compose it with tools, RAG, memory, and sessions.
+title: The Agent
+description: Construct an Agent, run it, stream it, hold a conversation, and choose its tools, limits and stores.
 ---
 
-# Agent
+# The Agent
 
-`shipit_agent.Agent` is the core building block of the entire library.
-Every other agent type — `DeepAgent`, `GoalAgent`, `ReflectiveAgent`,
-`AdaptiveAgent`, `Supervisor`, `PersistentAgent` — wraps an `Agent`
-internally. If you understand `Agent`, you understand the runtime.
+`shipit_agent.Agent` is the runtime. Every other agent in the library, including `DeepAgent`, `GoalAgent` and the SDK's `query()`, runs an `Agent` underneath.
 
-> **TL;DR** — `Agent.with_builtins(llm=llm).run(prompt)` is the
-> minimum viable agent. Add `tools=`, `rag=`, `memory_store=`, or
-> `session_store=` as you need them.
-
----
-
-## When to use plain `Agent`
-
-| Use plain `Agent` when… | Use a deep agent when… |
-| --- | --- |
-| The task fits in one linear pass of "tool → tool → answer". | The task needs explicit planning or multi-step decomposition. |
-| Latency matters more than perfect output. | Quality matters more than latency. |
-| You want minimal ceremony. | You want self-verification, reflection, or sub-agent delegation. |
-| You're building chat features, simple Q&A, or quick automations. | You're building research, code generation, or long-horizon workflows. |
-
-The rule of thumb: **start with `Agent`. When the task starts to feel
-too long for a single linear run, switch to `DeepAgent` — you keep all
-the same tools and gain planning, workspace, sub-agent delegation, and
-the option to enable verification or reflection with one extra flag.**
-
----
-
-## Quick start
+## Three ways to build one
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
-llm = build_llm_from_env()             # reads SHIPIT_LLM_PROVIDER from .env
-agent = Agent.with_builtins(llm=llm)   # 50+ built-in tools, ready to go
+llm = build_llm_from_env()
 
-result = agent.run("Find today's Bitcoin price in USD from a reputable source.")
-print(result.output)
+# Only the tools you give it.
+agent = Agent(llm=llm, tools=[...])
+
+# Every built-in tool: files, search, bash, the web, todos, sub-agents and services.
+agent = Agent.with_builtins(llm=llm, project_root=".")
+
+# A project agent: built-in tools, plus the repository's .shipit/settings.json,
+# SHIPIT.md or AGENTS.md instructions and /slash commands from .shipit/commands/.
+agent = Agent.for_project(llm=llm, project_root=".", optimized=True)
 ```
 
-`with_builtins()` ships 50+ tools out of the box: web search, browser
-automation, code execution, file workspace, Slack, Gmail, Jira, Linear,
-Notion, Confluence, and more.
+`optimized=True` turns on the defaults for long runs: code mode (the tool catalog exposed progressively), compaction at the model's real context window, parallel tools, bounded tool output saved to files when long, and progress summaries. With `for_project`, it also keeps sessions and memory under `.shipit/`. Values you pass always win.
 
----
+## Running it
 
-## Streaming
-
-Replace `agent.run(...)` with `agent.stream(...)` to watch each step
-happen live:
+| Call | Returns | Use it for |
+| :- | :- | :- |
+| `agent.run(prompt)` | `AgentResult` | A task you want the answer to. |
+| `agent.stream(prompt)` | events, as they happen | Showing progress in a terminal or UI. |
+| `await agent.arun(prompt)` | `AgentResult` | The same, from async code. |
+| `agent.astream(prompt)` | async events | Streaming from async code. |
 
 ```python
-for event in agent.stream("Find today's BTC price."):
-    print(f"[{event.type}] {event.message}")
+result = agent.run("Summarise the open issues in docs/ROADMAP.md")
+print(result.output)
+
+for event in agent.stream("Run the tests and fix what fails"):
+    print(event.type, event.message)
 ```
 
-You'll see `run_started`, `step_started`, `reasoning_started`,
-`reasoning_completed`, `tool_called`, `tool_output_started`,
-`tool_output_delta`, `tool_completed`, and `run_completed` events as they
-happen. Every event is a plain dataclass; render it however your UI wants.
+Every call takes `images=` and `files=`: paths or URLs the model sees with the prompt.
 
-See the [Streaming guide](../guides/streaming.md) for the full event
-reference and the [Examples](examples.md) page for a colored terminal
-renderer you can copy.
+```python
+agent.run("What changed between these two screens?", images=["before.png", "after.png"])
+agent.run("Check the contract against the spec.", files=["contract.pdf", "spec.md"])
+```
 
----
+## The result
 
-## Composition checklist
+| Field | Holds |
+| :- | :- |
+| `output` | The final answer. |
+| `parsed` | The validated object, when you passed `output_schema`. |
+| `messages` | The whole conversation, including tool calls and results. |
+| `events` | Every event the run emitted. |
+| `tool_results` | Each tool call's result. |
+| `rag_sources` | The sources cited, when the agent has a `rag`. |
+| `metadata["usage"]` | Token counts. |
+| `metadata["run_summary"]` | How the run ended (`completion_status`, `subtype`), turns, tool calls and `estimated_cost_usd`. |
 
-| Need | Pass | Docs |
-| --- | --- | --- |
-| Tools | `tools=[…]` or `with_builtins()` | [Custom tools](../guides/custom-tools.md) |
-| Skills | `skills=[…]`, `default_skill_ids=[…]`, `skill_source=…` | [Skills guide](../guides/skills.md) |
-| MCP servers | `mcps=[…]` | [MCP integration](../guides/mcp.md) |
-| Grounded answers with citations | `rag=my_rag` | [RAG + Agent](../rag/with-agent.md) |
-| Long-term memory | `memory_store=…` | [Advanced memory](../guides/advanced-memory.md) |
-| Multi-turn chat | `session_store=…` + `agent.chat_session(…)` | [Sessions guide](../guides/sessions.md) |
-| Audit trail | `trace_store=…` | [FAQ — production](../faq.md#how-do-i-monitor-production-runs) |
-| Hooks (before/after LLM, tool wrappers) | `hooks=AgentHooks(…)` | [Hooks guide](../guides/hooks.md) |
-| Parallel tool calls | `parallel_tool_execution=True` | [Parallel execution](../guides/parallel-execution.md) |
-| Bounded parallelism | `max_tool_concurrency=4` | [Parallel execution](../guides/parallel-execution.md) |
-| Auto context compaction | `context_window_tokens=200_000` | [Context management](../guides/context-management.md) |
-| Retry policy | `retry_policy=RetryPolicy(…)` | [Error recovery](../guides/error-recovery.md) |
-| Higher iteration cap | `max_iterations=20` | [Re-planning](../guides/replanning.md) |
-| Token-efficient advanced preset | `Agent.for_project(..., optimized=True)` | [Context management](../guides/context-management.md) |
+## Structured answers
 
-Every parameter is documented with type, default, and "use it when" in
-the [Parameters Reference](../reference/parameters.md#agent).
+Pass a Pydantic model or a JSON Schema, and the answer comes back validated in `result.parsed`. If the model's answer does not validate, it is asked to correct it, up to `max_validation_retries` times.
 
----
+```python
+from pydantic import BaseModel
 
-## What's in this section
 
-- [Examples](examples.md) — Hello-world, web search, custom tools,
-  multi-turn chat, parsers, structured output.
-- [Streaming](streaming.md) — Real-time event handling with rendering
-  recipes for terminals, notebooks, and SSE/WebSocket transports.
-- [With RAG](with-rag.md) — Wire a knowledge base into an `Agent` with
-  one parameter and read citations off `result.rag_sources`.
-- [With Tools](with-tools.md) — Extend the agent with custom tools, MCP
-  servers, and runtime tool factories.
-- [Skills](../guides/skills.md) — attach packaged skills, custom catalogs,
-  and runtime-managed skill workflows.
-- [Memory](memory.md) — `AgentMemory`, conversation summaries, semantic
-  facts, entity tracking, and the OpenAI-style "remember things across
-  sessions" pattern.
-- [Sessions & Memory](sessions.md) — Persistent multi-turn chat,
-  long-term memory, and conversation forking.
+class Invoice(BaseModel):
+    number: str
+    total: float
+    due: str
 
-For agentic patterns above plain `Agent` (planning, reflection,
-delegation, goal-driven), see the [Deep Agents](../deep-agents/index.md)
-section.
 
----
+result = agent.run("Extract the invoice details.", files=["invoice.pdf"], output_schema=Invoice)
+invoice = result.parsed
+```
 
-## See also
+[Structured output](../guides/structured-output.md) covers schemas and streaming.
 
-- [Quickstart](../getting-started/quickstart.md) — five-minute tour
-- [DeepAgent](../deep-agents/deep-agent.md) — when you need more than
-  plain `Agent`
-- [Parameters Reference](../reference/parameters.md) — every
-  constructor parameter
-- [FAQ — agent types](../faq.md#agent-types-which-one-should-i-use) —
-  pick the right agent for the task
+## A conversation
+
+`chat_session()` keeps the history between turns. With a `session_store`, the conversation survives a restart: build the agent again, open the same session id, and carry on.
+
+```python
+from shipit_agent import Agent, FileSessionStore
+from shipit_agent.llms import build_llm_from_env
+
+agent = Agent.with_builtins(llm=build_llm_from_env(), session_store=FileSessionStore(".shipit/sessions"))
+chat = agent.chat_session(session_id="support-42")
+chat.send("The export button does nothing on Safari.")
+chat.send("It started after Tuesday's release.")
+```
+
+[Sessions](sessions.md) covers stores, forking and resuming.
+
+## The settings that matter most
+
+| Need | Setting |
+| :- | :- |
+| Stop runaway runs | `max_turns=30`, `max_budget_usd=2.0`, `max_task_tokens=500_000` |
+| Decide what may run | `permission_mode=`, `permissions=`, `permission_callback=` ([Permissions](../guides/permissions.md)) |
+| Run code before or after tools | `hooks=` ([Hooks](../guides/hooks.md)) |
+| Tools from MCP servers | `mcps=[...]` ([MCP](../guides/mcp.md)) |
+| Many tools, small requests | `deferred_tools=True` ([Tool search](../guides/tool-search.md)) |
+| A fallback when the model fails | `fallback_model=` and `retry_policy=` ([Error recovery](../guides/error-recovery.md)) |
+| Remember across sessions | `memory_store=` ([Memory](memory.md)) |
+| Ground answers in documents | `rag=` ([RAG with an agent](../rag/with-agent.md)) |
+| Sub-agents | `agents={...}` ([Sub-agents](../guides/delegation.md)) |
+| Keep long runs within the window | `context_window_tokens=`, `clear_tool_results=` ([Context management](../guides/context-management.md)) |
+
+[Agent parameters](../reference/parameters.md) lists all of them.
+
+## When to reach for a deep agent
+
+Start with `Agent`. It plans with its todo list, delegates to sub-agents and checks its own work. Reach for a [deep agent](../deep-agents/index.md) when you want a fixed shape around it: a goal with success criteria (`GoalAgent`), a write-critique-revise loop (`ReflectiveAgent`), or a supervisor handing work to specialists (`Supervisor`).

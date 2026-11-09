@@ -96,7 +96,8 @@ class VerifierNetwork:
         """
         if not self.config.veto_enabled:
             return list(tools)
-        return [wrap_tool_with_verifier(t, self.pre_tool, goal=self.goal) for t in tools]
+        checker = _CountingCheck(self)
+        return [wrap_tool_with_verifier(t, checker, goal=self.goal) for t in tools]
 
     # ------------------------------------------------------------------
     # Progress API
@@ -141,3 +142,20 @@ class VerifierNetwork:
 
 
 __all__ = ["VerifierNetwork"]
+
+
+class _CountingCheck:
+    """The pre-tool check, routed through the network so ``stats`` counts it."""
+
+    def __init__(self, network: VerifierNetwork) -> None:
+        self._network = network
+
+    def check(
+        self,
+        *,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        goal: str = "",
+        recent_history: list[dict[str, Any]] | None = None,
+    ) -> PreToolDecision:
+        return self._network.check_tool(tool_name=tool_name, tool_args=tool_args, recent_history=recent_history)

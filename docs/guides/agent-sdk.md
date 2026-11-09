@@ -1,10 +1,9 @@
 # The SDK API
 
 `shipit_agent.sdk` is shipit's own SDK layer, running on shipit's own agent
-loop. It doesn't use or depend on the Claude Agent SDK. Its names and message
-shapes follow that SDK's Python package on purpose: anyone who knows that SDK
-can use shipit straight away, and code written for it ports by changing the
-import. It runs on every provider shipit supports: Anthropic, OpenAI,
+loop. It's async: `query()` streams typed messages for a prompt, `AgentClient`
+keeps a conversation open, and `AgentOptions` holds the model, tools and
+permissions. It runs on every provider shipit supports: Anthropic, OpenAI,
 Bedrock (gpt-oss, Gemma 4 and the rest), Gemini, Vertex, and others through
 LiteLLM.
 
@@ -258,7 +257,7 @@ options = AgentOptions(
 )
 ```
 
-A plugin is a Claude Code plugin directory:
+A plugin is a directory in this layout:
 
 ```text
 deploy-tools/
@@ -270,7 +269,7 @@ deploy-tools/
 └── .mcp.json                    # MCP servers
 ```
 
-Manifest keys work as in Claude Code: `skills` adds to `skills/`, `commands` and `agents` replace their folders, and `hooks` and `mcpServers` merge with the default files. `${CLAUDE_PLUGIN_ROOT}` is filled in in commands, agents and MCP configs, and hook commands get it in their environment. A plugin that doesn't load is reported in the `init` message's `plugin_errors`, as is a path that leaves the plugin directory. The `init` message also lists `plugins`, `skills` and `slash_commands`.
+Manifest keys: `skills` adds to `skills/`, `commands` and `agents` replace their folders, and `hooks` and `mcpServers` merge with the default files. `${CLAUDE_PLUGIN_ROOT}` is filled in in commands, agents and MCP configs, and hook commands get it in their environment. A plugin that doesn't load is reported in the `init` message's `plugin_errors`, as is a path that leaves the plugin directory. The `init` message also lists `plugins`, `skills` and `slash_commands`.
 
 `setting_sources` reads `~/.claude/settings.json` (`user`), `.claude/settings.json` (`project`) and `.claude/settings.local.json` (`local`):
 
@@ -279,7 +278,7 @@ Manifest keys work as in Claude Code: `skills` adds to `skills/`, `commands` and
 - **Hooks:** every file's hooks run.
 - **Commands:** `.claude/commands/*.md` load with `project`.
 
-Command hooks follow Claude Code: the hook input arrives as JSON on stdin.
+Command hooks get the hook input as JSON on stdin.
 
 - **Exit 0:** stdout, if it's one JSON object, is the hook's output. Plain text is added as context for `UserPromptSubmit`.
 - **Exit 2:** blocks, with stderr as the reason.
@@ -305,34 +304,14 @@ options = AgentOptions(session_store=store, resume=branch)
 
 ## Sandbox
 
-`sandbox` runs bash and code execution inside the operating system's sandbox: Seatbelt (`sandbox-exec`) on macOS, bubblewrap (`bwrap`) on Linux. It takes the SDK's `SandboxSettings`:
+`sandbox` runs bash and `run_code` inside the operating system's sandbox, with the SDK's `SandboxSettings`: writes only in the project, the network off unless allowed, and no approval needed for sandboxed commands. See [Sandbox](sandbox.md) for every setting and its limits.
 
-```python
-options = AgentOptions(sandbox={
-    "enabled": True,
-    "excludedCommands": ["docker *"],
-    "filesystem": {"denyWrite": ["/home/me/project/.env"]},
-})
-```
+## Good to know
 
-With it on, a command can:
-
-- **write** only in the project, the `add_dirs` folders, the temp folder and `filesystem.allowWrite`. `filesystem.denyWrite` paths are refused even inside those. `run_code` writes in its own workspace instead of the project.
-- **read** everywhere except `filesystem.denyRead`.
-- **use the network** only when `network.allowedDomains` has an entry. `allowLocalBinding` lets a sandboxed dev server listen on localhost; `allowUnixSockets` (macOS) and `allowAllUnixSockets` open sockets.
-
-Commands that run sandboxed need no approval (`autoAllowBashIfSandboxed`, on by default); blocked commands stay blocked. A command matching `excludedCommands` in every part runs outside the sandbox. With `allowUnsandboxedCommands` (on by default) the model can set `dangerouslyDisableSandbox` on one bash call; that call needs approval.
-
-When no sandbox can run (Windows, or Linux without bubblewrap), commands run unsandboxed with a warning, as in the Python SDK; set `failIfUnavailable` to make `build_agent` and `query()` fail instead. A misspelt setting is an error, not ignored.
-
-Accepted for compatibility, with no effect: `ignoreViolations`, `enableWeakerNestedSandbox`, `allowManagedDomainsOnly`, `allowMachLookup`, `httpProxyPort` and `socksProxyPort`.
-
-## Where shipit differs
-
-- **Settings files are opt-in.** The SDK reads project settings by default. shipit reads none unless `setting_sources` names them, because they can run hook commands and a library has no "do you trust this folder?" prompt. Plugins run because you name each one.
-- **No CLI process.** shipit runs in your process, so `cli_path`, `extra_args`, `stderr`, `max_buffer_size`, `permission_prompt_tool_name` and `Transport` have no counterpart. Project files (`CLAUDE.md`, `.claude/agents`, `.shipit/skills`) are read directly.
+- **Settings files are opt-in.** shipit reads none unless `setting_sources` names them, because they can run hook commands and a library has no "do you trust this folder?" prompt. Plugins run because you name each one.
+- **No CLI process.** shipit runs in your process; there is no subprocess to configure. Project files (`CLAUDE.md`, `.claude/agents`, `.shipit/skills`) are read directly.
 - **Sessions live in a `SessionStore`, not in transcript files.** The agent stamps `updated_at` on each save; `continue_conversation` picks the latest.
 - **`continue_: False` in a hook output** refuses that call or prompt; it doesn't end the whole session. `PreToolUse` and `PermissionRequest` callbacks get `tool_use_id=None`.
 - **`interrupt=True` from `can_use_tool`** refuses the call; it doesn't end the session.
 - **`sandbox` filters the network per machine, not per domain.** Any `network.allowedDomains` entry turns the network on for every host, and `deniedDomains` is not enforced. See [Sandbox](#sandbox).
-- **File checkpoints** cover the file tools, not files changed by shell commands. The SDK has the same limit.
+- **File checkpoints** cover the file tools, not files changed by shell commands.

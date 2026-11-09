@@ -42,6 +42,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Relative sandbox paths point at the project.** `filesystem.denyWrite`,
+  `denyRead` and `allowWrite` entries such as `".env"` were resolved against
+  the Python process's working directory, so `denyWrite: [".env"]` protected
+  nothing when the process ran from another folder (a server, a notebook).
+  They now resolve against the project root.
+- **System messages reach Anthropic models.** `AnthropicChatLLM.complete()`
+  dropped system-role messages unless `system_prompt=` was also passed, so
+  callers that send their instructions as a system message lost them: the
+  verifier's pre-tool and progress checks (vetoes never fired), memory
+  summaries and the autopilot critic. They now become the system prompt.
+- **The verifier's stats count checks made inside a run.** Tools wrapped by
+  `VerifierNetwork` called the checker directly, bypassing the counters, so
+  `verifier.stats` read zero however many calls it vetoed.
+- **`verify_before_stop` uses the agent's project.** The verify gate looked
+  for the test command in the process's working directory unless
+  `persist_large_tool_outputs` was on, so it was silently off for agents
+  whose `project_root` was elsewhere.
+- **Autopilot counts tokens and dollars.** `GoalResult` carried no usage, so
+  Autopilot's token and dollar meters read zero and `max_tokens` /
+  `max_dollars` could never stop a run. `GoalResult.metadata` now has the
+  summed usage, the model and the tool-call count of its steps.
+- **A caller's system messages in `history=` are kept.** System context passed
+  in the history, such as a `ConversationMemory` summary, was dropped with the
+  stored session prompts; it is now added to the turn's system prompt.
+- The cost alert log line shows the budget to four decimals, like the spend.
+- **Memory search finds facts by their words.** `InMemoryMemoryStore` and
+  `FileMemoryStore` matched only facts containing the exact query text, so the
+  `memory` tool's natural searches ("deploy region") found nothing. Facts now
+  rank by the query words they contain, the exact phrase first.
+- **RAG sources are reported again.** `result.rag_sources` and the streamed
+  `rag_sources` event were always empty in an agent run: the source tracker
+  was thread-local and the agent loop runs on a worker thread. It is now a
+  context variable, which the worker inherits; concurrent runs still keep
+  their own sources.
+- **RAG citation numbers match the sources.** `rag_search` numbered each
+  search's results from `[1]`, so after a second search the model's `[1]`
+  and `rag_sources[0]` were different chunks. Inside a run, every hit is now
+  labelled with its run-wide number, a chunk found again keeps its first
+  number, and `rag_fetch_chunk` includes the chunk's `citation`.
+
 - Browser connection failures remain visible inside the settings dialog and
   failed token changes preserve the displayed conversation. Unfinished runs
   are no longer presented as complete; malformed model selections return a

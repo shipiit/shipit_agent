@@ -127,4 +127,4 @@ reports the conclusion, and streaming both says everything twice.
 
 - [Agents as tools](agents-as-tools.md) — when the child should be different
 - [Deep agents](deep-agents.md) — planning, critics and a research crew
-- [Streaming](streaming.md) — the full event vocabulary
+- [Streaming](../agent/streaming.md) — the full event vocabulary

@@ -1,7 +1,6 @@
 # Upgrading from 2.2
 
-This release brings shipit's defaults in line with how the Claude Agent SDK
-and Claude Code behave. Most code keeps working unchanged; the changes
+This release changes several defaults so agents behave well out of the box. Most code keeps working unchanged; the changes
 below are the ones that can alter what an existing agent does. Each says
 how to get the old behaviour back.
 
@@ -30,7 +29,7 @@ can still call it. Use `RouterPolicy(auto_plan=True)` for the old behaviour.
 ## Tools
 
 **A smaller resident set.** With `deferred_tools="auto"` the tools always in
-the prompt are Claude Code's working set (files, glob, grep, bash, web
+the prompt are the core working set (files, glob, grep, bash, web
 search and fetch, todo, ask the user, multi_edit, memory, load_skill); the
 rest are found through `tool_search`. A tool's `discovery_priority` still
 keeps it resident.
@@ -61,7 +60,7 @@ marketplace skills are listed only with `advertise_packaged_skills=True`.
 **No silent switch away from Anthropic.** Without the `anthropic` package,
 `AnthropicChatLLM` used to answer with gpt-oss-120b on Bedrock instead, even
 for an explicit `provider="anthropic"`, and the run's cost was computed at
-Claude's prices. It now raises at the first call, naming the fix:
+Anthropic's prices. It now raises at the first call, naming the fix:
 
 ```
 pip install anthropic          # or: pip install "shipit-agent[anthropic]"
@@ -92,7 +91,7 @@ before; check any `deny` or `allow` list you pass.
 
 ## Settings files and plugins
 
-Claude Code settings files (`~/.claude/settings.json`,
+settings files (`~/.claude/settings.json`,
 `.claude/settings.json`, `.claude/settings.local.json`) are read **only** for
 the sources you name, because they can run commands:
 

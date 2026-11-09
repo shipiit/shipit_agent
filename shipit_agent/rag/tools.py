@@ -85,8 +85,12 @@ class RAGSearchTool:
         payload = {
             "query": query,
             "total_found": ctx.total_found,
+            # Inside a run, label each hit with the number the run's
+            # rag_sources gives it, so a [N] in the answer means one chunk
+            # however many searches came before.
             "results": [
-                _summarise_result(i, r) for i, r in enumerate(ctx.results, start=1)
+                _summarise_result(self.rag.citation_index(r.chunk.id) or i, r)
+                for i, r in enumerate(ctx.results, start=1)
             ],
         }
         return ToolOutput(
@@ -162,6 +166,9 @@ class RAGFetchChunkTool:
             "text": chunk.text,
             "metadata": chunk.metadata,
         }
+        citation = self.rag.citation_index(chunk.id)
+        if citation is not None:
+            payload["citation"] = f"[{citation}]"
         if chunks_above or chunks_below:
             neighbours = self.rag.vector_store.list_chunks(chunk.document_id)
             idx_map = {c.id: i for i, c in enumerate(neighbours)}

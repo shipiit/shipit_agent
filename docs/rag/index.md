@@ -24,7 +24,6 @@ or deep agent with a single `rag=` parameter.
 | **Source tracking** | Per-run `[N]` citation tracker, attached to `AgentResult.rag_sources` |
 | **Pluggable backends** | `VectorStore` / `KeywordStore` / `Embedder` / `Reranker` protocols |
 | **Zero required deps** | Works out of the box with stdlib + numpy-free pure-Python defaults |
-| **DRK_CACHE adapter** | Read existing pgvector indexes through `DrkCacheVectorStore` |
 
 ---
 
@@ -46,7 +45,6 @@ shipit_agent/rag/
 ├── rag.py               RAG facade — index/search/fetch_chunk + source tracking
 ├── tools.py             rag_search, rag_fetch_chunk, rag_list_sources
 └── adapters/
-    └── drk_cache.py     Read existing DRK_CACHE pgvector indexes
 ```
 
 The `RAG` facade is the only thing most users touch. Everything below it is
@@ -85,7 +83,7 @@ That is the entire flow:
 - **[RAG + Agent](with-agent.md)** — wiring `rag=` into a regular `Agent`.
 - **[RAG + Deep Agents](with-deep-agents.md)** — `GoalAgent`, `ReflectiveAgent`,
   `Supervisor`, `AdaptiveAgent`, `PersistentAgent`.
-- **[Adapters](adapters.md)** — `DrkCacheVectorStore` and other production backends.
+- **[Adapters](adapters.md)** — bring your own embedder, vector store and reranker.
 - **[API reference](api.md)** — every public class and method.
 
 Notebook tour:

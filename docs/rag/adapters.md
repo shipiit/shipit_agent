@@ -34,37 +34,6 @@ few thousand chunks.
 
 ---
 
-## DRK_CACHE adapter
-
-Read existing pgvector indexes from a DRK_CACHE backend over `psycopg2`,
-without going through Django.
-
-```python
-from shipit_agent.rag import RAG
-from shipit_agent.rag.adapters.drk_cache import DrkCacheVectorStore
-
-store = DrkCacheVectorStore(
-    dsn="postgresql://user:pass@host:5432/drk_cache",
-    knowledge_base_ids=[1, 2, 3],
-    embedding_dimension=1024,   # must match your embedder
-    writable=False,             # read-only by default
-)
-
-rag = RAG(vector_store=store, embedder=my_1024_dim_embedder)
-agent = Agent(llm=my_llm, rag=rag)
-```
-
-> **Embedding dimension constraint** — your `Embedder.dimension` must
-> equal `DrkCacheVectorStore.embedding_dimension` (default 1024). The
-> `RAG` constructor validates this up front and raises a clear error
-> on mismatch, so you don't silently get garbage results.
-
-The adapter maps `drkcache_kb_chunk` rows directly to `Chunk`
-dataclasses. The original numeric DRK_CACHE chunk id is preserved in
-`chunk.metadata["drk_chunk_id"]`.
-
----
-
 ## Bringing your own embedder
 
 Wrap any function that turns text into vectors:
@@ -184,10 +153,9 @@ rag = RAG.default(embedder=my_embedder, reranker=CohereReranker(client=cohere_cl
 | Corpus size | Recommended setup |
 | --- | --- |
 | < 1k chunks (tests, demos) | `RAG.default(embedder=HashingEmbedder())` |
-| 1k–100k chunks (single-user app) | `RAG.default(embedder=OpenAIEmbedder())` |
+| 1k–100k chunks (single-user app) | `RAG.default(embedder=...)` with a real embedder, such as the `OpenAIEmbedder` above |
 | > 100k chunks, persistent | Custom `VectorStore` over Chroma / Qdrant / pgvector |
-| Existing DRK_CACHE deployment | `DrkCacheVectorStore` |
-| High-quality retrieval critical | Add `LLMReranker` or `CohereReranker` |
+| High-quality retrieval critical | Add `LLMReranker`, or a reranker of your own such as the `CohereReranker` above |
 
 ---
 

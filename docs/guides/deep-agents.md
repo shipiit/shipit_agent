@@ -1,6 +1,6 @@
 # Deep Agents
 
-SHIPIT Agent's deep agent system provides autonomous, self-directing agent capabilities that go beyond any existing framework. All deep agents support **MCP servers**, **built-in tools** (web search, code execution, file operations), **real-time streaming**, and the full agent configuration.
+ShipIt Agent's deep agent system provides autonomous, self-directing agent capabilities that go beyond any existing framework. All deep agents support **MCP servers**, **built-in tools** (web search, code execution, file operations), **real-time streaming**, and the full agent configuration.
 
 Use `.with_builtins()` on any deep agent for instant access to all capabilities.
 

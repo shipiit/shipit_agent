@@ -46,7 +46,7 @@ class BudgetChecksMixin:
         ):
             self._warning_emitted = True
             logger.warning(
-                "Cost alert: $%.4f spent of $%.2f budget (%.0f%%)",
+                "Cost alert: $%.4f spent of $%.4f budget (%.0f%%)",
                 self._total_cost,
                 self._budget.max_dollars,
                 (self._total_cost / self._budget.max_dollars) * 100,

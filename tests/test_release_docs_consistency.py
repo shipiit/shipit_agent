@@ -18,29 +18,20 @@ def test_root_changelog_includes_v1_0_5_entry() -> None:
     )
 
 
-def test_docs_homepage_tip_is_updated_to_v1_0_5() -> None:
-    """The docs landing page should not still headline the older v1.0.3 release."""
+def test_docs_homepage_does_not_headline_an_old_release() -> None:
+    """The docs landing page should not headline a 1.x release; the changelog holds those."""
     index_doc = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
-    assert (
-        '!!! tip "v1.0.5 — Prebuilt Agents, ShipCrew, Notifications, Cost Tracking"'
-        in index_doc
-    )
-    assert '!!! tip "v1.0.3 — Super RAG, DeepAgent, live chat REPL"' not in index_doc
+    assert '!!! tip "v1.' not in index_doc
 
 
 def test_docs_changelog_does_not_reference_missing_v1_0_5_guides() -> None:
     """Release notes should not point at docs files that do not exist in the repo."""
     docs_changelog = (ROOT / "docs" / "changelog.md").read_text(encoding="utf-8")
 
-    missing_paths = [
-        "guides/prebuilt-agents.md",
-        "deep-agents/ship-crew.md",
-        "guides/notifications.md",
-        "guides/cost-tracking.md",
-    ]
-    for rel_path in missing_paths:
-        assert not (ROOT / "docs" / rel_path).exists()
-        assert rel_path not in docs_changelog
+    import re
+
+    for rel_path in set(re.findall(r"\]\(((?:[\w-]+/)*[\w-]+\.md)", docs_changelog)):
+        assert (ROOT / "docs" / rel_path).exists(), rel_path
 
 
 def test_docs_changelog_notebook_summary_matches_checked_in_notebooks() -> None:

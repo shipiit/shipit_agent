@@ -14,7 +14,7 @@ Chain agents and functions together like UNIX pipes. Steps reference previous re
 from shipit_agent import Agent, Pipeline, step
 from shipit_agent.llms import OpenAIChatLLM
 
-llm = OpenAIChatLLM(model="gpt-4o-mini")
+llm = OpenAIChatLLM(model="gpt-5.5")
 
 researcher = Agent(llm=llm, prompt="You are a research expert. Return key facts.")
 writer = Agent(llm=llm, prompt="You are a technical writer. Write clear content.")

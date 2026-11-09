@@ -463,6 +463,27 @@ class TestVerifierNetwork:
         n.check_tool(tool_name="t", tool_args={})
         assert n.stats.pretool_veto == 1
 
+    def test_tools_wrapped_by_the_network_count_in_its_stats(self) -> None:
+        ran: list[str] = []
+
+        class Delete:
+            name = "delete_record"
+            description = "Delete a record."
+
+            def schema(self) -> dict[str, Any]:
+                return {"type": "function", "function": {"name": self.name, "parameters": {}}}
+
+            def run(self, context: Any = None, **kwargs: Any) -> str:
+                ran.append("delete")
+                return "deleted"
+
+        n = VerifierNetwork(llm=StubLLM([_veto_response(), _allow_response()]))
+        (wrapped,) = n.wrap_tools([Delete()])
+        wrapped.run(None)
+        wrapped.run(None)
+        assert ran == ["delete"]
+        assert (n.stats.pretool_calls, n.stats.pretool_veto, n.stats.pretool_allow) == (2, 1, 1)
+
     def test_check_tool_records_rewrite(self) -> None:
         n = VerifierNetwork(llm=StubLLM([_rewrite_response({"x": 1})]))
         n.check_tool(tool_name="t", tool_args={})

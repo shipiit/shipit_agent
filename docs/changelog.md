@@ -1,10 +1,1483 @@
 # Changelog
 
+All notable changes to **shipit-agent** will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## Unreleased
 
-See the [canonical changelog](https://github.com/shipiit/shipit_agent/blob/main/CHANGELOG.md#unreleased) for automatic tool
-discovery, progressive skills, token-budget enforcement, history/compaction,
-cache accounting, plugin isolation and the latest validation results.
+### Added
+
+- Local Chrome Workspace companion with a docked, height-aware chat panel,
+  compact composer, streamed replies, page snapshots, screenshots and bounded
+  image/document uploads. Default model selection includes Gemma 4 31B and
+  26B-A4B on Bedrock; model changes preserve backend chat history.
+- Optional Google Docs, Sheets and Slides API tool with per-chat change
+  proposals, explicit Apply controls, revision checks for Docs/Slides and
+  best-effort conflict detection for Sheets. Added the `browser` install extra
+  and local setup documentation.
+- Browser bridge validation and session-isolation tests, Workspace proposal
+  tests, attachment tests, streaming decoder tests and an opt-in five-turn
+  real Bedrock HTTP/SSE smoke test.
+- **`sandbox`**, the Claude Agent SDK option: bash and `run_code` run under
+  Seatbelt on macOS or bubblewrap on Linux, writing only in the project, the
+  `add_dirs` folders, temp and `filesystem.allowWrite`, with the network off
+  unless `network.allowedDomains` is set. `excludedCommands`,
+  `allowUnsandboxedCommands` (`dangerouslyDisableSandbox`, approved like a
+  risky command), `autoAllowBashIfSandboxed`, `failIfUnavailable`,
+  `filesystem.denyWrite`/`denyRead`, `allowLocalBinding` and Unix sockets are
+  enforced. Domains are not filtered one by one. Also usable directly as
+  `BashTool(sandbox_policy=...)`.
+
+### Changed
+
+- **Every module is under 300 lines** except the package `__init__`, which
+  is only the public import list. 38 modules split by job into sibling
+  modules and mixins; public names import from the same paths as before.
+  `shipit_agent.apps` is now a package, and `create_deep_agent` lives in
+  `deep/deep_agent/create.py` (still importable from `factory`).
+- **The license is declared as an SPDX expression** (`license = "MIT"`), as
+  setuptools requires from 2027; building now needs setuptools 77 or newer.
+
+### Fixed
+
+- **Relative sandbox paths point at the project.** `filesystem.denyWrite`,
+  `denyRead` and `allowWrite` entries such as `".env"` were resolved against
+  the Python process's working directory, so `denyWrite: [".env"]` protected
+  nothing when the process ran from another folder (a server, a notebook).
+  They now resolve against the project root.
+- **System messages reach Anthropic models.** `AnthropicChatLLM.complete()`
+  dropped system-role messages unless `system_prompt=` was also passed, so
+  callers that send their instructions as a system message lost them: the
+  verifier's pre-tool and progress checks (vetoes never fired), memory
+  summaries and the autopilot critic. They now become the system prompt.
+- **The verifier's stats count checks made inside a run.** Tools wrapped by
+  `VerifierNetwork` called the checker directly, bypassing the counters, so
+  `verifier.stats` read zero however many calls it vetoed.
+- **`verify_before_stop` uses the agent's project.** The verify gate looked
+  for the test command in the process's working directory unless
+  `persist_large_tool_outputs` was on, so it was silently off for agents
+  whose `project_root` was elsewhere.
+- **Autopilot counts tokens and dollars.** `GoalResult` carried no usage, so
+  Autopilot's token and dollar meters read zero and `max_tokens` /
+  `max_dollars` could never stop a run. `GoalResult.metadata` now has the
+  summed usage, the model and the tool-call count of its steps.
+- **A caller's system messages in `history=` are kept.** System context passed
+  in the history, such as a `ConversationMemory` summary, was dropped with the
+  stored session prompts; it is now added to the turn's system prompt.
+- The cost alert log line shows the budget to four decimals, like the spend.
+- **Memory search finds facts by their words.** `InMemoryMemoryStore` and
+  `FileMemoryStore` matched only facts containing the exact query text, so the
+  `memory` tool's natural searches ("deploy region") found nothing. Facts now
+  rank by the query words they contain, the exact phrase first.
+- **RAG sources are reported again.** `result.rag_sources` and the streamed
+  `rag_sources` event were always empty in an agent run: the source tracker
+  was thread-local and the agent loop runs on a worker thread. It is now a
+  context variable, which the worker inherits; concurrent runs still keep
+  their own sources.
+- **RAG citation numbers match the sources.** `rag_search` numbered each
+  search's results from `[1]`, so after a second search the model's `[1]`
+  and `rag_sources[0]` were different chunks. Inside a run, every hit is now
+  labelled with its run-wide number, a chunk found again keeps its first
+  number, and `rag_fetch_chunk` includes the chunk's `citation`.
+
+- Browser connection failures remain visible inside the settings dialog and
+  failed token changes preserve the displayed conversation. Unfinished runs
+  are no longer presented as complete; malformed model selections return a
+  client error without losing the chat.
+- Chat-session streaming forwards images and files and closes its underlying
+  stream when the consumer disconnects.
+- **A call that needs approval no one can give** now says it was not run and
+  what to do instead: finish the task and name what still needs approval.
+  Told only "requires human approval", Gemma retried `rm` and then asked for
+  confirmation in text until it ran out of turns.
+- **Renames across many files**: the bash guidance names one portable
+  `perl -pi -e` call, then a `grep_files` check, instead of a read and an edit
+  per file, and puts throwaway scripts in a temp folder. Gemma's rename across
+  eight modules passed 5 of 5 runs in 7-12 turns (before: 3 of 6, up to 40
+  turns and 863k input tokens). All 18 benchmark tasks pass on Gemma 4 and
+  Claude Sonnet 5.5; Claude's input tokens fell 11%.
+- **The benchmark paired tool results with calls by position**, so one call
+  without a result shifted every later one in the trace; it pairs by id.
+
+## v3.0.0 — 2026-11-07
+
+Feature and default parity with the Claude Agent SDK and Claude Code, under
+the same API names, on every provider. Several defaults changed: see
+docs/guides/upgrading.md, and docs/releases/3.0.0.md for the full notes.
+
+### Added
+
+- `shipit_agent.sdk`: `query()`, `AgentOptions`, typed messages, `AgentClient`
+  (multi-turn, interrupt, file rewind), saved sessions (resume, fork),
+  in-process MCP tools (`@tool`, `create_sdk_mcp_server`), `AskUserQuestion`.
+- `shipit_agent.harness`: Claude Code plugins, settings files (opt-in) and
+  shell command hooks.
+- Permission rules in the SDK's syntax, checked in its order;
+  `allowed_tools`, `disallowed_tools`, `max_turns`, `dontAsk` mode.
+- All ten SDK hook events; hooks may defer a call to resume it later.
+- User-defined sub-agents; background tasks with notifications and
+  `task_stop`; `fallback_model`.
+- `clear_tool_results` (off by default) for very long runs.
+- MCP servers over SSE (`{"type": "sse"}`), `continue_conversation`,
+  `add_dirs`, `env`, `betas` and `max_thinking_tokens` on `AgentOptions`.
+- A run's usage, and `ResultMessage.usage`, carries the SDK's shape
+  (`input_tokens` uncached, the cache counters, `output_tokens`) for every
+  provider.
+- `scripts/bench`: 18 real tasks checked by outcome, with traces,
+  `--repeat` and run comparison.
+
+### Changed
+
+- No step limit by default (`max_iterations`, `max_budget_usd` are opt-in).
+- Read-only tool calls run in parallel by default.
+- Claude Code's working set of tools stays resident; skills load on demand.
+- The automatic planner is opt-in.
+- Bash: full shell under permissions, two-minute default timeout, long
+  commands continue in the background.
+- The fixed per-turn prompt is about 42% smaller.
+- `shipit chat` prints a compact transcript by default.
+
+### Fixed
+
+- Without the `anthropic` package, Anthropic requests raised nothing and
+  went to gpt-oss on Bedrock; they now raise with the install command.
+- The native Anthropic adapter sent shipit's tools in OpenAI's shape, so the
+  API rejected every request that had a tool; they are now converted.
+- Streamed text could arrive after `run_completed`, and the transcript then
+  showed the answer twice.
+- Dropped connections are retried instead of ending the run.
+- A background sub-agent's whole work shows in the live display.
+- Current Claude models, gpt-oss and Gemma 4 on Bedrock are priced at their
+  own rates.
+- The docs build (`mkdocs --strict`) failed on a link outside the docs folder.
+- The installed package now includes the packaged skills catalog and agents
+  (`skills/skills.json`, `agents/agents.json`); the wheel had left them out.
+
+## v2.2.1 — 2026-10-07
+
+### Security
+
+- `bash` (including background jobs read via `bash_job`) and `run_code`
+  spawned model-written commands with the full host environment, so any
+  secret in the process env (`SECRET_KEY`, DB passwords, API keys loaded by
+  dotenv) was readable with `printenv` / `os.environ`. Their child processes
+  now get a scrubbed environment: `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`,
+  `LANG`, `LANGUAGE`, `LC_*`, `TERM`, `TZ`, `TMPDIR`/`TMP`/`TEMP`,
+  `PYTHONIOENCODING` and the Windows basics. `SSH_AUTH_SOCK` is not kept.
+
+### Changed
+
+- Behaviour change: commands run by `BashTool` and `CodeExecutionTool` no
+  longer see host environment variables outside that list. Opt in with the
+  new keyword arguments on both tools: `env_allowlist=["NAME", ...]` passes
+  named host variables through, `extra_env={...}` sets explicit values (e.g.
+  `{"HOME": workspace}`), and `inherit_env=True` restores the previous
+  full-environment behaviour. `run_code` with `sandbox=true` also passes
+  `DOCKER_*` to the `docker` CLI. `bash` still runs a login shell (`bash
+  -lc`), so profile files can re-export variables; override `HOME` via
+  `extra_env` if that matters.
+### Fixed
+
+- A text tool call such as `{"path": …, "content": …}` fit several file tools
+  (each declares `path`) and was dropped as ambiguous, so the file was never
+  written. When several tools accept a nameless object, the one tool that
+  declares every key it carries is chosen; a genuine tie is still left alone.
+
+## v2.2.0 — 2026-10-02
+
+### Fixed
+
+- A model that kept calling a tool after the runtime switched to a text-only
+  step looped to `max_iterations` (16 model calls, ~70k tokens, seen live with
+  a small model). Calls on a text-only step are now ignored and the text is
+  the answer; emits `tool_calls_ignored`.
+- The "you have not called any tool yet" reminder was sent as its own trailing
+  user message, and small models answered it ("I am ready for your request")
+  instead of the question, or called a document tool for facts already in the
+  chat. It now rides on the request as a labelled note; after a tool result it
+  still follows, marked internal.
+- Text-call healing promoted any JSON object to a call of a no-argument tool
+  (its empty schema skipped the key check). A model's JSON *answer* became a
+  phantom `list_documents` call and vanished from the reply, structured-output
+  answers were re-run as tool calls, and genuine nameless calls became
+  ambiguous and were dropped. A nameless object with keys never matches a tool
+  that takes no arguments.
+- `on_user_prompt` hooks were documented but never called; both runtimes now
+  run them before anything else sees the prompt (rewrite, or deny with
+  `prompt_blocked`).
+
+### Added
+
+- Stop hooks: `AgentHooks.on_stop` sees the answer the agent is about to give
+  and can send it back to work with a reason (Claude Code-style `Stop`
+  hooks), in sync and async runs. Bounded by `MAX_STOP_CONTINUATIONS` (3);
+  emits `stop_blocked`, `stop_unresolved` and `stop_hook_error`.
+- `StepRouter` (`shipit_agent.routing`): a drop-in LLM that picks the model
+  per step of a run. Routine steps (reading successful tool results) and
+  summaries run on `fast`; planning a turn, recovering from a failed tool,
+  side calls and the final answer run on `strong`. A fast step's text is
+  buffered: if it calls tools the narration is released, and if it starts
+  answering the step is re-run on `strong`, so the user never reads the small
+  model's answer or sees text twice. Works for sync, async and streaming runs.
+- `max_session_tokens`: a soft token budget across every run of an agent or
+  one chat session, checked between steps; an exhausted session stops before
+  spending. `agent.session_token_usage` and `agent.reset_session_usage()`.
+- Diagnostics report `discarded_tokens`, `session_token_limit` and
+  `session_tokens_used`.
+
+### Changed
+
+- The user's real prompt is tagged `metadata["turn_start"]`, so tools can tell
+  it apart from runtime-injected user messages (reminders, retry nudges).
+- A routed step's discarded call counts toward usage, cost and budgets but not
+  toward context calibration, which is now keyed on the model that ran the step.
+
+### Limitations
+
+- Early abort of a fast step needs an adapter that stops streaming when the
+  text callback returns `False` (OpenAI-compatible and LiteLLM do). The native
+  Anthropic adapter ignores that return value, so there the fast call runs to
+  completion before escalating.
+- Savings depend on the price ratio between the two models and on how often
+  fast steps escalate; they have not yet been measured against live models.
+
+## v2.1.0 — 2026-09-29
+
+### Added
+
+- Schema-budgeted automatic tool discovery for ordinary `Agent`, streaming and
+  async runs. Large catalogs start with a small resident set plus discovery;
+  authorized tool schemas load on demand. `DiscoveryPolicy` controls the
+  initial count, schema budget and reuse. Discovery does not grant permission.
+- Bounded, schema-fingerprinted discovery checkpoints for reuse across turns,
+  revalidated against the current authorized catalog. Corpus-weighted lexical
+  search supports authored `discovery_terms`, exact names and MCP metadata.
+- Opt-in `progressive_skills=True`: advertise enabled skill metadata and load
+  instructions on demand with fresh per-run state. Explicit/default skills
+  retain their existing behavior; loading a skill grants no new tools.
+- Optional `max_task_tokens` soft per-run budget. Budget stops retain completed
+  tool evidence and mark work incomplete. Missing/partial input-output usage
+  stops budgeted continuation; the iteration-cap summary also respects the
+  budget. In-flight calls/retries can overshoot; this is not a spending cap.
+- Usage diagnostics separate estimated request content from reported main and
+  compaction usage, track prefix changes, and distinguish partial accounting
+  and missing cache counters from complete reports. Cache hits are not assumed.
+- `ToolOutput.from_records` provides bounded, field-selected model views while
+  retaining canonical evidence for the host.
+- Reproducible live fixture evaluations, 100–500-tool discovery benchmarks,
+  loopback HTTP/SSE MCP failure-isolation tests, and a custom harness guide.
+
+### Fixed
+
+- Preserve native assistant tool calls and matching tool-result IDs when
+  accepting wire-style chat history. Preserve provider finish reasons and
+  expose incomplete output rather than treating every stop as success.
+- Honor separate system prompts in OpenAI/LiteLLM calls, including compaction
+  instructions. Improve summary chronology, exclude summaries from user-turn
+  counts, and retain the newest user turn under tight compaction budgets.
+- Normalize inclusive versus exclusive cache accounting without changing raw
+  provider counters, including compaction usage and cost calculations.
+- Prevent plugin tool/hook reactivation during chat cloning, isolate hook
+  lists, and preserve host-supplied tools when skills contribute capabilities.
+- Deduplicate shared tool guidance; bound skill descriptions; validate skill
+  reference containment; avoid constructing unused builtin tool catalogs.
+- Propagate nested tool failures through code-mode results and preserve
+  streaming alongside tools. Extend MCP reconnect/session-affinity coverage.
+
+### Validation and limitations
+
+- Latest full Shipit regression: **4,514 passed, 31 skipped**; one collection
+  warning. Targeted DRK integration after the final budget fixes: **87 passed**.
+- Real Gemma 31B/Bedrock with controlled MCP data: 40-message session passed
+  40/40 evidence checks with three compactions; a fresh 20-message stream passed
+  20/20 with 537 text deltas, six completed tool calls and one compaction.
+- Budget-enabled live fixture run: 10/10 scenarios, 42,040 input / 391 output
+  tokens, including 2,368 reported cached input tokens. No universal cache
+  savings, all-provider live coverage or production-connector reliability claim.
+- The offline 500-tool benchmark reduced serialized request characters 89.1%
+  while adding one request. This is not a billed-token or intelligence score.
+- Existing plugin/hook composition is supported; executing Claude Code/Codex
+  as a backend is not implemented. Progressive cross-turn skill-body deduplication
+  and session-wide budgets remain future work.
+
+See [controls and detailed validation](https://github.com/shipiit/shipit_agent/blob/main/docs/progressive-agent-controls.md),
+[efficiency measurements](https://github.com/shipiit/shipit_agent/blob/main/docs/agent-efficiency-validation.md),
+[discovery review](https://github.com/shipiit/shipit_agent/blob/main/docs/tool-discovery-review.md) and
+[custom harness composition](https://github.com/shipiit/shipit_agent/blob/main/docs/guides/custom-agent-harness.md).
+
+## v1.9.9 — 2026-08-19
+
+Live-trace-driven fixes for Gemma 4 on Bedrock Mantle (and every model): fewer tokens, real cost, tools that actually work.
+
+### Changed
+
+- **`CORE_TOOLS` 25 → 13.** The deferred-tools resident set held twelve synonyms
+  of the same capability (`run_code`/`execute_code`/`bash`, four "write
+  structure" tools, `ask_user`/`ask_user_async`/`human_review`, …). A model
+  choosing between them guesses right about a third of the time. Trimmed to one
+  tool per capability; everything dropped stays reachable through `tool_search`.
+  The deferred first turn drops from ~7.4k to ~3.7k Gemma tokens. `execute_code`
+  and `describe_binding` are kept — code mode depends on them.
+- **Gemma 4 real context window** in `get_model_limits`: 256K (31B / 26B-A4B),
+  128K (E2B). Previously a low default made compaction fire at a fraction of the
+  model's capacity ("it forgets things").
+
+### Added
+
+- **Gemma pricing rows** (26b / 31b / e2b) so a run's cost is not silently
+  reported as `$0.00`. An unknown model still resolves to `None`, not a
+  zero-rate default — unknown and free are different answers.
+- **"Look before you ask"** in `DEFAULT_AGENT_PROMPT`: the agent searches for a
+  referenced file/document/error with the tools it has before asking the user to
+  provide it.
+
+### Fixed
+
+- **`$ref` / `$defs` inlining on tool schemas** (`llms/schema_prep.py`, wired
+  into the LiteLLM adapter). Pydantic / FastMCP MCP servers emit `$defs` +
+  `$ref` for nested argument models; OpenAI tolerates it but a strict
+  OpenAI-*compatible* validator like Bedrock Mantle often does not — simple
+  tools keep working, nested ones fail quietly, and the model reads as stupid
+  rather than blocked. Each tool's parameter schema is now inlined and
+  dialect-sanitized (cached, never-raising) before it goes on the wire. **Host
+  params** (`max_context_tokens`, `file_token_limit`, …) are stripped off the
+  wire — forwarding one is a 400 on a field never aimed at the model.
+
+## v1.9.8 — 2026-08-19
+
+Tool calling engages reliably on OpenAI-compatible endpoints that need it spelled out.
+
+### Fixed
+
+- **Send `tool_choice: "auto"` when tools are offered.** The LiteLLM adapter passed
+  `tools` but never `tool_choice`. Most providers assume `auto`, but some
+  OpenAI-compatible endpoints — notably AWS Bedrock's Gemma (`bedrock-mantle`)
+  route, per AWS's own examples — only engage function calling when
+  `tool_choice` is sent explicitly; without it the model narrates the call as
+  prose and loops instead of emitting a structured call. A caller can still
+  override (`"required"`/`"none"`) via `completion_kwargs`. Applies to both the
+  streaming and non-streaming paths.
+
+## v1.9.7 — 2026-08-18
+
+Context accounting is real from the first turn, not an estimate.
+
+### Added
+
+- **Real per-model token counting** (`count_tokens`, `count_message_tokens`). Real
+  counts via LiteLLM's tokenizer (already a dependency), memoised, with a safe
+  fall-back to the `chars/4` estimate — never raises. For models LiteLLM only
+  approximates (some Bedrock ids), the `TokenCalibrator` still refines against the
+  provider's *actually reported* `prompt_tokens`, the true ground truth.
+- **`Agent(fixed_prefix_tokens=…)`** — forwarded through both runtimes to the
+  `Compactor`, so a host can pass a real system-prompt + tool-schema prefix count
+  and compaction is accurate from turn one; the calibrator seeds and refines the
+  rest. The accurate-from-turn-one path is: real count → calibrator refines.
+
+## v1.9.6 — 2026-08-18
+
+One flaky MCP connector no longer taxes the whole agent.
+
+### Added
+
+- **MCP resilience — circuit breaker + bounded retry** (`ResilientMCPTransport`,
+  `CircuitBreaker`). An MCP connector is a live dependency; when one goes down,
+  gets slow, or starts rate-limiting, it was re-dialled on every step and each
+  attempt waited out the full transport timeout. Now a per-server breaker marks a
+  server *open* after a few consecutive failures and fails fast (no network wait)
+  until an exponentially-growing cooldown elapses; one success resets it. A
+  rate-limit (HTTP 429 / JSON-RPC `-32029`) trips it immediately with a long,
+  fixed cooldown — never hammer a server that asked us to slow down. The wrapper
+  is transparent (`request`/`close` + attribute passthrough) and wired into
+  `connectors.registry`, so every hosted (HTTP) and stdio connector is resilient
+  by default. Failures still surface as the readable tool result the model
+  already handles — this just stops the stall.
+
+## v1.9.5 — 2026-08-18
+
+Compaction fires at the *right* time, so long tool-heavy runs stay lean and stop overflowing the model.
+
+### Added
+
+- **Calibrated, prefix-aware context accounting** (`TokenCalibrator`). The
+  compaction trigger ran on two systematic under-counts: it ignored the fixed
+  prompt prefix (system prompt + tool schemas, ~16k tokens on a tool-heavy agent)
+  because those live outside `messages`, and it estimated tokens as `chars/4`,
+  which under-counts dense JSON tool output (~2.5–3 chars/token) — the shape that
+  most needs compacting. Together they fired the trigger late enough to overflow
+  the provider. Now a per-model EMA learns the gap between the estimate and the
+  provider's real `prompt_tokens` (prompt-cache counters included, so a cache hit
+  can't drag it down), and the `Compactor` counts the fixed prefix. The trigger
+  and the retention target derive from one calibrated estimate; `estimate_tokens`
+  stays a pure function. Clamped asymmetrically (floors at 1.0 — it can only ever
+  compact *earlier*), model-keyed, warm-up gated. Fed from the exact view sent at
+  each main completion, never the summary pass. Backwards compatible: no prefix +
+  no calibrator reproduces the old messages-only estimate.
+
+## v1.9.4 — 2026-08-16
+
+### Added
+
+- **Text-to-speech: bring-your-own-key.** `TextToSpeechTool(provider_keys={...})`
+  lets a host pass an org's own OpenAI/Gemini/ElevenLabs key **at synthesis time**
+  — the backend uses it directly and never reads the shared process env, so a
+  multi-tenant server keeps `os.environ` clean per tenant. The tool's
+  availability gate now also counts a host-supplied key (so a keyed provider is
+  offered even when nothing is in the env), and each backend prefers an explicit
+  `api_key` over its env var. Edge stays free with no key.
+
+## v1.9.3 — 2026-08-16
+
+The agent can't declare a coding task done on failing tests.
+
+### Added
+
+- **Verify-on-stop — evidence-gated coding** (opt-in `Agent(verify_before_stop=True)`).
+  Wires the shipped verification ledger into the loop so the agent **cannot finish
+  a turn that edited code without fresh passing tests**. As tools run, a
+  `VerifyGate` records edits (a non-read-only tool that touched a verifiable file
+  — a README/LICENSE edit never counts, and a *failed* edit never counts) and
+  verify runs (a shell command matching the project's detected test command,
+  by real exit code). When the model tries to finish, an edited-but-unverified
+  turn is sent back with a "run the tests, read the failure, fix it" nudge
+  (bounded, emits `verify_required`); once a matching command exits 0, it
+  finishes. If it runs out of steps first, `verify_skipped` is emitted rather
+  than a silent unverified "done". Off by default; **sync loop** (which the
+  streaming path runs on) — async parity is a follow-up.
+
+## v1.9.2 — 2026-08-16
+
+More deliverables and more voices.
+
+### Added
+
+- **Text-to-speech: a Gemini backend + a pinnable default provider.** The `tts`
+  registry now includes **Gemini** (`gemini-2.5-flash-preview-tts`, wraps the
+  API's raw PCM into a playable WAV) alongside Edge (free) / OpenAI / ElevenLabs,
+  and `TextToSpeechTool` takes a `default_provider` / `default_voice` (or reads
+  `SHIPIT_TTS_PROVIDER` / `SHIPIT_TTS_VOICE`). A multi-tenant host can now pin an
+  org's chosen voice provider while the model omits it — and with nothing set,
+  selection stays free-first (Edge). An explicit per-call `provider=` still wins.
+- **`present_file` — hand a finished file to the user as a deliverable.** After
+  the agent generates or saves a file (an image, a spoken clip, a rendered PDF, a
+  CSV), it *presents* it: the user gets a **downloadable, previewable card** the
+  way ChatGPT/Codex surface an artifact, instead of a path buried in prose. Plugs
+  into the runtime's existing artifact tracker (it declares the file's `path`),
+  previews images inline via the vision bridge, and emits the `MEDIA:<path>` tag a
+  send pipeline turns into an inline attachment. Sandbox-guarded (an optional
+  `root_dir`); a builtin, so local and hosted agents both get it.
+
+## v1.9.1 — 2026-08-16
+
+Closes the ADK-vs-shipit token gap: the loop no longer restates its plan.
+
+### Fixed
+
+- **Re-announcement damping — the model stops restating the same plan**
+  (`runtime_core.py` `step_request`, `prompts/reminders.py`). The last piece of
+  the dithering story: a weak model kept announcing *"I will check the evidence
+  and classify the urgency…"* across steps instead of acting, each restatement
+  another model call (one benchmark: 3× the tokens for the same answer). When a
+  step's narration is near-identical to one the model already gave this turn,
+  a terse *"you already stated this plan — issue the next tool call or answer,
+  don't restate"* line is appended to the end-of-context reminder. Reads only the
+  assistant's own narration (no tool payloads), fires **only after** repetition
+  is observed (a first honest plan is never discouraged), and never on the last
+  step (which already forces the answer). Both loops, via the shared
+  `step_request`. With duplicate-call suppression (1.9.0) and blind-call repair
+  (1.9.0), this closes the three diagnosed causes of the ADK-vs-shipit token gap.
+
+## v1.9.0 — 2026-08-16
+
+Media generation, a leaner loop, agent rules, and the groundwork for
+evidence-gated coding. Nine features, each its own tested change.
+
+### Added
+
+- **Media generation — the agent can make images, speak, and film.** Three new
+  tools on one pluggable, availability-gated registry pattern (each backend
+  declares a cheap `is_available()`; a tool is hidden unless a backend can run):
+  - **`image_generate`** — OpenAI (`gpt-image-1`/`dall-e-3`) + LiteLLM long-tail;
+    returned inline through the vision bridge. Extra: `[openai]`/`[litellm]`.
+  - **`text_to_speech`** — Edge (free, no key) / OpenAI / ElevenLabs; returns a
+    saved path + a `MEDIA:<path>` tag. Extra: `[tts]`.
+  - **`video_generate`** — Fal / Replicate; blocks (submit→poll→download) and
+    returns an MP4 path + `MEDIA:` tag. Extra: `[video]`.
+  - **Model validation** on image + video: a permissive denylist rejects a
+    clearly-wrong chat/text model (`gpt-4o`, `claude-*`) before the API call,
+    while any plausible generation model (incl. new ones) passes.
+
+- **Advanced file reading** (`shipit_agent/tools/file_extract/`). `read_file`
+  now extracts office/web documents to clean Markdown — DOCX, XLSX (one table
+  per sheet), PPTX (one section per slide), HTML, CSV/TSV, PDF — instead of
+  returning binary soup. Availability-gated per format; `[files]` extra.
+
+- **Agent rules** (`shipit_agent/rules/`). Durable policy at the agent *and*
+  tool level — `Agent(rules=[...])`, `.shipit/rules/*.md`, and a tool's own
+  `rules` attribute — scoped by path (`paths=["tests/**"]`) or tool
+  (`tools=["bash"]`), priority-ordered. The house-style layer that complements
+  skills' capability.
+
+- **MCP schema cache + lazy register** (`connect(..., cache=True)`). A warm
+  start rebuilds a connector's tools from an on-disk cache **without spawning
+  the process**; the subprocess launches only when a tool is first called, so an
+  unused connector costs nothing. Config-fingerprinted, atomic writes, TTL, and
+  a first-call `ensure_ready` handshake seam.
+
+- **Verification ledger** (`shipit_agent/verify/`) — the groundwork for
+  evidence-gated coding. A tiny SQLite ledger where an edit marks the workspace
+  dirty and only a matching test/build (exit 0) marks it clean
+  (`passed`/`unverified`/`not_applicable`), `detect_verify_commands()` project
+  sniffing, and the gate helpers. Ships the standalone library; the verify-on-
+  stop loop guard follows as its own PR.
+
+### Fixed
+
+- **The loop stops dithering — duplicate read-only calls are suppressed, not
+  re-executed** (`runtime.py`, `async_runtime.py`). A weak model that re-issues
+  a read it already ran this turn now gets a terse "reuse the result" note
+  instead of a re-run (one benchmark: 10 tool calls where 3 sufficed). Scoped to
+  read-only by contract; different arguments always run; both loops.
+
+- **Blind-call repair — a rejected call gets the tool's full signature back**
+  (`runtime_core.py`). Under `deferred_tools`, a model that never saw a tool's
+  schema and guessed a wrong argument name now gets the compact callable
+  signature in the rejection, turning a dead bounce into a self-correcting retry.
+
+## v1.8.1 — 2026-08-16
+
+Human-in-the-loop, made first-class.
+
+### Added
+
+- **`@requires_confirmation` — first-class tool confirmation**
+  (`shipit_agent/tools/confirmation.py`). A tool declares for itself that it
+  needs a human "yes", with one decorator, wired into the existing permission
+  gate and approval queue:
+
+  ```python
+  @requires_confirmation("Deletes files permanently.", impact="irreversible")
+  class DeleteTool: ...
+
+  @requires_confirmation("Large transfer needs sign-off.",
+                         when=lambda a: a["amount"] >= 10_000)
+  def wire_transfer(amount, to): ...
+  ```
+
+  It goes past a plain yes/no: a **`when(arguments)` predicate** makes it
+  conditional (a cheap call runs free, only the dangerous one pauses); **impact
+  levels** (`default` / `destructive` / `irreversible`) let a UI colour the
+  approval card; it is a **per-tool floor** — `PermissionEngine.check` asks even
+  under a bypass/allow mode, and only a hard deny outranks it; and because the
+  answer flows through the existing approval machinery, a human can
+  **approve-with-edit**. A broken predicate fails safe (asks, never skips).
+
+### Fixed
+
+- **A denied tool is final — the model no longer retries it.** After a human
+  declined a tool, the result said only "was NOT run", which the model read as a
+  transient failure and retried — re-prompting the human on every loop. The
+  denied result now states the decision is final ("do NOT retry, rephrase, or
+  pursue the goal another way; silence is not consent"), so the run stops after
+  one denial. Applied to both the sync and async runtimes.
+
+---
+
+## v1.8.0 — 2026-08-15
+
+The theme is a first-class, extensible platform: connections, providers,
+plugins, and tools each become a clean drop-in directory — one unit per folder —
+so adding one is a data edit, not a code change.
+
+### Added
+
+- **Connector catalog — connections as data** (`shipit_agent/connectors/`).
+  Every integration is an MCP server described by one declarative
+  `catalog/<name>/manifest.yaml`; the registry scans, validates, and
+  **skips-invalid-with-a-diagnostic** (a typo never breaks the catalog).
+  Ships **28 connectors** across developer, communication, productivity, data,
+  business, and automation — GitHub, GitLab, Linear, Jira, Confluence, Sentry,
+  Slack, Discord, Intercom, Notion, Asana, ClickUp, Todoist, Google Drive,
+  Postgres, SQLite, Brave Search, Fetch, Google Maps, Airtable, Stripe, PayPal,
+  Square, Filesystem, Playwright, Puppeteer, Memory, Cloudflare. `connect(name)`
+  turns a manifest into a live MCP server, choosing the hosted (HTTP/SSE) or
+  stdio transport and wiring the per-user bearer token.
+- **Self-refreshing per-user OAuth** (`connectors/oauth_manager.py`).
+  `OAuthCredentialManager` resolves the right user's token at call time and
+  refreshes it transparently near expiry, recovers from a live 401 with one
+  refresh, dedupes concurrent refreshes, and reports
+  `connected`/`expired`/`disconnected` per connection for a dashboard.
+  **38 provider presets** carry the authorize/token/refresh endpoints, so a
+  connector's OAuth is one `register_preset(...)`. `TokenStore` is a small
+  pluggable protocol with in-memory and `0600` file-backed implementations.
+- **Provider catalog — every model, one profile-per-dir**
+  (`shipit_agent/providers/`). Each provider is a `catalog/<name>/profile.yaml`
+  (display name, auth env, adapter class, default model, capabilities) plus an
+  optional `provider.py` for imperative setup. Ten ship: **openai, anthropic,
+  bedrock, gemini, vertex, litellm, groq, together, ollama, shipit/echo**.
+  `build_llm_from_settings` now resolves through the catalog first and falls
+  back to the inline chain when PyYAML is absent — behaviour is identical, and
+  a new provider is a dropped-in directory rather than a code edit. Profiles
+  carry `fallback_models` for a coming failover layer.
+- **Plugin system — extend the agent without editing it**
+  (`shipit_agent/plugins/`). A plugin is a clean `catalog/<name>/` directory: a
+  declarative `plugin.yaml` plus a `plugin.py` exporting `register(reg)`, where
+  `reg` is a small `PluginRegistrar` the plugin uses to contribute **tools** and
+  **lifecycle hooks**. Discovery draws from three sources in increasing
+  precedence — **bundled**, a **user directory** (`$SHIPIT_PLUGINS_DIR` or
+  `$SHIPIT_HOME/plugins`), and **pip entry points** (`shipit_agent.plugins`,
+  opt-in via `SHIPIT_PLUGIN_ENTRY_POINTS=1` since they run installed-package
+  code) — user plugins override bundled ones, and each source
+  **skips-invalid-with-a-diagnostic**. Hook points map one-to-one onto the
+  agent's `AgentHooks` surface, so a plugin hook is a real wired callback.
+  `Agent(plugins=[...])` folds each plugin's tools and hooks in at construction.
+  Ships two examples: `audit-log` and `word-count`.
+- **`check_fn` tool availability gating** (`shipit_agent/tools/availability.py`).
+  A tool declaring `requires_command` / `requires_env` / `check_fn` is stripped
+  from the advertised set when its dependency is missing — its schema never
+  costs tokens and the model never wastes a turn calling it. On by default;
+  probes are TTL-cached (30s) with a 60s transient-failure grace.
+
+### Changed
+
+- **MCP servers connect in parallel** at registry build — 20 connectors no
+  longer cost 20× the handshake latency. Registration stays ordered (collision
+  handling unchanged) and a failing server re-raises exactly as before.
+
+- **`build_llm_from_settings` is catalog-backed** but keeps its exact
+  signature, `SUPPORTED_PROVIDERS`, the `bedrock` default, every `SHIPIT_*_MODEL`
+  default, and all aliases (`vertex_ai`/`vertexai`, `echo`, `proxy`). Verified
+  against a captured baseline: every provider returns the same adapter class and
+  default model as before.
+- **`s3://` image URLs** are recognised for Bedrock; base64 stays the default
+  for every other provider, and images are ordered before text for Gemma.
+
+### Validated live
+
+- End-to-end agent runs (tools + `deferred_tools` + MCP) against **Bedrock
+  (gpt-oss-120b), Vertex AI (Gemini 2.5 Flash & Pro), and LiteLLM→Bedrock** —
+  reasoning events streaming, prompt caching active, and `deferred_tools`
+  cutting turn-1 prompt tokens by **60–70%** with 61 tools held.
+- computer_use gains **app control** (`list_apps` / `focus_app`) and a runnable
+  Vertex-Gemini notebook example.
+
+---
+
+## v1.7.1 — 2026-08-12
+
+### Added
+
+- **Attachments on `stream()`** — `agent.stream(prompt, images=[...], files=[...])`
+  now accepts the same image and file attachments as `agent.run()`, so a
+  streaming caller can attach pictures, PDFs, and code/markdown files and
+  consume events as they arrive.
+
+
+---
+
+## v1.7.0 — 2026-08-12
+
+The theme is the working set: schemas for the tools a step can actually use,
+cache hits for everything the step repeats, and recovery that waits out the
+window instead of burning through it.
+
+### Added
+
+- **`Agent(deferred_tools=...)` — the tool catalogue on demand**
+  (`shipit_agent/deferral/`). Tool paging, provider-agnostic:
+  core tools keep their full schema in every request; every other tool is
+  listed by *name only* in the system prompt until it is loaded. `tool_search`
+  now finds **and loads** deferred tools — matches become directly callable
+  from the next step, and the search result carries a one-line signature per
+  loaded tool so the model can plan the call immediately. Calling a deferred
+  tool directly also works (and loads it). `True` defers everything outside
+  the core set; a list of names defers exactly those. The selection lives on
+  `RuntimeCore`, so the sync and async loops share one behaviour and the
+  parity test enrols it automatically. Code mode wins when both are enabled.
+- **Backoff between LLM retries** — `RetryPolicy` gains
+  `llm_retry_base_delay` / `llm_retry_max_delay` / `llm_retry_jitter`.
+  Exponential with up to +25% jitter, in both loops; a 429 retried after half
+  a second is a recovery, retried immediately it is two more 429s. The
+  `llm_retry` event now reports the chosen delay. Set the base delay to 0 to
+  keep the old immediate-retry behaviour.
+- **`RetryPolicy(request_timeout=...)`** — per-request LLM timeout, forwarded
+  to adapters whose `complete()` accepts a `timeout` kwarg (OpenAI, Anthropic
+  and LiteLLM adapters now do; older custom adapters are detected and skipped,
+  never broken). Without one, a hung connection hangs the run — `cancel()`
+  only takes effect between steps.
+
+### Changed
+
+- **Prompt caching now covers the conversation prefix** on Anthropic-family
+  models (native adapter and the LiteLLM path used by Bedrock/Vertex Claude):
+  a third `cache_control` breakpoint on the last message means each step's
+  request extends the previous one from cache, instead of re-billing the
+  growing history as uncached input on every iteration.
+- **Failed streaming attempts reset their tool-input parsers** before the
+  retry, so a retried completion starts from clean state instead of appending
+  fragments onto a dead parse.
+- **`decision_llm` narration tokens are now tracked** — narration is a real
+  model call; its usage lands in the run totals and `usage_tick` events
+  instead of escaping cost accounting.
+
+### Changed (second wave — validated live on Gemma / Bedrock Mantle)
+
+- **Async loop parity, for real**: the async runtime now actually invokes
+  compaction and the argument gate (both existed on `RuntimeCore` but were
+  never called on the async path — an async run past the window just sent an
+  oversized request; an empty structured call just ran). The sync loop's
+  nudge-on-stall now uses the shared `RuntimeCore` decision too, retiring a
+  stale pre-fix copy.
+- **Compaction reuses its checkpoint** instead of writing a brand-new summary
+  on every step past the threshold, and the summarizer's own tokens are
+  counted in run usage.
+- **Narration economy**: `agent_observation` is now always composed from tool
+  metadata — free — so narration spends its one completion per step on the
+  `agent_decision` line only. (Previously a configured `decision_llm` was
+  called twice per iteration.)
+- **Two new healed tool-call formats**, both observed live from Gemma 4 on
+  Bedrock Mantle: a declared tool name glued to a pseudo-JSON object
+  (`tool_search{query: "…"}`, unquoted keys, non-ASCII verb prefixes) and
+  Python keyword-call syntax (`weather_lookup(city="Paris")`). Identity is
+  the model's own literal tool name; junk-key wreckage still fails the bar.
+- **Native `bedrock_mantle/` routing**: `BedrockChatLLM` prefers LiteLLM's
+  native Bedrock Mantle provider when a Bedrock API key is present
+  (`BEDROCK_MANTLE_API_KEY` — the provider authenticates by Bearer token,
+  not SigV4; routing there without a key 401s, verified live). SigV4-only
+  environments keep the OpenAI-compatible shim. Accepts
+  `bedrock_mantle/<id>`, `bedrock/<id>`, or a bare id.
+- **Stream classification**: `final_answer`, `agent_decision`,
+  `agent_observation`, `tool_group_*`, `tool_arguments_rejected`,
+  `artifact_created` and `skills_selected` are now canonical — a reconnecting
+  client no longer silently drops the answer or the record that a call was
+  refused. `tool_arguments_rejected` joined the public `EventType`.
+- Bedrock-Anthropic pricing entries carry `cache_read`/`cache_write` rates
+  (0.1×/1.25× of input), so cached tokens no longer price at $0 there.
+
+### Added (third wave — media, MCP robustness)
+
+- **Attachments**: `agent.run(prompt, images=[...], files=[...])` — images by
+  URL/path/base64 (vision models); text/markdown/code files inlined as
+  fenced blocks (every provider); PDFs as native document blocks where the
+  provider reads PDF. `Agent(media_parser=...)` now actually works (the
+  documented example used to raise `TypeError`).
+- **`read_file` can see** — PNG/JPG/GIF/WebP return the image itself to the
+  model instead of UTF-8 replacement soup; PDFs attach as documents.
+- **The vision bridge** — any tool result carrying `image_base64` metadata
+  (computer_use screenshots, MCP image results, `read_file`) becomes a
+  user-turn image block on the next step, in both loops. Only the newest 3
+  images ride each request; older ones become a one-line stub.
+- **`Message.content` may be a block list**; `Message.text` extracts prose.
+  Eviction, truncation, compaction and context tracking all handle blocks
+  (images estimate at a flat ~1,500 tokens).
+- **MCP robustness**: exposed tool names are sanitized unconditionally
+  (`deepwiki**ask_question` → `deepwiki_ask_question`; the raw name still
+  goes on the wire); two servers exposing the same name no longer crash the
+  run (the later one is re-exposed as `{server}__{name}`); both subprocess
+  transports enforce a per-request timeout (60s default) so a wedged server
+  can't hang the run; a crashed-and-respawned server is re-handshaken before
+  its next call; the server's `initialize.instructions` now reach the system
+  prompt as one `## MCP server:` block, and the boilerplate per-tool MCP
+  guidance line is no longer repeated under every tool.
+
+### Added (fourth wave — connections, sub-agents, orchestration)
+
+- **Connection cards** — a connector called with no credential now files a
+  connection request and returns an actionable result ("Connect Slack — it
+  needs a token"), so the runtime emits its `connection_requested` card and
+  the run continues, instead of a dead-end "not connected" string. The
+  `/login` parity. All 17 connectors.
+- **`orchestrator` role** — a lead agent that plans, delegates independent
+  pieces to specialist sub-agents (`sub_agent` + `plan_task` + synthesis
+  tools), and combines their reports. `Agent.for_role("orchestrator", ...)`.
+
+### Added (seventh wave — tool depth & plan workflow)
+
+- **bash tool depth** — 600s timeout ceiling (was 120s); an opt-in
+  `unrestricted=True` mode that allows redirects, heredocs, pipes-to-file and
+  command/process substitution (the safe conservative filter stays the
+  default); and a companion `bash_job` tool to poll or kill background jobs
+  by id. A rejected command now returns
+  an error result instead of raising (a raised tool exception could crash the
+  run).
+- **`multi_edit`** — a batch of exact-string edits applied to ONE file
+  atomically: edits apply in order to an in-memory
+  copy and write once; if any fails, nothing is written. Same read-gate,
+  mtime staleness, and UTF-8 refusal as `edit_file`.
+- **git worktree isolation** — `git_ops` gains `worktree_add` /
+  `worktree_remove` / `worktree_list` so an agent can work on an isolated
+  branch or worktree, in isolation from the user's working tree.
+- **Readability web extraction** — `open_url` now returns structured markdown
+  (headings, lists, paragraphs) with nav/header/footer/aside/script dropped,
+  instead of flat tag-stripped soup that buried the signal.
+- **Compaction re-grounding** — after a fresh compaction the most-recently-read
+  files are re-read from disk and injected as current contents, so the model
+  works from the code, not a prose summary of it. Restores the read-gate for those files.
+- **Plan mode as a workflow** — a `present_plan` tool: in plan mode the agent researches read-only, then submits a
+  structured plan (title + ordered steps) that is captured and surfaced for
+  approval via the interactive-request channel, instead of plan mode being a
+  bare deny-gate.
+
+### Added (sixth wave — long-run trust & polish)
+
+- **Read-before-edit gate is reset at compaction** — fixes a silent
+  correctness bug: after a file's contents were summarized out of context,
+  `read_files`/`read_file_mtimes` still claimed it was read, so `edit_file`
+  allowed a write against contents the model could no longer see. Compaction
+  now clears the gate, forcing a cheap re-read before the next edit.
+- **Higher default iteration budget** — `Agent.max_iterations` 4 → 12 (16
+  with skills). A real multi-step task (read several files, edit, test, fix)
+  no longer gets cut to a summary before the context window is the real constraint.
+- **Larger `read_file` window** — 250 → 2000 lines, 12K → 80K chars. Less paging, fewer edits against unseen regions.
+- **End-of-run summary** — a `run_summary` event (and `run_completed.summary`)
+  closes every run with iterations, tool calls, compactions, token usage, and
+  an estimated cost. Canonical
+  for reconnecting clients. `FunctionTool(read_only=...)` also gained a
+  three-state default (`None` = use the name heuristic).
+
+### Added (fifth wave — parallel reads, native structured output)
+
+- **Read-parallelization from tool contracts** — a tool group where every
+  call is read-only (grep, glob, file reads, lookups) fans out concurrently;
+  any group containing a write/send/mutate stays serial and ordered. This
+  both fixes a latent race (two `edit_file`s to one path racing across
+  isolated state copies) and delivers fast batched-read execution.
+  Shared decision on `RuntimeCore.read_only_calls`, so both loops agree.
+  `FunctionTool(read_only=True)` lets a caller declare a pure function
+  parallel-safe.
+- **Native `response_format` structured output** — when `output_schema` is
+  set, the tool-less final/synthesis turn now sends the provider's native
+  `response_format` (guarded by `accepts_kwarg`), guaranteeing parseable
+  JSON where the provider supports it. Never applied mid-loop (JSON-mode
+  would suppress tool calls); the prompt-instruction + validate-with-retry
+  path remains the fallback.
+
+### Fixed (sub-agents)
+
+- **The sub-agent's system prompt was the delegator's text.** Every
+  general-purpose sub-agent was told *how to delegate* instead of that its
+  final message is the whole deliverable. Split into a child-facing
+  `SUB_AGENT_SYSTEM_PROMPT` (final-report contract: your final message is all
+  the parent sees; don't ask the human; lead with the answer then the
+  evidence) and the parent-facing `SUB_AGENT_PROMPT` (now the tool's
+  `prompt_instructions`).
+- **`agent_type` re-granted tools the parent didn't have.** `for_role`
+  re-added the role's full builtin set on top of the inherited subset — a
+  read-only child regained `write_file`/`bash`, and 7 roles even regained
+  `ask_user_async` (a background child could block on a human nobody was
+  watching). The role agent's toolset is now intersected back to the
+  inherited set minus the never-inherited human-interaction tools.
+- **Sub-agents could hang the parent forever.** `SubAgentTool(timeout=...)`
+  bounds every collect; on expiry the future is cancelled and a failed
+  result is reported. Added `close()` / `__del__` so the thread pool is
+  released (was leaking non-daemon threads that also wedged interpreter
+  exit).
+
+### Fixed
+
+- **Eviction no longer corrupts persisted sessions.** With
+  `evict_prior_tool_outputs=True` (the default), the evicted stubs were being
+  written back to the session store — turn 3 permanently destroyed what turn 1
+  retrieved, for replay, audit and every future turn. Eviction is now strictly
+  a per-request view: the store always keeps the original transcript. Both
+  loops.
+
+---
+
+## v1.6.3 — 2026-08-10
+
+The theme is spending: what a turn is charged for, and what it gets back.
+
+### Added
+
+- **`Agent(reminder=...)` and built-in end-of-context reminders** — a short
+  instruction placed after the whole conversation, where a model attends most
+  reliably. Three built in, one per phase of a turn, so exactly one applies at
+  a time and none of them is boilerplate: before anything has been retrieved
+  the risk is invention, once something has it is answering from too little of
+  it, and on the last step it is spending that step on a call that cannot run.
+  Appended to a per-call copy of the message list, so it is rebuilt each step,
+  never stacks, and never enters the saved session.
+- **`Agent(evict_prior_tool_outputs=True)`** — earlier turns' tool payloads are
+  replaced with a short notice. A message list is cumulative across turns as
+  well as within one, so a search that returned fifteen thousand characters in
+  turn one was billed again on every request of turn two and three, long after
+  the model had written whatever mattered into its answer. The call, its name
+  and its arguments stay — those are what stop the model searching for the same
+  thing twice, and they are a few tokens against the thousands they replace. No
+  message is dropped: a tool result removed while its assistant tool-call
+  message remains is a malformed conversation some providers reject outright.
+- **`decision_llm` writes the progress narration** — opt-in, and only when the
+  primary model produced no prose of its own. A small model spends its whole
+  completion on the tool call (14 to 16 tokens, measured on Gemma), so there is
+  nothing to prefer and a label built from the tool name is all that was
+  honestly available: `agent_decision` read "Asking question
+  openai/openai-python." and `agent_observation` read "Asked question
+  openai/openai-python." Decision prompts carry the request, the previous
+  observation and the pending call — never the conversation, never a tool
+  payload. Observations get a 500-character head of each result, because an
+  observation that cannot see what came back can only restate the tool's name.
+  Roughly 500 tokens for a two-tool turn. Omit `decision_llm` and nothing extra
+  is called at all.
+
+### Changed
+
+- **Tool rules moved into the tool section.** The same instruction is followed
+  far more reliably next to the tools it governs than a few paragraphs earlier
+  under a general heading. The depth rule was the proof: given fifteen search
+  hits and a request for detail, the model opened one and answered from it.
+  Rules now sit under `# Tools` directly above the listing, with families as
+  `##` subheadings, and are emitted only when tools are attached.
+- **Tool descriptions are no longer repeated in the prompt.** Every description
+  is already in the JSON schema the provider requires, and that copy is the one
+  the model selects on. Measured on a 43-tool agent, the second copy was 15,286
+  characters — about 3,800 tokens — re-sent on every step of every turn. What
+  stays is what the schema has no room for: family, read-only status, origin.
+- **The final step is sent without tool schemas.** A tool call emitted there
+  has no iteration left to run in, so the run ends with the model having
+  announced work instead of doing it. Withholding them forces the answer and
+  drops the largest fixed cost in the request from the longest prompt of the
+  run. A single-step agent keeps its tools.
+- **Both loops share one step-request decision.** The async runtime builds its
+  own request and had received none of the above; `RuntimeCore.step_request`
+  now returns the messages and schemas for a step and both loops call it. A
+  test asserts neither defines its own.
+
+### Fixed
+
+- **A call that asks for everything is not run.** Healing only inspected calls
+  written as text; a call arriving through the provider's tool-call field
+  skipped it entirely, and a weak model produces wreckage there too — observed
+  live as `search_echo({",'query'": ""})`. Keys that clean up to a declared
+  parameter are repaired; a call supplying no usable argument to a tool that
+  declares it needs one is refused, with a sentence naming what to pass.
+  Deliberately not a per-parameter `required` check: a schema's required list
+  does not hold for every valid invocation.
+- **Tool calls are validated against their own schema.** A name check asks
+  "could this be a parameter?"; a schema check asks "is this *the* parameter?"
+  — which is what matters when a filter is optional and a missing one means
+  "return everything". Nameless argument objects are matched to the tool whose
+  schema they satisfy, and list-valued parameters arriving as JSON strings are
+  coerced.
+- **Invented data is no longer presented as retrieved.** Asked for the latest
+  cases, an agent called nothing and returned a table of case IDs, names and
+  dates, describing them as retrieved. Every row was invented and both search
+  tools were attached. An answer that is merely wrong can be argued with; one
+  that claims a retrieval it never performed cannot.
+- **A greeting is no longer read as a stall.** "…just let me know" matched the
+  "let me" intent marker, so the runtime nudged and the model's apology was
+  concatenated into the answer. Fixed structurally rather than by excluding the
+  phrase: a stall is a *bare* announcement, so a reply ending in a question or
+  saying more than one thing is not one.
+- **`FunctionTool` no longer advertises `**kwargs` as a required parameter.**
+  It has no default, so it landed in `required` — telling the model to invent a
+  value for `**_ignored` and making the declaration useless for validation.
+- **The reasoning channel is searched for tool calls** when the model produced
+  thinking but no answer and no calls — the shape that means the call was
+  written into the thinking, where nothing previously looked.
+
+---
+
+## v1.6.2 — 2026-08-10
+
+### Added
+
+- **`Agent(observability="auto")`** — runs report themselves through
+  shipit-watcher with no wiring: traces, the agent graph, scores, datasets
+  and the local ledger. Attaching it used to mean building a
+  `WatcherExporter`, passing it as `trace_store` and remembering to flush,
+  which is the kind of friction that ends with tracing on in one service
+  and forgotten in the rest. `"auto"` is safe as the default because
+  watcher answers "am I configured?" itself — no credentials means nothing
+  is emitted rather than an error, and a missing package falls through. Set
+  `True` to force it, `False` to refuse it; an explicit `trace_store` still
+  wins.
+- **`WatcherExporter`** — the `TraceStore` behind it. Watcher's API is
+  context managers and an agent reports events after they finish, so open
+  scopes are held per trace and closed on the matching end event. A run
+  that dies with a tool still open has its scopes closed anyway.
+- **`max_tool_output_group_chars`** (default 48,000) — bounds a whole turn,
+  not just one result. The per-result cap let four tools return 100,000
+  characters each and pass 64,000 through, every one of them individually
+  "under" the limit.
+
+### Changed
+
+- **Progress narration prefers the model's own words.** A model that calls a
+  tool usually says why in the same response, and that sentence is better
+  than any label composed for it, was already paid for, and improves as the
+  model does. Composition is now the fallback for when it says nothing.
+- **Observations report what the tool said about itself** — from
+  `metadata["summary"]`, and nothing when the tool said nothing. An earlier
+  draft read the payload instead, pattern-matching keys like `total` out of
+  JSON; only the tool knows whether its total counts results, pages or
+  bytes, so that was the runtime inventing a fact and stating it with
+  confidence.
+
+### Fixed
+
+- **The narrator no longer conjugates namespaces.** It made a verb of
+  whatever came first in a tool name — right for `get_echo`, wrong for
+  every `<namespace>_<thing>` an MCP server exposes. `rl_search` narrated
+  as "Rling search" and `slack_post_message` as "Slacking post message".
+  Leading words are conjugated only when they are verbs; anything else
+  reads as "Running rl search", which is honest about not knowing the tool.
+- **A repeated tool call is answered once.** Same tool, same arguments,
+  byte-identical output — the model is told it already has that result and
+  to change the arguments, instead of being handed the same 138,000
+  characters a fourth time. The tool still runs and its output is still
+  compared, so a changed answer is returned in full.
+- **A truncated result says what it dropped.** The extract now reports how
+  many characters went and how to ask for them, rather than only that it
+  was "shortened".
+- The default prompt now says independent tool calls belong in one
+  response. Every tool group in a reported run held exactly one call — not
+  a runtime limit, the runtime takes a list; the prompt had never mentioned
+  it. Turns are what cost, not calls.
+
+---
+
+## v1.6.0 — 2026-08-10
+
+### Changed
+
+- **Progress narration no longer calls a model.** `progress_summaries=True`
+  spent one extra LLM call per iteration, and with no `decision_llm`
+  configured it spent them on the run's own model — so watching a run
+  roughly doubled its model calls and its bill, on the expensive model, to
+  produce a paraphrase of data the runtime was already holding. The
+  summaries are now composed from the tool calls and their results:
+  `Reading guests.csv.` before, `Read guests.csv.` after, and a failure
+  named as a failure rather than folded into the sentence. Same events,
+  same payloads, no second model, no added latency.
+- `decision_llm` is still accepted so existing callers keep working, and is
+  no longer used for anything. The dead prompt-building helpers it needed
+  (`_call_progress_model`, `_recent_public_context`, `_bounded_text`) are
+  gone.
+
+### Fixed
+
+- **`shipit chat` was two model generations behind the rest of the CLI.**
+  It kept its own provider→model table, so `--provider anthropic` gave
+  `claude-3-5-sonnet-latest` in the REPL and `claude-sonnet-5` everywhere
+  else — same CLI, same flag, different model, with nothing on screen to
+  say which you had. OpenAI was still on `gpt-4o-mini`. The curated catalog
+  is now the single source of truth wherever it has an opinion, and a test
+  pins the two together. Providers the catalog does not cover keep their
+  own defaults rather than being blanked.
+- **`shipit doctor` prints a report instead of a dataclass.** It printed
+  `DoctorReport(checks=[DoctorCheck(name=…` — one 2,000-character line you
+  had to read like a stack trace, for a command whose entire purpose is to
+  be scanned. Failures and warnings now come first and carry their details;
+  passing checks are one line. `--json` for the full structure, and a
+  failing check is a non-zero exit in both — so `shipit doctor && deploy`
+  stops at a broken agent, and a script piping `--json` to `jq` cannot see
+  success where the terminal showed a failure.
+- **A wrong API key says so.** Any uncaught error from a command printed a
+  traceback, so the usual first-run failure — bad or missing credentials —
+  arrived as thirty frames of the provider SDK with a 401 at the bottom.
+  The message is now summarised, credential failures name
+  `shipit doctor --provider <name>` as the way to find the variable, and
+  `SHIPIT_DEBUG=1` still prints the traceback in full. Ctrl-C exits 130
+  rather than reporting itself as a crash.
+
+---
+
+## v1.5.1 — 2026-08-08
+
+### Added
+
+- **Guides for three features that shipped without them.** Triggers,
+  delegation, and agents as tools each had public API and no page
+  explaining when to reach for it.
+- **`SqliteTriggerQueue`, `InMemoryTriggerQueue`, `fire_all`,
+  `DelegationPolicy` and `DelegationAdvice` are exported from the package
+  root.** Found by checking that every import in the new guides resolves:
+  `TriggerRegistry` was exported without the queue you configure it with,
+  so the durable setup — the default anybody running this in production
+  wants — could not be written from the top-level import at all. A test
+  now pins the surface the documentation uses.
+
+---
+
+## v1.5.0 — 2026-08-08
+
+### Added
+
+- **`AgentTool` — an agent as a tool.** Wrap any agent and hand it to
+  another as one focused callable, so a researcher, a reviewer and a
+  writer become tools a coordinating agent picks between by description.
+  Unlike `sub_agent`, which builds a child from the parent, this delegates
+  to an agent you configured yourself — its own model, its own tools, its
+  own session if you give it one. Nested events surface through the
+  parent's stream, so a delegated run is visible rather than a silence.
+
+### Fixed
+
+- **A failing child no longer ends the parent's turn.** `AgentTool` let a
+  child's exception propagate, so one provider being down took the whole
+  run with it. Every other tool reports failure as a result the model can
+  act on; this one does now too, and the parent can say so, try something
+  else, or answer without it.
+- **Delegation cannot recurse forever.** An agent holding a tool that
+  wraps an agent holding the same tool would recurse until something ran
+  out. `sub_agent` already capped this; `AgentTool` is the same hazard by
+  another name, so it shares the counter rather than keeping its own — and
+  the refusal says to do the task directly, because a cap that does not
+  name the alternative just gets retried.
+- **A child that returns nothing is no longer reported as success.**
+
+---
+
+## v1.4.0 — 2026-08-08
+
+Scheduled jobs stop sharing one agent, skills come from the project, and
+tool output streams while it is produced.
+
+### Added
+
+- **Per-job agent configuration.** Every scheduled job carried the same
+  process-wide agent, so "summarise the inbox hourly on a cheap model" and
+  "audit the repo nightly on a good one" could not coexist. A job now
+  persists its own provider, model, role, project root, runtime mode,
+  permission mode, guardrails, MCPs, connections, skills and iteration cap
+  — `ScheduledAgentConfig`, resolved per job by `ScheduledAgentFactory`.
+  The SQLite store migrates itself: existing databases gain the new
+  columns on open, and a job written by an older version still runs.
+- **Project skills.** `discover_project_skills` and `load_markdown_skill`
+  read skills from the repository the agent is working in, so a team's
+  conventions live beside the code they describe rather than in a
+  configuration screen.
+- **Streaming tool output.** `ToolOutputChunk` and `ToolRunOutput` let a
+  long-running tool report as it goes instead of arriving whole at the
+  end.
+- **Concurrent web search.** `web_search` accepts `queries` as well as
+  `query` and runs them in parallel. Either, never both — an empty call
+  answers with which of the two to pass.
+
+### Fixed
+
+- **A permanently broken scheduled job now pauses.** Failures were counted
+  and nothing acted on the count, so a job whose provider was gone ran
+  every interval for as long as the daemon lived, burning quota and
+  filling the log with one repeated line. Paused after five consecutive
+  failures — paused rather than deleted, because the configuration is
+  intact and `jobs resume` is one command. Resuming clears the count, so a
+  job somebody fixed is not paused again by the history that paused it.
+  `max_consecutive_failures=0` switches the behaviour off.
+
+---
+
+## v1.3.3 — 2026-08-07
+
+### Added
+
+- **Breadth as a structural signal.** "Go through every document attached"
+  names no number and no filename, so counting lists, targets and quantities
+  missed it — and 1.3.2's corroboration floor would then have declined it.
+  A distributive determiner over a noun ("every document", "each of our
+  repos", "all the open PRs") now counts. It is grammar rather than
+  vocabulary, so it holds for wording nobody anticipated, and it reports no
+  count: breadth says "more than one", not how many, and inventing a number
+  would feed a fake quantity to the `min_items` filter. An adverbial "all"
+  — "is it all good", "tell me all about it" — is not breadth.
+
+---
+
+## v1.3.2 — 2026-08-07
+
+### Fixed
+
+- **A model may no longer invent a decomposition.** Asked "Can you look for
+  the latest AI news?", Gemma 4 answered `decompose: true, items: 3, "news
+  can be split by topic or source"` — three sub-agents for one web search,
+  and not one of those topics appears in the request. The assessor was
+  asking "could this be split?", and almost anything could. It now counts
+  only the pieces the task itself names, is told plainly that a single
+  search or a single read is one call, and a model's yes must be
+  corroborated by something actually in the text. The structural floor
+  already raised a model that undercounted; it now also declines one that
+  overcounted. The count it saw is still reported — overruled, not erased.
+
+---
+
+## v1.3.1 — 2026-08-07
+
+### Fixed
+
+- **`delegation=` no longer attaches `sub_agent` on every turn.** Asked
+  "look for the latest AI news", an agent with automatic delegation on
+  spawned three research sub-agents instead of running one web search. The
+  tool was attached unconditionally on the reasoning that a model deciding
+  mid-run to delegate must find it there; measured against a smaller model,
+  that reasoning fails — a tool on the table gets used, and given a choice
+  between a search and a research crew it takes the crew. The policy already
+  judges each task for the directive, and the toolbox now follows the same
+  judgement. An explicitly passed `SubAgentTool` is untouched.
+- **`sub_agent` refuses a task with no substance in it.** Observed:
+  `sub_agent(task=",")`, which the tool accepted, spending a model call to
+  return an error. A child sees nothing of the parent's conversation, so the
+  task is its entire brief. The refusal names the alternative, because one
+  that does not just gets retried.
+- **Background delegation says there is no "later".** The tool and the
+  directive now state that anything started with `background=true` must be
+  collected in the same turn — a run ends with its answer, and an
+  uncollected task is discarded. Without this, models announced background
+  work and promised to report back on results that were never coming.
+- A dashboard blueprint f-string that only parsed on Python 3.12+.
+
+---
+
+## v1.3.0 — 2026-08-06
+
+An agent you have to ask is a tool. An agent that reacts is a colleague.
+This release is the second half: **triggers** — something happens, and the
+agent runs.
+
+### Added
+
+- **`shipit_agent.triggers`** — a trigger registry, a durable queue, and a
+  worker loop.
+  - `registry.on("gmail")` decorates a function that turns an event into a
+    prompt. A trigger builds a *prompt*, not an agent: the run stays on the
+    agent you already configured, with your credentials, permissions and
+    budget, rather than a second agent nobody is watching.
+  - `registry.fire(source, data)` **records and returns**. It runs nothing.
+    A webhook must answer in milliseconds and an agent takes seconds; a
+    sender that times out delivers the same email again.
+  - `registry.drain(agent)` runs what is queued and reports each run.
+  - `registry.run_forever(agent, stop=…)` is the worker, stoppable.
+- **`SqliteTriggerQueue`** — the default, and durable on purpose. An event
+  that arrives while nothing is running must still be there afterwards, or
+  "runs on every email" is a claim that fails quietly at 3am. Claiming takes
+  the row, so two workers can drain one queue; an abandoned claim expires
+  rather than stranding the event.
+- **Poison-event handling** — an event that fails `max_attempts` times stops,
+  instead of hiding everything queued behind it.
+- **`fire_all()`** for batches, and `registry.summary()` for "what is wired,
+  what is waiting" — the data behind a Live badge.
+
+### Notes
+
+A handler returning `None` is how a trigger filters: only RSVPs, only
+failures. That is a skip, not an error, and it still consumes the event.
+
+`InMemoryTriggerQueue` is named the way it is to be hard to reach for by
+accident — it is for tests.
+
+---
+
+## v1.2.0 — 2026-08-06
+
+One question, asked of every surface: **can you see what the agent did?**
+A run now reports itself well enough to draw a product from — and, where the
+agent used to answer and forget, it can leave something behind.
+
+### Added
+
+#### Watching a run
+
+- **The tree view** — the *shape* of a run instead of its prose: every call
+  named with its status, the opening intent labelled "Understanding request",
+  each later paragraph a "Decision", the last one the "Final answer". On a
+  terminal it redraws in place while the run proceeds, keeping the trunk open
+  (`├─ working…`) until it ends, then erases the draft and writes one clean
+  tree. `agent.run_live(style="tree")`, `render_tree(events, detail=True)`.
+- **The live panel** — an HTML chat card that redraws in a Jupyter cell as the
+  agent works: tokens land with a caret, tool rows appear in flight and
+  settle, real output folds away behind each call, cards interrupt the flow,
+  and the footer counts tokens. `watch(agent, prompt)`, `shape="tree"` for the
+  tree, `render_chat_html(events)` for a finished run. Every selector is
+  scoped so the styles cannot leak into the page around it, and redraws are
+  throttled — a full re-render per token is O(n²) DOM churn that stutters
+  exactly when the answer gets long.
+- **The UI timeline** — the runtime's events translated into what a frontend
+  draws: `reasoning_summary`, `tool_group_started`, `tool_call_started`,
+  `tool_call_completed`, `agent_decision`, `artifact_created`,
+  `final_response`. Plain JSON, and causal — a group's settled title arrives
+  in its `completed` step, so a client never has to undraw a row.
+  `stream_timeline(agent, prompt)`; `render_markdown(events)` prints the same
+  run as a report.
+- **Progress narration** — `Agent(progress_summaries=True, decision_llm=…)`.
+  A second, cheap model says what the agent is doing while it does it. It
+  never reads the system prompt or `reasoning_content` and is called with
+  `tools=[]`, so what it reports is what an observer could have watched
+  happen; a failure emits `progress_summary_failed` and the run continues.
+  Off by default: it adds a real LLM call per step.
+- **Tool groups** — one per iteration, carried on `tool_called` /
+  `tool_completed` as `group_id`, so a UI can draw one expandable box per turn
+  (`2 tools · 13.0ms`) however much narration lands between the calls.
+- **`final_answer`** — the answer as its own event, just before
+  `run_completed`, so a client does not have to infer which event carries it.
+
+#### Leaving something behind
+
+- **Apps** — `list_blueprints`, `create_app`, `set_app_binding`, `use_app`,
+  shipped as builtins under `<project>/.shipit/apps`. The agent writes a
+  program into the workspace, wires resources into it, and runs it — today,
+  and next week, with no model in the loop. An app is a directory with
+  `app.py` exporting `run(input, env)`; it runs in a subprocess with no
+  credentials, and its `env` crosses the same capability bridge code mode
+  uses, so every resource call is gated exactly as the equivalent tool call
+  would be. An app sees only the bindings its manifest names.
+- **Six blueprints** — `report`, `csv_summary`, `page`, and three that produce
+  something worth looking at: `dashboard` (headline cards and a bar chart),
+  `sheet` (column letters, row numbers, flagged cells) and `workflow` (a
+  pipeline as boxes and connectors). All self-contained — no CDN, no fonts, no
+  script tags — because an artifact that needs the network is not one you can
+  send anyone.
+- **Artifact cards** — a file a run produced is a card, not a path in a log:
+  `Q2 Kickoff Brief · Doc · Click to open`, in the panel, the tree and the
+  timeline. Any tool that declares a path in its result metadata gets one.
+
+#### Reaching further
+
+- **Automatic delegation** — `Agent(delegation=True)`. The `sub_agent` tool is
+  guaranteed to exist, built from the agent's own LLM and its read-only tools;
+  the task is sized by a model (`ModelAssessor`, one cheap cached call) with a
+  structural count as the fallback and the floor; and the directive is
+  appended to the *task*, not the system prompt — measured against Gemma 4,
+  that difference is 0 delegations versus 6. It never delegates behind the
+  model's back.
+- **Connection requests** — the registry knew what was connected; nothing
+  turned "I need Slack" into something a user could answer. The agent's
+  request now emits `connection_requested` from both loops, the panel draws a
+  card with the reason, and `registry.resolve(id, accepted=…, credential=…)`
+  closes the loop — on accept the credential is stored, so the next state
+  check reads CONNECTED rather than asking again.
+
+### Fixed
+
+- The async runtime's `tool_completed` was missing `tool` and `call_id`, so
+  its transcript could only guess which outcome belonged to which call.
+- `read_file` produced artifact cards for files it merely read.
+- An artifact card split the tool group that made it.
+- `run_live()` raises on an unknown `style` instead of silently rendering the
+  default view.
+- `write_transcript()` accepted `title` and `model` but dropped `prompt`.
+- `use_app` wrote a file and never declared it, so the run produced a page and
+  the transcript showed a JSON blob.
+- Apps ran in their own install directory, so an app given
+  `path="guests.csv"` found nothing. `AppStore.run()` runs them where the
+  agent works.
+- `deny=["*"]` denying allow-listed tools is now documented where you meet it,
+  with the correct pattern (`allow=[…], default_decision=DENY`) beside it.
+
+### Notes
+
+- `progress_summaries` and `delegation` are both **off by default**. Each adds
+  real LLM calls, and a runtime that doubles your bill on upgrade is not one
+  you can trust.
+- Two live notebooks ship with their outputs committed, run against
+  `bedrock-mantle/google.gemma-4-26b-a4b`:
+  `74_live_streaming_gemma.ipynb`, `75_live_ui_and_subagents.ipynb` and
+  `76_apps_and_analysis.ipynb`.
+- Still open, and named rather than hidden: the async runtime has no progress
+  narration and no tool groups, and `Agent.decision_llm` sits second in the
+  field order, so `Agent(llm, "prompt")` positionally assigns the prompt to
+  it. Both are tracked in `docs/design/cloudflare-os-gap.md`.
+
+---
+
+## v1.1.0 — 2026-08-06
+
+A single release focused on one question: what does an agent *look like* while
+it works, and what should it be allowed to do while you are not watching?
+Studied against Cloudflare OS (open source) and adapted rather than copied —
+the design notes, including what was deliberately not ported and why, are in
+`docs/design/modern-agent-upgrade.md`.
+
+### Added
+
+- **The Narrator** — a transcript instead of a log. Every tool call renders as
+  a human verb and target (`Read app.py`, `Ran code const risk = scoreAcc…`),
+  consecutive calls with no prose between them collapse into one row, and the
+  run closes with tokens and cost. Present tense in flight, past tense once it
+  lands; in-place on a TTY, byte-stable when piped. `agent.run_live(style=
+  "modern")`, `shipit code --style`, `/style` in the REPL. The 50-tool verb
+  table is a set of defaults — `register_verb()` overrides any of it, and
+  unknown MCP tools narrate through real English morphology rather than
+  crashing on an exhaustive match.
+- **Tool contracts** — every one of the 51 built-ins now declares what it *is*
+  (`read_only`, `action_kind`, `implements_revert`, `await_decision`,
+  `auto_approvable`, `destructive`) instead of being guessed from its name.
+  Before this, exactly one tool declared `read_only`.
+- **Deferred approvals** — a side-effecting call the policy marks `ask` is
+  queued rather than blocked on, so the agent finishes and you review the
+  batch. Auto-approval rules key on a stable `action_kind` tag, applied in
+  order, never past a manual gate, and requiring both the contract's verdict
+  and your enabled rule. `shipit code --defer-approvals`.
+- **Lockdown** — once a tool reports it returned sensitive data, the run may
+  only make observations; every action is denied for the rest of it. Closes a
+  real hole: nothing previously stopped an agent reading your customer list
+  and posting it to Slack in the same turn.
+- **Code mode** — `Agent(code_mode=True)` collapses connectors into an `env`
+  of bindings reachable from one `execute_code` call, with `describe_binding`
+  for on-demand discovery. Measured on the real catalogue: 25,932 → 11,174
+  tokens per model call, **57% smaller**. `env` reaches the parent over a
+  capability bridge — the code runs in a subprocess holding a socket, not
+  credentials, and every binding call is gated exactly as the direct tool call
+  would be.
+- **Connections** — `connections` lists what is connected, what needs
+  authenticating and what is missing, with per-auth-kind guidance, and lets
+  the agent *request* one with a reason instead of failing mid-task.
+- **Streaming, three ways** — `agent.stream()` (raw events),
+  `agent.narrate()` (settled transcript rows, so a custom UI need not
+  reimplement the collapsing), and `agent.stream_sse()` (wire-ready). Frames
+  are labelled canonical or provisional and carry a per-process
+  `stream_generation`, so a browser that reconnects knows what to keep and
+  what to discard. New `POST /v1/stream` on the server; `/health` reports the
+  generation.
+- **Checkpoint compaction** — per-model token budgets, cuts at a turn (or
+  step) boundary rather than a fixed message count, a six-heading handoff
+  summary, and an explicit instruction not to follow instructions inside the
+  transcript being summarized. Canonical history is preserved; only the replay
+  window moves.
+- **`give_up`** — a real tool with a required reason, surfaced as
+  `result.metadata["gave_up"]`, replacing inference from prose.
+- **Streaming tool arguments** — a file or command appears as the model writes
+  it. Supported on all 13 shipped adapters (Anthropic, OpenAI, Bedrock,
+  Gemini, Vertex, Groq, Together, Ollama, LiteLLM and its proxy); adapters
+  without it degrade to arguments arriving whole.
+- **Revert** — `queue.revert(id)` for filesystem writes, snapshot-based.
+- **Shareable transcripts** — `--share run.html` writes one self-contained
+  file: no network requests, no build step, light and dark.
+
+### Changed
+
+- **`sub_agent` is now an actual sub-agent.** It previously called
+  `llm.complete()` once with `messages=[]` and `tools=[]` — no loop, no tools.
+  It now runs a real `Agent` with an inherited toolset, supports
+  `agent_type` from the built-in role registry, runs in parallel via
+  `background`/`collect`, and streams its work into the parent's transcript.
+  A sub-agent can never do more than its parent: permissions, approvals and
+  guardrails are inherited verbatim, and delegation is depth-capped.
+- **One runtime core.** `runtime.py` and `async_runtime.py` had drifted to the
+  point that ten capabilities existed only in the sync loop. The shared
+  decisions now live in `runtime_core.py` and both inherit them; a parity
+  suite asserts neither may override or reimplement one.
+- A missing tool argument is now a result the model can act on rather than a
+  `KeyError` — it names the argument and lists what the tool requires.
+
+### Fixed
+
+- `tool_denied` carried neither `tool` nor `call_id`, in **both** runtimes, so
+  a blocked call was invisible to any renderer.
+- `sub_agent`'s `context` parameter was silently dropped: `ToolRunner` strips
+  `context` and `self` as reserved names, so supporting context never arrived.
+  Renamed to `details`.
+- `EventType` had drifted — `tool_denied` and `text_delta` were emitted but
+  undeclared.
+- `get_model_limits` split on `.` to strip vendor prefixes, turning
+  `gemini-2.5-pro` into `5-pro`.
+- An explicit `context_window_tokens` had an output reservation subtracted
+  from it, so a value of 100 produced a budget of 1.
+- 18 contracts promised `implements_revert` with zero implementations behind
+  it. Now 7 promise it, all backed by a reverter, enforced by a test.
+
+---
 
 ## v1.0.18 — 2026-07-31
 
@@ -252,7 +1725,7 @@ All of it works with **any** LLM provider.
   turns are summarized (user/assistant content included, not dropped) and a
   `context_compacted` event reports before/after message counts.
 
-See the [Super agent guide](guides/super-agent.md) for the full tour.
+See the [Super agent guide](agent/index.md) for the full tour.
 
 ---
 

@@ -127,6 +127,8 @@ class RuntimeCore(
             options.get("max_tool_output_group_chars", 0) or 0
         )
         self.tool_output_dir = str(options.get("tool_output_dir") or "")
+        #: The agent's project folder, when it has one; the verify gate reads it.
+        self.project_root = str(options.get("project_root") or "")
         self.reminder = options.get("reminder") or None
         # Verify-on-stop: refuse to finish a turn that edited code without fresh
         # passing tests (evidence-gated coding). Off by default — it changes the

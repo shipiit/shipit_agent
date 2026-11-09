@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import tempfile
 import threading
@@ -36,9 +37,7 @@ class InMemoryMemoryStore:
         self._facts.append(fact)
 
     def search(self, query: str, limit: int = 5) -> list[MemoryFact]:
-        lowered = query.lower()
-        matches = [fact for fact in self._facts if lowered in fact.content.lower()]
-        return matches[:limit]
+        return rank_facts(self._facts, query, limit)
 
 
 class FileMemoryStore:
@@ -84,9 +83,35 @@ class FileMemoryStore:
             self._save_all(facts)
 
     def search(self, query: str, limit: int = 5) -> list[MemoryFact]:
-        lowered = query.lower()
-        matches = [fact for fact in self._load_all() if lowered in fact.content.lower()]
-        return matches[:limit]
+        return rank_facts(self._load_all(), query, limit)
+
+
+#: Words too common to say what a search is about.
+_STOPWORDS = frozenset(
+    "a an and are as at be by do does for from how i in is it me my of on or so that the this to "
+    "was we what when where which who why with you your".split()
+)
+
+
+def rank_facts(facts: list[MemoryFact], query: str, limit: int) -> list[MemoryFact]:
+    """Facts that match *query*, best first.
+
+    The exact query text ranks first; after it, facts score by how many of the
+    query's words (common words left out) they contain, so a natural phrase such
+    as "deploy region" finds "deploys from the eu-west-1 region". An empty query
+    returns facts in stored order.
+    """
+    lowered = query.lower().strip()
+    if not lowered:
+        return facts[:limit]
+    words = [w for w in re.findall(r"[\w-]+", lowered) if w not in _STOPWORDS and len(w) > 1]
+    scored: list[tuple[int, int, MemoryFact]] = []
+    for index, fact in enumerate(facts):
+        text = fact.content.lower()
+        score = (len(words) + 1 if lowered in text else 0) + sum(1 for w in words if w in text)
+        if score:
+            scored.append((-score, index, fact))
+    return [fact for _, _, fact in sorted(scored)[:limit]]
 
 
 def _atomic_write_text(path: Path, text: str) -> None:

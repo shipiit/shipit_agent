@@ -1,105 +1,54 @@
-# Reasoning & Thinking Steps
+---
+description: Turn on a model's thinking, control how much it thinks, and show it in your interface.
+---
 
-When the underlying LLM surfaces reasoning content, the runtime extracts it automatically and emits `reasoning_started` / `reasoning_completed` events — so your UI can render a live "Thinking" panel without any manual wiring.
+# Reasoning
 
-## Which models produce reasoning?
+Some models think before they answer, and some of those show their thinking. When a response includes it, shipit emits a `reasoning_completed` event with the text, so an interface can show a "thinking" panel with no extra work.
 
-| Provider | Reasoning-capable models | How it's surfaced |
-|---|---|---|
-| **OpenAI** | `o1`, `o1-mini`, `o1-preview`, `o3`, `o3-mini`, `o4`, `o4-mini`, `gpt-5*`, DeepSeek R1 via compat endpoints | `message.reasoning_content` on chat.completions |
-| **Anthropic** | `claude-opus-4-1`, `claude-3.7-sonnet` with extended thinking enabled | `thinking_blocks[*].thinking` |
-| **AWS Bedrock** | `bedrock/openai.gpt-oss-120b-1:0`, `bedrock/anthropic.claude-*` | Via LiteLLM, surfaces as `reasoning_content` |
-| **DeepSeek** | `deepseek-r1` | `message.reasoning_content` |
+## Turning it on
 
-Models that don't expose reasoning simply won't emit `reasoning_*` events — no error, no warning.
-
-## Zero-config extraction
-
-All three LLM adapters (`OpenAIChatLLM`, `AnthropicChatLLM`, `LiteLLMChatLLM` / `BedrockChatLLM`) share a common `_extract_reasoning()` helper that handles:
-
-1. **Flat `reasoning_content`** on the response message (OpenAI / gpt-oss / DeepSeek via LiteLLM)
-2. **Anthropic `thinking_blocks[*].thinking`** (Claude extended thinking)
-3. **`model_dump()` fallback** — any `reasoning_content` / `thinking_blocks` key found in the pydantic dump
-
-The extracted text is stored on `LLMResponse.reasoning_content`, and the runtime emits `reasoning_started` + `reasoning_completed` events for every non-empty value.
-
-## OpenAI reasoning models
-
-`OpenAIChatLLM` automatically sets `reasoning_effort="medium"` when the model name matches a reasoning pattern:
-
-```python
-from shipit_agent.llms import OpenAIChatLLM
-
-# Auto-enables reasoning_effort="medium"
-llm = OpenAIChatLLM(model="o3-mini")
-
-# Override if needed
-llm = OpenAIChatLLM(model="o3-mini", reasoning_effort="high")
-
-# Force tool use (gpt-4o-mini is lazy about tool calls)
-llm = OpenAIChatLLM(model="gpt-4o-mini", tool_choice="required")
-```
-
-## Anthropic extended thinking
-
-Anthropic requires you to explicitly enable thinking and set a budget:
+**Anthropic models** think when you ask them to. Current models use adaptive thinking, where the model decides how much to think; `effort` sets the depth.
 
 ```python
 from shipit_agent.llms import AnthropicChatLLM
 
-llm = AnthropicChatLLM(
-    model="claude-opus-4-1",
-    thinking_budget_tokens=2048,   # enables extended thinking
-)
+llm = AnthropicChatLLM(model="claude-sonnet-5-5", thinking="adaptive", effort="high")
 ```
 
-The adapter translates this to `thinking={"type": "enabled", "budget_tokens": 2048}` in the API call and extracts all `thinking` blocks from the response.
+Older Anthropic models take a fixed budget instead: `thinking_budget_tokens=4000`. Give a budget to a model that rejects budgets and shipit sends adaptive thinking instead. `interleaved_thinking=True` lets the model think between tool calls, not only at the start of a turn.
 
-## Rendering a "Thinking" panel
+With the SDK API: `AgentOptions(model="claude-sonnet-5-5", thinking="adaptive", effort="high")`, or `max_thinking_tokens=` for a budget.
 
-![Live reasoning events streaming in a notebook](../assets/reasoning-thinking-panel.png){ loading=lazy }
-
-> *Above: real `reasoning_completed` events from `bedrock/openai.gpt-oss-120b-1:0`
-> rendering live in a Jupyter notebook. Each event arrives the instant the model
-> emits it — no buffering.*
+**OpenAI reasoning models** (`o`-series and `gpt-5`) reason by default; `reasoning_effort` sets how much:
 
 ```python
-for event in agent.stream(prompt):
-    if event.type == "reasoning_started":
-        print(f"🧠 Iteration {event.payload['iteration']} — thinking…")
-    elif event.type == "reasoning_completed":
-        print(f"🧠 Thought: {event.payload['content']}")
-    elif event.type == "tool_called":
-        print(f"▶ Calling {event.message}")
+from shipit_agent.llms import OpenAIChatLLM
+
+llm = OpenAIChatLLM(model="gpt-5.5", reasoning_effort="high")
 ```
 
-### Full event sequence with reasoning interleaved
+**Through LiteLLM and Bedrock**, models that return `reasoning_content`, such as gpt-oss and DeepSeek R1, show it with no setting.
 
-A typical research-task run with reasoning + 3 tool calls produces this stream:
+## Showing it
 
-![Full event stream showing reasoning between tool calls](../assets/reasoning-full-stream.png){ loading=lazy }
+```python
+for event in agent.stream("Why does the cache miss on every request?"):
+    if event.type == "reasoning_completed":
+        print("thinking:", event.payload["content"])
+    elif event.type == "tool_called":
+        print("calling:", event.payload["tool"])
+    elif event.type == "text_delta":
+        print(event.payload["chunk"], end="", flush=True)
+```
 
-> *Above: 17-step event stream from `notebooks/04_agent_streaming_packets.ipynb`.
-> Notice how `reasoning_completed` fires before each `tool_called` — that's the
-> model "thinking out loud" before deciding which tool to invoke.*
+Thinking arrives whole, as one `reasoning_completed` event per step, before that step's tool calls or answer. The answer itself streams as `text_delta`.
 
-## Caveats
+With the SDK API, thinking is a `ThinkingBlock` in the `AssistantMessage`'s content.
 
-### Non-streaming reasoning
+## Things to know
 
-SHIPIT Agent's LLM layer is currently non-streaming (`llm.complete()` returns once per iteration). Reasoning arrives as a **single `reasoning_completed` event per iteration** with the full content, not as a drip of deltas.
-
-If you need token-level reasoning streaming (to match a "Thinking" panel that updates as the model thinks), the LLM adapter would need a `.stream()` method and the runtime would need to consume it chunk-by-chunk. Planned for a future release.
-
-### Model silence
-
-If a reasoning-capable model returns an empty reasoning block (e.g. the task was too simple), no `reasoning_*` events fire. This is correct behavior — don't treat absence as a bug.
-
-### `gpt-4o-mini` has no reasoning
-
-`gpt-4o-mini`, `gpt-4o`, `gpt-4-turbo`, and most pre-o1 models do **not** produce reasoning content. They'll run the tool loop normally but won't emit `reasoning_*` events. Use an o-series or `gpt-5` model if you need visible thinking.
-
-## Related
-
-- [Streaming guide](streaming.md) — event reference
-- [Model adapters reference](../reference/adapters.md) — adapter-specific kwargs
+- **Not every model shows its thinking.** A model that does not expose it simply emits no `reasoning_*` events.
+- **Thinking costs output tokens.** Use high effort where the task needs it, not by default.
+- **Simple steps may have no thinking** even with it on; that is the model's choice.
+- **Thinking is not narration.** shipit never presents a model's reasoning as something it did; `progress_summaries=True` adds short progress events built from what actually happened.

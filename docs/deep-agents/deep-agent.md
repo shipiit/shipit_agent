@@ -148,7 +148,7 @@ from shipit_agent.stores import FileMemoryStore
 
 agent = DeepAgent.with_builtins(
     llm=llm,
-    memory_store=FileMemoryStore(root="~/.shipit/memory"),
+    memory_store=FileMemoryStore(".shipit/memory.json"),
 )
 ```
 
@@ -164,8 +164,8 @@ profile = AgentMemory.default(llm=llm, embedding_fn=embed)
 agent = DeepAgent.with_builtins(
     llm=llm,
     memory=profile,                                            # curated profile
-    memory_store=FileMemoryStore(root="~/.shipit/memory"),     # LLM-writable
-    session_store=FileSessionStore(root="~/.shipit/sessions"), # chat history
+    memory_store=FileMemoryStore(".shipit/memory.json"),     # LLM-writable
+    session_store=FileSessionStore(".shipit/sessions"), # chat history
     rag=my_rag,
     verify=True,
 )
@@ -500,7 +500,7 @@ from shipit_agent.stores import FileSessionStore
 
 agent = DeepAgent.with_builtins(
     llm=my_llm,
-    session_store=FileSessionStore(root="~/.shipit/sessions"),
+    session_store=FileSessionStore(".shipit/sessions"),
 )
 chat = agent.chat(session_id="user-42")
 ```

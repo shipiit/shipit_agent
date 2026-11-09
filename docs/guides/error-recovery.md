@@ -1,6 +1,6 @@
 # Error Recovery & Retry Policies
 
-SHIPIT Agent handles failures gracefully at every level — LLM provider errors, tool execution failures, and hallucinated tool names all produce recoverable error messages instead of crashing the agent run.
+ShipIt Agent handles failures gracefully at every level — LLM provider errors, tool execution failures, and hallucinated tool names all produce recoverable error messages instead of crashing the agent run.
 
 ## How error recovery works
 

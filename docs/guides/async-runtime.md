@@ -11,7 +11,7 @@ from shipit_agent.llms import OpenAIChatLLM
 
 async def main():
     runtime = AsyncAgentRuntime(
-        llm=OpenAIChatLLM(model="gpt-4o-mini"),
+        llm=OpenAIChatLLM(model="gpt-5.5"),
         prompt="You are a helpful assistant.",
     )
     state, response = await runtime.run("What is 2 + 2?")
@@ -25,7 +25,7 @@ asyncio.run(main())
 ```python
 async def stream_example():
     runtime = AsyncAgentRuntime(
-        llm=OpenAIChatLLM(model="gpt-4o-mini"),
+        llm=OpenAIChatLLM(model="gpt-5.5"),
         prompt="You are a helpful assistant.",
     )
 
@@ -47,7 +47,7 @@ app = FastAPI()
 @app.post("/chat")
 async def chat(prompt: str):
     runtime = AsyncAgentRuntime(
-        llm=OpenAIChatLLM(model="gpt-4o-mini"),
+        llm=OpenAIChatLLM(model="gpt-5.5"),
         prompt="You are a helpful assistant.",
     )
     state, response = await runtime.run(prompt)
@@ -56,7 +56,7 @@ async def chat(prompt: str):
 @app.post("/chat/stream")
 async def chat_stream(prompt: str):
     runtime = AsyncAgentRuntime(
-        llm=OpenAIChatLLM(model="gpt-4o-mini"),
+        llm=OpenAIChatLLM(model="gpt-5.5"),
         prompt="You are a helpful assistant.",
     )
 

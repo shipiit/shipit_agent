@@ -105,11 +105,10 @@ class AgentSettings:
 
     # ── runtime tuning ────────────────────────────────────────────────
     #: Most model steps a run may take. ``None`` (the default) means no limit:
-    #: the run ends when the model answers without calling a tool, as in the
-    #: Claude Agent SDK. Any fixed count cuts some real task off mid-way; cap
+    #: the run ends when the model answers without calling a tool. Any fixed count cuts some real task off mid-way; cap
     #: spend with ``max_budget_usd`` instead, or set a number here.
     max_iterations: int | None = None
-    #: The Claude Agent SDK's name for ``max_iterations``; set either one.
+    #: Another name for ``max_iterations``; set either one.
     max_turns: int | None = None
     retry_policy: RetryPolicy = field(default_factory=RetryPolicy)
     #: Used when the model fails after its retries: a model id, ids separated
@@ -267,7 +266,7 @@ class AgentSettings:
     skills: list[SkillLike] = field(default_factory=list)  # always-on skills
     default_skill_ids: list[str] = field(default_factory=list)
     skill_match_limit: int = 3  # max auto-matched
-    #: Skills load on demand, as in Claude Code: the prompt lists each in one
+    #: Skills load on demand: the prompt lists each in one
     #: line and the model reads one with ``load_skill`` when it needs it.
     #: False restores keyword matching that injects whole skills.
     progressive_skills: bool = True
@@ -275,7 +274,7 @@ class AgentSettings:
     #: catalog lists the project's own SKILL.md files and any registry you
     #: pass; packaged skills stay usable by id through ``skills=[...]``.
     advertise_packaged_skills: bool = False
-    #: Named sub-agents, as in the Claude Agent SDK: ``{"reviewer": {
+    #: Named sub-agents: ``{"reviewer": {
     #: "description": ..., "prompt": ..., "tools": [...], "model": ...}}``.
     #: Defining any gives the agent a ``sub_agent`` tool that lists them.
     agents: dict[str, Any] = field(default_factory=dict)

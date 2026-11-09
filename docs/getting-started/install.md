@@ -1,63 +1,59 @@
-# Installation
+---
+description: Install shipit-agent and the extras for your model provider and tools.
+---
 
-SHIPIT Agent requires **Python 3.11 or newer**.
+# Install
 
-## From PyPI
+ShipIt Agent needs Python 3.11 or newer. Its only required dependency is `pydantic`; a model provider's SDK, a browser or a vector store is an extra you add when you need it.
 
 ```bash
 pip install shipit-agent
 ```
 
-## With optional extras
+## Add your model provider
 
-SHIPIT Agent keeps its core dependency footprint at **zero**. LLM provider SDKs and browser tooling are opt-in:
+Install the extra for the provider you use. Several can be installed together.
 
-| Extra | Installs | Needed for |
-|---|---|---|
-| `[openai]` | `openai>=1.30.0` | `OpenAIChatLLM` adapter (native SDK, supports o-series reasoning) |
-| `[anthropic]` | `anthropic>=0.34.0` | `AnthropicChatLLM` adapter (native thinking blocks) |
-| `[litellm]` | `litellm>=1.42.0` | Bedrock, Gemini, Groq, Together, Ollama, any LiteLLM-backed provider |
-| `[playwright]` | `playwright>=1.45.0` | In-process browser for `open_url` and `web_search`'s Playwright provider |
-| `[dev]` | `pytest>=8.0.0` | Running the test suite |
-| `[all]` | All of the above | Everything |
+| Provider | Extra | Environment variables |
+| :- | :- | :- |
+| Anthropic | `shipit-agent[anthropic]` | `ANTHROPIC_API_KEY` |
+| OpenAI | `shipit-agent[openai]` | `OPENAI_API_KEY` |
+| AWS Bedrock | `shipit-agent[bedrock]` | `AWS_REGION_NAME` and AWS credentials |
+| Google Gemini | `shipit-agent[google]` | `GOOGLE_API_KEY` |
+| Groq | `shipit-agent[groq]` | `GROQ_API_KEY` |
+| Together | `shipit-agent[together]` | `TOGETHER_API_KEY` |
+| Ollama (local) | `shipit-agent[ollama]` | none |
+| Anything LiteLLM supports | `shipit-agent[litellm]` | the provider's own |
 
 ```bash
-pip install 'shipit-agent[openai]'
 pip install 'shipit-agent[anthropic]'
-pip install 'shipit-agent[litellm]'
-pip install 'shipit-agent[playwright]'
-pip install 'shipit-agent[all]'
 ```
 
-## Playwright browser binaries
+[Configure a model](environment.md) covers choosing the model and the full list of settings.
 
-If you install the `playwright` extra, you also need to download the Chromium binary once:
+## Add tools and features
+
+| Extra | What it adds |
+| :- | :- |
+| `playwright` | `playwright_browse`, a real browser. Run `playwright install chromium` once after installing. |
+| `pdf` | The `pdf` tool. |
+| `files` | `read_file` for Word, Excel, PowerPoint and web pages, converted to Markdown. |
+| `sql` | The `sql` tool (SQLAlchemy). Install your database driver too. |
+| `connectors` | The connector catalog (GitHub, Slack, Jira and others). |
+| `tts`, `video` | `text_to_speech` and `video_generate`. |
+| `rag` | Everything for [Super RAG](../rag/index.md): embedders, vector stores, extractors, rerankers. |
+| `langsmith`, `otel` | Trace exporters. |
+| `all` | Every provider, tool and RAG extra. |
+
+## Check the install
 
 ```bash
-playwright install chromium
+python -c "import shipit_agent; print(shipit_agent.__version__)"
+shipit --help
 ```
 
-Without this, `open_url` silently falls back to `urllib` (works for static pages, fails on JS-heavy targets like CoinDesk or anti-bot CDNs).
-
-## From source
-
-```bash
-git clone https://github.com/shipiit/shipit_agent.git
-cd shipit_agent
-pip install -e '.[dev]'
-```
-
-## Verify
-
-```python
-import shipit_agent
-from shipit_agent import Agent, ToolSearchTool
-
-print(shipit_agent.__version__)   # 1.0.0
-print(Agent)                       # <class 'shipit_agent.agent.Agent'>
-```
+The package installs two commands: `shipit`, the agent CLI, and `shipit-chat`, an interactive chat.
 
 ## Next
 
-- [Quick start](quickstart.md) — build your first agent in five minutes
-- [Environment setup](environment.md) — configure `.env` for provider switching
+Run your first agent in the [Quickstart](quickstart.md).

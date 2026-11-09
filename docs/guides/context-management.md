@@ -1,6 +1,6 @@
 # Context Window Management
 
-Long-running agents can exhaust the LLM's context window as tool results accumulate. SHIPIT Agent provides token usage tracking and automatic message compaction to handle this gracefully.
+Long-running agents can exhaust the LLM's context window as tool results accumulate. ShipIt Agent provides token usage tracking and automatic message compaction to handle this gracefully.
 
 ## Token usage tracking
 
@@ -10,7 +10,7 @@ Every `LLMResponse` now carries a `usage` dict with token counts from the provid
 from shipit_agent import Agent
 from shipit_agent.llms import OpenAIChatLLM
 
-agent = Agent.with_builtins(llm=OpenAIChatLLM(model="gpt-4o-mini"))
+agent = Agent.with_builtins(llm=OpenAIChatLLM(model="gpt-5.5"))
 
 for event in agent.stream("Research quantum computing"):
     if event.type == "run_completed":
@@ -68,8 +68,8 @@ When `context_window_tokens` is set, the runtime automatically compacts older me
 
 ```python
 agent = Agent.with_builtins(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
-    context_window_tokens=128000,  # gpt-4o's context window
+    llm=OpenAIChatLLM(model="gpt-5.5"),
+    context_window_tokens=400_000,  # GPT-5.5's context window
 )
 ```
 
@@ -98,13 +98,14 @@ user: "Now analyze the data"
 
 ### When to set it
 
-| Model | Suggested `context_window_tokens` |
+| Model | `context_window_tokens` |
 |---|---|
-| GPT-4o / GPT-4o-mini | `128000` |
-| Claude 3.5 / Claude Opus 4 | `200000` |
-| Gemini 1.5 Pro | `1000000` |
-| Llama 3.1 70B | `128000` |
-| Bedrock gpt-oss-120b | `128000` |
+| Anthropic Opus 5.5, Sonnet 5.5 | `1000000` |
+| GPT-5.5 | `400000` |
+| Gemma 4 31B | `256000` |
+| gpt-oss-120b, Llama 3.3 70B | `128000` |
+
+`optimized=True` reads the window from the model's name, so you rarely set it yourself.
 
 Set to `0` (default) to disable compaction entirely.
 
@@ -154,8 +155,8 @@ Combine usage tracking with hooks for detailed cost monitoring:
 from shipit_agent import Agent, AgentHooks
 
 MODEL_COSTS = {
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},  # per 1M tokens
-    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},  # dollars per 1M tokens
+    "claude-opus-5-5": {"input": 4.00, "output": 20.00},
 }
 
 hooks = AgentHooks()
@@ -170,7 +171,7 @@ def track_cost(response):
     costs["total_usd"] += prompt_cost + completion_cost
 
 agent = Agent.with_builtins(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     hooks=hooks,
 )
 agent.run("Do something complex with multiple tool calls")

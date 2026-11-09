@@ -5,7 +5,7 @@ description: Use packaged skills, attach prebuilt skills to Agent and DeepAgent,
 
 # Skills
 
-SHIPIT Agent supports a **skills layer** on top of the normal runtime.
+ShipIt Agent supports a **skills layer** on top of the normal runtime.
 A skill is a reusable instruction block plus metadata that can be:
 
 - loaded from a packaged JSON catalog
@@ -180,7 +180,7 @@ Complete example:
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -215,7 +215,7 @@ More explicit end-to-end example:
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -306,7 +306,7 @@ for skill in agent.skills:
 ## Project-local `SKILL.md` files
 
 Project agents automatically discover the same directory convention used by
-Codex and Claude Code. Put each skill in its own directory:
+other coding agents. Put each skill in its own directory:
 
 ```text
 .shipit/skills/release-audit/SKILL.md
@@ -418,7 +418,7 @@ assert errors == []  # no unknown tool references
 
 ```python
 from shipit_agent import DeepAgent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -454,7 +454,7 @@ Detailed DeepAgent example:
 
 ```python
 from shipit_agent import DeepAgent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -515,7 +515,7 @@ Both `Agent` and `DeepAgent` support `stream()` for real-time event output. Skil
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -661,6 +661,46 @@ Key differences:
 
 ---
 
+## Matching skills yourself
+
+The agent picks skills with `auto_use_skills=True`. To choose in your own code, for a router or a UI that shows which skill will run, use the same matchers it uses. They match a skill's authored **trigger phrases**, which are whole example requests, as case-insensitive substrings of the message; weak word overlap never pulls in an unrelated skill.
+
+```python
+from shipit_agent import DEFAULT_SKILLS_PATH, FileSkillRegistry, find_relevant_skills, match_skill_by_trigger
+
+registry = FileSkillRegistry(DEFAULT_SKILLS_PATH)
+message = "Find top restaurants in New York and save as CSV"
+
+print([s.id for s in find_relevant_skills(registry, message, max_skills=3)])
+print(match_skill_by_trigger(registry, message).id)
+```
+
+```text
+['google-maps-lead-finder']
+google-maps-lead-finder
+```
+
+`find_relevant_skills` returns up to `max_skills` matches, best first; `match_skill_by_trigger` returns the single best one, or `None`. For browsing by keyword, `registry.search(query)` searches the whole catalog instead.
+
+`apply_skill(agent, skill)` adds a skill's guidance to an agent's system prompt, inside markers so you can find it later:
+
+```python
+from shipit_agent import Agent, apply_skill
+from shipit_agent.llms import build_llm_from_env
+
+agent = Agent(llm=build_llm_from_env(), prompt="You are helpful.")
+apply_skill(agent, registry.get("google-maps-lead-finder"))
+```
+
+```text
+You are helpful.
+
+<!-- skill:google-maps-lead-finder -->
+Skill: Google Maps Lead Finder
+…
+<!-- /skill:google-maps-lead-finder -->
+```
+
 ## Create your own skills
 
 Use the authoring helpers:
@@ -780,7 +820,7 @@ Detailed custom-catalog Agent example:
 
 ```python
 from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -835,7 +875,7 @@ Detailed custom-catalog DeepAgent example:
 
 ```python
 from shipit_agent import DeepAgent
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 
@@ -901,7 +941,7 @@ The agent can scaffold an entire project from scratch.
 ```python
 from shipit_agent import Agent
 from shipit_agent.stores import InMemoryMemoryStore
-from examples.run_multi_tool_agent import build_llm_from_env
+from shipit_agent.llms import build_llm_from_env
 
 llm = build_llm_from_env("bedrock")
 

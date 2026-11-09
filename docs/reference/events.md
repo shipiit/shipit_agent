@@ -189,5 +189,5 @@ All events serialize cleanly to JSON via `event.to_dict()`:
 
 ## Related
 
-- [Streaming guide](../guides/streaming.md) — high-level usage
+- [Streaming guide](../agent/streaming.md) — high-level usage
 - [Architecture](architecture.md) — how events fit into the runtime

@@ -131,6 +131,7 @@ class RunOptionsMixin:
             "fixed_prefix_tokens": self.fixed_prefix_tokens,
             "max_tool_output_chars": self.max_tool_output_chars,
             "max_tool_output_group_chars": self.max_tool_output_group_chars,
+            "project_root": str(self.project_root) if self.project_root else None,
             "tool_output_dir": (
                 str(Path(self.project_root) / ".shipit" / "tool-results")
                 if self.persist_large_tool_outputs

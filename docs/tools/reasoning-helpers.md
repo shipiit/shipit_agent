@@ -57,7 +57,7 @@ from shipit_agent import Agent, PromptTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[PromptTool()],
 )
 
@@ -294,7 +294,7 @@ from shipit_agent import SubAgentTool
 from shipit_agent.llms import OpenAIChatLLM
 
 # Sub-agent uses a cheaper model than the main agent
-sub_tool = SubAgentTool(llm=OpenAIChatLLM(model="gpt-4o-mini"))
+sub_tool = SubAgentTool(llm=OpenAIChatLLM(model="gpt-5.5"))
 
 main_agent = Agent(
     llm=OpenAIChatLLM(model="o3-mini"),  # main = expensive reasoning model

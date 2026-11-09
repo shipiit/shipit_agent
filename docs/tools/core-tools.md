@@ -84,7 +84,7 @@ from shipit_agent import Agent, WebSearchTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[WebSearchTool(provider="duckduckgo")],
 )
 
@@ -175,7 +175,7 @@ from shipit_agent import Agent, OpenURLTool, WebSearchTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[WebSearchTool(), OpenURLTool()],
 )
 
@@ -248,12 +248,7 @@ Drives a real headless Chromium browser for pages that need full JavaScript exec
 ```python
 from shipit_agent import PlaywrightBrowserTool
 
-tool = PlaywrightBrowserTool(
-    headless=True,
-    timeout=30.0,
-    user_agent="Mozilla/5.0 ...",
-    viewport={"width": 1280, "height": 800},
-)
+tool = PlaywrightBrowserTool()  # a headless Chromium page per call
 ```
 
 ### Notes
@@ -362,7 +357,7 @@ When called, returns a `ToolOutput` with `metadata.interactive=True`. The runtim
 }
 ```
 
-Your UI catches this event, renders a prompt, collects the user's response, and feeds it back into the next turn. See the [streaming guide](../guides/streaming.md) for the full event pattern.
+Your UI catches this event, renders a prompt, collects the user's response, and feeds it back into the next turn. See the [streaming guide](../agent/streaming.md) for the full event pattern.
 
 ### Example
 
@@ -371,7 +366,7 @@ from shipit_agent import Agent, AskUserTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[AskUserTool()],
 )
 

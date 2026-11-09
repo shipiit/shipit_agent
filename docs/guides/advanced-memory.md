@@ -90,7 +90,7 @@ memory = SemanticMemory(
 memory.add("Python was created by Guido van Rossum in 1991")
 memory.add("JavaScript was created for Netscape Navigator in 1995")
 memory.add("Rust focuses on memory safety without garbage collection")
-memory.add("SHIPIT Agent supports 10 LLM providers")
+memory.add("ShipIt Agent supports 10 LLM providers")
 memory.add("FastAPI uses Python type hints for validation")
 
 # Search by meaning
@@ -187,7 +187,7 @@ memory = AgentMemory.default(llm=llm, embedding_fn=my_embed)
 
 # Unified API
 memory.add_message(Message(role="user", content="I work with Alice on Project Atlas"))
-memory.add_fact("SHIPIT Agent supports parallel tool execution")
+memory.add_fact("ShipIt Agent supports parallel tool execution")
 memory.add_entity(Entity(name="Alice", entity_type="person", context="teammate"))
 
 # Query each system

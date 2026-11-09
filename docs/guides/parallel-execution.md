@@ -1,6 +1,6 @@
 # Parallel Tool Execution
 
-When the LLM returns multiple tool calls in a single turn, SHIPIT Agent can run them concurrently instead of sequentially. This can dramatically speed up agents that call independent tools like web search + URL fetch + code execution in the same turn.
+When the LLM returns multiple tool calls in a single turn, ShipIt Agent can run them concurrently instead of sequentially. This can dramatically speed up agents that call independent tools like web search + URL fetch + code execution in the same turn.
 
 ## Enabling parallel execution
 
@@ -9,7 +9,7 @@ from shipit_agent import Agent
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent.with_builtins(
-    llm=OpenAIChatLLM(model="gpt-4o"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     parallel_tool_execution=True,   # run tools concurrently
     max_tool_concurrency=4,         # but never more than four at once
 )

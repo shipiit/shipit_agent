@@ -1,6 +1,6 @@
 ---
 title: Agent — With RAG
-description: Plug the Super RAG subsystem into a plain shipit_agent.Agent with one parameter and read DRK_CACHE-style citations off result.rag_sources.
+description: Plug the Super RAG subsystem into a plain shipit_agent.Agent with one parameter and read citations off result.rag_sources.
 ---
 
 # Agent — With RAG
@@ -11,7 +11,7 @@ parameter: `rag=`. The agent gains three new tools (`rag_search`,
 augmented with citation instructions automatically.
 
 After every `agent.run(...)` the result carries a `rag_sources` field
-— the DRK_CACHE-style citation panel.
+— a citation panel.
 
 > Want the full Super RAG documentation? See
 > [Super RAG → Overview](../rag/index.md), the

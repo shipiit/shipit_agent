@@ -35,7 +35,7 @@ from shipit_agent import Agent, ToolSearchTool
 from shipit_agent.llms import OpenAIChatLLM
 
 # ToolSearchTool is included in Agent.with_builtins automatically
-agent = Agent.with_builtins(llm=OpenAIChatLLM(model="gpt-4o-mini"))
+agent = Agent.with_builtins(llm=OpenAIChatLLM(model="gpt-5.5"))
 
 result = agent.run(
     "Use tool_search to find the right tool for fetching a specific URL, "
@@ -131,5 +131,5 @@ prompt = (
 
 ## Related
 
-- [Prebuilt tools](prebuilt-tools.md) — full list of built-in tools
+- [Prebuilt tools](../agent/with-tools.md) — full list of built-in tools
 - [Custom tools](custom-tools.md) — add your own discoverable tools

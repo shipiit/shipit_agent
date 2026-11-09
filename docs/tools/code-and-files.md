@@ -39,7 +39,7 @@ See the dedicated prompt pages for the exact shipped instructions:
 **Module:** `shipit_agent.tools.code_execution`
 **Tool ID:** `run_code`
 
-Executes Python or shell code in a **local subprocess workspace**. Captures stdout, stderr, and exit code. Times out after a configurable wall-clock limit.
+Executes code in a **local subprocess workspace**: Python, JavaScript, TypeScript, shell, Ruby, PHP, Perl, Lua or R. Captures stdout, stderr and the exit code, and stops at a time limit. With `sandbox: true` the code runs in a disposable Docker container with no network; with `AgentOptions(sandbox=...)` it runs in the [OS sandbox](../guides/sandbox.md).
 
 ### When to use
 
@@ -50,20 +50,15 @@ Executes Python or shell code in a **local subprocess workspace**. Captures stdo
 
 ### Schema
 
-```json
-{
-  "name": "run_code",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "language": { "type": "string", "enum": ["python", "bash"] },
-      "code":     { "type": "string", "description": "The code to execute" },
-      "timeout":  { "type": "number", "description": "Wall-clock timeout in seconds (default 30)" }
-    },
-    "required": ["code"]
-  }
-}
-```
+| Argument | Type | Description |
+| :- | :- | :- |
+| `language` | string, required | `python`, `javascript`, `typescript`, `bash`, `sh`, `zsh`, `ruby`, `php`, `perl`, `lua` or `r` |
+| `code` | string, required | The source to run |
+| `timeout_seconds` | number | Time limit for this call |
+| `sandbox` | boolean | Run in a disposable Docker container with no network and a read-only root filesystem (needs `docker`) |
+| `network` | boolean | With `sandbox`, allow outbound network |
+| `image` | string | With `sandbox`, a Docker image other than the language's default |
+| `workspace_root` | string | Run in this folder instead of the default workspace |
 
 ### Configuration
 
@@ -71,10 +66,9 @@ Executes Python or shell code in a **local subprocess workspace**. Captures stdo
 from shipit_agent import CodeExecutionTool
 
 tool = CodeExecutionTool(
-    workspace_root=".shipit_workspace/code_execution",  # where files live
-    timeout=30.0,                                        # default per-call timeout
-    python_executable="python3",                         # which Python to use
-    allow_shell=True,                                    # set False to disable bash
+    workspace_root=".shipit_workspace/code_execution",  # where scripts run
+    timeout_seconds=30,                                  # default time limit per call
+    env_allowlist=["PATH", "HOME"],                      # host variables the code may see
 )
 ```
 
@@ -85,7 +79,7 @@ from shipit_agent import Agent, CodeExecutionTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[CodeExecutionTool()],
 )
 
@@ -171,10 +165,7 @@ Read, write, list, and inspect files in a **scoped workspace directory**. Suppor
 ```python
 from shipit_agent import WorkspaceFilesTool
 
-tool = WorkspaceFilesTool(
-    root_dir=".shipit_workspace",   # workspace root — all paths resolved relative to this
-    max_file_size_bytes=1_000_000,  # cap on read/write sizes
-)
+tool = WorkspaceFilesTool(root_dir=".shipit_workspace")  # every path is resolved inside this folder
 ```
 
 ### Example
@@ -184,7 +175,7 @@ from shipit_agent import Agent, WorkspaceFilesTool, CodeExecutionTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[WorkspaceFilesTool(), CodeExecutionTool()],
 )
 
@@ -246,9 +237,9 @@ from shipit_agent import Agent, FileMemoryStore, MemoryTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[MemoryTool()],
-    memory_store=FileMemoryStore(root=".shipit_memory"),  # persistent across runs
+    memory_store=FileMemoryStore(".shipit_memory.json"),  # persistent across runs
 )
 ```
 
@@ -320,7 +311,7 @@ from shipit_agent import Agent, ArtifactBuilderTool
 from shipit_agent.llms import OpenAIChatLLM
 
 agent = Agent(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     tools=[ArtifactBuilderTool()],
 )
 

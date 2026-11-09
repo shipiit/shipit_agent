@@ -1,15 +1,17 @@
 # MCP Integration
 
-The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) lets you attach remote tool servers to your agent without writing any client code. SHIPIT Agent has native MCP support via three transports, plus a prebuilt catalog of well-known servers.
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) lets you attach remote tool servers to your agent without writing any client code. ShipIt Agent has native MCP support via three transports, plus a prebuilt catalog of well-known servers.
 
 ## Prebuilt MCP catalog (recommended)
 
 The fastest path: connect well-known servers by name with `connect_mcp`. Required env vars and the launcher binary (`npx` / `uvx`) are validated up front, so a misconfiguration is one clear message instead of a cryptic subprocess error:
 
 ```python
+import os
+
 from shipit_agent import Agent, connect_mcp, list_mcp_catalog
 
-github = connect_mcp("github")                       # needs GITHUB_TOKEN
+github = connect_mcp("github", token=os.environ["GITHUB_TOKEN"])
 files  = connect_mcp("filesystem", args=["/my/project"])
 db     = connect_mcp("postgres", args=["postgresql://localhost/app"])
 
@@ -18,7 +20,6 @@ agent = Agent.with_builtins(llm=llm, mcps=[github, files, db])
 for entry in list_mcp_catalog():                     # browse the catalog
     print(entry.name, "—", entry.description)
 ```
-
 Catalog: `filesystem`, `github`, `gitlab`, `slack`, `postgres`, `sqlite`, `puppeteer`, `brave-search`, `fetch`, `memory`, `sentry`, `google-maps`. Pass `env={...}` to supply credentials explicitly, or `command=[...]` to launch a local build instead of the published package.
 
 Runtime MCP failures (server down, timeout) return a readable tool result the model can react to — they do not crash the run.
@@ -35,13 +36,12 @@ mcp = RemoteMCPServer(
 )
 
 agent = Agent.with_builtins(
-    llm=OpenAIChatLLM(model="gpt-4o-mini"),
+    llm=OpenAIChatLLM(model="gpt-5.5"),
     mcps=[mcp],
 )
 
 result = agent.run("What does the README say about MCP?")
 ```
-
 The `mcp_attached` event fires once per server when `stream()` starts.
 
 ## stdio subprocess MCP server
@@ -58,7 +58,6 @@ mcp = RemoteMCPServer(
     ),
 )
 ```
-
 When multiple servers may expose the same tool name, enable deterministic
 server namespacing. The model sees `github__search` while the MCP server still
 receives its original `search` method:
@@ -70,7 +69,6 @@ mcp = RemoteMCPServer(
     include_server_in_tool_names=True,
 )
 ```
-
 Names are normalized to provider-safe ASCII and capped at 64 characters.
 
 Supply per-call MCP `_meta` without putting tenant or trace values in tool
@@ -87,7 +85,6 @@ mcp = RemoteMCPServer(
     },
 )
 ```
-
 `MCPStdioTransport` spawns one subprocess per request — simple and stateless.
 
 ## Persistent sessions
@@ -109,7 +106,6 @@ try:
 finally:
     transport.close()
 ```
-
 The runtime also closes MCP transports automatically when a run finishes.
 
 ## Resources & prompts
@@ -129,14 +125,12 @@ for p in server.list_prompts():             # prompt templates
 text = server.get_prompt("review", {"file": "app.py"})
 agent.run(text)                             # use it like a slash command
 ```
-
 Give the **model** access to a server's resources with one extra tool:
 
 ```python
 agent = Agent(llm=llm, mcps=[server], tools=[server.resource_tool()])
 # the agent can now call `filesystem_resources` to list/read resources
 ```
-
 Servers that don't implement resources or prompts simply return empty lists —
 no errors to handle.
 
@@ -157,7 +151,6 @@ mcp = RemoteMCPServer(
     ),
 )
 ```
-
 ## Mixing MCP tools with local tools
 
 ```python
@@ -174,7 +167,6 @@ agent = Agent(
     ],
 )
 ```
-
 All tools — local and MCP — appear in the single tool registry the LLM sees. `ToolSearchTool` indexes MCP tools too.
 
 ### Filter remote tools
@@ -192,7 +184,6 @@ mcp = RemoteMCPServer(
     ),
 )
 ```
-
 Remote tool results preserve MCP `structuredContent`, `outputSchema`,
 annotations, execution metadata, error status, and text/image/audio/resource
 content blocks in `ToolResult.metadata`. Text-only models receive a concise
@@ -210,6 +201,6 @@ every event. They remain available on the canonical `ToolResult`.
 
 ## Related
 
-- [The super agent](super-agent.md)
+- [The super agent](../agent/index.md)
 - [MCP spec](https://modelcontextprotocol.io/)
-- [Prebuilt tools](prebuilt-tools.md)
+- [Prebuilt tools](../agent/with-tools.md)

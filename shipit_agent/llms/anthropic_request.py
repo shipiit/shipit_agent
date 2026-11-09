@@ -15,6 +15,7 @@ from typing import Any
 
 from shipit_agent.core.models import Message
 from shipit_agent.llms import server_tools as _server_tools
+from shipit_agent.llms.base import coerce_message
 from shipit_agent.llms.claude_models import (
     NON_STREAMING_OUTPUT_CAP,
 )
@@ -89,6 +90,10 @@ class AnthropicRequestMixin:
                     }
                 )
 
+        # Anthropic takes the system prompt as its own field, and the message
+        # conversion drops system-role messages. A caller that sends its
+        # instructions only as system messages would otherwise lose them.
+        system_prompt = system_prompt or _system_text(messages)
         system: Any = system_prompt or ""
         if self.prompt_caching:
             # System: convert the string prompt into a single cached text block.
@@ -185,3 +190,12 @@ class AnthropicRequestMixin:
             return {"type": "any"}
         return None
 
+
+def _system_text(messages: list[Message]) -> str:
+    """The content of the system-role messages, joined; empty when there are none."""
+    parts = []
+    for raw in messages:
+        message = coerce_message(raw)
+        if message.role == "system" and message.content:
+            parts.append(str(message.content))
+    return "\n\n".join(parts)

@@ -10,7 +10,7 @@ all implement the same `LLM` protocol, return the same
 `LLMResponse` shape, and populate `LLMResponse.reasoning_content`
 when the underlying model exposes reasoning blocks. Switching providers
 is **one line in `.env`** — see the
-[Quickstart](../getting-started/quickstart.md#6-switch-providers).
+[Configure a model](../getting-started/environment.md).
 
 ---
 
@@ -48,17 +48,17 @@ protocol — the runtime doesn't care where the response came from.
 | Adapter | Module | Backing SDK | Best at |
 | --- | --- | --- | --- |
 | [`OpenAIChatLLM`](#openaichatllm) | `shipit_agent.llms` | `openai` | OpenAI directly, fastest tool calling |
-| [`AnthropicChatLLM`](#anthropicchatllm) | `shipit_agent.llms` | `anthropic` | Claude directly, extended thinking |
-| [`BedrockChatLLM`](#bedrockchatllm) | `shipit_agent.llms` | `litellm` | AWS Bedrock — gpt-oss / Claude / Llama |
+| [`AnthropicChatLLM`](#anthropicchatllm) | `shipit_agent.llms` | `anthropic` | Anthropic models directly, extended thinking |
+| [`BedrockChatLLM`](#bedrockchatllm) | `shipit_agent.llms` | `litellm` | AWS Bedrock — gpt-oss / Anthropic / Llama |
 | [`VertexAIChatLLM`](#vertexaichatllm) | `shipit_agent.llms` | `litellm` | Google Vertex AI |
 | [`GeminiChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Gemini API |
 | [`GroqChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Groq's hosted Llama / Mixtral |
 | [`TogetherChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Together AI |
 | [`OllamaChatLLM`](#litellm-backed-adapters) | `shipit_agent.llms` | `litellm` | Local Ollama |
-| [`LiteLLMChatLLM`](#litellmchatllm--litellmproxychatllm) | `shipit_agent.llms` | `litellm` | Generic LiteLLM SDK escape hatch |
-| [`LiteLLMProxyChatLLM`](#litellmchatllm--litellmproxychatllm) | `shipit_agent.llms` | `litellm` | Self-hosted LiteLLM proxy server |
-| [`SimpleEchoLLM`](#simpleecho-llm--shipitllm) | `shipit_agent.llms` | stdlib | Tests, demos, offline |
-| [`ShipitLLM`](#simpleecho-llm--shipitllm) | `shipit_agent.llms` | stdlib | Echo with a custom prefix |
+| [`LiteLLMChatLLM`](#litellmchatllm-litellmproxychatllm) | `shipit_agent.llms` | `litellm` | Generic LiteLLM SDK escape hatch |
+| [`LiteLLMProxyChatLLM`](#litellmchatllm-litellmproxychatllm) | `shipit_agent.llms` | `litellm` | Self-hosted LiteLLM proxy server |
+| [`SimpleEchoLLM`](#simpleechollm-shipitllm) | `shipit_agent.llms` | stdlib | Tests, demos, offline |
+| [`ShipitLLM`](#simpleechollm-shipitllm) | `shipit_agent.llms` | stdlib | Default stub for local development |
 
 The fastest way to wire any of these is `build_llm_from_env()` —
 provider switching becomes one env var. See
@@ -75,7 +75,7 @@ want the lowest possible latency on tool calling.
 from shipit_agent.llms import OpenAIChatLLM
 
 llm = OpenAIChatLLM(
-    model="gpt-4o-mini",
+    model="gpt-5.5",
     api_key=None,                  # falls back to OPENAI_API_KEY env var
     reasoning_effort=None,         # auto-set to "medium" for o-series + gpt-5 + DeepSeek R1
     tool_choice=None,              # "auto" | "required" | "none" | dict
@@ -87,7 +87,7 @@ llm = OpenAIChatLLM(
 `gpt-5*`, `deepseek-r1*`.
 
 **Lazy `gpt-4o-mini`** — set `tool_choice="required"` to force at least
-one tool call per turn. See [the FAQ](../faq.md#gpt-4o-mini-describes-a-plan-instead-of-calling-tools)
+one tool call per turn. See [the FAQ](../faq.md#the-model-describes-what-it-will-do-instead-of-doing-it)
 for the full set of fixes.
 
 `SHIPIT_OPENAI_TOOL_CHOICE=required` is the env-var equivalent.
@@ -97,13 +97,13 @@ for the full set of fixes.
 ## `AnthropicChatLLM`
 
 Native Anthropic SDK adapter. Best when you have an Anthropic API key
-and want extended thinking + Claude's strict tool-use shape.
+and want extended thinking + Anthropic's strict tool-use shape.
 
 ```python
 from shipit_agent.llms import AnthropicChatLLM
 
 llm = AnthropicChatLLM(
-    model="claude-opus-4-1",
+    model="claude-opus-5-5",
     api_key=None,                    # falls back to ANTHROPIC_API_KEY env var
     max_tokens=4096,
     thinking_budget_tokens=None,     # set to enable extended thinking
@@ -194,7 +194,7 @@ reasoning extraction:
 
 | Adapter | Default model | Notes |
 | --- | --- | --- |
-| `GeminiChatLLM` | `gemini/gemini-1.5-pro` | Needs `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| `GeminiChatLLM` | `gemini/gemini-3.5-flash` | Needs `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
 | `GroqChatLLM` | `groq/llama-3.3-70b-versatile` | Needs `GROQ_API_KEY` |
 | `TogetherChatLLM` | `together_ai/meta-llama/Llama-3.1-70B-Instruct-Turbo` | Needs `TOGETHERAI_API_KEY` |
 | `OllamaChatLLM` | `ollama/llama3.1` | Local — runs against `http://localhost:11434` by default |
@@ -202,7 +202,7 @@ reasoning extraction:
 ```python
 from shipit_agent.llms import GeminiChatLLM, GroqChatLLM, OllamaChatLLM
 
-llm = GeminiChatLLM(model="gemini/gemini-1.5-pro")
+llm = GeminiChatLLM(model="gemini/gemini-3.5-flash")
 llm = GroqChatLLM(model="groq/llama-3.3-70b-versatile")
 llm = OllamaChatLLM(model="ollama/llama3.1")
 ```
@@ -233,17 +233,16 @@ llm = LiteLLMChatLLM(
 from shipit_agent.llms import LiteLLMProxyChatLLM
 
 llm = LiteLLMProxyChatLLM(
-    model="gpt-4o-mini",                # whatever the proxy routes to
+    model="gpt-5.5",                # whatever the proxy routes to
     api_base="https://litellm.my-company.internal",
     api_key="sk-proxy-token",
     custom_llm_provider="openai",       # proxy speaks OpenAI
 )
 ```
 
-`build_llm_from_env('litellm')` auto-detects proxy mode when
-`SHIPIT_LITELLM_API_BASE` is set. See the
-[FAQ entry](../faq.md#how-do-i-use-my-own-litellm-proxy-server) for
-the env-var contract.
+`build_llm_from_env('litellm')` switches to proxy mode when
+`SHIPIT_LITELLM_API_BASE` is set. It also reads `SHIPIT_LITELLM_MODEL`,
+`SHIPIT_LITELLM_API_KEY` and `SHIPIT_LITELLM_CUSTOM_PROVIDER`.
 
 ---
 
@@ -256,8 +255,8 @@ tests, demos, and offline development.
 ```python
 from shipit_agent.llms import ShipitLLM, SimpleEchoLLM
 
-llm = SimpleEchoLLM()                   # echoes the last user message
-llm = ShipitLLM(prefix="[shipit] ")     # echo with a custom prefix
+llm = SimpleEchoLLM()   # echoes the last user message
+llm = ShipitLLM()       # the default stub for local development
 ```
 
 Both are 100% deterministic — perfect for unit tests that need a
@@ -328,5 +327,5 @@ treats it like any other adapter.
 - [Reasoning guide](../guides/reasoning.md) — what reasoning looks like end-to-end
 - [Environment setup](../getting-started/environment.md) — credential configuration
 - [Architecture](architecture.md) — where adapters fit in the runtime
-- [Quickstart — switch providers](../getting-started/quickstart.md#6-switch-providers)
-- [FAQ — providers](../faq.md#providers)
+- [Configure a model](../getting-started/environment.md)
+- [FAQ — models](../faq.md#models)

@@ -1,200 +1,86 @@
 ---
-title: Agent — Sessions & Memory
-description: Multi-turn chat with persistent sessions, conversation forking, and long-term memory for shipit_agent.Agent.
+title: Sessions
+description: Keep a conversation across turns and restarts, list and fork sessions, and resume them from the SDK API.
 ---
 
-# Agent — Sessions & Memory
+# Sessions
 
-Plain `Agent.run` is stateless: it sends the prompt + the agent's
-configured `history` to the LLM and returns the result. To build a
-**chat experience** that remembers earlier turns, you have two
-orthogonal building blocks:
-
-| Building block | Lives at | Lifetime | Use it for |
-| --- | --- | --- | --- |
-| **Session** | `SessionStore` | one conversation | Multi-turn chat history (user/assistant messages) |
-| **Memory** | `MemoryStore` | across conversations | Long-term facts the agent should remember |
-
-The two compose: a long-running chat is a session that also writes to
-memory.
-
----
-
-## 1. Multi-turn chat with `chat_session()`
-
-`agent.chat_session(session_id=...)` returns an `AgentChatSession`
-bound to a specific session id. Each `send()` / `stream()` call appends
-to that session's history.
+A session is a conversation that continues: each run sees what came before. Give the agent a session store and a session id, and the history is saved after every turn and loaded before the next, even by a new process.
 
 ```python
-from shipit_agent import Agent
-from shipit_agent.stores import InMemorySessionStore
+from shipit_agent import Agent, FileSessionStore
+from shipit_agent.llms import build_llm_from_env
 
-agent = Agent.with_builtins(
-    llm=llm,
-    session_store=InMemorySessionStore(),
-)
+store = FileSessionStore(".shipit/sessions")
+agent = Agent.with_builtins(llm=build_llm_from_env(), session_store=store, session_id="ticket-812")
 
-session = agent.chat_session(session_id="user-42")
-
-session.send("Remember that I work in EU/Berlin time.")
-session.send("Schedule a 30-minute meeting next Tuesday at 10am my time.")
-# The agent has both turns in context — it knows "my time" means EU/Berlin.
+agent.run("The nightly export fails with a timeout. Find out why.")
+agent.run("Now fix it and add a test.")  # sees the first turn
 ```
 
-`session.history()` returns the full message list at any point.
+A new `Agent` built tomorrow with the same store and `session_id="ticket-812"` carries on from there.
 
----
+## Stores
 
-## 2. Persistent sessions across restarts
+| Store | Keeps sessions |
+| :- | :- |
+| `InMemorySessionStore()` | In memory, for one process. The default when you pass nothing. |
+| `FileSessionStore(root_dir)` | As JSON files in a folder, one per session. |
 
-Swap `InMemorySessionStore` for `FileSessionStore` and your sessions
-survive process restarts:
+A store has three methods, `load(session_id)`, `save(record)` and `list_all()`. Implement them over your database to keep sessions in Postgres, Redis or anywhere else.
+
+## A chat
+
+`chat_session()` holds a conversation open and adds conveniences for chat interfaces: callbacks for every event and packet streaming for the web.
 
 ```python
-from shipit_agent.stores import FileSessionStore
+chat = agent.chat_session(session_id="support-42")
+chat.send("The export button does nothing on Safari.")
+reply = chat.send("It started after Tuesday's release.")
+print(reply.output)
 
-agent = Agent.with_builtins(
-    llm=llm,
-    session_store=FileSessionStore(root="~/.shipit/sessions"),
-)
-session = agent.chat_session(session_id="user-42")
+for event in chat.stream("Which commit changed the export code?"):
+    print(event.type, event.message)
 ```
 
-Each session is one JSON file under `~/.shipit/sessions/`. The store
-implements the simple `SessionStore` protocol — implement your own to
-back sessions on Postgres, Redis, DynamoDB, etc.
+## Managing sessions
 
----
-
-## 3. Streaming inside a session
-
-```python
-for event in session.stream("What did I ask earlier?"):
-    print(f"[{event.type}] {event.message}")
-```
-
-Identical to `agent.stream(...)` — every event flows through, the only
-extra step is that the new turn is also persisted to the session store.
-
----
-
-## 4. Conversation forking and resuming
-
-`SessionManager` (in `shipit_agent.session_manager`) layers
-fork/archive/resume on top of any `SessionStore`:
+`SessionManager` lists, resumes, forks and archives sessions in a store.
 
 ```python
 from shipit_agent import SessionManager
-from shipit_agent.stores import FileSessionStore
 
-manager = SessionManager(store=FileSessionStore(root="~/.shipit/sessions"))
-
-# Create a fresh session
-session_id = manager.create()
-
-# Fork from an existing session at the third message
-fork_id = manager.fork(parent_id=session_id, from_message=3)
-
-# Archive a session (soft-delete)
-manager.archive(session_id)
-
-# List all live sessions
+manager = SessionManager(store)
 for record in manager.list_sessions():
-    print(record.session_id, len(record.messages))
+    print(record.session_id)
+
+trial = manager.fork(agent, "ticket-812")  # a copy to try another approach
+manager.archive("ticket-811")
 ```
 
-Forking is great for "what if" branches: a user's main thread plus
-half a dozen exploratory branches that all share the first few
-messages.
+A fork starts with the original's history and goes its own way; the original is untouched. `from_message=` forks from an earlier point.
 
----
+## With the SDK API
 
-## 5. Long-term memory
-
-`AgentMemory` is a unified facade over three memory types:
-
-| Memory type | Stores | Retrieves by |
-| --- | --- | --- |
-| `ConversationMemory` | turn history with strategies (buffer / window / token / summary) | recency |
-| `SemanticMemory` | embedded facts | vector similarity |
-| `EntityMemory` | structured `(entity, attribute, value)` triples | entity name |
+The SDK's session options and functions work on any store:
 
 ```python
-from shipit_agent import Agent, AgentMemory
+from shipit_agent.sdk import AgentOptions, fork_session, list_sessions, query
 
-memory = AgentMemory.default(llm=llm, embedding_fn=my_embed_fn)
+options = AgentOptions(session_store=store, resume="ticket-812")          # continue a session
+options = AgentOptions(session_store=store, continue_conversation=True)  # continue the latest
+options = AgentOptions(session_store=store, resume="ticket-812", fork_session=True)  # a copy
 
-agent = Agent.with_builtins(
-    llm=llm,
-    memory_store=memory.knowledge,        # backs the runtime's memory tool
-)
+for info in list_sessions(store, limit=10):
+    print(info.session_id, info.summary)
 
-# Run 1
-agent.run("My favourite colour is teal.")
-memory.add_fact("user_favourite_colour=teal")
-
-# Run 2 — same agent, fresh prompt; memory is still there
-agent.run("What's my favourite colour?")
+copy_id = fork_session(store, "ticket-812", title="try the retry fix")
 ```
 
-See the [Advanced memory guide](../guides/advanced-memory.md) for the
-full set of strategies, retrieval knobs, and persistence backends.
+`get_session_messages`, `get_session_info`, `rename_session` and `tag_session` read and label sessions.
 
----
+## What a session keeps
 
-## 6. Combining sessions + memory
+The conversation: every message, tool call and result. Long sessions are compacted as they grow, so a session can run for days without outgrowing the model's window. [Context management](../guides/context-management.md).
 
-The pattern most production chat features use:
-
-```python
-from shipit_agent import Agent, AgentMemory
-from shipit_agent.stores import FileSessionStore
-
-memory = AgentMemory.default(llm=llm, embedding_fn=my_embed_fn)
-
-agent = Agent.with_builtins(
-    llm=llm,
-    session_store=FileSessionStore(root="~/.shipit/sessions"),
-    memory_store=memory.knowledge,
-)
-
-session = agent.chat_session(session_id="user-42")
-session.send("Remember that I prefer concise answers.")
-# session_store has the message history; memory_store has the fact.
-
-# A week later, in a different process:
-session = agent.chat_session(session_id="user-42")
-session.send("Tell me about Python's GIL.")
-# The agent has both: the conversation history AND the long-term fact.
-```
-
----
-
-## 7. Hooks for observability
-
-Subscribe to events as they happen via `add_event_callback` or
-`add_packet_callback`:
-
-```python
-def on_event(event):
-    print(f"[{event.type}] {event.message}")
-
-session.add_event_callback(on_event)
-
-for _ in session.stream("Search the docs"):
-    pass
-```
-
-For a JSON-friendly callback (useful for logging and analytics) use
-`add_packet_callback` — packets are SSE/WebSocket-shaped dicts.
-
----
-
-## See also
-
-- [Sessions guide](../guides/sessions.md) — sessionstore protocol details
-- [Advanced memory guide](../guides/advanced-memory.md) — every memory
-  strategy with examples
-- [`SessionManager` API](../reference/parameters.md#agentchatsession-agentchat_session-deepagentchat)
-- [Examples](examples.md#4-multi-turn-chat-with-session-persistence)
+A session is one conversation. To remember facts across conversations, such as a user's preferences or a project's conventions, use [memory](memory.md).

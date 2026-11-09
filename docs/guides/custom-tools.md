@@ -1,17 +1,47 @@
-# Creating Custom Tools
+---
+description: Write tools as functions, as classes, or as SDK @tool functions, and return results and errors the model can use.
+---
 
-A SHIPIT Agent tool is just a Python class with three things: a `name`, a `schema()` method, and a `run(context, **kwargs)` method.
+# Custom tools
 
-## Minimal tool
+A tool is a name, a description, a JSON Schema for its arguments and a function that runs. There are three ways to write one; all three work with every model.
+
+## From a function
+
+The simplest. The function's name, docstring and type hints become the tool.
+
+```python
+from shipit_agent import Agent
+from shipit_agent.llms import build_llm_from_env
+from shipit_agent.tools import FunctionTool
+
+
+def find_customer(email: str) -> str:
+    """Look up a customer by email and return their plan and signup date."""
+    return f"{email}: Pro plan since 2025-03-14"
+
+
+agent = Agent(
+    llm=build_llm_from_env(),
+    tools=[FunctionTool.from_callable(find_customer, read_only=True)],
+)
+```
+
+`name=` and `description=` override what is read from the function. `read_only=True` says the tool changes nothing, so it runs without asking and can run in parallel with other reads.
+
+## As a class
+
+A class gives you a hand-written schema, guidance for the model and full control of the result.
 
 ```python
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
 
-class AddNumbersTool:
-    name = "add_numbers"
-    description = "Add two numbers and return the sum."
-    prompt_instructions = "Use this for simple arithmetic when code_interpreter is overkill."
+class RefundTool:
+    name = "refund_order"
+    description = "Refund an order, in full or in part."
+    prompt_instructions = "Refund only after the customer has confirmed the amount."
+    read_only = False
 
     def schema(self) -> dict:
         return {
@@ -22,115 +52,72 @@ class AddNumbersTool:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "a": {"type": "number", "description": "First number"},
-                        "b": {"type": "number", "description": "Second number"},
+                        "order_id": {"type": "string", "description": "The order to refund, e.g. A-1043."},
+                        "amount": {"type": "number", "description": "Amount in dollars; omit for a full refund."},
                     },
-                    "required": ["a", "b"],
+                    "required": ["order_id"],
                 },
             },
         }
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
-        result = float(kwargs["a"]) + float(kwargs["b"])
+        order_id = kwargs["order_id"]
+        if not order_id.startswith("A-"):
+            return ToolOutput.error(f"{order_id} is not an order id. Order ids look like A-1043.")
+        amount = kwargs.get("amount")
         return ToolOutput(
-            text=f"The sum is {result}",
-            metadata={"a": kwargs["a"], "b": kwargs["b"], "sum": result},
+            text=f"Refunded {'in full' if amount is None else f'${amount:.2f}'} on {order_id}.",
+            metadata={"order_id": order_id, "amount": amount},
         )
 ```
 
-Attach it to an agent:
+| Part | What it is for |
+| :- | :- |
+| `name` | What the model calls. Lower snake case. |
+| `description` | One line the model reads to decide whether to use the tool. `tool_search` ranks by it too. |
+| `prompt_instructions` | Longer guidance on when and how to use it. |
+| `read_only` | `True` if it changes nothing. Read-only tools need no approval. |
+| `schema()` | The function schema. Every provider accepts this shape; adapters translate it. |
+| `run(context, **kwargs)` | Does the work. `kwargs` are the model's arguments; `context` has the prompt, the session id and shared `state`. |
+
+## Results
+
+`ToolOutput` has three fields:
+
+- **`text`**: the full result. Callers, traces and `result.tool_results` keep it whole.
+- **`model_text`**: optionally, a shorter view for the model, such as the relevant rows of a large table. When set, the model sees it instead of `text`.
+- **`metadata`**: structured data for your code. The model does not see it.
+
+For records, `ToolOutput.from_records(rows, fields=["id", "status"], limit=20)` shows the model a page of the chosen fields with the total count, and keeps every record in `text`.
+
+## Errors
+
+Return `ToolOutput.error(...)` for a failure the model can fix: a bad id, a missing file, a refused request. Say what went wrong and what to try. The model sees it and adjusts in its next turn.
+
+Raise only for failures it cannot fix. A raised exception never ends the run: the model sees `Error running tool '<name>': <message>` and carries on. Connection, timeout and OS errors are retried first, `RetryPolicy.max_tool_retries` times (once by default); `RetryPolicy.retry_on_exceptions` changes which.
+
+## SDK tools
+
+With the SDK API, decorate an async function with `@tool` and serve it from an in-process MCP server:
 
 ```python
-from shipit_agent import Agent
+from shipit_agent.sdk import AgentOptions, create_sdk_mcp_server, tool
 
-agent = Agent(llm=llm, tools=[AddNumbersTool()])
+
+@tool("find_customer", "Look up a customer by email", {"email": str})
+async def find_customer(args):
+    return {"content": [{"type": "text", "text": f"{args['email']}: Pro plan"}]}
+
+
+crm = create_sdk_mcp_server("crm", tools=[find_customer])
+options = AgentOptions(mcp_servers={"crm": crm}, allowed_tools=["mcp__crm__find_customer"])
 ```
 
-## Anatomy
+Return `"is_error": True` in the result to report a failure the model can act on.
 
-### `name`
-The function name the LLM will call. Keep it snake_case and descriptive.
+## Making tools easy to use
 
-### `description`
-One-line summary used by the LLM to decide whether to call this tool. Also used by `ToolSearchTool` for relevance scoring.
-
-### `prompt_instructions`
-Longer guidance on *when* to use the tool. Shown to the LLM via the system prompt and used by `ToolSearchTool`.
-
-### `schema()`
-Returns an OpenAI-compatible function schema. All providers (OpenAI, Anthropic, Bedrock, Gemini) accept this shape — adapters translate as needed.
-
-### `run(context, **kwargs)`
-Executes the tool. Returns a `ToolOutput(text, metadata)`.
-
-- `context: ToolContext` — runtime context with `prompt`, `system_prompt`, `metadata`, `state`, `session_id`
-- `**kwargs` — the arguments the LLM passed (matching your schema)
-
-## `FunctionTool` wrapper
-
-For one-off tools, wrap a plain function:
-
-```python
-from shipit_agent import FunctionTool
-
-def multiply(a: float, b: float) -> float:
-    """Multiply two numbers."""
-    return a * b
-
-tool = FunctionTool.from_function(
-    multiply,
-    name="multiply",
-    description="Multiply two numbers.",
-)
-
-agent = Agent(llm=llm, tools=[tool])
-```
-
-## Error handling
-
-- **Raise for transient errors** (network blips, rate limits) — the runtime's `RetryPolicy` will retry automatically and emit `tool_retry` events.
-- **Return a `ToolOutput` with error text for permanent failures** (invalid URL, missing file) — this lets the LLM see the error and self-correct on the next turn.
-- **Never silently swallow errors** — downstream tools can't reason about missing data.
-
-```python
-def run(self, context, **kwargs):
-    try:
-        result = self._do_work(kwargs["url"])
-    except ValueError as exc:
-        # Permanent error — return clean output, don't raise
-        return ToolOutput(
-            text=f"Error: {exc}",
-            metadata={"error": str(exc), "url": kwargs["url"]},
-        )
-    return ToolOutput(text=result, metadata={"url": kwargs["url"]})
-```
-
-## Making tools interactive
-
-Set `metadata["interactive"] = True` to pause the agent and emit an `interactive_request` event:
-
-```python
-return ToolOutput(
-    text="Waiting for user confirmation…",
-    metadata={
-        "interactive": True,
-        "kind": "approval",
-        "question": "Delete all files? (yes/no)",
-    },
-)
-```
-
-The event payload lets your UI render a prompt and collect input before resuming.
-
-## Bedrock tool-pairing safety
-
-The runtime guarantees every `toolUse` block gets a paired `toolResult` — even if your tool raises an unhandled exception. You don't need to worry about Bedrock's strict pairing invariant; the runtime handles it.
-
-## Discoverable via `tool_search`
-
-Every tool's `name + description + prompt_instructions` is automatically indexed by `ToolSearchTool`. Write clear descriptions and instructions and your tool will surface when the agent asks for relevant capabilities.
-
-## Related
-
-- [Prebuilt tools](prebuilt-tools.md) — tools that ship with SHIPIT
-- [Tool search](tool-search.md) — how discovery works
+- Write the description for the model, not for people reading the code: what it does and when to use it.
+- Describe every argument with an example of a valid value.
+- Keep results short. Return what the model needs for its next step, and the rest in `metadata`.
+- Make errors say what to do: "No file named `src/app.ts`. Did you mean `src/app.tsx`?"

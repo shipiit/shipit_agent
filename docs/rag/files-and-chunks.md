@@ -338,7 +338,7 @@ rag.index_text(email.body, source=f"gmail:{email.thread_id}")
 ```
 
 When the agent later cites these, your UI can render them as clickable
-links back to the original system — that's the entire DRK_CACHE-style
+links back to the original system — that's the entire
 experience, free of charge.
 
 ---

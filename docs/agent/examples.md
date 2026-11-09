@@ -1,238 +1,217 @@
 ---
-title: Agent — Examples
-description: Hands-on, copy-paste examples for building with shipit_agent.Agent.
+title: Examples
+description: Complete agents to copy, one for each common job, from a read-only code explainer to a supervised support agent.
 ---
 
-# Agent — Examples
+# Examples
 
-Every example below is self-contained. Swap `build_llm_from_env()` for
-any LLM client you have on hand (`AnthropicChatLLM(...)`,
-`OpenAIChatLLM(...)`, `BedrockChatLLM(...)`, etc.).
+Each example is a complete program. They use `build_llm_from_env()`, so they run with whichever provider your environment names; see [Configure a model](../getting-started/environment.md).
 
----
+## Explain a codebase, read-only
 
-## 1. Hello world — no tools
+An agent that can look but not touch: `plan` mode allows only reading.
 
 ```python
 from shipit_agent import Agent
-from shipit_agent.llms import SimpleEchoLLM
+from shipit_agent.llms import build_llm_from_env
 
-agent = Agent(llm=SimpleEchoLLM(), prompt="You are a helpful assistant.")
-result = agent.run("Say hello")
-print(result.output)
+agent = Agent.with_builtins(llm=build_llm_from_env(), project_root=".", permission_mode="plan")
+print(agent.run("How does a request reach the database in this project? Name the files.").output)
 ```
+## Fix a failing test, in a sandbox
 
----
-
-## 2. Hello world — with builtins
+Edits are allowed, and commands run in the OS sandbox, so the agent works without approvals and cannot write outside the project.
 
 ```python
-from shipit_agent import Agent
-from examples.run_multi_tool_agent import build_llm_from_env
+import asyncio
 
-llm = build_llm_from_env()
-agent = Agent.with_builtins(llm=llm)
+from shipit_agent.sdk import AgentOptions, ResultMessage, query
 
-result = agent.run("Search the web for the SQLite version released in 2024.")
-print(result.output)
+
+async def main() -> None:
+    options = AgentOptions(
+        model="claude-sonnet-5-5",
+        cwd=".",
+        permission_mode="acceptEdits",
+        sandbox={"enabled": True},
+        max_turns=30,
+        max_budget_usd=1.0,
+    )
+    async for message in query(prompt="Run the tests, find why they fail and fix the code.", options=options):
+        if isinstance(message, ResultMessage):
+            print(message.subtype, message.result)
+
+
+asyncio.run(main())
 ```
-
-`with_builtins()` ships ~30 tools out of the box including web search,
-browser, code execution, and integrations.
-
----
-
-## 3. Custom tool
-
-Any object that implements `name`, `description`, `schema()`, and
-`run(context, **kwargs)` is a tool. The shortest path is
-`FunctionTool.from_callable`:
-
-```python
-from shipit_agent import Agent
-from shipit_agent.tools import FunctionTool
-
-def reverse_string(text: str) -> str:
-    """Reverse the input string."""
-    return text[::-1]
-
-tool = FunctionTool.from_callable(reverse_string)
-agent = Agent(llm=llm, tools=[tool])
-
-result = agent.run("Reverse the string 'shipit'.")
-print(result.output)
-```
-
-See the [Custom tools guide](../guides/custom-tools.md) for the full
-protocol and validation patterns.
-
----
-
-## 4. Multi-turn chat with session persistence
-
-```python
-from shipit_agent import Agent
-from shipit_agent.stores import FileSessionStore
-
-agent = Agent.with_builtins(
-    llm=llm,
-    session_store=FileSessionStore(root="~/.shipit/sessions"),
-)
-
-session = agent.chat_session(session_id="user-42")
-
-# Turn 1
-result1 = session.send("Remember that my favourite colour is teal.")
-print(result1.output)
-
-# Turn 2 — agent remembers
-result2 = session.send("What's my favourite colour?")
-print(result2.output)
-```
-
-See the [Sessions & Memory page](sessions.md) for a full deep-dive.
-
----
-
-## 5. Streaming a research run
-
-```python
-agent = Agent.with_builtins(llm=llm)
-
-for event in agent.stream("Find today's Bitcoin price in USD."):
-    if event.type == "reasoning_started":
-        print("🧠 thinking…")
-    elif event.type == "reasoning_completed":
-        print("🧠 thought:", event.payload.get("content", "")[:120])
-    elif event.type == "tool_called":
-        print("▶", event.message)
-    elif event.type == "tool_completed":
-        print("✓", event.message)
-    elif event.type == "run_completed":
-        print("answer:", event.payload.get("output", "")[:200])
-```
-
-See the [Streaming page](streaming.md) for SSE/WebSocket renderers and
-full event-type tables.
-
----
-
-## 6. Structured output (Pydantic)
+## Review code into a structured report
 
 ```python
 from pydantic import BaseModel
+
 from shipit_agent import Agent
+from shipit_agent.llms import build_llm_from_env
 
-class WeatherReport(BaseModel):
-    city: str
-    temperature_c: float
-    conditions: str
 
-agent = Agent.with_builtins(llm=llm)
-result = agent.run("What's the weather in Paris?", output_schema=WeatherReport)
+class Finding(BaseModel):
+    file: str
+    line: int
+    severity: str
+    problem: str
+    fix: str
 
-print(result.parsed)            # WeatherReport(city='Paris', temperature_c=12.0, ...)
-print(result.parsed.city)
+
+class Review(BaseModel):
+    verdict: str
+    findings: list[Finding]
+
+
+agent = Agent.with_builtins(llm=build_llm_from_env(), project_root=".", permission_mode="plan")
+review = agent.run("Review the changes in `git diff main` for bugs.", output_schema=Review).parsed
+
+for f in review.findings:
+    print(f"{f.severity:7} {f.file}:{f.line}  {f.problem}")
 ```
-
-The runtime appends a JSON-schema instruction to the user prompt and
-parses the model's final answer with `PydanticParser`. Your `tools` and
-`rag` continue to work normally — only the *final* answer is required
-to fit the schema.
-
----
-
-## 7. Agent with RAG (auto-cited answers)
+## Research with sources
 
 ```python
 from shipit_agent import Agent
-from shipit_agent.rag import RAG, HashingEmbedder
+from shipit_agent.llms import build_llm_from_env
+from shipit_agent.tools import OpenURLTool, WebSearchTool
 
-rag = RAG.default(embedder=HashingEmbedder(dimension=512))
-rag.index_file("docs/manual.pdf")
-
-agent = Agent.with_builtins(llm=llm, rag=rag)
-
-result = agent.run("How do I configure logging?")
-print(result.output)              # "Set SHIPIT_LOG_LEVEL=debug. [1]"
-
-for src in result.rag_sources:
-    print(f"[{src.index}] {src.source}: {src.text[:80]}")
-```
-
-The `rag=` parameter auto-wires three new tools (`rag_search`,
-`rag_fetch_chunk`, `rag_list_sources`), augments the system prompt
-with citation instructions, and attaches every retrieved chunk to
-`result.rag_sources`. See [Agent + RAG](with-rag.md) for the full
-pattern.
-
----
-
-## 8. Agent with MCP server
-
-```python
-from shipit_agent import Agent, MCPServer, MCPSubprocessTransport
-
-mcp = MCPServer(
-    name="filesystem",
-    transport=MCPSubprocessTransport(
-        command="npx",
-        args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp/work"],
-    ),
+agent = Agent(
+    llm=build_llm_from_env(),
+    tools=[WebSearchTool(), OpenURLTool()],
+    prompt="Answer from sources you have opened. Cite each claim with its URL.",
 )
-
-agent = Agent.with_builtins(llm=llm, mcps=[mcp])
-
-result = agent.run("List the files in /tmp/work and read the largest one.")
-print(result.output)
+print(agent.run("What changed in Python 3.14's free-threaded build?").output)
 ```
+## A support agent with your tools and a person in the loop
 
-See the [MCP guide](../guides/mcp.md) for HTTP transports, persistent
-subprocess MCP servers, and OAuth-protected MCP endpoints.
+Read-only lookups run freely; a refund waits for a person.
 
----
+```python
+from shipit_agent import Agent, PermissionDecision, PermissionResult
+from shipit_agent.llms import build_llm_from_env
+from shipit_agent.tools import FunctionTool
 
-## 9. Agent with hooks (audit log)
+
+def order_status(order_id: str) -> str:
+    """The shipping status of an order, e.g. A-1043."""
+    return f"{order_id}: delivered on 4 November"
+
+
+def refund(order_id: str, amount: float) -> str:
+    """Refund an amount in dollars on an order."""
+    return f"Refunded ${amount:.2f} on {order_id}"
+
+
+def ask_a_person(tool_name: str, arguments: dict) -> PermissionResult | None:
+    if tool_name != "refund":
+        return None
+    answer = input(f"Refund ${arguments['amount']} on {arguments['order_id']}? [y/N] ")
+    return PermissionResult(PermissionDecision.ALLOW if answer.lower() == "y" else PermissionDecision.DENY)
+
+
+agent = Agent(
+    llm=build_llm_from_env(),
+    tools=[FunctionTool.from_callable(order_status, read_only=True), FunctionTool.from_callable(refund)],
+    permission_callback=ask_a_person,
+    prompt="You are a support agent for an online shop. Be brief and kind.",
+)
+print(agent.run("Order A-1043 arrived broken. I'd like my $40 back.").output)
+```
+## A chat that remembers
+
+```python
+from shipit_agent import Agent, FileSessionStore
+from shipit_agent.llms import build_llm_from_env
+
+agent = Agent.with_builtins(llm=build_llm_from_env(), session_store=FileSessionStore(".shipit/sessions"))
+chat = agent.chat_session(session_id="planning")
+
+while (line := input("you › ")) != "quit":
+    print("agent ›", chat.send(line).output)
+```
+Run it again tomorrow with the same `session_id` and the conversation continues.
+
+## Triage GitHub issues over MCP
+
+```python
+import os
+
+from shipit_agent import Agent, connect_mcp
+from shipit_agent.llms import build_llm_from_env
+
+agent = Agent(
+    llm=build_llm_from_env(),
+    mcps=[connect_mcp("github", token=os.environ["GITHUB_TOKEN"])],
+    prompt="You triage issues for shipiit/shipit_agent. Label, never close.",
+)
+print(agent.run("Label the issues opened this week as bug, feature or question.").output)
+```
+## An audit log, and a hard block on secrets
 
 ```python
 from shipit_agent import Agent, AgentHooks
+from shipit_agent.llms import build_llm_from_env
 
-class AuditHooks(AgentHooks):
-    def before_llm(self, messages, tool_schemas):
-        print(f"[audit] sending {len(messages)} messages, {len(tool_schemas)} tools")
+hooks = AgentHooks()
 
-    def after_tool(self, tool_name, output):
-        print(f"[audit] tool {tool_name} returned {len(output.text)} chars")
 
-agent = Agent.with_builtins(llm=llm, hooks=AuditHooks())
-agent.run("Search the docs and summarise.")
+@hooks.on_before_tool
+def audit(name: str, arguments: dict):
+    print(f"[audit] {name} {arguments}")
+    if ".env" in str(arguments):
+        return {"decision": "deny", "reason": "Secrets are off limits."}
+    return None
+
+
+agent = Agent.with_builtins(llm=build_llm_from_env(), project_root=".", hooks=hooks)
+agent.run("Check that the config loader handles a missing file.")
 ```
+## A lead with specialist sub-agents
 
----
-
-## 10. Agent with retry policy
+The lead hands work to sub-agents, each with its own prompt and tools. Only their summaries enter the lead's context.
 
 ```python
 from shipit_agent import Agent
-from shipit_agent.policies import RetryPolicy
+from shipit_agent.llms import build_llm_from_env
 
 agent = Agent.with_builtins(
-    llm=llm,
-    retry_policy=RetryPolicy(
-        max_retries=5,
-        base_delay=2.0,
-        backoff_factor=2.0,
-        retry_on_tool_failure=True,
-    ),
+    llm=build_llm_from_env(),
+    project_root=".",
+    agents={
+        "reviewer": {
+            "description": "Reviews a change for bugs and missing tests.",
+            "prompt": "You review code. Report each problem with file:line and a fix.",
+            "tools": ["read_file", "grep_files", "glob_files"],
+        },
+        "tester": {
+            "description": "Runs the test suite and reports failures.",
+            "prompt": "Run the tests and report each failure with its cause.",
+            "tools": ["bash", "read_file"],
+        },
+    },
+)
+print(agent.run("Add input validation to src/api/users.py, then have it reviewed and tested.").output)
+```
+## Survive a flaky provider
+
+Retries for transient errors, then a fallback model.
+
+```python
+from shipit_agent import Agent, RetryPolicy
+from shipit_agent.llms import build_llm_from_env
+
+agent = Agent.with_builtins(
+    llm=build_llm_from_env("anthropic"),
+    fallback_model=build_llm_from_env("openai"),
+    retry_policy=RetryPolicy(max_llm_retries=3, llm_retry_max_delay=20.0),
 )
 ```
+## More
 
----
-
-## See also
-
-- [Streaming](streaming.md) — render events live
-- [With RAG](with-rag.md) — knowledge-grounded answers
-- [With Tools](with-tools.md) — custom tools, MCP, runtime factories
-- [Sessions & Memory](sessions.md) — multi-turn chat with persistence
-- [Parameters Reference](../reference/parameters.md#agent)
+- [Deep agent recipes](../guides/deep-agents.md): goal-driven, reflective and supervised agents.
+- [RAG with an agent](../rag/with-agent.md): answers grounded in your documents, with citations.
+- The [`examples/`](https://github.com/shipiit/shipit_agent/tree/main/examples) folder in the repository: runnable scripts and notebooks.

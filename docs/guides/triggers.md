@@ -139,5 +139,5 @@ Enough to render a status list without reaching into anything private.
 ## See also
 
 - [Scheduled agents](scheduled-agents.md) — time-based rather than event-based
-- [Sessions & memory](sessions.md) — where a reactive run's history lives
-- [Streaming](streaming.md) — watching a triggered run as it happens
+- [Sessions & memory](../agent/sessions.md) — where a reactive run's history lives
+- [Streaming](../agent/streaming.md) — watching a triggered run as it happens

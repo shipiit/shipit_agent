@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [3.1.0] — 2026-11-09
+
 ### Added
 
 - Local Chrome Workspace companion with a docked, height-aware chat panel,
@@ -2873,7 +2879,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v1.0.18...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/shipiit/shipit_agent/compare/v3.0.0...v3.1.0
 [1.0.18]: https://github.com/shipiit/shipit_agent/compare/v1.0.17...v1.0.18
 [1.0.17]: https://github.com/shipiit/shipit_agent/compare/v1.0.16...v1.0.17
 [1.0.16]: https://github.com/shipiit/shipit_agent/compare/v1.0.15...v1.0.16

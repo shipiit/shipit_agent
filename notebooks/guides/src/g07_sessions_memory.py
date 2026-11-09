@@ -88,7 +88,8 @@ CELLS = [
     print("sessions in the store:", len(manager.list_sessions()))
 
     trial = manager.fork(later, "ticket-812")
-    print("the fork is a new session:", trial.session_id != "ticket-812")
+    is_new = trial.session_id != "ticket-812"
+    print("the fork is a new session:", is_new)
     print(trial.send("Try a different angle: suggest one likely cause in one line.").output)
     print("original still has", len(store.load("ticket-812").messages), "messages")
     """),

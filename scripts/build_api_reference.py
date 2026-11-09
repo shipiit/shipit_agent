@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import inspect
 import sys
+import typing
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,6 +29,10 @@ from shipit_agent import Agent, FunctionTool, PendingAction
 
 
 def _kind(obj: object) -> str:
+    # Before classes: list[int] passes isclass on some Pythons, and a Union's own
+    # class name differs between versions.
+    if typing.get_origin(obj) is not None:
+        return "type alias"
     if inspect.isclass(obj):
         return "class"
     if inspect.isfunction(obj) or inspect.isbuiltin(obj):
@@ -36,6 +41,8 @@ def _kind(obj: object) -> str:
 
 
 def _summary(obj: object) -> str:
+    if _kind(obj) == "type alias":
+        return "A type alias."
     if _kind(obj) == "constant":
         type_name = "Path" if isinstance(obj, Path) else type(obj).__name__.lstrip("_")
         return f"A `{type_name}`."
@@ -45,7 +52,7 @@ def _summary(obj: object) -> str:
 
 
 def _module(name: str, obj: object) -> str:
-    module = getattr(obj, "__module__", None) if _kind(obj) != "constant" else None
+    module = getattr(obj, "__module__", None) if _kind(obj) in ("class", "function") else None
     if not isinstance(module, str) or not module.startswith("shipit_agent"):
         return "shipit_agent"
     return ".".join(module.split(".")[:2])

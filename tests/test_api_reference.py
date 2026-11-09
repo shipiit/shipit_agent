@@ -39,3 +39,11 @@ def test_kinds_and_summaries() -> None:
     assert builder._summary(42) == "A `int`."
     assert builder._summary(type("Bare", (), {})) == "—"
     assert builder._module("x", 42) == "shipit_agent"
+
+
+def test_type_aliases_read_the_same_on_every_python() -> None:
+    from typing import Optional, Union
+
+    for alias in (int | str, Union[int, str], Optional[int], list[int]):
+        assert builder._kind(alias) == "type alias"
+        assert builder._summary(alias) == "A type alias."

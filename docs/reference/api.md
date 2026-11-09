@@ -20,7 +20,7 @@ from shipit_agent import Agent, FunctionTool, PendingAction
 | `MODEL_ALIASES` | constant | A `dict`. |
 | `MODEL_PRICING` | constant | A `dict`. |
 | `STREAM_GENERATION` | constant | A `str`. |
-| `ToolRunOutput` | constant | A `Union`. |
+| `ToolRunOutput` | type alias | A type alias. |
 
 ## `shipit_agent.agent`
 

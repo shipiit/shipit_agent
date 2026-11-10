@@ -187,3 +187,90 @@ class TestTheRequestStaysLast:
         llm = _Recorder([LLMResponse(content="done")])
         result = _agent(llm).run("What is 2 + 2?")
         assert not any(GROUNDING_REMINDER in (m.content or "") for m in result.messages)
+
+
+def _send_invite(email: str) -> str:
+    """Invite someone to the workspace."""
+    return f"invited {email}"
+
+
+class _Obedient:
+    """Calls its one tool whenever the grounding reminder is in view.
+
+    A held call's own tool message says it was not run and must not be
+    retried; if the reminder then claims no tool was called, this model does
+    what a real one did and tries again, one approval card per attempt."""
+
+    model = "test-model"
+
+    def __init__(self, name: str, arguments: dict[str, Any]) -> None:
+        self.name = name
+        self.arguments = arguments
+        self.seen: list[list[Any]] = []
+
+    def complete(self, *, messages, tools=None, **_kw) -> LLMResponse:
+        self.seen.append(list(messages))
+        last = messages[-1]
+        text = (last.get("content") if isinstance(last, dict) else last.content) or ""
+        if GROUNDING_REMINDER in text:
+            return LLMResponse(
+                tool_calls=[ToolCall(name=self.name, arguments=dict(self.arguments))]
+            )
+        return LLMResponse(content="done")
+
+
+class TestAHeldCallCountsAsAnAttempt:
+    """Reported from a host app: an invite held for approval was retried
+    every step, because the reminder said no tool had been called."""
+
+    @staticmethod
+    def _run(
+        arguments: dict[str, Any] | None = None, name: str = "send_invite", **kw: Any
+    ) -> _Obedient:
+        llm = _Obedient(
+            name, {"email": "ana@example.com"} if arguments is None else arguments
+        )
+        Agent(
+            llm=llm,
+            tools=[FunctionTool.from_callable(_send_invite, name=name)],
+            auto_use_skills=False,
+            max_iterations=5,
+            **kw,
+        ).run("invite ana")
+        return llm
+
+    @staticmethod
+    def _assert_tried_once(llm: _Obedient) -> None:
+        assert len(llm.seen) == 2
+        assert not any(
+            GROUNDING_REMINDER
+            in ((m.get("content") if isinstance(m, dict) else m.content) or "")
+            for m in llm.seen[1]
+        )
+
+    def test_a_call_waiting_for_permission(self) -> None:
+        from shipit_agent.safety.permissions import PermissionEngine
+
+        self._assert_tried_once(self._run(permissions=PermissionEngine(ask=["*"])))
+
+    def test_a_denied_call(self) -> None:
+        from shipit_agent.safety.hooks import AgentHooks
+
+        hooks = AgentHooks()
+        hooks.on_before_tool(lambda *_: {"decision": "deny", "reason": "not today"})
+        self._assert_tried_once(self._run(hooks=hooks))
+
+    def test_a_call_queued_for_approval(self) -> None:
+        from shipit_agent.approvals import ApprovalQueue
+        from shipit_agent.safety.permissions import PermissionEngine
+
+        # Unknown tools stop for a decision; slack's built-in contract queues.
+        queue = ApprovalQueue()
+        llm = self._run(
+            name="slack", approvals=queue, permissions=PermissionEngine(ask=["*"])
+        )
+        self._assert_tried_once(llm)
+        assert [action.tool for action in queue.pending()] == ["slack"]
+
+    def test_a_call_missing_its_arguments(self) -> None:
+        self._assert_tried_once(self._run(arguments={}))

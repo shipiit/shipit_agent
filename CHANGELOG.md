@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [3.1.1] — 2026-11-10
+
 ### Fixed
 
 - **The vision tool sends the image.** `VisionTool` put the image in message
@@ -24,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extra, so an agent on `[litellm]`, `[google]`, `[groq]`, `[together]` or
   `[ollama]` failed on its first call with `No module named 'mcp'`. Those extras,
   and `[all]`, now install it.
+- **A held tool call is not retried.** After a call that waited for permission,
+  was denied, was queued for approval or was missing an argument, the next step
+  still told the model it had not called any tool yet. Models obeyed that over
+  the tool message saying the call must not be retried, so a gated action such
+  as an invite was attempted again every step, one approval card each time. A
+  call the model made now counts whether or not it ran.
 
 ---
 
@@ -2895,7 +2907,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v3.1.1...HEAD
+[3.1.1]: https://github.com/shipiit/shipit_agent/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/shipiit/shipit_agent/compare/v3.0.0...v3.1.0
 [1.0.18]: https://github.com/shipiit/shipit_agent/compare/v1.0.17...v1.0.18
 [1.0.17]: https://github.com/shipiit/shipit_agent/compare/v1.0.16...v1.0.17

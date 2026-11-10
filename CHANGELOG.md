@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [3.1.1] — 2026-11-10
+
 ### Fixed
 
 - **The vision tool sends the image.** `VisionTool` put the image in message
@@ -2901,7 +2907,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v3.1.1...HEAD
+[3.1.1]: https://github.com/shipiit/shipit_agent/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/shipiit/shipit_agent/compare/v3.0.0...v3.1.0
 [1.0.18]: https://github.com/shipiit/shipit_agent/compare/v1.0.17...v1.0.18
 [1.0.17]: https://github.com/shipiit/shipit_agent/compare/v1.0.16...v1.0.17

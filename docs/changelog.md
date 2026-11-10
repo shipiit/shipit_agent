@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+Nothing yet.
+
+---
+
+## v3.1.1 — 2026-11-10
+
 ### Fixed
 
 - **The vision tool sends the image.** `VisionTool` put the image in message

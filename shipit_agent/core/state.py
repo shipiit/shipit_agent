@@ -16,6 +16,9 @@ class RuntimeState:
     messages: list[Message] = field(default_factory=list)
     events: list[AgentEvent] = field(default_factory=list)
     tool_results: list[ToolResult] = field(default_factory=list)
+    # Calls the model made, run or not: a held or refused call still counts,
+    # so the grounding reminder never tells the model it called nothing.
+    tool_calls_attempted: int = 0
     seen_tool_outputs: dict = field(default_factory=dict)
     last_observation: str = ""
     executed_readonly_calls: set = field(default_factory=set)

@@ -10,7 +10,7 @@ from .agent_tool import AgentTool
 from .ask_user import AskUserTool
 from .ask_user_async import AskUserAsyncTool
 from .artifact_builder import ArtifactBuilderTool
-from .bash import BashJobTool, BashTool
+from .bash import BashJobTool, BashTool, MonitorTool
 from .base import Tool, ToolContext, ToolOutput, ToolOutputChunk, ToolRunOutput
 from .formatting import clip_text
 from .code_execution import CodeExecutionTool
@@ -110,6 +110,7 @@ __all__ = [
     "MultiEditTool",
     "ListMcpResourcesTool",
     "ReadMcpResourceTool",
+    "MonitorTool",
     "TaskCreateTool",
     "TaskGetTool",
     "TaskListTool",

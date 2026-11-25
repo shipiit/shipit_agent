@@ -248,6 +248,12 @@ The client's methods:
 
 Each response starts with a `UserMessage` echoing the prompt. Its `uuid` is what `rewind_files` takes.
 
+## Watching a command
+
+`monitor` is the SDK's `Monitor`: it runs a command in the background, and each line the command prints goes to the watch's log as it happens. The model reads the log as it would any background job's and is told when the watch ends; `task_stop` ends it early. Every watch has a deadline: `timeout_ms`, 300,000 by default, at most 1,800,000.
+
+The command goes through the bash tool's checks, environment and sandbox, and bash's permission rules cover it: `Bash(rm *)` in `disallowed_tools` also refuses `rm` under `monitor`. Only `command` sources are supported, not WebSocket ones. It is not in the default tool set.
+
 ## A task list
 
 `task_create`, `task_update`, `task_get` and `task_list` are the SDK's `TaskCreate`, `TaskUpdate`, `TaskGet` and `TaskList`: a task list the model keeps during the run, changed one task at a time, where a task can block others. They answer in the SDK's JSON shapes; `status="deleted"` removes a task and its links, and ids are never reused. They are not in the default tool set, which has `todo`, a simpler checklist; name them in `tools` to use them. The SDK's `TaskOutput` has no counterpart: Claude Code removed it, and a background task's output is read from its file.

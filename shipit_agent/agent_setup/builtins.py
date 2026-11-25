@@ -46,6 +46,7 @@ from shipit_agent.tools import (
     AskUserAsyncTool,
     AskUserTool,
     BashJobTool,
+    MonitorTool,
     BashTool,
     CodeExecutionTool,
     ConfluenceTool,
@@ -148,6 +149,7 @@ def get_builtin_tool_map(
         # ── file operations ───────────────────────────────────────
         bash_tool,
         BashJobTool(bash_tool),
+        MonitorTool(bash_tool),
         TaskStopTool(),
         ListMcpResourcesTool(),
         ReadMcpResourceTool(),

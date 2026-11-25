@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
   and estimated cost per model), `terminal_reason` and `uuid`;
   `AssistantMessage` has `message_id`.
+- **`monitor` tool**, the SDK's `Monitor`: watch a command's output in the
+  background until it ends or its deadline (default five minutes, at most
+  30). It runs under the bash tool's checks, environment, sandbox and job
+  table, and bash's permission rules cover it. Command sources only. Opt-in.
 - **Task-list tools.** `task_create`, `task_update`, `task_get` and
   `task_list` (the SDK's `TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`)
   keep a task list with owners and dependencies. Opt-in by name.

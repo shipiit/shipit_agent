@@ -34,6 +34,8 @@ VERBS: dict[str, VerbSpec] = {
                          CODE, args=("job_id",), intransitive=True),
     "task_stop": VerbSpec("Stopped background task", "Stopping background task",
                           CODE, args=("task_id",), intransitive=True),
+    "monitor": VerbSpec("Started watching", "Starting to watch", CODE, "command",
+                        args=("description", "command")),
     "execute_code": VerbSpec("Ran code", "Running code", CODE,
                              args=("code",), intransitive=True),
     "run_code": VerbSpec("Ran code", "Running code", CODE,

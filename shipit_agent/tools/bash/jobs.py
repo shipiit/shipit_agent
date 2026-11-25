@@ -209,7 +209,7 @@ class BackgroundJobsMixin:
         code = job["process"].poll()
         status = ("running" if code is None else "stopped" if job.get("stopped")
                   else "completed" if code == 0 else "failed")
-        return TaskInfo(job_id, "local_bash", str(job["command"]), status,
+        return TaskInfo(job_id, "local_bash", str(job.get("description") or job["command"]), status,
                         output_file=str(job["log_path"]), exit_code=code)
 
 

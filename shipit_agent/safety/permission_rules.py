@@ -39,7 +39,9 @@ RuleBehavior = Literal["allow", "deny", "ask"]
 
 #: SDK tool names, lower-cased, and the shipit tools each one names.
 _SDK_NAMES: dict[str, tuple[str, ...]] = {
-    "bash": ("bash",),
+    # Monitor runs a command as bash does, so bash rules cover it too.
+    "bash": ("bash", "monitor"),
+    "monitor": ("monitor",),
     "read": ("read_file", "glob_files", "grep_files"),
     "edit": ("edit_file", "write_file", "multi_edit", "notebook_edit"),
     "write": ("write_file",),
@@ -70,7 +72,7 @@ _SDK_NAMES: dict[str, tuple[str, ...]] = {
 }
 
 #: Which argument a specifier is matched against, by shipit tool.
-_COMMAND_TOOLS = frozenset({"bash"})
+_COMMAND_TOOLS = frozenset({"bash", "monitor"})
 _PATH_TOOLS = frozenset(
     {"read_file", "glob_files", "grep_files", "edit_file", "write_file", "multi_edit", "notebook_edit"}
 )

@@ -43,8 +43,8 @@ _SDK_NAMES: dict[str, tuple[str, ...]] = {
     "bash": ("bash", "monitor"),
     "monitor": ("monitor",),
     "read": ("read_file", "glob_files", "grep_files"),
-    "edit": ("edit_file", "write_file", "multi_edit", "notebook_edit"),
-    "write": ("write_file",),
+    "edit": ("edit_file", "write_file", "multi_edit", "notebook_edit", "download_file"),
+    "write": ("write_file", "download_file"),
     "multiedit": ("multi_edit",),
     "notebookedit": ("notebook_edit",),
     "glob": ("glob_files",),
@@ -74,7 +74,7 @@ _SDK_NAMES: dict[str, tuple[str, ...]] = {
 #: Which argument a specifier is matched against, by shipit tool.
 _COMMAND_TOOLS = frozenset({"bash", "monitor"})
 _PATH_TOOLS = frozenset(
-    {"read_file", "glob_files", "grep_files", "edit_file", "write_file", "multi_edit", "notebook_edit"}
+    {"read_file", "glob_files", "grep_files", "edit_file", "write_file", "multi_edit", "notebook_edit", "download_file"}
 )
 _URL_TOOLS = frozenset({"open_url"})
 

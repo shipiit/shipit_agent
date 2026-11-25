@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the server always needs a key and generates one if none was given. Keys are
   compared in constant time.
 
+- **`download_file` stays in its folder.** The model's `path` could be
+  absolute, contain `..` or start with `~`, so a prompt-injected agent could
+  write a downloaded file to `~/.bashrc` or `~/.ssh/authorized_keys`, and
+  `Edit(...)` rules did not apply to the tool. The destination is now held to
+  the downloads folder (and folders added with `add_dirs`), and `Edit(...)`
+  and `Write(...)` rules cover it.
+
 ### Added
 
 - **A one-hour prompt cache.** `AnthropicChatLLM(cache_ttl="1h")` and

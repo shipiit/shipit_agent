@@ -119,6 +119,8 @@ options = AgentOptions(mcp_servers={"calc": calc}, allowed_tools=["mcp__calc__ad
 - **Annotations:** `annotations=ToolAnnotations(readOnlyHint=True)` (or a dict) lets calls to the tool run in parallel.
 - **Naming:** a server's tools are exposed as `<server>__<tool>`; rules may name them either way.
 
+Two built-in tools read the servers' resources: `list_mcp_resources` (the SDK's `ListMcpResources`) and `read_mcp_resource` (`ReadMcpResource`). Both answer in the SDK's JSON shapes, see only the servers switched on for the run, and are read-only. They are not in the default tool set; name them in `tools` to use them.
+
 External servers use the same `mcp_servers` dict:
 
 ```python

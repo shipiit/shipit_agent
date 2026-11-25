@@ -124,6 +124,8 @@ class SharedToolStateMixin:
                 for tool in registry.values()
             ],
             "memory_store": self.memory_store,
+            # The MCP servers switched on for this run, for the resource tools.
+            "mcp_servers": list(self.mcps or []),
             "credential_store": self.credential_store,
             CONNECTIONS_KEY: self.connections,
             # Publishing the control plane is what makes delegation

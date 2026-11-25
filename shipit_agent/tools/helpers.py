@@ -65,7 +65,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "vision",
     },
     "data": {"sql"},
-    "memory & discovery": {"memory", "tool_search"},
+    "memory & discovery": {"memory", "tool_search", "list_mcp_resources", "read_mcp_resource"},
     "delegation": {"sub_agent"},
 }
 

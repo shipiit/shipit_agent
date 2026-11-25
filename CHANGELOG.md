@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
   and estimated cost per model), `terminal_reason` and `uuid`;
   `AssistantMessage` has `message_id`.
+- **MCP resource tools.** `list_mcp_resources` and `read_mcp_resource` (the
+  SDK's `ListMcpResources` and `ReadMcpResource`, under either spelling) list
+  and read the resources of the MCP servers switched on for the run.
 - **`include_hook_events`** reports each SDK hook callback as `hook_started`
   and `hook_response` system messages, with its output and whether it failed.
 - **Sub-agent messages in the SDK stream.** A sub-agent's tool calls and

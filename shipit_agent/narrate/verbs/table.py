@@ -115,6 +115,9 @@ VERBS: dict[str, VerbSpec] = {
                                 args=("name",), read_only=True),
     "tool_search": VerbSpec("Looked for a tool", "Looking for a tool", SEARCH,
                             read_only=True, intransitive=True),
+    "list_mcp_resources": VerbSpec("Listed MCP resources", "Listing MCP resources", SEARCH,
+                                   read_only=True, intransitive=True),
+    "read_mcp_resource": VerbSpec("Read", "Reading", DOC, "resource", args=("uri",), read_only=True),
     "memory": VerbSpec("Recalled", "Recalling", MEMORY, "memory", plural="memories",
                        args=("query", "content")),
 

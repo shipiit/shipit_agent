@@ -48,6 +48,7 @@ from .jira import JiraTool
 from .linear import LinearTool
 from .linkedin import LinkedInSearchTool
 from .memory import ClaudeMemoryTool, MemoryTool
+from .mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
 from .notebook_edit import NotebookEditTool
 from .notion import NotionTool
 from .open_url import OpenURLTool
@@ -106,6 +107,8 @@ __all__ = [
     "DuckDuckGoSearchProvider",
     "EditFileTool",
     "MultiEditTool",
+    "ListMcpResourcesTool",
+    "ReadMcpResourceTool",
     "EvidenceSynthesisTool",
     "FileReadTool",
     "FileWriteTool",

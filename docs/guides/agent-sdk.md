@@ -56,7 +56,7 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `agents` | Sub-agent definitions (`description`, `prompt`, `tools`, `model`). |
 | `max_turns`, `max_budget_usd` | The step limit and the spend limit. |
 | `output_format` | `{"type": "json_schema", "schema": {...}}`. The parsed answer is in `ResultMessage.structured_output`. |
-| `include_partial_messages` | Also yield `StreamEvent`s framed like the API stream: `message_start`, each text, `thinking` and `tool_use` block as start / delta / stop, then `message_delta` and `message_stop`. Text streams as it is written, and so does tool input on adapters that stream it (Anthropic); otherwise tool input, like thinking, arrives in one delta. Under a slow consumer some pieces may be dropped; the `AssistantMessage` always has the complete input. |
+| `include_partial_messages` | Also yield `StreamEvent`s framed like the API stream: `message_start`, each text, `thinking` and `tool_use` block as start / delta / stop, then `message_delta` and `message_stop`. Text and tool input stream as they are written (Anthropic, OpenAI and the LiteLLM-based adapters stream tool input); thinking arrives in one delta. Under a slow consumer some pieces may be dropped; the `AssistantMessage` always has the complete input. |
 | `resume`, `fork_session`, `session_store`, `session_id` | Continue a saved session, or a copy of it. |
 | `continue_conversation` | Continue the most recently saved session in `session_store`. |
 | `enable_file_checkpointing` | Record files before the file tools change them, for `rewind_files`. |

@@ -44,15 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `message_start`, its blocks as `content_block_start` / `content_block_delta`
   / `content_block_stop` with an `index`, then `message_delta` (stop reason and
   usage) and `message_stop`, so streaming code written for the Claude Agent SDK
-  reads it the same way. A consumer slower than the stream can lose some
-  pieces; the `AssistantMessage` always carries the complete input. Tool calls arrive as `tool_use` blocks before the tool runs,
-  with their arguments as `input_json_delta` pieces while the model writes
-  them on adapters that stream tool input (Anthropic) and in one delta
-  otherwise. Reasoning arrives as a `thinking` block in one delta. A response
-  cut mid-stream still ends with `message_stop`.
+  reads it the same way. Tool calls arrive as `tool_use` blocks before the
+  tool runs, with their arguments as `input_json_delta` pieces while the model
+  writes them (Anthropic, OpenAI and the LiteLLM-based adapters). Reasoning
+  arrives as a `thinking` block in one delta. A consumer slower than the
+  stream can lose some pieces; the `AssistantMessage` always carries the
+  complete input. A response cut mid-stream still ends with `message_stop`.
 
 ### Fixed
 
+- **A streamed tool call keeps one id.** OpenAI-compatible and LiteLLM
+  streams reported a call's argument fragments under a placeholder id when the
+  provider sent the real one late or not at all, and the finished call got a
+  different id, so a live view showed the call twice. The first id a call gets
+  is now its id to the end.
 - **Forking or resuming a session at a tool call keeps that call's results.**
   `fork_session(up_to_message_id=...)` and `resume_session_at` cut the
   conversation straight after the message, leaving a tool call with no result,

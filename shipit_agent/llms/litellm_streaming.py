@@ -8,6 +8,7 @@ import time
 from typing import Any, Callable
 
 from shipit_agent.core.models import ToolCall
+from shipit_agent.core.models.tool_calls import new_tool_call_id
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.llms.litellm_messages import (
     _parse_tool_arguments,
@@ -143,7 +144,8 @@ def _stream_completion(
                             idx, {"id": "", "name": "", "arguments": ""}
                         )
                         tc_id = getattr(tc_delta, "id", None)
-                        if tc_id:
+                        # The first id a call gets is its id to the end.
+                        if tc_id and not entry["id"]:
                             entry["id"] = tc_id
                         fn = getattr(tc_delta, "function", None)
                         if fn is not None:
@@ -154,13 +156,15 @@ def _stream_completion(
                             if fn_args:
                                 entry["arguments"] += fn_args
                                 if tool_input_callback is not None and entry["name"]:
+                                    if not entry["id"]:
+                                        entry["id"] = new_tool_call_id()
                                     # Same shape as OpenAI and Anthropic: the
                                     # provider streams argument JSON in
                                     # fragments. Forward them so a renderer can
                                     # show the file being written.
                                     try:
                                         callback_result = tool_input_callback(
-                                            entry["id"] or f"call_{idx}",
+                                            entry["id"],
                                             entry["name"],
                                             fn_args,
                                         )

@@ -173,9 +173,10 @@ def is_transient_provider_error(error: BaseException) -> bool:
 
     An error with an HTTP status is judged by it: rate limits, overloads,
     timeouts and server errors are transient; bad requests and rejected
-    credentials are not. An error without one is transient only when it is a
-    provider SDK's transport error. Anything else (a ``KeyError`` in an
-    adapter, say) is a bug, and retrying it would only hide it.
+    credentials are not. An error without one is transient when it is a
+    provider SDK's transport error, or an SDK API error whose body or words say
+    the server failed. Anything else (a ``KeyError`` in an adapter, say) is a
+    bug, and retrying it would only hide it.
     """
     if _status_of(error) is not None:
         return classify(error) in _RESEND_KINDS
@@ -183,7 +184,27 @@ def is_transient_provider_error(error: BaseException) -> bool:
     return bool(names & _TRANSIENT_ERROR_NAMES) or any(
         name.endswith(_TRANSPORT_ERROR_SUFFIXES) and name not in ("ConnectionError", "TimeoutError")
         for name in names
-    )
+    ) or _server_said_so(error, names)
+
+
+#: error types a provider's body uses for a failure on its side
+_SERVER_ERROR_TYPES = frozenset({"server_error", "api_error", "overloaded_error", "internal_server_error"})
+_SERVER_ERROR_TEXT = re.compile(r"the server had an error|internal server error", re.IGNORECASE)
+
+
+def _server_said_so(error: BaseException, names: set[str]) -> bool:
+    """An SDK API error with no status whose body or words say the server failed.
+
+    The OpenAI SDK raises a bare ``APIError`` for an error event inside a stream
+    that opened with 200 (Bedrock's Mantle endpoint does this), carrying only
+    the server's verdict. Only SDK API errors are read this way, so a bug that
+    happens to mention a server error is never retried.
+    """
+    if "APIError" not in names:
+        return False
+    body = getattr(error, "body", None)
+    kind = (body.get("type") if isinstance(body, dict) else None) or getattr(error, "type", None)
+    return kind in _SERVER_ERROR_TYPES or bool(_SERVER_ERROR_TEXT.search(str(error)))
 
 
 def retry_after_seconds(error: BaseException) -> float | None:

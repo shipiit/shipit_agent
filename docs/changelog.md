@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text; the model still received the original. Replacing the output now
   replaces the model's view too and drops any image the result carried, and
   added context reaches the model as well.
+- **Before-tool hooks see each other's rewrites.** Every hook was given the
+  call's original arguments, so a checking hook could approve values an
+  earlier hook had already rewritten, and a later plain "allow" dropped an
+  earlier rewrite, running the original arguments. Each hook now sees the
+  arguments as the hooks before it left them, and the call runs with every
+  rewrite applied.
 
 ### Added
 

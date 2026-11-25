@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from typing import Any
 
 from shipit_agent.safety.permissions import PermissionResult
@@ -30,26 +32,36 @@ class HookDispatchMixin:
     ) -> PermissionResult | None:
         """Run before-tool hooks and fold their decisions together.
 
-        Precedence: a DENY wins; then a DEFER; then an ASK; otherwise the
-        last ``updated_arguments`` rewrite is applied on an ALLOW. Returns
-        ``None`` when every hook is observe-only (backward compatible).
+        Precedence: a DENY wins; then a DEFER; then an ASK; otherwise an
+        ALLOW. Each hook sees the arguments as the hooks before it rewrote
+        them, so a check never approves arguments that are not the ones that
+        run, and the rewrites build on each other. Returns ``None`` when every
+        hook is observe-only (backward compatible).
         """
         outcome: PermissionResult | None = None
         deferred: PermissionResult | None = None
+        current = dict(arguments)
+        rewritten = False
         for fn in self.before_tool:
-            decision = _coerce_hook_decision(fn(name, arguments))
+            decision = _coerce_hook_decision(fn(name, dict(current)))
             if decision is None:
                 continue
             if decision.denied:
                 return decision  # short-circuit on the first hard deny
+            if decision.updated_arguments is not None:
+                current, rewritten = dict(decision.updated_arguments), True
             if decision.deferred:
                 deferred = deferred or decision
             elif decision.needs_approval:
                 outcome = decision
             elif outcome is None or not outcome.needs_approval:
-                # ALLOW (possibly with a rewrite) — keep unless an ASK stands.
+                # ALLOW — keep unless an ASK stands.
                 outcome = decision
-        return deferred or outcome
+        result = deferred or outcome
+        if result is not None and rewritten:
+            # Whichever decision stands, the call runs with every rewrite applied.
+            result = replace(result, updated_arguments=current)
+        return result
 
     def run_after_tool(
         self, name: str, result: Any, arguments: dict[str, Any] | None = None

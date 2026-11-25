@@ -109,7 +109,8 @@ def test_post_tool_use_can_add_context_and_replace_output() -> None:
         return {"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedToolOutput": "clean",
                                        "additionalContext": "Saved to the shared board."}}
 
-    block = _first_result(_run(_Calls(("note_create", {"text": "x"})), hooks={"PostToolUse": [HookMatcher(None, [post])]}))
+    block = _first_result(_run(_Calls(("note_create", {"text": "x"})), hooks={"PostToolUse": [HookMatcher(None, [post])]},
+                               allowed_tools=["note_create"]))
     assert block.content == "clean\n\nSaved to the shared board."
 
 
@@ -152,7 +153,8 @@ def test_a_hook_that_times_out_blocks_only_when_set_to() -> None:
     assert time.monotonic() - started < 1.5
     started = time.monotonic()
     lenient = HookMatcher(None, [slow], timeout=0.05)
-    assert _first_result(_run(_Calls(("note_create", {"text": "x"})), hooks={"PreToolUse": [lenient]})).content == "noted:x"
+    assert _first_result(_run(_Calls(("note_create", {"text": "x"})), hooks={"PreToolUse": [lenient]},
+                              allowed_tools=["note_create"])).content == "noted:x"
     assert time.monotonic() - started < 1.5
 
 

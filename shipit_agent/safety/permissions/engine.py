@@ -139,10 +139,13 @@ class PermissionEngine:
         tool: Any = None,
         *,
         risk: Sequence[str] = (),
+        pre_approved: bool = False,
     ) -> PermissionResult:
         """Decide one call. *risk* names what makes this call need approval
         (a shell command that deletes, say): an allow rule or bypass mode
-        still allows it, otherwise only a yes from the callback does."""
+        still allows it, otherwise only a yes from the callback does.
+        *pre_approved* (a before-tool hook said allow) settles the default,
+        never a deny rule, an ask rule, a confirmation or a risk."""
         # 1. Hard deny rules always win.
         denied_by = self._first_hit(self.deny, tool_name, arguments, "deny")
         if denied_by is not None:
@@ -223,6 +226,13 @@ class PermissionEngine:
             return PermissionResult(
                 PermissionDecision.DENY,
                 reason=f"'{tool_name}' is not pre-approved (dontAsk mode).",
+            )
+        if pre_approved:
+            return PermissionResult(PermissionDecision.ALLOW, reason="allowed by a hook")
+        if self.default_decision == PermissionDecision.ASK:
+            return self._ask_or_refuse(
+                f"'{tool_name}' needs approval: no rule allows it "
+                "(pre-approve it with allowed_tools, or approve it in can_use_tool)."
             )
         return PermissionResult(self.default_decision, reason="default")
 

@@ -57,7 +57,7 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `allowed_tools` | Rules that pre-approve calls. They don't restrict the other tools. |
 | `disallowed_tools` | A bare name removes the tool. A scoped rule (`"Bash(rm *)"`) denies matching calls in every mode. |
 | `permission_mode` | `default`, `acceptEdits`, `plan`, `dontAsk` or `bypassPermissions`. |
-| `can_use_tool` | Decides calls that no rule, mode or hook settled. |
+| `can_use_tool` | Decides calls that no rule, mode or hook settled. Without it, such calls are refused. |
 | `hooks` | `{"PreToolUse": [HookMatcher(...)], ...}`, or an `AgentHooks`. |
 | `mcp_servers` | `{name: config}`: stdio, sse, http or `create_sdk_mcp_server(...)`. |
 | `skills` | `None` or `"all"` for every discovered skill, a list of exact skill names (or ids), or `[]` for none. A wildcard, a malformed name or a name no skill has raises `ValueError`. |
@@ -150,6 +150,21 @@ Rules are checked in the SDK's order:
 4. The permission mode.
 5. Allow rules.
 6. `can_use_tool`.
+7. Otherwise the call needs approval.
+
+As in the Claude Agent SDK, a tool that nothing above approves does not run.
+Reads and searches run without asking. Anything else (bash, file writes,
+your own tools, MCP tools) needs one of these:
+
+- a rule in `allowed_tools`, such as `"note_create"` or `"mcp__calc__add"`;
+- a mode that approves it: `acceptEdits` for file edits, `bypassPermissions`
+  for everything not denied;
+- a PreToolUse hook answering `allow`;
+- a yes from `can_use_tool`.
+
+With none of them, the model is told the call needs approval and carries on
+without it. A hook's `allow` settles only this last step: deny rules, ask
+rules and risky shell commands still decide first.
 
 | Rule | Covers |
 | :- | :- |

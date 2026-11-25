@@ -29,14 +29,18 @@ def authorize_tool(
     import.
     """
     results: list[PermissionResult] = []
+    hook_allowed = False
     if hooks is not None:
         hook_decision = hooks.run_before_tool(name, arguments)
         if hook_decision is not None:
             results.append(hook_decision)
+            hook_allowed = hook_decision.allowed and not hook_decision.needs_approval
     if permissions is None and risk:
         permissions = PermissionEngine()
     if permissions is not None:
-        results.append(permissions.check(name, arguments, tool, risk=risk))
+        # Passed only when set, so an engine written before it keeps working.
+        extra = {"pre_approved": True} if hook_allowed else {}
+        results.append(permissions.check(name, arguments, tool, risk=risk, **extra))
     if not results:
         return None
     for result in results:

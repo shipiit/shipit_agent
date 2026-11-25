@@ -64,13 +64,15 @@ def test_a_type_mapping_becomes_a_json_schema() -> None:
 
 
 def test_an_sdk_server_tool_runs_and_its_text_comes_back() -> None:
-    messages = _messages(llm=_Calls(("calc__add", {"a": 2, "b": 3})), tools=[], mcp_servers={"calc": CALC})
+    messages = _messages(llm=_Calls(("calc__add", {"a": 2, "b": 3})), tools=[], mcp_servers={"calc": CALC},
+                         allowed_tools=["calc__add"])
     block = next(m for m in messages if isinstance(m, UserMessage)).content[0]
     assert (block.content, block.is_error) == ("5", False)
 
 
 def test_a_tool_reporting_is_error_is_a_failed_result() -> None:
-    messages = _messages(llm=_Calls(("calc__fail", {})), tools=[], mcp_servers={"calc": CALC})
+    messages = _messages(llm=_Calls(("calc__fail", {})), tools=[], mcp_servers={"calc": CALC},
+                         allowed_tools=["calc__fail"])
     block = next(m for m in messages if isinstance(m, UserMessage)).content[0]
     assert block.is_error is True and block.content == "quota exceeded"
 

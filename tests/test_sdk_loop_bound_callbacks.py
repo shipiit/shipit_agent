@@ -106,7 +106,8 @@ def test_hooks_and_tools_can_await_the_callers_loop_too() -> None:
         loop.call_later(0.05, ready.set)
         options = AgentOptions(llm=_CallsOnce("util__ping"), tools=[],
                                mcp_servers={"util": create_sdk_mcp_server("util", tools=[ping])},
-                               hooks={"PreToolUse": [HookMatcher(None, [pre_tool])]})
+                               hooks={"PreToolUse": [HookMatcher(None, [pre_tool])]},
+                               allowed_tools=["util__ping"])
         return await asyncio.wait_for(_drain(options), timeout=10)
 
     messages = asyncio.run(main())

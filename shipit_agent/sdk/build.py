@@ -11,7 +11,7 @@ from shipit_agent.safety.permission_rules import rule_names_tool, sdk_tool_name
 from .hook_log import HookLog
 from .hooks import build_agent_hooks
 from .options import DEFAULT_TOOLS, AgentOptions
-from .permissions import permission_callback
+from .permissions import permission_callback, sdk_permissions
 from .skills_filter import limit_skills
 
 __all__ = ["build_agent", "llm_for_model"]
@@ -75,6 +75,7 @@ def build_agent(options: AgentOptions) -> Any:
         settings["max_task_tokens"] = _task_tokens(options.task_budget)
     if options.can_use_tool is not None:
         settings["permission_callback"] = permission_callback(options.can_use_tool)
+    settings["permissions"] = sdk_permissions(options.permission_mode, options.can_use_tool)
     if options.agents:
         settings["agents"] = dict(options.agents)
     if options.session_store is not None:

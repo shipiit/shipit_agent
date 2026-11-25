@@ -58,6 +58,34 @@ class ToolPermissionContext:
     decision_reason: str | None = None
 
 
+def sdk_permissions(mode: str, can_use_tool: Callable[..., Any] | None) -> Any:
+    """The SDK's engine: read-only tools run, anything no rule allows asks.
+
+    With nobody to ask (no ``can_use_tool``, no approval queue) an ask is a
+    refusal the model is told about, as in the Claude Agent SDK.
+    """
+    from typing import get_args
+
+    from shipit_agent.safety.permissions import PermissionEngine
+    from shipit_agent.safety.permissions.values import PermissionMode
+
+    modes: dict[str, PermissionMode] = {name: name for name in get_args(PermissionMode)}
+    if mode not in modes:
+        raise ValueError(f"permission_mode must be one of {sorted(modes)}, not {mode!r}")
+    classifier = PermissionEngine()
+
+    def read_only(name: str, arguments: dict[str, Any]) -> PermissionResult | None:
+        if classifier.is_read_only(name):
+            return PermissionResult(PermissionDecision.ALLOW, reason="read-only")
+        return None
+
+    return PermissionEngine(
+        mode=modes[mode],
+        default_decision=PermissionDecision.ASK,
+        callback=permission_callback(can_use_tool) if can_use_tool is not None else read_only,
+    )
+
+
 def permission_callback(
     can_use_tool: Callable[..., Any],
 ) -> Callable[[str, dict[str, Any]], PermissionResult | None]:

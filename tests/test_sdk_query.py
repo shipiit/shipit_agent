@@ -72,7 +72,7 @@ def _collect(prompt: str = "go", **options: Any) -> list[Any]:
 
 
 def test_a_run_is_init_then_assistant_and_tool_results_then_a_result() -> None:
-    messages = _collect(llm=_Scripted(_call("echo", text="x")))
+    messages = _collect(llm=_Scripted(_call("echo", text="x")), allowed_tools=["echo"])
     kinds = [type(m).__name__ for m in messages]
     assert kinds == ["SystemMessage", "AssistantMessage", "UserMessage", "AssistantMessage", "ResultMessage"]
     init, first, results, final, result = messages
@@ -90,7 +90,7 @@ def test_a_run_is_init_then_assistant_and_tool_results_then_a_result() -> None:
 
 
 def test_a_failed_tool_is_an_error_result_block() -> None:
-    messages = _collect(llm=_Scripted(_call("broken")))
+    messages = _collect(llm=_Scripted(_call("broken")), allowed_tools=["broken"])
     block = next(m for m in messages if isinstance(m, UserMessage)).content[0]
     assert block.is_error is True and "disk full" in str(block.content)
 

@@ -108,6 +108,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agent's store instead. `Agent.chat_session()` takes `session_store=`, and the
   manager passes its own.
 
+- **Breaking: SDK agents ask before running a tool no rule allows.** As in the
+  Claude Agent SDK, `query`, `AgentClient` and `shipit sdk` now run reads and
+  searches freely, and any other call needs `allowed_tools`, a mode that
+  approves it (`acceptEdits`, `bypassPermissions`), a PreToolUse hook's
+  `allow` or a yes from `can_use_tool`; with none, the model is told it needs
+  approval. Before, every unlisted call ran, so content the model read could
+  steer it into any tool. To keep the old behaviour, pass
+  `permission_mode="bypassPermissions"`. An unknown `permission_mode` is now
+  an error. The core `Agent` is unchanged.
+
 ### Added
 
 - **`RedactingTraceStore` scrubs events before an exporter sends them.**

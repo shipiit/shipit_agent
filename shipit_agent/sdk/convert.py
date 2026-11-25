@@ -12,6 +12,7 @@ from .result_fields import model_usage, terminal_reason
 from .stream_frames import ResponseFrames
 from .types import (
     AssistantMessage,
+    RateLimitEvent,
     ContentBlock,
     Message,
     ResultMessage,
@@ -75,7 +76,10 @@ class MessageStream:
             return [self._event(frame) for frame in frames]
         if kind in _SYSTEM_SUBTYPES:
             data = {k: v for k, v in payload.items() if k not in _STAMP_KEYS}
-            return [SystemMessage(_SYSTEM_SUBTYPES[kind], data)]
+            notice = SystemMessage(_SYSTEM_SUBTYPES[kind], data)
+            if kind == "llm_retry" and payload.get("reason") == "token_quota":
+                return [self._rate_limit(event, data), notice]
+            return [notice]
         if kind == "run_completed":
             return [*map(self._event, self._frames.cut()), self._result(event)]
         if kind == "run_failed":
@@ -123,6 +127,17 @@ class MessageStream:
                 text = payload.get("error") or ""
             block = ToolResultBlock(call_id, str(text), failed)
         return UserMessage(content=[block], uuid=str(uuid.uuid4()))
+
+    def _rate_limit(self, event: AgentEvent, data: dict[str, Any]) -> RateLimitEvent:
+        delay = float(data.get("delay") or 0)
+        info = {
+            "status": "rejected",
+            "resets_at": int(event.timestamp + delay) if delay > 0 else None,
+            "rate_limit_type": None,
+            "utilization": None,
+            "raw": data,
+        }
+        return RateLimitEvent(rate_limit_info=info, uuid=str(uuid.uuid4()), session_id=self.session_id)
 
     def _event(self, event: dict[str, Any]) -> StreamEvent:
         return StreamEvent(uuid=str(uuid.uuid4()), session_id=self.session_id, event=event)

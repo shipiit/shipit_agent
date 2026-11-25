@@ -14,6 +14,7 @@ __all__ = [
     "AssistantMessage",
     "ContentBlock",
     "Message",
+    "RateLimitEvent",
     "ResultMessage",
     "StreamEvent",
     "SystemMessage",
@@ -136,4 +137,20 @@ class StreamEvent:
     parent_tool_use_id: str | None = None
 
 
-Message = Union[UserMessage, AssistantMessage, SystemMessage, ResultMessage, StreamEvent]
+@dataclass(slots=True)
+class RateLimitEvent:
+    """The provider refused a call for its rate limit; the run waits and retries.
+
+    ``rate_limit_info`` has ``status`` (always ``"rejected"``: a run only learns
+    of a limit when a call is refused), ``resets_at`` (epoch seconds when the
+    retry is due, or ``None`` when it was immediate), ``rate_limit_type`` and
+    ``utilization`` (``None``: providers do not report them to an API key)
+    and ``raw`` (the retry's details).
+    """
+
+    rate_limit_info: dict[str, Any]
+    uuid: str
+    session_id: str
+
+
+Message = Union[UserMessage, AssistantMessage, SystemMessage, ResultMessage, StreamEvent, RateLimitEvent]

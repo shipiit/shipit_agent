@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
   and estimated cost per model), `terminal_reason` and `uuid`;
   `AssistantMessage` has `message_id`.
+- **`RateLimitEvent` in the SDK stream.** A call refused for its rate limit
+  (429) is followed by a `RateLimitEvent` with `status="rejected"` and the
+  time the retry is due. Overloaded, server and network errors are not rate
+  limits and stay plain `api_retry` notices.
 - **`ToolSearch` and `ExitPlanMode`** in allow and deny rules name
   `tool_search` and `present_plan`.
 - **Raw tool-argument events.** `Agent(stream_tool_input_json=True)` emits a

@@ -45,6 +45,7 @@ from .sessions import (
 from .tools import SdkMcpTool, ToolAnnotations, create_sdk_mcp_server, tool
 from .types import (
     AssistantMessage,
+    RateLimitEvent,
     ContentBlock,
     Message,
     ResultMessage,
@@ -67,6 +68,7 @@ __all__ = [
     "Message",
     "PermissionResultAllow",
     "PermissionResultDeny",
+    "RateLimitEvent",
     "ResultMessage",
     "SDKSessionInfo",
     "SdkMcpTool",

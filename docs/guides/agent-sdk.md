@@ -84,6 +84,8 @@ The `ResultMessage` reports how the run went:
 - **Effort and cost:** `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd` and `usage`. `model_usage` breaks tokens and estimated cost down by model (`inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `costUSD`).
 - **Other details:** `stop_reason`, `permission_denials`, and `terminal_reason` (`completed`, `max_turns`, `max_budget_usd`, `max_budget_tokens` or `error`).
 
+When the provider refuses a call for its rate limit (a 429), a `RateLimitEvent` comes just before the retry: `rate_limit_info["status"]` is `"rejected"` and `resets_at` is when the retry is due, in epoch seconds. Overloaded (529), server and network errors are retries, not rate limits, and arrive only as `SystemMessage("api_retry")`. `rate_limit_type` and `utilization` are always `None`: providers do not report them to an API key.
+
 Each `AssistantMessage` carries a `message_id`; with partial messages it is the id in that response's `message_start`.
 
 A run that raises still ends with a `ResultMessage`, with subtype `error_during_execution` and the error in `errors`.

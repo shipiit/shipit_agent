@@ -116,7 +116,9 @@ class MCPRemoteTool:
 
     @property
     def read_only(self) -> bool:
-        return bool(self.annotations.get("readOnlyHint", False))
+        # A hint from the server unlocks plan mode and lockdown, so only a JSON
+        # ``true`` counts: "false", "0" and 1 are not read-only.
+        return self.annotations.get("readOnlyHint") is True
 
     prompt: str = "Use this MCP tool when the remote server provides the best capability for the task."
     prompt_instructions: str = (
@@ -166,16 +168,22 @@ class MCPRemoteTool:
                     f"failed: {exc}"
                 ),
                 metadata={
+                    **self.metadata,
                     "server": self.server_name,
                     "ok": False,
+                    "is_error": True,
                     "error": str(exc),
-                    **self.metadata,
                 },
             )
         content = list(result.get("content", []))
         text_parts = _render_mcp_content(content)
         is_error = bool(result.get("isError", False))
         rendered = "\n".join(part for part in text_parts if part).strip()
+        structured = result.get("structuredContent")
+        if not rendered and structured is not None:
+            # A structured-only result is the answer; without this the model
+            # would be told the tool returned nothing.
+            rendered = json.dumps(structured, sort_keys=True, default=str)
         if not rendered:
             rendered = (
                 f"MCP tool '{self.name}' returned an error without details."
@@ -208,11 +216,15 @@ class MCPRemoteTool:
         return ToolOutput(
             text=rendered,
             metadata={
+                # Static metadata first: it describes the tool, and must not
+                # overwrite what this call actually did.
+                **self.metadata,
                 **vision_metadata,
                 "server": self.server_name,
                 "ok": not is_error,
                 "is_error": is_error,
-                "structured_content": result.get("structuredContent"),
+                "error": None if not is_error else rendered,
+                "structured_content": structured,
                 "content_blocks": content,
                 "output_schema": dict(self.output_schema),
                 "annotations": dict(self.annotations),
@@ -223,7 +235,6 @@ class MCPRemoteTool:
                     else {}
                 ),
                 **({"summary": summary} if summary else {}),
-                **self.metadata,
             },
         )
 

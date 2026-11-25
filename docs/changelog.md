@@ -72,6 +72,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `files`, `browser` and `rag-pdf` extras now need `pypdf>=6.21.4` (the PDF
   tool parses PDFs from the web) and the LiteLLM-based extras
   `litellm>=1.96.2`.
+- **An MCP server cannot mark a tool read-only by accident or by trick.**
+  `readOnlyHint` lets a tool through plan mode and lockdown, and any truthy
+  value counted, the string `"false"` included. Only JSON `true` counts now.
+- **An MCP call reports what actually happened.** A tool's static `metadata`
+  was applied last and could overwrite `ok`, `is_error` and `server`, so a
+  failed call could read as a success. The call's own outcome now wins, and a
+  result carrying only `structuredContent` is shown to the model instead of
+  "returned no content".
+- **An `async` hook is refused, not silently skipped.** An `AgentHooks`
+  callback written as `async def` returned an un-awaited coroutine, read as
+  "no decision", so an async deny hook let every call through. It now raises
+  `TypeError`; async callbacks belong in the Agent SDK's hooks.
+- **`Workspace.resolve` no longer lets a sibling folder in.** It compared
+  paths as strings, so `project-backup/` passed as inside `project/`.
 
 ### Added
 

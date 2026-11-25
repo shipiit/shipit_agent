@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from shipit_agent import Agent, FunctionTool
 from shipit_agent.core.models import ToolCall
 from shipit_agent.hooks import AgentHooks
@@ -75,3 +77,21 @@ def test_in_a_run_the_call_uses_the_arguments_every_hook_agreed_to() -> None:
     hooks.on_before_tool(lambda name, arguments: {"decision": "allow"})
     Agent(llm=_Model(), tools=[FunctionTool.from_callable(write, name="write")], hooks=hooks).run("go")
     assert ran == ["safe/notes.txt"]
+
+
+@pytest.mark.parametrize("event", ["before", "after"])
+def test_an_async_hook_is_refused_not_silently_ignored(event: str) -> None:
+    from shipit_agent.models import ToolResult
+
+    hooks = AgentHooks()
+
+    async def deny(*_: object) -> bool:
+        return False
+
+    with pytest.raises(TypeError, match="synchronous"):
+        if event == "before":
+            hooks.on_before_tool(deny)
+            hooks.run_before_tool("write_file", {})
+        else:
+            hooks.after_tool.append(deny)
+            hooks.run_after_tool("lookup", ToolResult(name="lookup", output="x"))

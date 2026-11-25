@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import replace
 
 from typing import Any
@@ -43,7 +44,7 @@ class HookDispatchMixin:
         current = dict(arguments)
         rewritten = False
         for fn in self.before_tool:
-            decision = _coerce_hook_decision(fn(name, dict(current)))
+            decision = _coerce_hook_decision(_sync(fn, fn(name, dict(current))))
             if decision is None:
                 continue
             if decision.denied:
@@ -69,7 +70,7 @@ class HookDispatchMixin:
         """Run post-tool hooks, allowing each to replace or sanitize output."""
         current = self._run_after_tool_hooks(name, result)
         for fn in self.post_tool_use:
-            value = fn(name, dict(arguments or {}), current)
+            value = _sync(fn, fn(name, dict(arguments or {}), current))
             if isinstance(value, str):
                 value = {"additional_context": value}
             if not isinstance(value, dict) or not hasattr(current, "output"):
@@ -86,7 +87,7 @@ class HookDispatchMixin:
     def _run_after_tool_hooks(self, name: str, result: Any) -> Any:
         current = result
         for fn in self.after_tool:
-            value = fn(name, current)
+            value = _sync(fn, fn(name, current))
             if value is None:
                 continue
             if isinstance(value, str) and hasattr(current, "output"):
@@ -109,7 +110,7 @@ class HookDispatchMixin:
     def run_stop(self, answer: str) -> str | None:
         """The first reason a stop hook gives to keep going, or ``None``."""
         for fn in self.stop:
-            value = fn(answer)
+            value = _sync(fn, fn(answer))
             if isinstance(value, str) and value.strip():
                 return value.strip()
             if isinstance(value, dict) and str(value.get("decision", "")).lower() in (
@@ -125,7 +126,7 @@ class HookDispatchMixin:
         """Run start hooks: ``(allowed, refusal_reason, extra_context)``."""
         notes: list[str] = []
         for fn in self.subagent_start:
-            value = fn(agent_type, task)
+            value = _sync(fn, fn(agent_type, task))
             if value is False:
                 return False, "a sub-agent start hook refused it", ""
             if isinstance(value, str):
@@ -213,3 +214,20 @@ def _replace_output(result: Any, text: str, model_text: str | None = None) -> No
     if isinstance(metadata, dict):
         for key in _MODEL_PAYLOAD_KEYS:
             metadata.pop(key, None)
+
+
+def _sync(fn: Any, value: Any) -> Any:
+    """*value*, refusing an ``async`` hook's coroutine.
+
+    A coroutine is never awaited here, so it would read as "no decision" and
+    an async deny hook would let every call through without a word.
+    """
+    if inspect.isawaitable(value):
+        if inspect.iscoroutine(value):
+            value.close()
+        raise TypeError(
+            f"Hook {getattr(fn, '__name__', fn)!r} is async; AgentHooks callbacks must be synchronous "
+            "(use the Agent SDK's hooks for async callbacks)."
+        )
+    return value
+

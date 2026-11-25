@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier rewrite, running the original arguments. Each hook now sees the
   arguments as the hooks before it left them, and the call runs with every
   rewrite applied.
+- **Session ids no longer share files.** `FileSessionStore` named a file by
+  the id with `/` turned into `_`, so `team/chat` and `team_chat` (and `Chat`
+  and `chat` on macOS and Windows disks) read and overwrote one conversation.
+  Files are now named by a hash of the exact id. Sessions saved by an older
+  version are still found under their own id and move to the new name on
+  their next save; `list_all` returns each session's exact id.
 
 ### Added
 

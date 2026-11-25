@@ -68,6 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The PDF tool reads local files only inside the project.** It opened any
   path; local PDFs are now held to `root_dir` (the project root in an agent)
   and added folders, and `Read(...)` rules apply to its `source`.
+- **Dependency minimums skip known-vulnerable releases.** The `pdf`,
+  `files`, `browser` and `rag-pdf` extras now need `pypdf>=6.21.4` (the PDF
+  tool parses PDFs from the web) and the LiteLLM-based extras
+  `litellm>=1.96.2`.
 
 ### Added
 

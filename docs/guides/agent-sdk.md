@@ -76,8 +76,8 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `cwd`, `add_dirs` | The project root, and folders beside it the file tools may also use. |
 | `env` | Environment variables for the commands bash and code execution run, never this process's own. |
 | `sandbox` | Run bash and code execution in the OS sandbox, with the SDK's `SandboxSettings`. See [Sandbox](#sandbox). |
-| `effort`, `thinking`, `max_thinking_tokens`, `betas` | Passed to adapters that take them (Anthropic does). A thinking budget becomes adaptive thinking on models that reject budgets. |
-| `cache_ttl` | `"5m"` (default) or `"1h"`: how long a cached prompt prefix lives on Claude models. See [Prompt caching](../agent/prompt-caching.md#a-one-hour-cache). |
+| `effort`, `thinking`, `max_thinking_tokens`, `betas` | Passed to adapters that take them (Anthropic does). A thinking budget becomes adaptive thinking on models that reject budgets. On other providers each one set is logged as a warning and ignored. |
+| `cache_ttl` | `"5m"` (default) or `"1h"`: how long a cached prompt prefix lives on Claude models; on other providers it is logged as a warning and ignored. See [Prompt caching](../agent/prompt-caching.md#a-one-hour-cache). |
 | `agent_options` | Any other `Agent` setting, under its shipit name. |
 
 ## Messages

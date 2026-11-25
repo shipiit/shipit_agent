@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,8 @@ from .hooks import build_agent_hooks
 from .options import DEFAULT_TOOLS, AgentOptions
 from .permissions import permission_callback, sdk_permissions
 from .skills_filter import limit_skills
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["build_agent", "llm_for_model"]
 
@@ -31,11 +34,13 @@ def build_agent(options: AgentOptions) -> Any:
         raise ValueError('cache_ttl must be "5m" or "1h"')
     for name in ("effort", "thinking", "cache_ttl"):
         value = getattr(options, name)
-        if value is not None and hasattr(llm, name):
+        if value is not None and _supports(llm, name, name):
             setattr(llm, name, value)
-    if options.max_thinking_tokens and options.thinking is None and hasattr(llm, "thinking_budget_tokens"):
+    if options.max_thinking_tokens and options.thinking is None and _supports(
+        llm, "thinking_budget_tokens", "max_thinking_tokens"
+    ):
         llm.thinking_budget_tokens = options.max_thinking_tokens
-    if options.betas and hasattr(llm, "betas"):
+    if options.betas and _supports(llm, "betas", "betas"):
         llm.betas = [*llm.betas, *(b for b in options.betas if b not in llm.betas)]
     tools = _with_sdk_questions(tools_for(options.tools, llm=llm, root=root), options.can_use_tool)
     for tool in tools if options.env else ():
@@ -93,6 +98,17 @@ def build_agent(options: AgentOptions) -> Any:
     agent._sdk_hook_log = log
     limit_skills(agent, options.skills)
     return agent
+
+
+def _supports(llm: Any, attribute: str, option: str) -> bool:
+    """Whether *llm* has *attribute*; if not, say that *option* is ignored rather than drop it silently."""
+    if hasattr(llm, attribute):
+        return True
+    logger.warning(
+        "AgentOptions.%s is ignored: the %s adapter for model %r does not support it",
+        option, type(llm).__name__, getattr(llm, "model", None),
+    )
+    return False
 
 
 def llm_for_model(model: str | None) -> Any:

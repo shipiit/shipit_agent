@@ -123,6 +123,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The SDK warns when an option does nothing on the chosen model.**
+  `effort`, `thinking`, `max_thinking_tokens`, `betas` and `cache_ttl` only
+  apply to adapters that support them (Anthropic). Set for any other provider,
+  each is now logged as a warning naming the adapter and model, instead of
+  being dropped silently.
 - **`RedactingTraceStore` scrubs events before an exporter sends them.**
   Langfuse, LangSmith, OpenTelemetry and Watcher exporters shipped prompts,
   tool arguments and tool output as they were. Wrap any of them to replace

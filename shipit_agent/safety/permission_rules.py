@@ -33,7 +33,7 @@ from urllib.parse import urlparse
 
 from shipit_agent.tools.bash.command_risk import command_segments
 
-__all__ = ["RuleBehavior", "is_scoped", "rule_matches", "rule_names_tool", "sdk_tool_name"]
+__all__ = ["RuleBehavior", "closes_mcp_server", "is_scoped", "rule_matches", "rule_names_tool", "sdk_tool_name"]
 
 RuleBehavior = Literal["allow", "deny", "ask"]
 
@@ -85,6 +85,19 @@ def sdk_tool_name(name: str) -> str | None:
     """The shipit tool an SDK tool name stands for (``"Read"`` is ``read_file``), or ``None``."""
     tools = _SDK_NAMES.get(name.strip().lower().replace("_", ""))
     return tools[0] if tools else None
+
+
+def closes_mcp_server(rule: str, server: str) -> bool:
+    """Whether *rule* covers every tool of MCP server *server* (``mcp__srv__*``, ``mcp__*``).
+
+    A rule that names one of the server's tools leaves the rest of it, and its
+    resources, open.
+    """
+    name = rule.strip()
+    if is_scoped(name) or not name.startswith("mcp__"):
+        return False
+    # A tool name no server would choose: only a wildcard over the whole server matches it.
+    return fnmatch.fnmatchcase(f"{server}__\x00every-tool", name[len("mcp__"):])
 
 
 def is_scoped(rule: str) -> bool:

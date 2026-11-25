@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Files are now named by a hash of the exact id. Sessions saved by an older
   version are still found under their own id and move to the new name on
   their next save; `list_all` returns each session's exact id.
+- **A closed MCP server stays closed to the resource tools.** A deny rule for
+  a whole server (`mcp__secrets__*`, `mcp__*`) did not stop
+  `list_mcp_resources` and `read_mcp_resource`, which take the server as an
+  argument. Servers such a rule closes are now left out of what they can see;
+  a rule naming one tool of a server leaves its resources open.
 
 ### Added
 

@@ -137,3 +137,48 @@ def test_in_a_session_a_switched_off_server_is_not_listed() -> None:
         return seen
 
     assert asyncio.run(run()) == [["db", "docs"], ["docs"]]
+
+
+SECRETS = _Server("secrets", [MCPResource("vault://prod", "prod")], {"vault://prod": {"uri": "vault://prod", "text": "TOP-SECRET"}})
+
+
+class _UsesResources:
+    model = "m"
+
+    def __init__(self, *calls: ToolCall) -> None:
+        self.calls, self.turn = list(calls), 0
+
+    def complete(self, **_: Any) -> LLMResponse:
+        self.turn += 1
+        if self.turn == 1:
+            return LLMResponse(content="", tool_calls=self.calls)
+        return LLMResponse(content="done")
+
+
+def _run(**agent_options: Any) -> list[str]:
+    from shipit_agent import Agent
+
+    calls = [ToolCall(name="list_mcp_resources", arguments={}, id="l1"),
+             ToolCall(name="read_mcp_resource", arguments={"server": "secrets", "uri": "vault://prod"}, id="r1")]
+    result = Agent(llm=_UsesResources(*calls), tools=[ListMcpResourcesTool(), ReadMcpResourceTool()],
+                   mcps=[DOCS, SECRETS], **agent_options).run("go")
+    return [str(r.output) for r in result.tool_results]
+
+
+@pytest.mark.parametrize("rules", [{"disallowed_tools": ["mcp__secrets__*"]}, {"disallowed_tools": ["mcp__*"]}])
+def test_a_server_closed_by_a_deny_rule_cannot_be_listed_or_read(rules: dict[str, Any]) -> None:
+    listed, read = _run(**rules)
+    assert "vault://prod" not in listed and "TOP-SECRET" not in read
+    assert "no MCP server" in read
+
+
+def test_a_deny_rule_through_the_permission_engine_closes_it_too() -> None:
+    from shipit_agent.safety.permissions import PermissionEngine
+
+    listed, read = _run(permissions=PermissionEngine(deny=["mcp__secrets__*"]))
+    assert "TOP-SECRET" not in read and "vault://prod" not in listed
+
+
+def test_denying_one_tool_of_a_server_leaves_its_resources_open() -> None:
+    listed, read = _run(disallowed_tools=["mcp__secrets__rotate_key"])
+    assert "vault://prod" in listed and "TOP-SECRET" in read

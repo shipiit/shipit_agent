@@ -41,6 +41,17 @@ class SharedToolStateMixin:
 
         return sink
 
+    def _open_mcp_servers(self) -> list[Any]:
+        """The run's MCP servers, less those a deny rule closes entirely."""
+        from shipit_agent.safety.permission_rules import closes_mcp_server
+
+        engine = self.permissions
+        rules = [*getattr(engine, "deny", []), *getattr(engine, "hidden", [])] if engine is not None else []
+        return [
+            server for server in (self.mcps or [])
+            if not any(closes_mcp_server(rule, str(getattr(server, "name", ""))) for rule in rules)
+        ]
+
     def note_artifacts(self, state: Any, tool_name: str, result: Any) -> None:
         """Emit a card for each file a tool left behind.
 
@@ -124,8 +135,9 @@ class SharedToolStateMixin:
                 for tool in registry.values()
             ],
             "memory_store": self.memory_store,
-            # The MCP servers switched on for this run, for the resource tools.
-            "mcp_servers": list(self.mcps or []),
+            # The MCP servers switched on for this run and not closed by a deny
+            # rule, for the resource tools.
+            "mcp_servers": self._open_mcp_servers(),
             "credential_store": self.credential_store,
             CONNECTIONS_KEY: self.connections,
             # Publishing the control plane is what makes delegation

@@ -86,6 +86,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TypeError`; async callbacks belong in the Agent SDK's hooks.
 - **`Workspace.resolve` no longer lets a sibling folder in.** It compared
   paths as strings, so `project-backup/` passed as inside `project/`.
+- **MCP over HTTP takes only the reply to the request it sent.** A reply with
+  another JSON-RPC `id` (including `true` or `"1"` for `1`), a body that is not
+  JSON, or a reply without a `result` object was accepted or crashed with a raw
+  error; each is now an `MCPError`. In streamed replies only the event with the
+  request's id counts, and the session id moves only on a reply that answers.
+- **MCP listings are bounded and checked.** A server sending endless new cursors
+  kept discovery looping; `RemoteMCPServer(max_discovery_pages=100)` now caps
+  it. A malformed `tools/list`, `resources/list` or `prompts/list` page fails
+  discovery instead of being half-read, and cursors go back exactly as sent.
 
 ### Added
 

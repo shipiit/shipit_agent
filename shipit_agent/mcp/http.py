@@ -31,10 +31,11 @@ class MCPHTTPTransport:
     def request(
         self, method: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
+        request_id = next(self._id_counter)
         payload = json.dumps(
             {
                 "jsonrpc": "2.0",
-                "id": next(self._id_counter),
+                "id": request_id,
                 "method": method,
                 "params": params or {},
             }
@@ -47,10 +48,7 @@ class MCPHTTPTransport:
         )
         with request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
             body = response.read().decode("utf-8")
-        parsed = json.loads(body) if body else {}
-        if "error" in parsed:
-            raise MCPError(str(parsed["error"]))
-        return dict(parsed.get("result", {}))
+        return _result_for(_load_json(body), request_id)
 
     def close(self) -> None:
         return None
@@ -90,10 +88,11 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
     def request(
         self, method: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
+        request_id = next(self._id_counter)
         payload = json.dumps(
             {
                 "jsonrpc": "2.0",
-                "id": next(self._id_counter),
+                "id": request_id,
                 "method": method,
                 "params": params or {},
             }
@@ -110,17 +109,17 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
         )
         with request.urlopen(req, timeout=self.timeout) as response:  # nosec B310
             session_id = response.headers.get("Mcp-Session-Id")
-            if session_id:
-                self._session_id = session_id
             content_type = (response.headers.get("Content-Type") or "").lower()
             body = response.read().decode("utf-8")
         if "text/event-stream" in content_type:
-            parsed = self._parse_sse(body)
+            parsed = self._parse_sse(body, request_id)
         else:
-            parsed = json.loads(body) if body else {}
-        if "error" in parsed:
-            raise MCPError(str(parsed["error"]))
-        return dict(parsed.get("result", {}))
+            parsed = _load_json(body)
+        result = _result_for(parsed, request_id)
+        if session_id:
+            # Only a reply that answers this request may move the session.
+            self._session_id = session_id
+        return result
 
     def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
         """Send a session-affine JSON-RPC notification."""
@@ -162,7 +161,7 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
             return
 
     @staticmethod
-    def _parse_sse(body: str) -> dict[str, Any]:
+    def _parse_sse(body: str, request_id: int | None = None) -> dict[str, Any]:
         """Extract the JSON-RPC response from SSE `data:` lines."""
         # HTTP servers commonly use CRLF framing. Splitting the raw body on
         # ``\n\n`` merges every CRLF event into one invalid JSON blob, which
@@ -180,7 +179,35 @@ class MCPStreamableHTTPTransport(MCPHTTPTransport):
                 parsed = json.loads("\n".join(data_lines))
             except json.JSONDecodeError:
                 continue
-            # The response to our request carries an id (notifications don't).
-            if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
+            # Notifications have no id; replies to other requests have another one.
+            if not isinstance(parsed, dict) or ("result" not in parsed and "error" not in parsed):
+                continue
+            if request_id is None or _same_id(parsed.get("id"), request_id):
                 return parsed
         raise MCPError("No JSON-RPC response found in SSE stream.")
+
+
+def _load_json(body: str) -> Any:
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise MCPError(f"MCP server sent a body that is not JSON: {exc}") from exc
+
+
+def _same_id(value: Any, request_id: int) -> bool:
+    # ``True == 1`` in Python, and "1" is not 1: the id must be this exact integer.
+    return type(value) is int and value == request_id
+
+
+def _result_for(parsed: Any, request_id: int) -> dict[str, Any]:
+    """The ``result`` of the reply to *request_id*; anything else is an :class:`MCPError`."""
+    if not isinstance(parsed, dict):
+        raise MCPError("MCP server sent a reply that is not a JSON-RPC object.")
+    if not _same_id(parsed.get("id"), request_id):
+        raise MCPError(f"MCP response id {parsed.get('id')!r} does not match request id {request_id}.")
+    if "error" in parsed:
+        raise MCPError(str(parsed["error"]))
+    result = parsed.get("result")
+    if not isinstance(result, dict):
+        raise MCPError("MCP reply has no result object.")
+    return result

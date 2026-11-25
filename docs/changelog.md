@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
   and estimated cost per model), `terminal_reason` and `uuid`;
   `AssistantMessage` has `message_id`.
+- **`include_hook_events`** reports each SDK hook callback as `hook_started`
+  and `hook_response` system messages, with its output and whether it failed.
 - **Sub-agent messages in the SDK stream.** A sub-agent's tool calls and
   results arrive as messages with `parent_tool_use_id` naming the `sub_agent`
   call that started it, followed by `task_progress` reports.

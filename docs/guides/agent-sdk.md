@@ -51,6 +51,7 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `hooks` | `{"PreToolUse": [HookMatcher(...)], ...}`, or an `AgentHooks`. |
 | `mcp_servers` | `{name: config}`: stdio, sse, http or `create_sdk_mcp_server(...)`. |
 | `skills` | `None` or `"all"` for every discovered skill, a list of exact skill names (or ids), or `[]` for none. A wildcard, a malformed name or a name no skill has raises `ValueError`. |
+| `include_hook_events` | Report each hook callback as `SystemMessage("hook_started")` and `SystemMessage("hook_response")`, with `hook_id`, `hook_name`, `hook_event`, `output` (the callback's output as JSON) and `outcome` (`success` or `error`, with the error in `stderr`). They arrive before the message for the call the hook ran on, and before the `ResultMessage`. |
 | `forward_subagent_text` | Include a sub-agent's text and thinking in its `AssistantMessage`s. By default only its tool calls and results appear. |
 | `task_budget` | `{"total": n}`: stop the run, between steps, once it has used n tokens (`error_max_budget_tokens`). |
 | `resume_session_at` | With `resume`: continue from that message of the session (a `SessionMessage.uuid`), in a copy. |

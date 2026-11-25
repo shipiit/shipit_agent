@@ -8,6 +8,7 @@ from typing import Any
 from shipit_agent.safety.hooks import AgentHooks
 from shipit_agent.safety.permission_rules import rule_names_tool, sdk_tool_name
 
+from .hook_log import HookLog
 from .hooks import build_agent_hooks
 from .options import DEFAULT_TOOLS, AgentOptions
 from .permissions import permission_callback
@@ -81,12 +82,14 @@ def build_agent(options: AgentOptions) -> Any:
     session_id = _session_id(options)
     if session_id:
         settings["session_id"] = session_id
+    log = HookLog() if options.include_hook_events else None
     if options.hooks is not None:
-        settings["hooks"] = _hooks(options, root)
+        settings["hooks"] = _hooks(options, root, log)
     if harness is not None:
         settings["harness"] = harness
     settings.update(options.agent_options)
     agent = Agent(**settings)
+    agent._sdk_hook_log = log
     limit_skills(agent, options.skills)
     return agent
 
@@ -242,7 +245,7 @@ def _latest_session(store: Any) -> str | None:
     return latest[1].session_id
 
 
-def _hooks(options: AgentOptions, root: Path) -> AgentHooks:
+def _hooks(options: AgentOptions, root: Path, log: HookLog | None = None) -> AgentHooks:
     if isinstance(options.hooks, AgentHooks):
         return options.hooks
     base = {
@@ -251,4 +254,4 @@ def _hooks(options: AgentOptions, root: Path) -> AgentHooks:
         "cwd": str(root),
         "permission_mode": options.permission_mode,
     }
-    return build_agent_hooks(dict(options.hooks), base=base)
+    return build_agent_hooks(dict(options.hooks), base=base, log=log)

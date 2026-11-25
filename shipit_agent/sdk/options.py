@@ -70,6 +70,9 @@ class AgentOptions:
     #: and arrives parsed as ``ResultMessage.structured_output``.
     output_format: dict[str, Any] | None = None
     include_partial_messages: bool = False
+    #: Report each hook callback as ``SystemMessage("hook_started")`` and
+    #: ``SystemMessage("hook_response")`` (with ``outcome`` and ``output``).
+    include_hook_events: bool = False
     #: Include a sub-agent's text and thinking in its ``AssistantMessage``s;
     #: by default only its tool calls and results are shown.
     forward_subagent_text: bool = False

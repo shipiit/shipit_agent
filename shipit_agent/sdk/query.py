@@ -16,7 +16,7 @@ from .build import build_agent
 from .convert import MessageStream, error_result
 from .options import AgentOptions
 from .tools import HOME_LOOP
-from .types import Message, ResultMessage
+from .types import Message, ResultMessage, SystemMessage
 
 __all__ = ["query", "run_messages"]
 
@@ -74,13 +74,28 @@ async def run_messages(agent: Any, prompt: str, options: AgentOptions) -> AsyncI
         forward_subagent_text=options.forward_subagent_text,
     )
     started = time.monotonic()
+    log = getattr(agent, "_sdk_hook_log", None)
+
+    def hook_messages() -> list[SystemMessage]:
+        if log is None:
+            return []
+        return [SystemMessage(kind, {**data, "session_id": stream.session_id}) for kind, data in log.drain()]
+
     try:
         async for event in _events(agent, text):
             for message in stream.feed(event):
-                if isinstance(message, ResultMessage) and schema is not None:
-                    await _parse_structured(agent, message, schema)
+                if isinstance(message, ResultMessage):
+                    # Hooks that ran during the turn (Stop among them) are reported before it ends.
+                    for notice in hook_messages():
+                        yield notice
+                    if schema is not None:
+                        await _parse_structured(agent, message, schema)
                 yield message
+            for notice in hook_messages():
+                yield notice
     except Exception as error:
+        for notice in hook_messages():
+            yield notice
         yield error_result(
             error, session_id=stream.session_id, duration_ms=int((time.monotonic() - started) * 1000)
         )

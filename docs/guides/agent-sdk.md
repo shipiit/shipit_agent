@@ -51,6 +51,7 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `hooks` | `{"PreToolUse": [HookMatcher(...)], ...}`, or an `AgentHooks`. |
 | `mcp_servers` | `{name: config}`: stdio, sse, http or `create_sdk_mcp_server(...)`. |
 | `skills` | `None` or `"all"` for every discovered skill, a list of exact skill names (or ids), or `[]` for none. A wildcard, a malformed name or a name no skill has raises `ValueError`. |
+| `forward_subagent_text` | Include a sub-agent's text and thinking in its `AssistantMessage`s. By default only its tool calls and results appear. |
 | `task_budget` | `{"total": n}`: stop the run, between steps, once it has used n tokens (`error_max_budget_tokens`). |
 | `resume_session_at` | With `resume`: continue from that message of the session (a `SessionMessage.uuid`), in a copy. |
 | `strict_mcp_config` | Use only `mcp_servers`; servers that plugins declare are left out. |
@@ -84,6 +85,8 @@ The `ResultMessage` reports how the run went:
 - **Answer:** `result` and `structured_output`.
 - **Effort and cost:** `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd` and `usage`. `model_usage` breaks tokens and estimated cost down by model (`inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `costUSD`).
 - **Other details:** `stop_reason`, `permission_denials`, and `terminal_reason` (`completed`, `max_turns`, `max_budget_usd`, `max_budget_tokens` or `error`).
+
+A sub-agent's tool calls and their results appear as `AssistantMessage`s and `UserMessage`s whose `parent_tool_use_id` is the id of the `sub_agent` call that started it; the parent's own messages have `None`. After each of its tool results, and once when it finishes, a `SystemMessage("task_progress")` reports the child's `usage` (`total_tokens`, `tool_uses`, `duration_ms`) and `last_tool_name`. A sub-agent never produces `StreamEvent`s or a `ResultMessage`.
 
 When the provider refuses a call for its rate limit (a 429), a `RateLimitEvent` comes just before the retry: `rate_limit_info["status"]` is `"rejected"` and `resets_at` is when the retry is due, in epoch seconds. Overloaded (529), server and network errors are retries, not rate limits, and arrive only as `SystemMessage("api_retry")`. `rate_limit_type` and `utilization` are always `None`: providers do not report them to an API key.
 

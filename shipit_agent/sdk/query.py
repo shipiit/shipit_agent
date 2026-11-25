@@ -68,7 +68,11 @@ async def run_messages(agent: Any, prompt: str, options: AgentOptions) -> AsyncI
         from shipit_agent.core.structured import build_schema_prompt
 
         text = prompt + build_schema_prompt(schema)
-    stream = MessageStream(init=init_data(agent, options), partial=options.include_partial_messages)
+    stream = MessageStream(
+        init=init_data(agent, options),
+        partial=options.include_partial_messages,
+        forward_subagent_text=options.forward_subagent_text,
+    )
     started = time.monotonic()
     try:
         async for event in _events(agent, text):

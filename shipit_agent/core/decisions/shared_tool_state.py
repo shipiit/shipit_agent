@@ -25,6 +25,8 @@ class SharedToolStateMixin:
         """
 
         def sink(event: Any, label: str, task: str) -> None:
+            from shipit_agent.core.tool_runner import CURRENT_TOOL_CALL_ID
+
             self.emit(
                 state,
                 "sub_agent_event",
@@ -33,6 +35,8 @@ class SharedToolStateMixin:
                 task=task,
                 inner_type=event.type,
                 inner=dict(event.payload),
+                # The parent's tool call that started this child.
+                parent_tool_use_id=CURRENT_TOOL_CALL_ID.get(),
             )
 
         return sink

@@ -10,6 +10,7 @@ from shipit_agent.core.result_subtype import result_subtype
 
 from .result_fields import model_usage, terminal_reason
 from .stream_frames import ResponseFrames
+from .subagent_messages import SubagentMessages
 from .types import (
     AssistantMessage,
     RateLimitEvent,
@@ -42,12 +43,13 @@ _STAMP_KEYS = frozenset({"run_id", "sequence", "session_id"})
 class MessageStream:
     """Feed it a run's events in order; it returns the messages each one makes."""
 
-    def __init__(self, *, init: dict[str, Any], partial: bool = False) -> None:
+    def __init__(self, *, init: dict[str, Any], partial: bool = False, forward_subagent_text: bool = False) -> None:
         self.init = dict(init)
         self.partial = partial
         self.session_id = str(init.get("session_id") or "")
         self._started_at: float | None = None
         self._frames = ResponseFrames(str(init.get("model") or ""))
+        self._children = SubagentMessages(forward_text=forward_subagent_text, session_id=self.session_id)
 
     def feed(self, event: AgentEvent) -> list[Message]:
         if self._started_at is None:
@@ -55,6 +57,9 @@ class MessageStream:
         payload = event.payload
         self.session_id = str(payload.get("session_id") or self.session_id)
         kind = event.type
+        if kind == "sub_agent_event":
+            self._children.session_id = self.session_id
+            return self._children.feed(payload, event.timestamp)
         if kind == "run_started":
             return [SystemMessage("init", {**self.init, "session_id": self.session_id})]
         if kind == "assistant_message":

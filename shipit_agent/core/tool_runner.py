@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import inspect
 from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, field
@@ -19,6 +20,12 @@ from shipit_agent.core.tool_arguments import (
 from shipit_agent.tools import ToolContext, ToolOutput, ToolOutputChunk
 
 ToolOutputCallback = Callable[[ToolOutputChunk], None]
+#: The id of the tool call running in this context, so work a tool starts (a
+#: sub-agent's events) can name the call it belongs to. Each call sets its own,
+#: and a thread started from it inherits the value.
+CURRENT_TOOL_CALL_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "shipit_current_tool_call_id", default=None
+)
 _LIVE_OUTPUT_CHUNK_CHARS = 16_384
 _HEAVY_EVENT_METADATA_KEYS = frozenset(
     {"raw_result", "content_blocks", "structured_content"}
@@ -153,6 +160,18 @@ class ToolRunner:
         context: ToolContext,
         output_callback: ToolOutputCallback | None = None,
     ) -> ToolResult:
+        token = CURRENT_TOOL_CALL_ID.set(getattr(tool_call, "id", None) or None)
+        try:
+            return self._run_tool_call(tool_call, context, output_callback)
+        finally:
+            CURRENT_TOOL_CALL_ID.reset(token)
+
+    def _run_tool_call(
+        self,
+        tool_call: ToolCall,
+        context: ToolContext,
+        output_callback: ToolOutputCallback | None = None,
+    ) -> ToolResult:
         tool = self.registry.get(tool_call.name)
         if tool is None:
             raise KeyError(f"Unknown tool: {tool_call.name}")
@@ -197,6 +216,19 @@ class ToolRunner:
         return self._collect_output(tool_call.name, output, output_callback)
 
     async def run_tool_call_async(
+        self,
+        tool_call: ToolCall,
+        context: ToolContext,
+        output_callback: ToolOutputCallback | None = None,
+    ) -> ToolResult:
+        """Run a native async tool when available, else preserve context in a thread."""
+        token = CURRENT_TOOL_CALL_ID.set(getattr(tool_call, "id", None) or None)
+        try:
+            return await self._run_tool_call_async(tool_call, context, output_callback)
+        finally:
+            CURRENT_TOOL_CALL_ID.reset(token)
+
+    async def _run_tool_call_async(
         self,
         tool_call: ToolCall,
         context: ToolContext,

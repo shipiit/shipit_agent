@@ -70,6 +70,9 @@ class AgentOptions:
     #: and arrives parsed as ``ResultMessage.structured_output``.
     output_format: dict[str, Any] | None = None
     include_partial_messages: bool = False
+    #: Include a sub-agent's text and thinking in its ``AssistantMessage``s;
+    #: by default only its tool calls and results are shown.
+    forward_subagent_text: bool = False
     #: Record files before the file tools change them, for ``AgentClient.rewind_files``.
     enable_file_checkpointing: bool = False
     session_id: str | None = None

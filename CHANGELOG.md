@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
   and estimated cost per model), `terminal_reason` and `uuid`;
   `AssistantMessage` has `message_id`.
+- **Sub-agent messages in the SDK stream.** A sub-agent's tool calls and
+  results arrive as messages with `parent_tool_use_id` naming the `sub_agent`
+  call that started it, followed by `task_progress` reports.
+  `forward_subagent_text=True` adds its text and thinking. Tool code can read
+  the running call's id from `shipit_agent.core.tool_runner.CURRENT_TOOL_CALL_ID`,
+  and `sub_agent_event` payloads now carry `parent_tool_use_id`.
 - **`AgentOptions(skills=[...])`** limits the main agent to the named skills
   (`"all"` or `None` keeps every one, `[]` none). Wildcards, malformed names
   and names no skill has raise `ValueError`.

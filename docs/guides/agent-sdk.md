@@ -248,6 +248,10 @@ The client's methods:
 
 Each response starts with a `UserMessage` echoing the prompt. Its `uuid` is what `rewind_files` takes.
 
+## A task list
+
+`task_create`, `task_update`, `task_get` and `task_list` are the SDK's `TaskCreate`, `TaskUpdate`, `TaskGet` and `TaskList`: a task list the model keeps during the run, changed one task at a time, where a task can block others. They answer in the SDK's JSON shapes; `status="deleted"` removes a task and its links, and ids are never reused. They are not in the default tool set, which has `todo`, a simpler checklist; name them in `tools` to use them. The SDK's `TaskOutput` has no counterpart: Claude Code removed it, and a background task's output is read from its file.
+
 ## Background tasks
 
 Both kinds of background work are tasks: a command started with `bash(background=True)`, or one that outlives its timeout, is `local_bash`, and `sub_agent(background=True)` is `local_agent`. Between steps the runtime checks on them:

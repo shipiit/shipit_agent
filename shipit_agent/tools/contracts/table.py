@@ -131,5 +131,9 @@ CONTRACTS: dict[str, ToolContract] = {
     # Listing and requesting connections changes nothing itself.
     "connections": OBSERVE,
     "todo": _act(AGENT_STATE, auto=True),
+    "task_create": _act(AGENT_STATE, auto=True),
+    "task_update": _act(AGENT_STATE, auto=True),
+    "task_get": OBSERVE,
+    "task_list": OBSERVE,
     "memory": _act(MEMORY_WRITE, auto=True),
 }

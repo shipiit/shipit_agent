@@ -118,6 +118,10 @@ VERBS: dict[str, VerbSpec] = {
     "list_mcp_resources": VerbSpec("Listed MCP resources", "Listing MCP resources", SEARCH,
                                    read_only=True, intransitive=True),
     "read_mcp_resource": VerbSpec("Read", "Reading", DOC, "resource", args=("uri",), read_only=True),
+    "task_create": VerbSpec("Added task", "Adding task", THINK, args=("subject",), intransitive=True),
+    "task_update": VerbSpec("Updated task", "Updating task", THINK, args=("taskId",), intransitive=True),
+    "task_get": VerbSpec("Read task", "Reading task", THINK, args=("taskId",), read_only=True, intransitive=True),
+    "task_list": VerbSpec("Checked the task list", "Checking the task list", THINK, read_only=True, intransitive=True),
     "memory": VerbSpec("Recalled", "Recalling", MEMORY, "memory", plural="memories",
                        args=("query", "content")),
 

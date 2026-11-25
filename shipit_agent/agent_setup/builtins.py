@@ -107,6 +107,7 @@ from shipit_agent.tools.connections import ConnectionsTool
 from shipit_agent.tools.describe_binding import DescribeBindingTool
 from shipit_agent.tools.give_up import GiveUpTool
 from shipit_agent.tools.mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
+from shipit_agent.tools.task_list import TaskCreateTool, TaskGetTool, TaskListTool, TaskUpdateTool
 from shipit_agent.tools.task_stop import TaskStopTool
 
 
@@ -150,6 +151,10 @@ def get_builtin_tool_map(
         TaskStopTool(),
         ListMcpResourcesTool(),
         ReadMcpResourceTool(),
+        TaskCreateTool(),
+        TaskUpdateTool(),
+        TaskGetTool(),
+        TaskListTool(),
         FileReadTool(root_dir=project_root),
         EditFileTool(root_dir=project_root),
         MultiEditTool(root_dir=project_root),

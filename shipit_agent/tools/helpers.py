@@ -41,6 +41,10 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "present_plan",
         "synthesize_evidence",
         "todo",
+        "task_create",
+        "task_update",
+        "task_get",
+        "task_list",
         "verify_output",
     },
     "interaction": {

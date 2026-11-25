@@ -49,6 +49,7 @@ from .linear import LinearTool
 from .linkedin import LinkedInSearchTool
 from .memory import ClaudeMemoryTool, MemoryTool
 from .mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
+from .task_list import TaskCreateTool, TaskGetTool, TaskListTool, TaskUpdateTool
 from .notebook_edit import NotebookEditTool
 from .notion import NotionTool
 from .open_url import OpenURLTool
@@ -109,6 +110,10 @@ __all__ = [
     "MultiEditTool",
     "ListMcpResourcesTool",
     "ReadMcpResourceTool",
+    "TaskCreateTool",
+    "TaskGetTool",
+    "TaskListTool",
+    "TaskUpdateTool",
     "EvidenceSynthesisTool",
     "FileReadTool",
     "FileWriteTool",

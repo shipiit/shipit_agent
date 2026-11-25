@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
   and estimated cost per model), `terminal_reason` and `uuid`;
   `AssistantMessage` has `message_id`.
+- **Task-list tools.** `task_create`, `task_update`, `task_get` and
+  `task_list` (the SDK's `TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`)
+  keep a task list with owners and dependencies. Opt-in by name.
 - **MCP resource tools.** `list_mcp_resources` and `read_mcp_resource` (the
   SDK's `ListMcpResources` and `ReadMcpResource`, under either spelling) list
   and read the resources of the MCP servers switched on for the run.

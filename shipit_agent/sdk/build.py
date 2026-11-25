@@ -11,6 +11,7 @@ from shipit_agent.safety.permission_rules import rule_names_tool, sdk_tool_name
 from .hooks import build_agent_hooks
 from .options import DEFAULT_TOOLS, AgentOptions
 from .permissions import permission_callback
+from .skills_filter import limit_skills
 
 __all__ = ["build_agent", "llm_for_model"]
 
@@ -85,7 +86,9 @@ def build_agent(options: AgentOptions) -> Any:
     if harness is not None:
         settings["harness"] = harness
     settings.update(options.agent_options)
-    return Agent(**settings)
+    agent = Agent(**settings)
+    limit_skills(agent, options.skills)
+    return agent
 
 
 def llm_for_model(model: str | None) -> Any:

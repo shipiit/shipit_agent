@@ -50,6 +50,7 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `can_use_tool` | Decides calls that no rule, mode or hook settled. |
 | `hooks` | `{"PreToolUse": [HookMatcher(...)], ...}`, or an `AgentHooks`. |
 | `mcp_servers` | `{name: config}`: stdio, sse, http or `create_sdk_mcp_server(...)`. |
+| `skills` | `None` or `"all"` for every discovered skill, a list of exact skill names (or ids), or `[]` for none. A wildcard, a malformed name or a name no skill has raises `ValueError`. |
 | `task_budget` | `{"total": n}`: stop the run, between steps, once it has used n tokens (`error_max_budget_tokens`). |
 | `resume_session_at` | With `resume`: continue from that message of the session (a `SessionMessage.uuid`), in a copy. |
 | `strict_mcp_config` | Use only `mcp_servers`; servers that plugins declare are left out. |

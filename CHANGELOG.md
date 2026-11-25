@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
   and estimated cost per model), `terminal_reason` and `uuid`;
   `AssistantMessage` has `message_id`.
+- **`AgentOptions(skills=[...])`** limits the main agent to the named skills
+  (`"all"` or `None` keeps every one, `[]` none). Wildcards, malformed names
+  and names no skill has raise `ValueError`.
 - **`RateLimitEvent` in the SDK stream.** A call refused for its rate limit
   (429) is followed by a `RateLimitEvent` with `status="rejected"` and the
   time the retry is due. Overloaded, server and network errors are not rate

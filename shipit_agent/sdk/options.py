@@ -53,6 +53,9 @@ class AgentOptions:
     #: ``[{"type": "local", "path": ...}]``: Claude Code plugins (skills,
     #: commands, agents, hooks, MCP servers). Relative paths start at ``cwd``.
     plugins: list[Any] = field(default_factory=list)
+    #: The skills the main agent may use: ``None`` or ``"all"`` for every one
+    #: discovered, or a list of exact skill names (or ids); ``[]`` for none.
+    skills: list[str] | str | None = None
     #: Which settings files to read: ``"user"``, ``"project"``, ``"local"``.
     #: ``None`` reads none: they can run hook commands, so a caller opts in.
     setting_sources: list[str] | None = None

@@ -12,10 +12,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from typing import Any
 
 __all__ = ["cmd_sdk", "options_from", "parse_args", "register"]
+
+#: How much of a call's arguments the approval prompt shows.
+_SHOWN_LIMIT = 3_000
 
 
 def _list(value: str | None) -> list[str]:
@@ -38,8 +42,14 @@ def _ask_on_terminal(tool_name: str, tool_input: dict[str, Any], context: Any) -
 
     if not sys.stdin.isatty():
         return PermissionResultDeny(message="No one is at the terminal to approve this call.")
-    detail = tool_input.get("command") or tool_input.get("path") or tool_input.get("url") or ""
-    answer = input(f"\nAllow {tool_name} {detail}? [y/N] ").strip().lower()
+    from shipit_agent.cli.sdk_render import printable
+
+    # Every argument, as JSON: control characters in a model-written value print
+    # as escapes instead of redrawing the prompt the user is answering.
+    shown = json.dumps(tool_input, ensure_ascii=True, indent=2, default=str)
+    if len(shown) > _SHOWN_LIMIT:
+        shown = f"{shown[:_SHOWN_LIMIT]}\n… {len(shown) - _SHOWN_LIMIT:,} more characters not shown"
+    answer = input(f"\nAllow {printable(tool_name)} with:\n{shown}\n[y/N] ").strip().lower()
     if answer in ("y", "yes"):
         return PermissionResultAllow()
     return PermissionResultDeny(message="The user refused this call.")

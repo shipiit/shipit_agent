@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 import time
 from typing import Any, Callable
 
@@ -21,7 +22,16 @@ from shipit_agent.sdk import (
 
 from . import ui
 
-__all__ = ["LiveRenderer", "json_line"]
+__all__ = ["LiveRenderer", "json_line", "printable"]
+
+#: Control characters other than newline and tab: in text from the model or a
+#: tool they could move the cursor, clear lines or retitle the terminal.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def printable(text: Any) -> str:
+    """*text* with control characters shown as escapes instead of acting on the terminal."""
+    return _CONTROL.sub(lambda match: f"\\x{ord(match.group()):02x}", str(text))
 
 
 def json_line(message: Any) -> str:
@@ -31,7 +41,7 @@ def json_line(message: Any) -> str:
 
 
 def _short(text: Any, limit: int = 160) -> str:
-    flat = " ".join(str(text or "").split())
+    flat = " ".join(printable(text or "").split())
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
@@ -79,15 +89,15 @@ class LiveRenderer:
         elif kind == "content_block_start" and event.get("content_block", {}).get("type") == "tool_use":
             if self._line_open:
                 self.write("\n")
-            self.write(ui.style(f"⚙ {event['content_block'].get('name', '')} ", "bold"))
+            self.write(ui.style(f"⚙ {printable(event['content_block'].get('name', ''))} ", "bold"))
             self._in_tool = self._line_open = True
         elif kind == "content_block_delta":
             delta = event.get("delta", {})
             if delta.get("type") == "text_delta":
-                self.write(str(delta.get("text", "")))
+                self.write(printable(delta.get("text", "")))
                 self._line_open = True
             elif delta.get("type") == "input_json_delta" and self._in_tool:
-                self.write(ui.style(str(delta.get("partial_json", "")), "dim"))
+                self.write(ui.style(printable(delta.get("partial_json", "")), "dim"))
         elif kind == "content_block_stop" and self._in_tool:
             self._in_tool = False
             self._end_line()
@@ -98,7 +108,7 @@ class LiveRenderer:
         if message.parent_tool_use_id:
             for block in message.content:
                 if isinstance(block, ToolUseBlock):
-                    self._line(ui.style(f"  ↳ sub-agent ⚙ {block.name} {_short(json.dumps(block.input), 100)}", "dim"))
+                    self._line(ui.style(f"  ↳ sub-agent ⚙ {printable(block.name)} {_short(json.dumps(block.input), 100)}", "dim"))
                 elif isinstance(block, TextBlock):
                     self._line(ui.style(f"  ↳ sub-agent: {_short(block.text)}", "dim"))
             return
@@ -106,9 +116,9 @@ class LiveRenderer:
             return  # already drawn from the stream events
         for block in message.content:
             if isinstance(block, TextBlock):
-                self._line(block.text)
+                self._line(printable(block.text))
             elif isinstance(block, ToolUseBlock):
-                self._line(ui.style(f"⚙ {block.name} {_short(json.dumps(block.input), 120)}", "bold"))
+                self._line(ui.style(f"⚙ {printable(block.name)} {_short(json.dumps(block.input), 120)}", "bold"))
 
     def _results(self, message: UserMessage) -> None:
         if not isinstance(message.content, list):
@@ -148,4 +158,4 @@ class LiveRenderer:
         self._line("")
         self._line(" · ".join(parts))
         for error in message.errors:
-            self._line(ui.style(error, "err"))
+            self._line(ui.style(printable(error), "err"))

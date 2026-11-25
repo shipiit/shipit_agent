@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `list_mcp_resources` and `read_mcp_resource`, which take the server as an
   argument. Servers such a rule closes are now left out of what they can see;
   a rule naming one tool of a server leaves its resources open.
+- **`shipit sdk`'s approval prompt shows the whole call, safely.** It
+  printed a model-written command raw, so carriage returns and escape codes
+  could redraw the prompt and disguise `curl … | sh` as something harmless,
+  and for most tools it showed only the tool's name. It now shows every
+  argument as JSON, with control characters as escapes and long values cut
+  with a note; the live view shows control characters in model text and tool
+  output as escapes too.
 
 ### Added
 

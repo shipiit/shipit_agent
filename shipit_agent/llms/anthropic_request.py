@@ -28,6 +28,7 @@ INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14"
 
 #: ``output_config.effort`` levels the Messages API accepts.
 _EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
+_CACHE_TTLS = frozenset({"5m", "1h"})
 
 # Beta header + request param for server-side context editing (verified:
 # beta value "context-management-2025-06-27"; request param "context_management"
@@ -102,14 +103,14 @@ class AnthropicRequestMixin:
                     {
                         "type": "text",
                         "text": system_prompt,
-                        "cache_control": {"type": "ephemeral"},
+                        "cache_control": self._cache_control(),
                     }
                 ]
             # Tools: mark the last tool so the whole array is cached.
             if anthropic_tools:
                 anthropic_tools[-1] = {
                     **anthropic_tools[-1],
-                    "cache_control": {"type": "ephemeral"},
+                    "cache_control": self._cache_control(),
                 }
 
         converted_messages = self._convert_messages(messages)
@@ -119,7 +120,7 @@ class AnthropicRequestMixin:
             # so without this breakpoint a multi-turn agent re-pays the full
             # history as uncached input on every iteration — the growing part
             # of the prompt, and by far the largest by mid-run.
-            self._mark_message_prefix_cached(converted_messages)
+            self._mark_message_prefix_cached(converted_messages, self._cache_control())
 
         # Citations (#8): attach document content blocks to the LAST user
         # message so the model can ground its answer in them. Documents are
@@ -162,6 +163,12 @@ class AnthropicRequestMixin:
         if betas:
             kwargs["betas"] = betas
         return kwargs
+
+    def _cache_control(self) -> dict[str, Any]:
+        """The marker for a cache breakpoint, with a ``ttl`` only for the hour-long cache."""
+        if getattr(self, "cache_ttl", "5m") == "1h":
+            return {"type": "ephemeral", "ttl": "1h"}
+        return {"type": "ephemeral"}
 
     def _thinking_param(self) -> dict[str, Any] | None:
         """The ``thinking`` request field for this model, or ``None`` to omit it."""

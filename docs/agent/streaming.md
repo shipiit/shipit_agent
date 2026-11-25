@@ -136,4 +136,4 @@ except RuntimeError as error:
 
 ## With the SDK API
 
-`query()` yields typed messages instead of events: `AssistantMessage`, `UserMessage` with tool results, and a final `ResultMessage`. Set `include_partial_messages=True` for `StreamEvent`s carrying text as it is written. [Agent SDK API](../guides/agent-sdk.md#messages).
+`query()` yields typed messages instead of events: `AssistantMessage`, `UserMessage` with tool results, and a final `ResultMessage`. Set `include_partial_messages=True` for `StreamEvent`s framed like the API stream: text and tool arguments as they are written, and each tool call as a `tool_use` block before the tool runs. [Agent SDK API](../guides/agent-sdk.md#messages).

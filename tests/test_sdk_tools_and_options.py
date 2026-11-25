@@ -183,3 +183,15 @@ def test_output_format_must_be_a_json_schema() -> None:
     with pytest.raises(ValueError, match="json_schema"):
         AgentOptions(output_format={"type": "text"}).output_schema()
     assert AgentOptions().output_schema() is None
+
+
+def test_cache_ttl_reaches_an_adapter_that_takes_it_and_a_bad_one_is_refused(tmp_path: Path) -> None:
+    llm = _Calls()
+    llm.cache_ttl = "5m"
+    build_agent(AgentOptions(llm=llm, cwd=tmp_path, tools=[], cache_ttl="1h"))
+    assert llm.cache_ttl == "1h"
+    plain = _Calls()
+    build_agent(AgentOptions(llm=plain, cwd=tmp_path, tools=[], cache_ttl="1h"))
+    assert not hasattr(plain, "cache_ttl")
+    with pytest.raises(ValueError, match="cache_ttl"):
+        build_agent(AgentOptions(llm=llm, cwd=tmp_path, tools=[], cache_ttl="2h"))

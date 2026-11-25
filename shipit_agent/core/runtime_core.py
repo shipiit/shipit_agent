@@ -146,6 +146,7 @@ class RuntimeCore(
             "total_tokens": 0,
             "cache_read_input_tokens": 0,
             "cache_creation_input_tokens": 0,
+            "cache_creation_1h_input_tokens": 0,
         }
         self._total_uncached_input = 0
         self._total_context_input = 0

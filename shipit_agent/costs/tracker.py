@@ -129,6 +129,7 @@ class CostTracker(BudgetChecksMixin, PricingLookupMixin):
         output_tokens: int,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        cache_write_1h_tokens: int = 0,
     ) -> CostRecord:
         """Record an LLM call and return its cost breakdown.
 
@@ -149,6 +150,7 @@ class CostTracker(BudgetChecksMixin, PricingLookupMixin):
             output_tokens,
             cache_read_tokens=cache_read_tokens,
             cache_write_tokens=cache_write_tokens,
+            cache_write_1h_tokens=cache_write_1h_tokens,
         )
 
         metadata: dict[str, Any] = {}

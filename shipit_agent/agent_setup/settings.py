@@ -77,6 +77,7 @@ class AgentSettings:
     #: arguments. This bounds runaway generations before they reach a tool;
     #: increase it for tools that intentionally accept very large documents.
     max_tool_argument_chars: int = 65_536
+    stream_tool_input_json: bool = False  # emit tool_input_json_delta per raw argument fragment
     name: str = "shipit"
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)

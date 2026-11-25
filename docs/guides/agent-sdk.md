@@ -50,10 +50,13 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `can_use_tool` | Decides calls that no rule, mode or hook settled. |
 | `hooks` | `{"PreToolUse": [HookMatcher(...)], ...}`, or an `AgentHooks`. |
 | `mcp_servers` | `{name: config}`: stdio, sse, http or `create_sdk_mcp_server(...)`. |
+| `task_budget` | `{"total": n}`: stop the run, between steps, once it has used n tokens (`error_max_budget_tokens`). |
+| `resume_session_at` | With `resume`: continue from that message of the session (a `SessionMessage.uuid`), in a copy. |
+| `strict_mcp_config` | Use only `mcp_servers`; servers that plugins declare are left out. |
 | `agents` | Sub-agent definitions (`description`, `prompt`, `tools`, `model`). |
 | `max_turns`, `max_budget_usd` | The step limit and the spend limit. |
 | `output_format` | `{"type": "json_schema", "schema": {...}}`. The parsed answer is in `ResultMessage.structured_output`. |
-| `include_partial_messages` | Also yield `StreamEvent` text deltas. |
+| `include_partial_messages` | Also yield `StreamEvent`s framed like the API stream: `message_start`, each text, `thinking` and `tool_use` block as start / delta / stop, then `message_delta` and `message_stop`. Text streams as it is written, and so does tool input on adapters that stream it (Anthropic); otherwise tool input, like thinking, arrives in one delta. Under a slow consumer some pieces may be dropped; the `AssistantMessage` always has the complete input. |
 | `resume`, `fork_session`, `session_store`, `session_id` | Continue a saved session, or a copy of it. |
 | `continue_conversation` | Continue the most recently saved session in `session_store`. |
 | `enable_file_checkpointing` | Record files before the file tools change them, for `rewind_files`. |
@@ -61,6 +64,7 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `env` | Environment variables for the commands bash and code execution run, never this process's own. |
 | `sandbox` | Run bash and code execution in the OS sandbox, with the SDK's `SandboxSettings`. See [Sandbox](#sandbox). |
 | `effort`, `thinking`, `max_thinking_tokens`, `betas` | Passed to adapters that take them (Anthropic does). A thinking budget becomes adaptive thinking on models that reject budgets. |
+| `cache_ttl` | `"5m"` (default) or `"1h"`: how long a cached prompt prefix lives on Claude models. See [Prompt caching](../agent/prompt-caching.md#a-one-hour-cache). |
 | `agent_options` | Any other `Agent` setting, under its shipit name. |
 
 ## Messages
@@ -77,8 +81,10 @@ The `ResultMessage` reports how the run went:
 
 - **How it ended:** `subtype` is one of `success`, `error_max_turns`, `error_max_budget_usd`, `error_max_budget_tokens`, `error_during_execution` or `error_max_structured_output_retries`. `is_error` says whether the run stopped short.
 - **Answer:** `result` and `structured_output`.
-- **Effort and cost:** `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd` and `usage`.
-- **Other details:** `stop_reason` and `permission_denials`.
+- **Effort and cost:** `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd` and `usage`. `model_usage` breaks tokens and estimated cost down by model (`inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `costUSD`).
+- **Other details:** `stop_reason`, `permission_denials`, and `terminal_reason` (`completed`, `max_turns`, `max_budget_usd`, `max_budget_tokens` or `error`).
+
+Each `AssistantMessage` carries a `message_id`; with partial messages it is the id in that response's `message_start`.
 
 A run that raises still ends with a `ResultMessage`, with subtype `error_during_execution` and the error in `errors`.
 
@@ -99,8 +105,11 @@ calc = create_sdk_mcp_server("calc", tools=[add])
 options = AgentOptions(mcp_servers={"calc": calc}, allowed_tools=["mcp__calc__add"])
 ```
 
-- **Schema:** a full JSON Schema works as well as the `{"name": type}` shorthand.
+- **Schema:** a full JSON Schema, the `{"name": type}` shorthand, or a `TypedDict` (keys marked `NotRequired` are optional). `Annotated[float, "Latitude"]` gives a field its description.
 - **Errors:** return `"is_error": True` to report a failure the model can act on.
+- **Images:** an `image` block (`data` as base64, `mimeType`) is shown to the model as an image when it is PNG, JPEG, GIF or WebP. Only the first image of a result is shown.
+- **Resources:** `resource` and `resource_link` blocks reach the model as text. `structuredContent` is kept in the result's metadata for your own code.
+- **Annotations:** `annotations=ToolAnnotations(readOnlyHint=True)` (or a dict) lets calls to the tool run in parallel.
 - **Naming:** a server's tools are exposed as `<server>__<tool>`; rules may name them either way.
 
 External servers use the same `mcp_servers` dict:
@@ -224,7 +233,8 @@ The client's methods:
 
 - `interrupt()` stops a turn between steps.
 - `set_model(model)` changes the model from the next call; `set_model(None)` goes back to the first one.
-- `get_context_usage()` and `get_mcp_status()` report on the session.
+- `get_context_usage()`, `get_mcp_status()` and `get_server_info()` report on the session.
+- `toggle_mcp_server(name, enabled)` switches a server off or back on from the next turn; `reconnect_mcp_server(name)` restarts its connection and raises if it will not start.
 - `stop_task(task_id)` stops a background sub-agent.
 
 Each response starts with a `UserMessage` echoing the prompt. Its `uuid` is what `rewind_files` takes.

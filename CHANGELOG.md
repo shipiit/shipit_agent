@@ -7,8 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A one-hour prompt cache.** `AnthropicChatLLM(cache_ttl="1h")` and
+  `AgentOptions(cache_ttl="1h")` keep the cached prefix for an hour, for runs
+  that pause longer than five minutes between steps. Usage reports
+  `cache_creation_1h_input_tokens`, and cost estimates and budgets price those
+  writes at twice the input price.
+- **SDK tools can return images and resources.** An `image` block from an
+  `@tool` handler is shown to the model; `resource` and `resource_link` blocks
+  reach it as text; `structuredContent` is kept in the result's metadata.
+- **SDK tool schemas from `TypedDict` and `Annotated`.** `NotRequired` keys are
+  optional and `Annotated[type, "..."]` sets a field's description.
+  `ToolAnnotations` is exported for `annotations=`.
+- **MCP servers can be managed on a live session.** `AgentClient` gains
+  `toggle_mcp_server`, `reconnect_mcp_server` and `get_server_info`, and
+  `get_mcp_status` reports `disabled`. `AgentOptions(strict_mcp_config=True)`
+  leaves out the servers plugins declare.
+- **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
+  and estimated cost per model), `terminal_reason` and `uuid`;
+  `AssistantMessage` has `message_id`.
+- **`ToolSearch` and `ExitPlanMode`** in allow and deny rules name
+  `tool_search` and `present_plan`.
+- **Raw tool-argument events.** `Agent(stream_tool_input_json=True)` emits a
+  `tool_input_json_delta` event for each fragment of a tool call's JSON as the
+  model writes it. Off by default; the SDK turns it on with
+  `include_partial_messages`.
+- **`AgentOptions(task_budget={"total": n})`** stops a run once it has used n
+  tokens, and **`resume_session_at`** continues a saved session from one of
+  its messages, in a copy.
+
+### Changed
+
+- **`include_partial_messages` frames each response like the API stream.**
+  `shipit_agent.sdk` used to yield bare text deltas. A response is now
+  `message_start`, its blocks as `content_block_start` / `content_block_delta`
+  / `content_block_stop` with an `index`, then `message_delta` (stop reason and
+  usage) and `message_stop`, so streaming code written for the Claude Agent SDK
+  reads it the same way. A consumer slower than the stream can lose some
+  pieces; the `AssistantMessage` always carries the complete input. Tool calls arrive as `tool_use` blocks before the tool runs,
+  with their arguments as `input_json_delta` pieces while the model writes
+  them on adapters that stream tool input (Anthropic) and in one delta
+  otherwise. Reasoning arrives as a `thinking` block in one delta. A response
+  cut mid-stream still ends with `message_stop`.
+
 ### Fixed
 
+- **Forking or resuming a session at a tool call keeps that call's results.**
+  `fork_session(up_to_message_id=...)` and `resume_session_at` cut the
+  conversation straight after the message, leaving a tool call with no result,
+  which providers refuse; the resumed run failed. The cut now includes the
+  call's results.
 - **The vision tool sends the image.** `VisionTool` put the image in message
   metadata that no adapter reads and sent only a shortened text placeholder, so
   the model never saw the picture. The image is now an image block in the

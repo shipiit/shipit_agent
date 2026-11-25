@@ -43,6 +43,8 @@ class AgentOptions:
     #: ``{name: config}``: ``{"type": "stdio", "command", "args", "env"}``,
     #: ``{"type": "http", "url", "headers"}``, or :func:`create_sdk_mcp_server`.
     mcp_servers: dict[str, Any] | list[Any] = field(default_factory=dict)
+    #: Use only ``mcp_servers``: servers that plugins declare are left out.
+    strict_mcp_config: bool = False
     permission_mode: str = "default"
     can_use_tool: Any = None
     #: ``{"PreToolUse": [HookMatcher(...)], ...}``, or an ``AgentHooks``.
@@ -56,6 +58,8 @@ class AgentOptions:
     setting_sources: list[str] | None = None
     max_turns: int | None = None
     max_budget_usd: float | None = None
+    #: ``{"total": n}``: stop the run, between steps, once it has used n tokens.
+    task_budget: dict[str, Any] | None = None
     cwd: str | Path | None = None
     #: Folders beside ``cwd`` the file tools may also read, write and search.
     add_dirs: list[str | Path] = field(default_factory=list)
@@ -72,12 +76,18 @@ class AgentOptions:
     #: Continue the most recently saved session in ``session_store``.
     continue_conversation: bool = False
     fork_session: bool = False
+    #: With ``resume``: continue from this message of the session (a
+    #: ``SessionMessage.uuid``), in a copy, so the session itself is unchanged.
+    resume_session_at: str | None = None
     session_store: Any = None
     #: Passed to the model adapter when it takes them (Anthropic does).
     effort: str | None = None
     thinking: str | dict[str, Any] | None = None
     #: A thinking budget, for models that take one (adaptive thinking otherwise).
     max_thinking_tokens: int | None = None
+    #: How long a cached prompt prefix lives on Claude models: ``"5m"`` (the
+    #: adapter's default) or ``"1h"`` for runs that pause longer between steps.
+    cache_ttl: str | None = None
     #: Anthropic beta headers to send with every request.
     betas: list[str] = field(default_factory=list)
     #: Environment variables for the commands the tools run (bash, code).

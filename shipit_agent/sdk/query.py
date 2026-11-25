@@ -68,7 +68,7 @@ async def run_messages(agent: Any, prompt: str, options: AgentOptions) -> AsyncI
         from shipit_agent.core.structured import build_schema_prompt
 
         text = prompt + build_schema_prompt(schema)
-    stream = MessageStream(init=_init_data(agent, options), partial=options.include_partial_messages)
+    stream = MessageStream(init=init_data(agent, options), partial=options.include_partial_messages)
     started = time.monotonic()
     try:
         async for event in _events(agent, text):
@@ -117,7 +117,8 @@ async def _events(agent: Any, prompt: str) -> AsyncIterator[Any]:
         await asyncio.gather(worker, return_exceptions=True)
 
 
-def _init_data(agent: Any, options: AgentOptions) -> dict[str, Any]:
+def init_data(agent: Any, options: AgentOptions) -> dict[str, Any]:
+    """What a session's ``init`` message says: its model, tools, servers and settings."""
     return {
         "model": str(getattr(agent.llm, "model", "") or ""),
         "tools": sorted(str(getattr(tool, "name", "")) for tool in agent.tools),

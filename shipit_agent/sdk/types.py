@@ -81,6 +81,8 @@ class AssistantMessage:
     stop_reason: str | None = None
     session_id: str | None = None
     uuid: str | None = None
+    #: The id of the model response this message is part of.
+    message_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -116,6 +118,12 @@ class ResultMessage:
     errors: list[str] = field(default_factory=list)
     #: The call a hook deferred; resume the session to settle it.
     deferred_tool_use: dict[str, Any] | None = None
+    #: Tokens and estimated cost per model (``inputTokens``, ``costUSD``, ...);
+    #: ``usage`` is the run's total.
+    model_usage: dict[str, dict[str, Any]] | None = None
+    #: Why the loop stopped: ``completed``, ``max_turns``, ``max_budget_usd``, ``error``, ...
+    terminal_reason: str | None = None
+    uuid: str | None = None
 
 
 @dataclass(slots=True)

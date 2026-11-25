@@ -23,6 +23,7 @@ class PricingLookupMixin:
         *,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        cache_write_1h_tokens: int = 0,
     ) -> float:
         """Calculate cost in USD for a given token count.
 
@@ -43,6 +44,12 @@ class PricingLookupMixin:
             + cache_read_tokens * prices.get("cache_read", 0.0) / per_million
             + cache_write_tokens * prices.get("cache_write", 0.0) / per_million
         )
+        # Writes kept for an hour are part of ``cache_write_tokens`` and cost
+        # twice the input price (or the model's own ``cache_write_1h``).
+        hour = min(max(0, cache_write_1h_tokens), max(0, cache_write_tokens))
+        if hour:
+            hour_price = prices.get("cache_write_1h", 2 * prices.get("input", 0.0))
+            cost += hour * (hour_price - prices.get("cache_write", 0.0)) / per_million
         return cost
 
     def add_model(self, model_id: str, pricing: dict[str, float]) -> None:

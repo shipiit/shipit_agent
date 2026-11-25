@@ -54,6 +54,25 @@ for Anthropic models (`anthropic` or `claude` in the model name); for
 every other provider the **write side** is a no-op and nothing breaks — but the
 read-side accounting still applies (see below).
 
+## A one-hour cache
+
+A cached prefix lives for five minutes and is refreshed each time it is read.
+A run that pauses longer than that between steps (waiting for an approval, or
+on a slow tool) comes back to a cold cache and pays full price for the whole
+conversation again. Ask for an hour instead:
+
+```python
+llm = AnthropicChatLLM(model="claude-sonnet-5-5", cache_ttl="1h")
+# or, through the SDK:
+options = AgentOptions(model="claude-sonnet-5-5", cache_ttl="1h")
+```
+
+An hour's write costs twice the input price where a five-minute write costs
+1.25 times, so it pays off only when steps really are that far apart. Usage
+reports the hour-long part of the writes as `cache_creation_1h_input_tokens`,
+and cost estimates and budgets price it at the higher rate. The option applies
+to the native Anthropic adapter; the LiteLLM adapter keeps the five-minute cache.
+
 ## Provider support
 
 Keep the two halves separate. The **write side** (`cache_control` breakpoints)

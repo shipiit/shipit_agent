@@ -22,8 +22,8 @@ from typing import Any
 from .build import build_agent, llm_for_model
 from .checkpoints import FileCheckpoints
 from .options import AgentOptions
-from .query import run_messages
-from .status import context_usage, mcp_status
+from .query import init_data, run_messages
+from .status import McpControls, context_usage
 from .types import Message, ResultMessage, UserMessage
 
 __all__ = ["AgentClient"]
@@ -41,6 +41,7 @@ class AgentClient:
         self._queue: asyncio.Queue[Any] = asyncio.Queue()
         self._runs: list[asyncio.Task[None]] = []
         self._checkpoints: FileCheckpoints | None = None
+        self._mcp: McpControls | None = None
 
     async def __aenter__(self) -> "AgentClient":
         await self.connect()
@@ -54,6 +55,7 @@ class AgentClient:
         if self._agent is None:
             self._agent = _session_agent(self.options)
             self._primary_llm = self._agent.llm
+            self._mcp = McpControls(self._agent)
             if self.options.enable_file_checkpointing:
                 self._checkpoints = FileCheckpoints(self._agent.project_root)
                 self._agent.hooks.on_before_tool(self._checkpoints.before_tool)
@@ -143,8 +145,26 @@ class AgentClient:
         return context_usage(await self._connected())
 
     async def get_mcp_status(self) -> dict[str, Any]:
-        """Each MCP server's state (``connected`` or ``failed``) and its tools."""
-        return await asyncio.to_thread(mcp_status, await self._connected())
+        """Each MCP server's state (``connected``, ``failed`` or ``disabled``) and its tools."""
+        return await asyncio.to_thread((await self._mcp_controls()).status)
+
+    async def reconnect_mcp_server(self, server_name: str) -> None:
+        """Restart a server's connection; raises ``KeyError`` for an unknown name."""
+        await asyncio.to_thread((await self._mcp_controls()).reconnect, server_name)
+
+    async def toggle_mcp_server(self, server_name: str, enabled: bool) -> None:
+        """Switch a server off or back on, from the next turn."""
+        (await self._mcp_controls()).toggle(server_name, enabled)
+
+    async def get_server_info(self) -> dict[str, Any] | None:
+        """The session's model, tools, MCP servers, agents and permission mode."""
+        return init_data(await self._connected(), self.options)
+
+    async def _mcp_controls(self) -> McpControls:
+        agent = await self._connected()
+        if self._mcp is None:
+            self._mcp = McpControls(agent)
+        return self._mcp
 
     async def stop_task(self, task_id: str) -> None:
         """Stop a background sub-agent task the agent started."""

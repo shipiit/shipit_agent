@@ -42,7 +42,7 @@ from .sessions import (
     rename_session,
     tag_session,
 )
-from .tools import SdkMcpTool, create_sdk_mcp_server, tool
+from .tools import SdkMcpTool, ToolAnnotations, create_sdk_mcp_server, tool
 from .types import (
     AssistantMessage,
     ContentBlock,
@@ -75,6 +75,7 @@ __all__ = [
     "SystemMessage",
     "TextBlock",
     "ThinkingBlock",
+    "ToolAnnotations",
     "ToolPermissionContext",
     "ToolResultBlock",
     "ToolUseBlock",

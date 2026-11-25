@@ -57,6 +57,8 @@ _SDK_NAMES: dict[str, tuple[str, ...]] = {
     "taskstop": ("task_stop",),
     "killshell": ("task_stop",),
     "killbash": ("task_stop",),
+    "toolsearch": ("tool_search",),
+    "exitplanmode": ("present_plan",),
 }
 
 #: Which argument a specifier is matched against, by shipit tool.

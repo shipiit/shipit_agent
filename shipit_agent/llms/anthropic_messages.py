@@ -108,7 +108,9 @@ class AnthropicMessagesMixin:
         return converted
 
     @staticmethod
-    def _mark_message_prefix_cached(messages: list[dict[str, Any]]) -> None:
+    def _mark_message_prefix_cached(
+        messages: list[dict[str, Any]], control: dict[str, Any] | None = None
+    ) -> None:
         """Put a cache breakpoint on the last content block of the history.
 
         Anthropic allows 4 breakpoints per request; system and tools use two,
@@ -129,7 +131,7 @@ class AnthropicMessagesMixin:
                 if block_type in ("text", "tool_result", "tool_use", "document"):
                     content[-1] = {
                         **content[-1],
-                        "cache_control": {"type": "ephemeral"},
+                        "cache_control": dict(control or {"type": "ephemeral"}),
                     }
         except Exception:
             pass

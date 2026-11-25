@@ -25,7 +25,9 @@ def build_agent(options: AgentOptions) -> Any:
     harness = _harness(options, root)
     model = options.model or (harness.settings.model if harness is not None else None)
     llm = options.llm if options.llm is not None else llm_for_model(model)
-    for name in ("effort", "thinking"):
+    if options.cache_ttl not in (None, "5m", "1h"):
+        raise ValueError('cache_ttl must be "5m" or "1h"')
+    for name in ("effort", "thinking", "cache_ttl"):
         value = getattr(options, name)
         if value is not None and hasattr(llm, name):
             setattr(llm, name, value)
@@ -65,6 +67,10 @@ def build_agent(options: AgentOptions) -> Any:
         "max_budget_usd": options.max_budget_usd,
         "fallback_model": options.fallback_model,
     }
+    if options.include_partial_messages:
+        settings["stream_tool_input_json"] = True
+    if options.task_budget is not None:
+        settings["max_task_tokens"] = _task_tokens(options.task_budget)
     if options.can_use_tool is not None:
         settings["permission_callback"] = permission_callback(options.can_use_tool)
     if options.agents:
@@ -194,10 +200,21 @@ def _harness(options: AgentOptions, root: Path) -> Any:
         return None
     from shipit_agent.harness import Harness
 
-    return Harness.load(root, plugins=list(options.plugins), setting_sources=options.setting_sources)
+    harness = Harness.load(root, plugins=list(options.plugins), setting_sources=options.setting_sources)
+    harness.strict_mcp_config = options.strict_mcp_config
+    return harness
+
+
+def _task_tokens(budget: Any) -> int:
+    total = budget.get("total") if isinstance(budget, dict) else None
+    if isinstance(total, bool) or not isinstance(total, int) or total <= 0:
+        raise ValueError('task_budget must be {"total": n} with n a positive number of tokens')
+    return total
 
 
 def _session_id(options: AgentOptions) -> str | None:
+    if options.resume_session_at is not None and options.resume is None:
+        raise ValueError("resume_session_at needs resume: the session to continue from")
     if options.resume is None and options.continue_conversation:
         if options.session_store is None:
             raise ValueError("continue_conversation needs a session_store to continue from")
@@ -206,10 +223,10 @@ def _session_id(options: AgentOptions) -> str | None:
         return options.session_id
     if options.session_store is None or options.session_store.load(options.resume) is None:
         raise ValueError(f"resume={options.resume!r}: no such session in session_store")
-    if options.fork_session:
+    if options.fork_session or options.resume_session_at is not None:
         from .sessions import fork_session
 
-        return fork_session(options.session_store, options.resume)
+        return fork_session(options.session_store, options.resume, up_to_message_id=options.resume_session_at)
     return options.resume
 
 

@@ -89,6 +89,15 @@ class AnthropicResponseMixin:
                     usage["cache_read_input_tokens"] = cache_read
                 if cache_creation:
                     usage["cache_creation_input_tokens"] = cache_creation
+                # The part of those writes kept for an hour, which costs more.
+                breakdown = getattr(response.usage, "cache_creation", None)
+                hour = (
+                    breakdown.get("ephemeral_1h_input_tokens")
+                    if isinstance(breakdown, dict)
+                    else getattr(breakdown, "ephemeral_1h_input_tokens", None)
+                )
+                if hour:
+                    usage["cache_creation_1h_input_tokens"] = int(hour)
             except Exception:
                 pass
 

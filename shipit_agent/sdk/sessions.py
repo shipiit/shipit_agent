@@ -101,7 +101,14 @@ def fork_session(
         prefix, _, index = up_to_message_id.rpartition(":")
         if prefix != session_id or not index.isdigit() or int(index) >= len(messages):
             raise ValueError(f"{up_to_message_id!r} is not a message of session {session_id!r}")
-        messages = messages[: int(index) + 1]
+        end = int(index) + 1
+        # A tool call must keep its results: cutting between them leaves a
+        # conversation every provider refuses.
+        while end < len(messages) and (
+            messages[end].role == "tool" or messages[end].metadata.get("vision_bridge")
+        ):
+            end += 1
+        messages = messages[:end]
     new_id = str(uuid.uuid4())
     metadata = {key: value for key, value in record.metadata.items() if key != _TAG_KEY}
     metadata["forked_from"] = session_id

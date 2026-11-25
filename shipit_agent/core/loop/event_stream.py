@@ -26,7 +26,7 @@ class EventStreamMixin:
         event_buffer: deque[AgentEvent] = deque()
         wake = asyncio.Event()
         worker_done = False
-        provisional_types = {"text_delta", "tool_input_delta", "tool_output_delta"}
+        provisional_types = {"text_delta", "tool_input_delta", "tool_input_json_delta", "tool_output_delta"}
 
         def _subscriber(event: AgentEvent) -> None:
             # Preserve canonical lifecycle events. Under a slow consumer only

@@ -8,6 +8,8 @@ from typing import Any
 from shipit_agent.core.models import AgentEvent
 from shipit_agent.core.result_subtype import result_subtype
 
+from .result_fields import model_usage, terminal_reason
+from .stream_frames import ResponseFrames
 from .types import (
     AssistantMessage,
     ContentBlock,
@@ -44,6 +46,7 @@ class MessageStream:
         self.partial = partial
         self.session_id = str(init.get("session_id") or "")
         self._started_at: float | None = None
+        self._frames = ResponseFrames(str(init.get("model") or ""))
 
     def feed(self, event: AgentEvent) -> list[Message]:
         if self._started_at is None:
@@ -54,16 +57,27 @@ class MessageStream:
         if kind == "run_started":
             return [SystemMessage("init", {**self.init, "session_id": self.session_id})]
         if kind == "assistant_message":
-            return [self._assistant(payload)]
+            if not self.partial:
+                return [self._assistant(payload)]
+            # The whole message arrives before its last block is closed, as in the SDK.
+            before, after = self._frames.finish(payload)
+            whole = self._assistant(payload)
+            whole.message_id = self._frames.last_message_id
+            return [*map(self._event, before), whole, *map(self._event, after)]
         if kind in ("tool_completed", "tool_failed", "tool_denied", "tool_arguments_rejected"):
             return [self._tool_result(kind, payload)]
         if kind == "text_delta" and self.partial:
-            return [self._delta(payload)]
+            return [self._event(frame) for frame in self._frames.text(str(payload.get("chunk") or ""))]
+        if kind == "tool_input_json_delta" and self.partial:
+            frames = self._frames.tool_input(
+                str(payload.get("call_id") or ""), str(payload.get("tool") or ""), str(payload.get("partial_json") or "")
+            )
+            return [self._event(frame) for frame in frames]
         if kind in _SYSTEM_SUBTYPES:
             data = {k: v for k, v in payload.items() if k not in _STAMP_KEYS}
             return [SystemMessage(_SYSTEM_SUBTYPES[kind], data)]
         if kind == "run_completed":
-            return [self._result(event)]
+            return [*map(self._event, self._frames.cut()), self._result(event)]
         if kind == "run_failed":
             started = self._started_at if self._started_at is not None else event.timestamp
             failure = ResultMessage(
@@ -74,8 +88,10 @@ class MessageStream:
                 num_turns=0,
                 session_id=self.session_id,
                 errors=[f"{payload.get('error_type', 'Error')}: {payload.get('error', '')}"],
+                terminal_reason="error",
+                uuid=str(uuid.uuid4()),
             )
-            return [failure]
+            return [*map(self._event, self._frames.cut()), failure]
         return []
 
     def _assistant(self, payload: dict[str, Any]) -> AssistantMessage:
@@ -93,6 +109,7 @@ class MessageStream:
             stop_reason=payload.get("stop_reason"),
             session_id=self.session_id,
             uuid=str(uuid.uuid4()),
+            message_id=f"msg_{uuid.uuid4().hex}",
         )
 
     def _tool_result(self, kind: str, payload: dict[str, Any]) -> UserMessage:
@@ -107,13 +124,8 @@ class MessageStream:
             block = ToolResultBlock(call_id, str(text), failed)
         return UserMessage(content=[block], uuid=str(uuid.uuid4()))
 
-    def _delta(self, payload: dict[str, Any]) -> StreamEvent:
-        delta = {"type": "text_delta", "text": str(payload.get("chunk") or "")}
-        return StreamEvent(
-            uuid=str(uuid.uuid4()),
-            session_id=self.session_id,
-            event={"type": "content_block_delta", "delta": delta},
-        )
+    def _event(self, event: dict[str, Any]) -> StreamEvent:
+        return StreamEvent(uuid=str(uuid.uuid4()), session_id=self.session_id, event=event)
 
     def _result(self, event: AgentEvent) -> ResultMessage:
         summary = event.payload.get("summary") or {}
@@ -132,6 +144,9 @@ class MessageStream:
             stop_reason=summary.get("finish_reason"),
             permission_denials=[dict(d) for d in summary.get("permission_denials", [])],
             deferred_tool_use=summary.get("deferred_tool_use"),
+            model_usage=model_usage(summary),
+            terminal_reason=terminal_reason(summary),
+            uuid=str(uuid.uuid4()),
         )
 
 
@@ -145,4 +160,6 @@ def error_result(error: BaseException, *, session_id: str, duration_ms: int = 0)
         num_turns=0,
         session_id=session_id,
         errors=[f"{type(error).__name__}: {error}"],
+        terminal_reason="error",
+        uuid=str(uuid.uuid4()),
     )

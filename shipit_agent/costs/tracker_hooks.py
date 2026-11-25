@@ -45,6 +45,7 @@ def tracker_hooks(tracker: CostTracker, model_name: str | None = None) -> AgentH
                 or usage.get("cache_read_tokens", 0),
                 cache_write_tokens=usage.get("cache_creation_input_tokens", 0)
                 or usage.get("cache_write_tokens", 0),
+                cache_write_1h_tokens=usage.get("cache_creation_1h_input_tokens", 0),
             )
 
     hooks.on_after_llm(_after_llm)

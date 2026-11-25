@@ -58,3 +58,12 @@ def test_an_unreadable_file_is_skipped_not_fatal(tmp_path: Path) -> None:
     store = FileSessionStore(tmp_path)
     store.save(_record("ok", "x"))
     assert [r.session_id for r in store.list_all()] == ["ok"]
+
+
+@pytest.mark.parametrize("ident", ["long" * 1000, "é" * 200])
+def test_an_id_longer_than_a_file_name_saves_and_loads(tmp_path: Path, ident: str) -> None:
+    store = FileSessionStore(tmp_path)
+    store.save(SessionRecord(ident, [Message(role="user", content="hi")]))
+    loaded = store.load(ident)
+    assert loaded is not None and loaded.session_id == ident
+    assert [record.session_id for record in store.list_all()] == [ident]

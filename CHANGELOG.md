@@ -95,6 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kept discovery looping; `RemoteMCPServer(max_discovery_pages=100)` now caps
   it. A malformed `tools/list`, `resources/list` or `prompts/list` page fails
   discovery instead of being half-read, and cursors go back exactly as sent.
+- **A session id longer than a file name saves again.** Looking for an
+  older version's file under that id crashed with "File name too long"; such
+  a file cannot exist, so it is now treated as absent.
 
 ### Added
 

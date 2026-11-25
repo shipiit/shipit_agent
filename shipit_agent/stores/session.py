@@ -58,11 +58,15 @@ class FileSessionStore:
         return self.root_dir / f"s-{digest}.json"
 
     def _legacy_path_for(self, session_id: str) -> Path | None:
-        """Where an older version saved this id (slashes made underscores), if that stays in the folder."""
+        """The file an older version saved this id in (slashes made underscores), if there is one in the folder."""
         name = session_id.replace("/", "_")
         if not name or name in (".", "..") or "\\" in name or "\x00" in name:
             return None
-        return self.root_dir / f"{name}.json"
+        path = self.root_dir / f"{name}.json"
+        try:
+            return path if path.exists() else None
+        except OSError:
+            return None  # e.g. longer than a file name may be, so never saved under it
 
     @staticmethod
     def _read(path: Path) -> SessionRecord | None:
@@ -84,7 +88,7 @@ class FileSessionStore:
             return self._read(path)
         # A file from an older version counts only if it holds exactly this id.
         legacy = self._legacy_path_for(session_id)
-        record = self._read(legacy) if legacy is not None and legacy.exists() else None
+        record = self._read(legacy) if legacy is not None else None
         return record if record is not None and record.session_id == session_id else None
 
     def save(self, record: SessionRecord) -> None:
@@ -96,7 +100,7 @@ class FileSessionStore:
         }
         _atomic_write_text(path, json.dumps(payload, indent=2))
         legacy = self._legacy_path_for(record.session_id)
-        if legacy is not None and legacy != path and legacy.exists():
+        if legacy is not None and legacy != path:
             old = self._read(legacy)
             if old is not None and old.session_id == record.session_id:
                 legacy.unlink(missing_ok=True)

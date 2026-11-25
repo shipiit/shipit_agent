@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
   and estimated cost per model), `terminal_reason` and `uuid`;
   `AssistantMessage` has `message_id`.
+- **`shipit sdk "prompt"`** runs a prompt through the SDK layer from the
+  terminal: text and tool arguments stream live, calls that need approval
+  are asked about on the terminal (refused without one), and the run ends
+  with turns, tokens, cache reads and cost. `--json` prints one message per
+  line. `examples/25_agent_sdk_live.py` does the same in code.
 - **`monitor` tool**, the SDK's `Monitor`: watch a command's output in the
   background until it ends or its deadline (default five minutes, at most
   30). It runs under the bash tool's checks, environment, sandbox and job

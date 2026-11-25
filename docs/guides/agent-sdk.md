@@ -7,6 +7,16 @@ permissions. It runs on every provider shipit supports: Anthropic, OpenAI,
 Bedrock (gpt-oss, Gemma 4 and the rest), Gemini, Vertex, and others through
 LiteLLM.
 
+## Try it from the terminal
+
+```bash
+shipit sdk "Why does tests/test_api.py fail?" --tools Read,Grep,Bash --allow "Bash(pytest *)"
+```
+
+Text streams as it is written and tool calls as their arguments are written; a call that needs approval is asked about on the terminal, and refused when there is no terminal. The run ends with its turns, tokens, cache reads and cost. Flags: `--model`, `--tools`, `--allow`, `--deny`, `--mode`, `--max-turns`, `--budget`, `--cache-ttl`, `--cwd`, `--show-hooks`, `--subagent-text`, and `--json` for one message per line. [`examples/25_agent_sdk_live.py`](https://github.com/shipiit/shipit_agent/blob/main/examples/25_agent_sdk_live.py) does the same run in code.
+
+## In code
+
 ```python
 import asyncio
 

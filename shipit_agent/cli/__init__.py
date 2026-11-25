@@ -2,6 +2,7 @@
 
     shipit code "fix the failing test"     coding agent in your repo
     shipit run "prompt"                    one-shot with live tool cards
+    shipit sdk "prompt"                    the SDK layer, streamed live (or --json)
     shipit chat                            interactive REPL
     shipit serve                           OpenAI-compatible API for your agent
     shipit roles | mcp | tools             catalogs
@@ -24,7 +25,7 @@ __all__ = ["main", "build_parser", "build_llm"]
 
 def build_parser() -> argparse.ArgumentParser:
     """The ``shipit`` command-line parser with every sub-command registered."""
-    from .commands import browse, catalog, code, jobs, serve_cmd, simple
+    from .commands import browse, catalog, code, jobs, sdk_cmd, serve_cmd, simple
 
     parser = argparse.ArgumentParser(
         prog="shipit",
@@ -34,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     code.register(sub)
     browse.register(sub)
     simple.register(sub)
+    sdk_cmd.register(sub)
     serve_cmd.register(sub)
     jobs.register(sub)
     catalog.register(sub)

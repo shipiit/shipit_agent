@@ -67,6 +67,11 @@ class LiveRenderer:
             self._line_open = False
         self.write(text + "\n")
 
+    def _end_line(self) -> None:
+        if self._line_open:
+            self.write("\n")
+            self._line_open = False
+
     def _stream(self, event: dict[str, Any]) -> None:
         kind = event.get("type")
         if kind == "message_start":
@@ -85,9 +90,9 @@ class LiveRenderer:
                 self.write(ui.style(str(delta.get("partial_json", "")), "dim"))
         elif kind == "content_block_stop" and self._in_tool:
             self._in_tool = False
-            self._line("")
+            self._end_line()
         elif kind == "message_stop" and self._line_open:
-            self._line("")
+            self._end_line()
 
     def _assistant(self, message: AssistantMessage) -> None:
         if message.parent_tool_use_id:

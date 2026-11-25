@@ -56,6 +56,8 @@ async def main() -> None:
             elif event["type"] == "content_block_delta":
                 delta = event["delta"]
                 print(delta.get("text") or delta.get("partial_json") or "", end="", flush=True)
+            elif event["type"] == "content_block_stop":
+                print()
         elif isinstance(message, ResultMessage):
             print(f"\n\n{message.subtype} in {message.num_turns} turns, ${message.total_cost_usd or 0:.4f}")
             for model, usage in (message.model_usage or {}).items():

@@ -337,6 +337,31 @@ Common production setup: litellm callback for token/cost analytics **plus**
 `LangfuseExporter` for step-level agent debugging — they land in the same
 Langfuse project.
 
+## Scrub what leaves the process
+
+Exporters send prompts, tool arguments and tool output as they are. Wrap any
+exporter in `RedactingTraceStore` to scrub each event before it goes:
+
+```python
+from shipit_agent.tracing_exporters import LangfuseExporter, RedactingTraceStore
+
+agent = Agent(
+    llm=llm,
+    trace_store=RedactingTraceStore(LangfuseExporter(...), pii=True),
+)
+```
+
+- API keys, cloud keys, GitHub and Slack tokens, private keys and JWTs become
+  `[REDACTED:<kind>]`, wherever they appear in the event.
+- A string under a key that names a credential (`api_key`, `authorization`,
+  `password`, `token`, `secret`, `cookie`) becomes `[REDACTED]`. Numbers such
+  as `input_tokens` are left alone.
+- `pii=True` also redacts emails, phone numbers, card numbers and SSNs.
+- `redact=` takes your own `str -> str` function, run last on every string.
+
+Only the copies sent to the exporter change; the run's own events, result and
+session stay exact.
+
 ## Built-in run metrics
 
 Before reaching for an exporter, two zero-setup options cover the common

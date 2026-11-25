@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **A web page can no longer drive `shipit serve`.** The server ran its agent,
+  bash included, for any request that reached it: with no key (the default) a
+  page open in the developer's browser could start a run with a `text/plain`
+  POST, which needs no CORS preflight, and a DNS-rebinding page could read the
+  reply. Now a POST must be `application/json`, a browser `Origin` must be one
+  passed with `--allow-origin` (`AgentServer(allowed_origins=...)`), and on a
+  loopback address the `Host` must be a localhost name. Bound anywhere else
+  the server always needs a key and generates one if none was given. Keys are
+  compared in constant time.
+
 ### Added
 
 - **A one-hour prompt cache.** `AnthropicChatLLM(cache_ttl="1h")` and

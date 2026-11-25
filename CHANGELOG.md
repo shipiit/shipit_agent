@@ -117,6 +117,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   steer it into any tool. To keep the old behaviour, pass
   `permission_mode="bypassPermissions"`. An unknown `permission_mode` is now
   an error. The core `Agent` is unchanged.
+- **CI runs `shipiit/forge` at a fixed commit.** The two workflows used it
+  by the `v2` tag, which can be moved; they now pin the commit `v2` names
+  today, like every other action here.
 
 ### Added
 

@@ -12,10 +12,11 @@ from shipit_agent.tools.base import ToolContext, ToolOutput
 from .html_text import _strip_html as _strip_html
 from .prompt import OPEN_URL_PROMPT
 from .url_safety import URLNotAllowedError as URLNotAllowedError
+from .browser_fetch import BrowserFetchMixin
 from .url_safety import _ip_is_blocked as _ip_is_blocked
 
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 _DEFAULT_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -24,7 +25,7 @@ _DEFAULT_UA = (
 )
 
 
-class OpenURLTool:
+class OpenURLTool(BrowserFetchMixin):
     """Fetch a URL and return clean text.
 
     Primary path: **Playwright (Chromium) in-process** — handles JS-rendered
@@ -74,10 +75,10 @@ class OpenURLTool:
         multicast addresses. Set ``allow_private_hosts=True`` on the tool to
         bypass this guard for trusted internal usage.
 
-        NOTE: validation happens on the *original* URL only. A server that
-        returns an HTTP redirect to an internal address can still be reached
-        after this check passes (TOCTOU on redirect-following); fully closing
-        that gap would require intercepting each redirect hop.
+        This early check gives a clear refusal. The fetch itself goes through
+        :mod:`.safe_fetch`, which checks every redirect hop and connects to the
+        address it checked (no DNS rebinding); in the browser every request the
+        page makes is checked the same way.
         """
         if self.allow_private_hosts:
             return
@@ -137,74 +138,11 @@ class OpenURLTool:
     #  Fetch paths
     # ------------------------------------------------------------------ #
 
-    def _fetch_via_playwright(self, url: str) -> tuple[str, str, dict]:
-        """Returns (text, page_title, metadata). Raises on failure."""
-        from shipit_agent.tools._playwright import run_playwright_sync
-
-        def _do_fetch() -> tuple[str, str, dict]:
-            from playwright.sync_api import (
-                sync_playwright,
-            )  # local import — optional dep
-
-            timeout_ms = int(self.timeout * 1000)
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=self.headless)
-                try:
-                    context = browser.new_context(
-                        user_agent=self.user_agent,
-                        viewport={"width": 1280, "height": 800},
-                        locale="en-US",
-                    )
-                    page = context.new_page()
-                    response = page.goto(
-                        url, wait_until=self.wait_until, timeout=timeout_ms
-                    )
-                    status = response.status if response is not None else None
-                    if status is not None and status >= 400:
-                        raise RuntimeError(f"HTTP {status} from {url}")
-
-                    # A SPA often has only a loading shell at DOMContentLoaded.
-                    # Give its network/render pass a bounded chance to settle
-                    # before reading the body; never make network-idle a hard
-                    # requirement because analytics can keep connections open.
-                    try:
-                        page.wait_for_load_state(
-                            "networkidle", timeout=min(timeout_ms, 10_000)
-                        )
-                    except Exception:
-                        pass
-
-                    # Prefer visible body text; fall back to full rendered HTML.
-                    try:
-                        text = page.evaluate(
-                            "() => document.body && document.body.innerText || ''"
-                        )
-                    except Exception:
-                        text = ""
-                    if not text:
-                        text = _strip_html(page.content())
-
-                    title = ""
-                    try:
-                        title = page.title() or ""
-                    except Exception:
-                        pass
-
-                    metadata = {
-                        "fetch_method": "playwright",
-                        "status_code": status,
-                        "final_url": page.url,
-                        "title": title,
-                    }
-                    return text, title, metadata
-                finally:
-                    browser.close()
-
-        return run_playwright_sync(_do_fetch)
-
     def _fetch_via_urllib(self, url: str) -> tuple[str, str, dict]:
         """Stdlib fallback. Raises on failure."""
-        from urllib.request import Request, urlopen
+        from urllib.request import Request
+
+        from .safe_fetch import safe_urlopen
 
         request = Request(
             url,
@@ -214,7 +152,7 @@ class OpenURLTool:
                 "Accept-Language": "en-US,en;q=0.9",
             },
         )
-        with urlopen(request, timeout=self.timeout) as response:  # nosec B310
+        with safe_urlopen(request, timeout=self.timeout, allow_private=self.allow_private_hosts) as response:
             raw = response.read().decode("utf-8", errors="replace")
             final_url = response.geturl()
             status = response.status

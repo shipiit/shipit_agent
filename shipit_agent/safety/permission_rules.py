@@ -42,7 +42,7 @@ _SDK_NAMES: dict[str, tuple[str, ...]] = {
     # Monitor runs a command as bash does, so bash rules cover it too.
     "bash": ("bash", "monitor"),
     "monitor": ("monitor",),
-    "read": ("read_file", "glob_files", "grep_files"),
+    "read": ("read_file", "glob_files", "grep_files", "pdf"),
     "edit": ("edit_file", "write_file", "multi_edit", "notebook_edit", "download_file"),
     "write": ("write_file", "download_file"),
     "multiedit": ("multi_edit",),
@@ -74,9 +74,12 @@ _SDK_NAMES: dict[str, tuple[str, ...]] = {
 #: Which argument a specifier is matched against, by shipit tool.
 _COMMAND_TOOLS = frozenset({"bash", "monitor"})
 _PATH_TOOLS = frozenset(
-    {"read_file", "glob_files", "grep_files", "edit_file", "write_file", "multi_edit", "notebook_edit", "download_file"}
+    {"read_file", "glob_files", "grep_files", "edit_file", "write_file", "multi_edit", "notebook_edit", "download_file",
+     "pdf"}
 )
 _URL_TOOLS = frozenset({"open_url"})
+#: The argument holding the path, for tools that do not call it ``path``.
+_PATH_ARGUMENT = {"pdf": "source"}
 
 _SCOPED = re.compile(r"^\s*([^()\s]+)\s*\((.*)\)\s*$", re.DOTALL)
 
@@ -142,7 +145,10 @@ def rule_matches(
     if tool_name in _COMMAND_TOOLS:
         return _command_rule(specifier, arguments.get("command"), behavior)
     if tool_name in _PATH_TOOLS:
-        return _path_rule(specifier, arguments.get("path"), root or os.getcwd())
+        target = arguments.get(_PATH_ARGUMENT.get(tool_name, "path"))
+        if isinstance(target, str) and target.startswith(("http://", "https://")):
+            return False  # a URL source is not a path
+        return _path_rule(specifier, target, root or os.getcwd())
     if tool_name in _URL_TOOLS:
         return _domain_rule(specifier, arguments.get("url"))
     return False

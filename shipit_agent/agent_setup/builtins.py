@@ -204,7 +204,7 @@ def get_builtin_tool_map(
         CodeExecutionTool(workspace_root=f"{workspace_root}/code_execution"),
         DashboardRenderTool(workspace_root=f"{workspace_root}/dashboards"),
         # ── content extraction ────────────────────────────────────
-        PDFTool(),
+        PDFTool(root_dir=project_root),
         VisionTool(llm=llm),
         # ── deliverables ──────────────────────────────────────────
         PresentFileTool(root_dir=workspace_root),

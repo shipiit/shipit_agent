@@ -13,6 +13,8 @@ import urllib.request
 from typing import Any, Callable
 
 from shipit_agent.tools._shared import ToolBase
+from shipit_agent.tools.open_url.safe_fetch import safe_urlopen
+from shipit_agent.tools.open_url.url_safety import URLNotAllowedError
 from shipit_agent.tools.fetch_url.prompt import DESCRIPTION, INSTRUCTIONS
 
 __all__ = ["FetchUrlTool"]
@@ -49,16 +51,18 @@ class FetchUrlTool(ToolBase):
         timeout: int = 20,
         allowed_schemes: frozenset[str] = frozenset({"http", "https"}),
         opener: Callable[[str, int], tuple[int, str, str]] | None = None,
+        allow_private_hosts: bool = False,
     ) -> None:
         super().__init__(workspace)
         self.timeout = timeout
         self.allowed_schemes = allowed_schemes
+        #: Reach private, loopback and metadata addresses (trusted internal use only).
+        self.allow_private_hosts = bool(allow_private_hosts)
         self._opener = opener or self._urlopen
 
-    @staticmethod
-    def _urlopen(url: str, timeout: int) -> tuple[int, str, str]:
+    def _urlopen(self, url: str, timeout: int) -> tuple[int, str, str]:
         request = urllib.request.Request(url, headers={"User-Agent": "shipit-agent/1.0"})
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with safe_urlopen(request, timeout=timeout, allow_private=self.allow_private_hosts) as response:
             charset = response.headers.get_content_charset() or "utf-8"
             return (
                 response.status,
@@ -93,6 +97,8 @@ class FetchUrlTool(ToolBase):
 
         try:
             status, content_type, body = self._opener(url, self.timeout)
+        except URLNotAllowedError as error:
+            return self.fail(f"Refusing to fetch {url}: {error}")
         except urllib.error.HTTPError as error:
             return self.fail(f"{url} returned HTTP {error.code}.")
         except Exception as error:  # noqa: BLE001

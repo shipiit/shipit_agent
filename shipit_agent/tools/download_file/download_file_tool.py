@@ -16,6 +16,7 @@ from urllib.parse import unquote, urlsplit
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.open_url.open_url_tool import OpenURLTool, URLNotAllowedError
+from shipit_agent.tools.open_url.safe_fetch import safe_urlopen
 from shipit_agent.tools.paths import resolve_in_roots
 from .prompt import DOWNLOAD_FILE_PROMPT
 
@@ -127,7 +128,8 @@ class DownloadFileTool:
 
         req = _request.Request(url, headers={"User-Agent": "shipit-agent/1.0"})
         try:
-            response = _request.urlopen(req, timeout=self.timeout_seconds)  # nosec B310 — guarded above
+            response = safe_urlopen(req, timeout=self.timeout_seconds,
+                                    allow_private=self._guard.allow_private_hosts)
         except Exception as exc:
             return ToolOutput(
                 text=f"Download failed: {exc}",

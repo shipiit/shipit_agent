@@ -56,6 +56,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   argument as JSON, with control characters as escapes and long values cut
   with a note; the live view shows control characters in model text and tool
   output as escapes too.
+- **URL tools cannot reach this machine or its network.** `fetch_url`
+  checked only the scheme, the PDF tool and `research_brief` fetched any
+  address, and `open_url` and `download_file` checked only the first URL, so
+  a redirect or a DNS-rebinding name reached internal services and cloud
+  metadata. All five now go through one fetcher that refuses private,
+  loopback, link-local and reserved addresses on every redirect hop, connects
+  to the address it checked, and handles only http and https; in the browser,
+  every request a page makes is checked. `allow_private_hosts=True` turns it
+  off.
+- **The PDF tool reads local files only inside the project.** It opened any
+  path; local PDFs are now held to `root_dir` (the project root in an agent)
+  and added folders, and `Read(...)` rules apply to its `source`.
 
 ### Added
 

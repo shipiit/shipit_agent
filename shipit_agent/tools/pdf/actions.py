@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import io
 import urllib.error
-import urllib.request
-from pathlib import Path
 from typing import Any
 
 from shipit_agent.tools.base import ToolOutput
+from shipit_agent.tools.open_url.safe_fetch import safe_urlopen
+from shipit_agent.tools.paths import resolve_in_roots
 
 from .values import _coerce_str
 
@@ -19,9 +19,10 @@ class _PDFActions:
     def _load_source(self, source: str) -> io.BytesIO | ToolOutput:
         if source.startswith(("http://", "https://")):
             try:
-                with urllib.request.urlopen(source, timeout=self.timeout_seconds) as resp:
+                with safe_urlopen(source, timeout=self.timeout_seconds,
+                                  allow_private=self.allow_private_hosts) as resp:
                     data = resp.read()
-            except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
+            except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as exc:
                 return ToolOutput(
                     text=f"Failed to fetch PDF from URL: {exc}",
                     metadata={
@@ -32,7 +33,14 @@ class _PDFActions:
                 )
             return io.BytesIO(data)
 
-        path = Path(source).expanduser()
+        try:
+            # A local PDF must be inside the project (or an added folder).
+            path = resolve_in_roots(source, self.root_dir.resolve(), self.extra_roots)
+        except ValueError:
+            return ToolOutput(
+                text=f"PDF not read: {source} is outside the project ({self.root_dir}).",
+                metadata={"error": "path_outside_project", "source": source},
+            )
         if not path.exists() or not path.is_file():
             return ToolOutput(
                 text=f"PDF not found: {source}",

@@ -63,9 +63,12 @@ class HookDispatchMixin:
             if not isinstance(value, dict) or not hasattr(current, "output"):
                 continue
             if value.get("updated_output") is not None:
-                current.output = str(value["updated_output"])
-            if str(value.get("additional_context") or "").strip():
-                current.output = f"{current.output}\n\n{str(value['additional_context']).strip()}"
+                _replace_output(current, str(value["updated_output"]))
+            context = str(value.get("additional_context") or "").strip()
+            if context:
+                current.output = f"{current.output}\n\n{context}"
+                if getattr(current, "model_text", None):
+                    current.model_text = f"{current.model_text}\n\n{context}"
         return current
 
     def _run_after_tool_hooks(self, name: str, result: Any) -> Any:
@@ -75,16 +78,16 @@ class HookDispatchMixin:
             if value is None:
                 continue
             if isinstance(value, str) and hasattr(current, "output"):
-                current.output = value
+                _replace_output(current, value)
                 continue
             if isinstance(value, dict) and hasattr(current, "output"):
                 if "output" in value or "text" in value:
-                    current.output = str(value.get("output", value.get("text", "")))
+                    _replace_output(current, str(value.get("output", value.get("text", ""))))
                 if isinstance(value.get("metadata"), dict):
                     current.metadata.update(value["metadata"])
                 continue
             if hasattr(value, "text") and hasattr(current, "output"):
-                current.output = str(value.text)
+                _replace_output(current, str(value.text), getattr(value, "model_text", None))
                 current.metadata.update(dict(getattr(value, "metadata", {}) or {}))
                 continue
             if hasattr(value, "output"):
@@ -178,3 +181,23 @@ class HookDispatchMixin:
     def run_notification(self, message: str, notification_type: str) -> None:
         for fn in self.notification:
             fn(message, notification_type)
+
+
+#: Metadata that carries the original result to the model beside its text: an image.
+_MODEL_PAYLOAD_KEYS = ("image_base64", "media_type", "vision")
+
+
+def _replace_output(result: Any, text: str, model_text: str | None = None) -> None:
+    """Replace what a result says, everywhere the model would read it.
+
+    The model is sent ``model_text`` when a tool set one, and any image in the
+    metadata; a hook that redacts the output must replace those too, or the
+    model still receives what was redacted.
+    """
+    result.output = text
+    if hasattr(result, "model_text"):
+        result.model_text = model_text
+    metadata = getattr(result, "metadata", None)
+    if isinstance(metadata, dict):
+        for key in _MODEL_PAYLOAD_KEYS:
+            metadata.pop(key, None)

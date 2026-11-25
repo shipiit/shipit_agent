@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Edit(...)` rules did not apply to the tool. The destination is now held to
   the downloads folder (and folders added with `add_dirs`), and `Edit(...)`
   and `Write(...)` rules cover it.
+- **A redaction hook now redacts what the model is sent.** When a tool gave
+  the model a separate view of its result (`ToolOutput.model_text`, as
+  `ToolOutput.from_records` and the browser workspace do), an after-tool hook
+  or an SDK `PostToolUse` hook that replaced the output changed only the shown
+  text; the model still received the original. Replacing the output now
+  replaces the model's view too and drops any image the result carried, and
+  added context reaches the model as well.
 
 ### Added
 

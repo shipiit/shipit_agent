@@ -98,6 +98,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A session id longer than a file name saves again.** Looking for an
   older version's file under that id crashed with "File name too long"; such
   a file cannot exist, so it is now treated as absent.
+- **A fork from an earlier message knows nothing said after it.**
+  `SessionManager.fork(from_message=…)` and `fork_session(up_to_message_id=…)`
+  copied the original's verified facts, compaction summary and tool discovery,
+  all built from the later conversation. A cut fork now drops them; a whole
+  fork keeps them. Forks are deep copies, so changing one no longer changes
+  the original in an in-memory store.
+- **`SessionManager` runs chats on its own store.** Its chats were saved to the
+  agent's store instead. `Agent.chat_session()` takes `session_store=`, and the
+  manager passes its own.
 
 ### Added
 

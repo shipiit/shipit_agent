@@ -96,7 +96,7 @@ class TurnStepsMixin:
                 messages=compacted_messages,
                 tool_schemas=active_schemas,
                 iteration=iteration,
-                ran_tools=bool(state.tool_results),
+                ran_tools=bool(state.tool_results) or state.tool_calls_attempted > 0,
             )
             if forced_names or force_any_tool:
                 step_messages.append(

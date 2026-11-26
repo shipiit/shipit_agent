@@ -76,6 +76,7 @@ class ToolStepMixin:
 
         group_id = f"tool_group_{iteration}"
         group_result_start = len(state.tool_results)
+        state.tool_calls_attempted += len(response.tool_calls)
         self.emit(
             state,
             "tool_group_started",

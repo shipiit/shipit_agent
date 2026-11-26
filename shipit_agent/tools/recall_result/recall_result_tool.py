@@ -66,6 +66,11 @@ class RecallToolResult:
                             "default": 8000,
                             "description": "Maximum characters to return.",
                         },
+                        "query": {
+                            "type": "string",
+                            "description": "Exact text to find (case-insensitive); returns the "
+                            "excerpt around its first match instead of the page at offset.",
+                        },
                     },
                     "required": ["call_id"],
                     "additionalProperties": False,
@@ -80,6 +85,7 @@ class RecallToolResult:
         call_id: str,
         offset: int = 0,
         limit: int = 8000,
+        query: str | None = None,
         **_: Any,
     ) -> ToolOutput:
         record = self._results.get(str(call_id))
@@ -92,26 +98,44 @@ class RecallToolResult:
                 ),
                 metadata={"is_error": True, "call_id": call_id},
             )
-        start = max(0, int(offset or 0))
+        total = len(record.output)
         size = min(20_000, max(256, int(limit or 8000)))
-        end = min(len(record.output), start + size)
-        excerpt = record.output[start:end]
-        more = end < len(record.output)
+        found: dict[str, Any] = {}
+        if query:
+            # A literal search, so one fact in a huge result costs one small excerpt, not every page.
+            at = record.output.lower().find(str(query).lower())
+            if at < 0:
+                return ToolOutput(
+                    text=f"[recalled {record.name} call_id={record.call_id}; {query!r} not found in {total} chars]",
+                    metadata={"recalled": True, "matched": False, "source_call_id": record.call_id,
+                              "source_tool": record.name, "total_chars": total},
+                )
+            size = max(size, len(str(query)))
+            # A quarter of the excerpt before the match for context, unless the
+            # match itself needs the room.
+            lead = size // 4
+            start = max(0, at - lead) if len(str(query)) <= size - lead else at
+            found = {"matched": True, "match_offset": at}
+        else:
+            start = min(max(0, int(offset or 0)), total)
+        end = min(total, start + size)
+        more = end < total
         header = (
             f"[recalled {record.name} call_id={record.call_id}; "
-            f"chars {start}:{end} of {len(record.output)}"
+            f"chars {start}:{end} of {total}"
             + (f"; continue with offset={end}" if more else "; complete")
             + "]\n"
         )
         return ToolOutput(
-            text=header + excerpt,
+            text=header + record.output[start:end],
             metadata={
                 "recalled": True,
                 "source_call_id": record.call_id,
                 "source_tool": record.name,
                 "offset": start,
                 "next_offset": end if more else None,
-                "total_chars": len(record.output),
+                "total_chars": total,
+                **found,
             },
         )
 

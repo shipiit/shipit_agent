@@ -132,6 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`recall_tool_result` can search.** `query="..."` returns the excerpt
+  around the first case-insensitive match in a large earlier result, so one
+  fact costs one small excerpt instead of paging through the whole result.
+  `matched` and `match_offset` are in the metadata; a miss returns no text.
 - **The SDK warns when an option does nothing on the chosen model.**
   `effort`, `thinking`, `max_thinking_tokens`, `betas` and `cache_ttl` only
   apply to adapters that support them (Anthropic). Set for any other provider,
@@ -216,6 +220,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A repeated call with a new view of the same result is sent.** The
+  repeat check compared only a tool's raw output, so a tool that returned the
+  same raw result with a different `model_text` had its new view replaced by
+  "No new data". A call is now a repeat only when the raw result and the
+  model's view are both unchanged.
+- **`recall_tool_result` clamps an offset past the end** and reports the real
+  position, instead of echoing the offset it was given.
 - **An edit with nothing to match no longer rewrites the file.** `edit_file`
   and `multi_edit` with an empty `old_text` and `replace_all` inserted the new
   text between every character of the file, and reported success. An empty

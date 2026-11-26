@@ -107,10 +107,10 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
 
 ---
 
-## What's next — the Agent SDK API and safer defaults
+## What's new in 4.0 — the Agent SDK API and safer defaults
 
-On `main` after [#54](https://github.com/shipiit/shipit_agent/pull/54); not on PyPI yet. The
-[changelog](CHANGELOG.md) has every entry.
+Released as 4.0.0. The [changelog](CHANGELOG.md) has every entry, and
+[Upgrading to 4.0](docs/guides/upgrading-4.md) says what to change in code you already have.
 
 **Agent SDK API**
 

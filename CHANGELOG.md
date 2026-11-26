@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [4.0.0] — 2026-11-26
+
 ### Security
 
 - **A web page can no longer drive `shipit serve`.** The server ran its agent,
@@ -3169,7 +3175,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/shipiit/shipit_agent/compare/v3.1.1...v4.0.0
 [3.1.1]: https://github.com/shipiit/shipit_agent/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/shipiit/shipit_agent/compare/v3.0.0...v3.1.0
 [1.0.18]: https://github.com/shipiit/shipit_agent/compare/v1.0.17...v1.0.18

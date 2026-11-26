@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+Nothing yet.
+
+---
+
+## v4.0.0 — 2026-11-26
+
 ### Security
 
 - **A web page can no longer drive `shipit serve`.** The server ran its agent,

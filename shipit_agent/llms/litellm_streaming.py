@@ -14,6 +14,7 @@ from shipit_agent.llms.litellm_messages import (
     _parse_tool_arguments,
 )
 from shipit_agent.llms.litellm_usage import _extract_cache_usage
+from shipit_agent.llms.usage import normalize_token_usage
 
 
 def _iter_with_deadline(stream: Any, timeout: Any):
@@ -181,12 +182,7 @@ def _stream_completion(
 
             chunk_usage = getattr(chunk, "usage", None)
             if chunk_usage:
-                usage = {
-                    "prompt_tokens": getattr(chunk_usage, "prompt_tokens", 0) or 0,
-                    "completion_tokens": getattr(chunk_usage, "completion_tokens", 0)
-                    or 0,
-                    "total_tokens": getattr(chunk_usage, "total_tokens", 0) or 0,
-                }
+                usage = normalize_token_usage(chunk_usage)
                 usage.update(_extract_cache_usage(chunk_usage))
     except Exception as exc:
         exc_name = type(exc).__name__

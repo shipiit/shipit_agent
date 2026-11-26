@@ -15,6 +15,7 @@ from shipit_agent.core.models import ToolCall
 from shipit_agent.llms import citations as _citations
 from shipit_agent.llms import server_tools as _server_tools
 from shipit_agent.llms.base import LLMResponse
+from shipit_agent.llms.usage import normalize_token_usage
 
 
 class AnthropicResponseMixin:
@@ -71,11 +72,9 @@ class AnthropicResponseMixin:
 
         usage: dict[str, int] = {}
         if hasattr(response, "usage") and response.usage:
-            usage = {
-                "prompt_tokens": getattr(response.usage, "input_tokens", 0) or 0,
-                "completion_tokens": getattr(response.usage, "output_tokens", 0) or 0,
-            }
-            usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
+            usage = normalize_token_usage(
+                response.usage, input_key="input_tokens", output_key="output_tokens"
+            )
             # Prompt-caching usage. These keys match exactly what
             # CostTracker.as_hooks() looks for, so cache reads bill at the
             # cheaper rate automatically. Wrapped defensively: older SDKs

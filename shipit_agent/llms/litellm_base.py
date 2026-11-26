@@ -15,6 +15,7 @@ from shipit_agent.llms.litellm_messages import (
 )
 from shipit_agent.llms.litellm_streaming import _stream_completion
 from shipit_agent.llms.litellm_usage import _extract_cache_usage, _extract_reasoning
+from shipit_agent.llms.usage import normalize_token_usage
 
 
 class LiteLLMChatLLM:
@@ -229,11 +230,7 @@ class LiteLLMChatLLM:
         usage: dict[str, int] = {}
         if hasattr(response, "usage") and response.usage:
             u = response.usage
-            usage = {
-                "prompt_tokens": getattr(u, "prompt_tokens", 0) or 0,
-                "completion_tokens": getattr(u, "completion_tokens", 0) or 0,
-                "total_tokens": getattr(u, "total_tokens", 0) or 0,
-            }
+            usage = normalize_token_usage(u)
             usage.update(_extract_cache_usage(u))
 
         return LLMResponse(

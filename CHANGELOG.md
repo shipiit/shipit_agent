@@ -220,6 +220,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A token budget is not bypassed when a provider leaves out a count.** The
+  OpenAI, Anthropic and LiteLLM adapters recorded a missing or malformed
+  `prompt_tokens` / `completion_tokens` as `0`, so that work counted as free
+  and `max_task_tokens` / `max_session_tokens` never stopped the run. A count
+  the provider did not report is now left out, and a budgeted run stops with
+  `…_budget_usage_unavailable` as it was meant to. An explicit `0` is kept.
 - **A repeated call with a new view of the same result is sent.** The
   repeat check compared only a tool's raw output, so a tool that returned the
   same raw result with a different `model_text` had its new view replaced by

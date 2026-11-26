@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 from .url_safety import URLNotAllowedError, _ip_is_blocked
 
-__all__ = ["checked_address", "safe_urlopen"]
+__all__ = ["checked_address", "guard_browser_context", "guard_browser_route", "safe_urlopen"]
 
 MAX_REDIRECTS = 5
 
@@ -123,3 +123,22 @@ def safe_urlopen(request: urllib.request.Request | str, *, timeout: float, allow
     for handler in handlers:
         opener.add_handler(handler)
     return opener.open(request, timeout=timeout)
+
+
+def guard_browser_route(route: Any) -> None:
+    """A browser request goes ahead only to a public http(s) address; data and blob URLs stay local."""
+    url = str(route.request.url)
+    if url.startswith(("data:", "blob:")):
+        route.continue_()
+        return
+    try:
+        checked_address(url)
+    except URLNotAllowedError:
+        route.abort("blockedbyclient")
+        return
+    route.continue_()
+
+
+def guard_browser_context(context: Any) -> None:
+    """Check every request a Playwright browser context makes: page loads, redirects, scripts' fetches."""
+    context.route("**/*", guard_browser_route)

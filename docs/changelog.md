@@ -67,6 +67,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the address it checked, and handles only http and https; in the browser,
   every request a page makes is checked. `allow_private_hosts=True` turns it
   off.
+- **The browser tools cannot be pointed at this machine or its files.**
+  `playwright_browse` opened any URL the model gave it, `file:///…` and
+  internal addresses included, and returned the page; the computer-use
+  browser's `navigate` did the same. Both now open public http(s) pages only
+  and check every request the page makes. `allow_private_hosts=True`
+  (`PlaywrightBrowserTool(...)`, `PlaywrightBrowserSession.launch(...)`) turns
+  it off, which is needed to drive an app on `localhost`.
 - **The PDF tool reads local files only inside the project.** It opened any
   path; local PDFs are now held to `root_dir` (the project root in an agent)
   and added folders, and `Read(...)` rules apply to its `source`.

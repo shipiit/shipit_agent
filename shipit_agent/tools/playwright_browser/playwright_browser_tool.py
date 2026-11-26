@@ -9,6 +9,8 @@ from html import unescape
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools._playwright import run_playwright_sync
+from shipit_agent.tools.open_url.safe_fetch import checked_address, guard_browser_context
+from shipit_agent.tools.open_url.url_safety import URLNotAllowedError
 from .prompt import PLAYWRIGHT_BROWSER_PROMPT
 
 
@@ -30,8 +32,11 @@ class PlaywrightBrowserTool:
         name: str = "playwright_browse",
         description: str = "Use Playwright to open a page and return the rendered text content.",
         prompt: str | None = None,
+        allow_private_hosts: bool = False,
     ) -> None:
         self.name = name
+        #: Reach private, loopback and metadata addresses (trusted internal use only).
+        self.allow_private_hosts = bool(allow_private_hosts)
         self.description = description
         self.prompt = prompt or PLAYWRIGHT_BROWSER_PROMPT
         self.prompt_instructions = "Use this when JavaScript rendering matters or basic HTTP fetch is insufficient."
@@ -54,6 +59,15 @@ class PlaywrightBrowserTool:
 
     def run(self, context: ToolContext, **kwargs) -> ToolOutput:
         url = str(kwargs["url"]).strip()
+        if not self.allow_private_hosts:
+            # Only public http(s) pages: no file://, no internal address.
+            try:
+                checked_address(url)
+            except URLNotAllowedError as exc:
+                return ToolOutput(
+                    text=f"Error: refusing to open {url} — {exc}",
+                    metadata={"url": url, "driver": "playwright", "error": str(exc), "blocked": True},
+                )
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
@@ -67,8 +81,13 @@ class PlaywrightBrowserTool:
             def _run() -> str:
                 with sync_playwright() as playwright:
                     browser = playwright.chromium.launch(headless=True)
-                    page = browser.new_page()
+                    context = browser.new_context()
+                    if not self.allow_private_hosts:
+                        guard_browser_context(context)
+                    page = context.new_page()
                     page.goto(url, wait_until="networkidle")
+                    if not self.allow_private_hosts:
+                        checked_address(page.url)  # where the redirects ended
                     content = page.content()
                     browser.close()
                     return content

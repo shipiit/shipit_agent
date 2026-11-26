@@ -393,8 +393,14 @@ PlaywrightBrowserSession.launch(
     *, headless=True,
     viewport_size=(1280, 720),
     start_url="about:blank",
+    allow_private_hosts=False,
 ) -> PlaywrightBrowserSession  # also context manager
 ```
+
+The browser only reaches public http(s) addresses: every request it makes is
+checked, and `navigate` refuses `file://`, loopback, private and
+cloud-metadata addresses. To drive an app on `localhost` or your own network,
+pass `allow_private_hosts=True`. `start_url` is yours, so it is not checked.
 
 ### `parse_action(raw) → ComputerAction`
 Parse any LLM response shape into a structured action. Pure function,

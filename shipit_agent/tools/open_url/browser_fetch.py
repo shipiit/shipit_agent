@@ -2,25 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
 
 from .html_text import _strip_html
 from .safe_fetch import checked_address
-from .url_safety import URLNotAllowedError
-
-
-def _guard_route(route: Any) -> None:
-    """A browser request goes ahead only to a public http(s) address; data and blob URLs stay local."""
-    url = str(route.request.url)
-    if url.startswith(("data:", "blob:")):
-        route.continue_()
-        return
-    try:
-        checked_address(url)
-    except URLNotAllowedError:
-        route.abort("blockedbyclient")
-        return
-    route.continue_()
+from .safe_fetch import guard_browser_route as _guard_route
 
 
 class BrowserFetchMixin:

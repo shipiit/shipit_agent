@@ -31,7 +31,7 @@ Areas that deserve extra care in this project:
 - **Notebook credential printers only show `✓ set` / `✗ missing`** — never the actual value. Safe to share notebooks.
 - **Default web search provider is DuckDuckGo** — no API key required, no account-linked telemetry.
 - **`open_url` fallback is stdlib `urllib`** — no third-party HTTP libraries in the default fetch path.
-- **URL tools cannot reach your network.** `open_url`, `fetch_url`, `download_file`, `pdf` and `research_brief` refuse private, loopback, link-local and cloud-metadata addresses, check every redirect hop, and connect to the address they checked, so DNS rebinding cannot swap it. In the browser every request a page makes is checked. `allow_private_hosts=True` turns this off for trusted internal use.
+- **URL tools cannot reach your network.** `open_url`, `fetch_url`, `download_file`, `pdf`, `research_brief`, `playwright_browse` and the computer-use browser refuse private, loopback, link-local and cloud-metadata addresses, check every redirect hop, and connect to the address they checked, so DNS rebinding cannot swap it. In the browser every request a page makes is checked. `allow_private_hosts=True` turns this off for trusted internal use.
 - **File tools stay in the project.** Reads and writes, downloads and local PDFs included, are held to the project root and folders added with `add_dirs`.
 
 ## Principles

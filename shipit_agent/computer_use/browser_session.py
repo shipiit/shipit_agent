@@ -11,6 +11,8 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Protocol, TypeVar
 
+from shipit_agent.tools.open_url.safe_fetch import checked_address, guard_browser_context
+
 _T = TypeVar("_T")
 
 
@@ -143,6 +145,7 @@ class PlaywrightBrowserSession:
         storage_state: str | None = None,
         slow_mo: float = 0.0,
         settle_ms: int = 500,
+        allow_private_hosts: bool = False,
     ) -> "PlaywrightBrowserSession":
         """Start a browser session.
 
@@ -186,6 +189,8 @@ class PlaywrightBrowserSession:
             if storage_state and os.path.exists(storage_state):
                 context_kwargs["storage_state"] = storage_state
             context = browser.new_context(**context_kwargs)
+            if not allow_private_hosts:
+                guard_browser_context(context)  # no request reaches this machine or its network
             page = context.new_page()
             page.goto(start_url)
             return playwright, browser, page
@@ -205,6 +210,7 @@ class PlaywrightBrowserSession:
         )
         session._storage_state_path = storage_state
         session._settle_ms = max(0, int(settle_ms))
+        session._allow_private_hosts = allow_private_hosts
         return session
 
     def _settle(self) -> None:
@@ -252,6 +258,8 @@ class PlaywrightBrowserSession:
         self._settle()
 
     def navigate(self, url: str) -> None:
+        if not getattr(self, "_allow_private_hosts", False):
+            checked_address(url)  # raises for file://, internal and non-http(s) URLs
         self._run(lambda: self._page.goto(url))
         self._settle()
 

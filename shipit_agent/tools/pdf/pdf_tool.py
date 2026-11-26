@@ -172,6 +172,11 @@ class PDFTool(_PDFActions):
                 metadata={"error": "missing_source"},
             )
 
+        # Where the PDF may come from is settled first, whether or not pypdf is installed.
+        refused = self._refusal(source)
+        if refused is not None:
+            return refused
+
         # Lazy import — keeps the base install pypdf-free.
         try:
             import pypdf  # type: ignore[import-not-found]

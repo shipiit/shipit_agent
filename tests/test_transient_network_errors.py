@@ -67,11 +67,25 @@ def test_a_run_survives_a_dropped_connection() -> None:
 # only the server's own words — and a Gemma run on DRK CACHE ended on
 # "The server had an error while processing your request. Sorry about that!".
 
-def _api_error(message: str, body: object) -> Exception:
-    import openai
+class APIError(Exception):
+    """Stands in for openai.APIError (matched by name), so these run without the openai package."""
 
-    return openai.APIError(message, httpx.Request("POST", "https://bedrock-mantle.test/openai/v1/chat/completions"),
-                           body=body)
+    def __init__(self, message: str, body: object) -> None:
+        super().__init__(message)
+        self.body = body
+
+
+def _api_error(message: str, body: object) -> Exception:
+    return APIError(message, body)
+
+
+def test_the_openai_sdks_own_error_is_read_the_same_way() -> None:
+    openai = pytest.importorskip("openai")
+    request = httpx.Request("POST", "https://bedrock-mantle.test/openai/v1/chat/completions")
+    assert is_transient_provider_error(openai.APIError(SERVER_SAYS, request, body={"type": "server_error"}))
+    assert not is_transient_provider_error(
+        openai.APIError("Incorrect API key provided", request, body={"type": "authentication_error"})
+    )
 
 
 SERVER_SAYS = "The server had an error while processing your request. Sorry about that!"

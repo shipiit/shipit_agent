@@ -64,10 +64,14 @@ async for message in query(prompt="Run the tests and fix what fails.", options=o
 ```
 
 ```text
-Read(src/pricing.py)                 allowed: reads are free
-Bash(pytest -q)                      allowed: matches Bash(pytest *)
-Bash(rm -rf build)                   denied: Bash(rm *)
-Bash(./deploy.sh)                    denied: No deploys from the agent.
+Read(src/pricing.py)
+  allowed: reads are free
+Bash(pytest -q)
+  allowed: matches Bash(pytest *)
+Bash(rm -rf build)
+  denied: Bash(rm *)
+Bash(./deploy.sh)
+  denied: No deploys from the agent.
 ```
 
 ### Keep URL tools on the public internet
@@ -90,8 +94,9 @@ print(result.output)
 
 ```text
 open_url(http://169.254.169.254/latest/meta-data/)
-Error: refusing to fetch http://169.254.169.254/latest/meta-data/ — Host '169.254.169.254' resolves to a blocked address
-I can't open that address: it is a cloud metadata endpoint, which is blocked.
+  denied: refusing to fetch, the host resolves
+  to a blocked address (169.254.169.254)
+I can't open that: it is a cloud metadata address.
 ```
 
 ### Run the server with a key
@@ -115,10 +120,11 @@ server.serve_forever(host="0.0.0.0", port=8399)
 ```
 
 ```text
-POST /v1/chat/completions  Authorization: Bearer <key>     200
-POST /v1/chat/completions  (no key)                        401
-POST /v1/chat/completions  Origin: https://evil.example    403
-POST /v1/chat/completions  Content-Type: text/plain        415
+POST /v1/chat/completions
+  allowed: Bearer <key>                  200
+  denied: no key                         401
+  denied: Origin https://evil.example    403
+  denied: Content-Type text/plain        415
 ```
 
 ### Redact tool output before the model sees it
@@ -146,9 +152,9 @@ print(agent.run("Read data/orders.csv and list the customers.").output)
 
 ```text
 Read(data/orders.csv)
-id,customer,card
-1,Ada,[card hidden]
-2,Lin,[card hidden]
+  id,customer,card
+  1,Ada,[card hidden]
+  2,Lin,[card hidden]
 Two customers: Ada and Lin.
 ```
 
@@ -170,9 +176,12 @@ agent.run("My key is sk-live-4f9a8b7c6d5e4f3a2b1c and my email is ada@example.co
 ```
 
 ```text
-run_started    prompt: My key is [REDACTED:api-key] and my email is [REDACTED:email].
-               run_id: fd6792f8-033f-41f3-a182-4455667f7453   (ids are kept)
-run_completed  the run's own result and session are unchanged
+run_started
+  prompt: My key is [REDACTED:api-key] and
+  my email is [REDACTED:email].
+  run_id: fd6792f8-033f-41f3-a182-4455667f7453
+run_completed
+  allowed: ids kept, the run's own result unchanged
 ```
 
 ## Principles

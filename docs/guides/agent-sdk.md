@@ -275,7 +275,8 @@ async for message in query(prompt="Tidy the billing module.", options=options):
 ```
 
 ```text
-SessionStart  source=startup   added: House rule: never edit files under migrations/.
+SessionStart(source=startup)
+  added: never edit files under migrations/.
 Edit(src/billing.py)
 session ended: other
 ```
@@ -327,9 +328,9 @@ async for message in query(prompt="Start the dev server, watch its log, and tell
 ```
 
 ```text
-Monitor(npm run dev)                 watch job_1 started, deadline 5 min
-task_started   job_1  local_bash
-> ready in 412 ms, listening on http://localhost:5173
+Monitor(npm run dev)
+  watch job_1 started, deadline 5 minutes
+  ready in 412 ms, http://localhost:5173
 The dev server is ready on port 5173.
 ```
 
@@ -350,10 +351,14 @@ async for message in query(prompt="Plan the billing migration as tasks, then sta
 ```
 
 ```text
-TaskCreate(Add annual billing)       {"task": {"id": "1", "subject": "Add annual billing"}}
-TaskCreate(Migrate invoices)         {"task": {"id": "2", "subject": "Migrate invoices"}}
-TaskUpdate(2, addBlockedBy=[1])      {"success": true, "updatedFields": ["blockedBy"]}
-TaskUpdate(1, status=in_progress)    {"success": true, "statusChange": {"from": "pending", "to": "in_progress"}}
+TaskCreate(Add annual billing)
+  {"task": {"id": "1", "subject": "Add annual billing"}}
+TaskCreate(Migrate invoices)
+  {"task": {"id": "2", "subject": "Migrate invoices"}}
+TaskUpdate(2, addBlockedBy=[1])
+  {"success": true, "updatedFields": ["blockedBy"]}
+TaskUpdate(1, status=in_progress)
+  {"statusChange": {"from": "pending", "to": "in_progress"}}
 ```
 
 ## Background tasks
@@ -380,9 +385,9 @@ async with AgentClient(options) as client:
 
 ```text
 Bash(pytest -q, background=True)
-started job_1
+  started job_1
 Read(src/pricing.py)
-finished job_1 completed
+  finished job_1 completed
 All 42 tests pass; pricing.py looks correct.
 ```
 

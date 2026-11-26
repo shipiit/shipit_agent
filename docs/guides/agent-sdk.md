@@ -246,6 +246,40 @@ All twelve events work: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `User
 
 - **Session events:** `SessionStart` and `SessionEnd` fire once per `query()`, and once per `AgentClient` (on connect and on disconnect). `SessionStart` gets `source` (`"startup"` or `"resume"`; a matcher such as `HookMatcher("resume", ...)` selects on it), and its `additionalContext` is added to the first prompt. `SessionEnd` gets `reason`.
 
+### Session start and end
+
+```python
+from shipit_agent.sdk import AgentOptions, HookMatcher, query
+
+
+async def on_start(input_data, tool_use_id, context):
+    return {"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                   "additionalContext": "House rule: never edit files under migrations/."}}
+
+
+async def on_end(input_data, tool_use_id, context):
+    print("session ended:", input_data["reason"])
+    return {}
+
+
+options = AgentOptions(
+    model="claude-sonnet-5-5",
+    hooks={
+        "SessionStart": [HookMatcher("startup", [on_start])],  # not on resume
+        "SessionEnd": [HookMatcher(None, [on_end])],
+    },
+)
+
+async for message in query(prompt="Tidy the billing module.", options=options):
+    print(message)
+```
+
+```text
+SessionStart  source=startup   added: House rule: never edit files under migrations/.
+Edit(src/billing.py)
+session ended: other
+```
+
 - **Inputs and outputs:** they use the SDK's field names, including `permissionDecision`, `updatedInput`, `updatedToolOutput`, `additionalContext` and `decision: "block"`.
 - **Failures:** a hook that raises or times out is skipped, unless its matcher sets `on_failure="block"`.
 - **Without the SDK layer:** the same events exist natively on `AgentHooks`, as `on_post_tool_use`, `on_post_tool_failure`, `on_permission_request` and `on_notification`.
@@ -279,11 +313,48 @@ Each response starts with a `UserMessage` echoing the prompt. Its `uuid` is what
 
 `monitor` is the SDK's `Monitor`: it runs a command in the background, and each line the command prints goes to the watch's log as it happens. The model reads the log as it would any background job's and is told when the watch ends; `task_stop` ends it early. Every watch has a deadline: `timeout_ms`, 300,000 by default, at most 1,800,000.
 
+```python
+from shipit_agent.sdk import AgentOptions, query
+
+options = AgentOptions(
+    model="claude-sonnet-5-5",
+    tools=["Bash", "Monitor", "Read"],
+    allowed_tools=["Monitor(npm run dev*)", "Read"],
+)
+
+async for message in query(prompt="Start the dev server, watch its log, and tell me when it is ready.", options=options):
+    print(message)
+```
+
+```text
+Monitor(npm run dev)                 watch job_1 started, deadline 5 min
+task_started   job_1  local_bash
+> ready in 412 ms, listening on http://localhost:5173
+The dev server is ready on port 5173.
+```
+
 The command goes through the bash tool's checks, environment and sandbox, and bash's permission rules cover it: `Bash(rm *)` in `disallowed_tools` also refuses `rm` under `monitor`. Only `command` sources are supported, not WebSocket ones. It is not in the default tool set.
 
 ## A task list
 
 `task_create`, `task_update`, `task_get` and `task_list` are the SDK's `TaskCreate`, `TaskUpdate`, `TaskGet` and `TaskList`: a task list the model keeps during the run, changed one task at a time, where a task can block others. They answer in the SDK's JSON shapes; `status="deleted"` removes a task and its links, and ids are never reused. They are not in the default tool set, which has `todo`, a simpler checklist; name them in `tools` to use them. The SDK's `TaskOutput` has no counterpart: Claude Code removed it, and a background task's output is read from its file.
+
+```python
+from shipit_agent.sdk import AgentOptions, query
+
+tasks = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"]
+options = AgentOptions(model="claude-sonnet-5-5", tools=["Read", "Edit", *tasks], allowed_tools=["Edit", *tasks])
+
+async for message in query(prompt="Plan the billing migration as tasks, then start the first one.", options=options):
+    print(message)
+```
+
+```text
+TaskCreate(Add annual billing)       {"task": {"id": "1", "subject": "Add annual billing"}}
+TaskCreate(Migrate invoices)         {"task": {"id": "2", "subject": "Migrate invoices"}}
+TaskUpdate(2, addBlockedBy=[1])      {"success": true, "updatedFields": ["blockedBy"]}
+TaskUpdate(1, status=in_progress)    {"success": true, "statusChange": {"from": "pending", "to": "in_progress"}}
+```
 
 ## Background tasks
 
@@ -291,6 +362,29 @@ Both kinds of background work are tasks: a command started with `bash(background
 
 - **A new task** emits a `task_started` event.
 - **A finished task** emits `task_notification`. If it completed or failed, the model is also told in the conversation, with the output file or a summary, so it can react without polling.
+
+```python
+from shipit_agent.sdk import AgentClient, AgentOptions, SystemMessage
+
+options = AgentOptions(model="claude-sonnet-5-5", tools=["Bash", "Read"], allowed_tools=["Bash(pytest *)", "Read"])
+
+async with AgentClient(options) as client:
+    await client.query("Run the full test suite in the background and carry on reviewing src/.")
+    async for message in client.receive_response():
+        if isinstance(message, SystemMessage) and message.subtype == "task_started":
+            task_id = message.data["task_id"]
+            print("started", task_id)
+        elif isinstance(message, SystemMessage) and message.subtype == "task_notification":
+            print("finished", message.data["task_id"], message.data["status"])
+```
+
+```text
+Bash(pytest -q, background=True)
+started job_1
+Read(src/pricing.py)
+finished job_1 completed
+All 42 tests pass; pricing.py looks correct.
+```
 
 In the SDK stream these are `SystemMessage("task_started")` and `SystemMessage("task_notification")`. `task_stop` (the SDK's `TaskStop`, also matched by `KillShell` and `KillBash`) stops either kind by id, and so does `AgentClient.stop_task(task_id)`. A tool can join in by defining `list_background_tasks()` and `stop_background_task(task_id)` (see `shipit_agent.core.tasks`).
 

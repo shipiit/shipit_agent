@@ -43,7 +43,9 @@ for event in chat.stream("Which commit changed the export code?"):
     print(event.type, event.message)
 ```
 
-From async code, such as a FastAPI handler or a WebSocket, use the async forms. They run on the event loop instead of a thread, and closing a stream early closes the run underneath it:
+### From async code
+
+In a FastAPI handler or a WebSocket, use the async forms. They run on the event loop instead of a thread, and closing a stream early closes the run underneath it:
 
 ```python
 reply = await chat.asend("And on Firefox?")

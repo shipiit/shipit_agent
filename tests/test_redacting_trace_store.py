@@ -82,3 +82,17 @@ def test_token_counts_are_not_mistaken_for_tokens() -> None:
     usage = {"input_tokens": 120, "max_tokens": 4096, "cache_read_input_tokens": 0}
     RedactingTraceStore(inner).append_event("t", AgentEvent(type="llm_completed", payload={"usage": usage}))
     assert inner.load("t").events[-1].payload["usage"] == usage
+
+
+def test_ids_survive_pii_redaction() -> None:
+    """A UUID's digits must not be read as a phone number: ids are how traces are joined."""
+    run_id = "fd6792f8-033f-41f3-a182-4455667f7453"
+    inner = InMemoryTraceStore()
+    event = AgentEvent(type="run_started", message=f"run {run_id} for +44 20 7946 0958",
+                       payload={"run_id": run_id, "session_id": run_id.upper(), "note": f"see {run_id}, call 415-555-0132"})
+    RedactingTraceStore(inner, pii=True).append_event("t", event, {"trace_id": run_id})
+    sent = inner.load("t").events[-1]
+    assert sent.payload["run_id"] == run_id and sent.payload["session_id"] == run_id.upper()
+    assert inner.load("t").metadata["trace_id"] == run_id
+    assert run_id in sent.message and run_id in sent.payload["note"]
+    assert "7946" not in sent.message and "555-0132" not in sent.payload["note"]

@@ -152,7 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Langfuse, LangSmith, OpenTelemetry and Watcher exporters shipped prompts,
   tool arguments and tool output as they were. Wrap any of them to replace
   secrets, values under credential keys and, with `pii=True`, personal data;
-  `redact=` adds your own rule. The run's own records are unchanged.
+  `redact=` adds your own rule. The run's own records are unchanged. Run, session
+  and trace ids are kept intact, so traces still join up.
 - **A one-hour prompt cache.** `AnthropicChatLLM(cache_ttl="1h")` and
   `AgentOptions(cache_ttl="1h")` keep the cached prefix for an hour, for runs
   that pause longer than five minutes between steps. Usage reports

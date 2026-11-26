@@ -10,6 +10,8 @@ from shipit_agent.core.models import AgentEvent
 from shipit_agent.observability.tracing import TraceRecord, TraceStore
 from shipit_agent.safety.guardrail_patterns import _PII_PATTERNS, _SECRET_PATTERNS
 
+#: Ids join a trace together; their digits are not phone or card numbers.
+_UUID = re.compile(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")
 _CREDENTIAL_KEY = re.compile(r"(?i)(api[_-]?key|authorization|password|passwd|secret|token|cookie|credential)")
 
 
@@ -39,8 +41,11 @@ class RedactingTraceStore:
         return self.inner.load(trace_id)
 
     def _text(self, text: str) -> str:
-        for kind, pattern in self._patterns:
-            text = pattern.sub(f"[REDACTED:{kind}]", text)
+        pieces = _UUID.split(text)  # odd pieces are the UUIDs, kept as they are
+        for index in range(0, len(pieces), 2):
+            for kind, pattern in self._patterns:
+                pieces[index] = pattern.sub(f"[REDACTED:{kind}]", pieces[index])
+        text = "".join(pieces)
         return self._redact(text) if self._redact is not None else text
 
     def _value(self, value: Any) -> Any:

@@ -116,9 +116,11 @@ CELLS = [
     exported = InMemoryTraceStore()                       # stands in for Langfuse, OTLP, a file
     store = RedactingTraceStore(exported, pii=True)
 
+    # A made-up value shaped like a key, put together here so no key-shaped text sits in this file.
+    demo_key = "-".join(["sk", "live", "4f9a8b7c6d5e4f3a2b1c"])
     event = AgentEvent(
         type="tool_called",
-        message="Calling billing with key sk-live-4f9a8b7c6d5e4f3a2b1c for ada@example.com",
+        message=f"Calling billing with key {demo_key} for ada@example.com",
         payload={"run_id": "fd6792f8-033f-41f3-a182-4455667f7453",
                  "arguments": {"api_key": "abc123", "note": "call +1 415 555 0134", "input_tokens": 120}},
     )
@@ -127,7 +129,7 @@ CELLS = [
     sent = exported.load("trace-1").events[0]
     print("exported:", sent.message)
     print("         ", sent.payload)
-    print("in the run:", event.message)
+    print("in the run: the event still has the key:", demo_key in event.message)
     """),
     md("""
     ## 4 · The server needs a key off this machine

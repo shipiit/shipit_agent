@@ -75,7 +75,7 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
 ```
 
 > The only hard dependency is `pydantic`. Everything else (a provider SDK, Playwright, a vector
-> store) is an optional extra you install when you need it. **Python 3.11+ · MIT · 3,500+ tests.**
+> store) is an optional extra you install when you need it. **Python 3.11+ · MIT · 6,700+ tests.**
 
 ---
 
@@ -109,8 +109,21 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
 
 ## What's new in 4.0 — the Agent SDK API and safer defaults
 
-Released as 4.0.0. The [changelog](CHANGELOG.md) has every entry, and
-[Upgrading to 4.0](docs/guides/upgrading-4.md) says what to change in code you already have.
+Released as 4.0.0: 53 changes, 22 of them security fixes and safer defaults. Read the
+[release notes](release-notes/RELEASE_NOTES_4.0.0.md) for the short version and the
+[changelog](CHANGELOG.md) for every entry.
+
+**Upgrading.** Most code built on the `Agent` class runs unchanged:
+
+| If your code… | What to do |
+| :- | :- |
+| Uses `Agent` with built-in tools, on public websites and your project folder | Nothing |
+| Lets the agent open URLs inside your own network | Pass `allow_private_hosts=True` to that tool |
+| Registers an `async def` function on `AgentHooks` | Make it a plain `def` |
+| Runs `shipit serve` on any address but `127.0.0.1` | Pass `--api-key` or set `SHIPIT_API_KEY` |
+| Uses the SDK API (`query`, `AgentClient`, `shipit sdk`) | Name the tools you approve in `allowed_tools` |
+
+[Upgrading to 4.0](docs/guides/upgrading-4.md) has the edit for each case.
 
 **Agent SDK API**
 
@@ -926,9 +939,12 @@ also closes its resources.
 
 - **[`examples/`](examples/)** — runnable scripts (basic agent, custom tools, parallel tools,
   cost budgets, multi-turn memory, async runtime, secure tools, the verifier guard, and more).
-- **[`notebooks/`](notebooks/)** — 60+ Jupyter notebooks covering agents, streaming, MCP,
+- **[`notebooks/`](notebooks/)** — 95 Jupyter notebooks covering agents, streaming, MCP,
   connectors, deep agents, RAG, skills, autopilot, the control plane, prompt caching, and the
   memory tool.
+- **[`notebooks/guides/`](notebooks/guides/)** — 16 in-depth guides, each run end to end against
+  real models with its output saved. Three are new for 4.0: the async SDK API, secure by default,
+  and tasks, background work and async chat.
 
 ```bash
 python examples/run_multi_tool_agent.py

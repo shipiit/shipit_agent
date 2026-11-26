@@ -132,6 +132,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A chat session works from async code.** `chat.asend()`, `chat.astream()`
+  and `chat.astream_packets()` are the async forms of `send`, `stream` and
+  `stream_packets`, with the same history, callbacks and budgets.
 - **`recall_tool_result` can search.** `query="..."` returns the excerpt
   around the first case-insensitive match in a large earlier result, so one
   fact costs one small excerpt instead of paging through the whole result.
@@ -220,6 +223,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Closing `agent.astream()` early closes the run.** The run underneath was
+  left for the garbage collector, so its cleanup ran late or at loop shutdown.
+  It is now closed as the stream closes.
 - **A token budget is not bypassed when a provider leaves out a count.** The
   OpenAI, Anthropic and LiteLLM adapters recorded a missing or malformed
   `prompt_tokens` / `completion_tokens` as `0`, so that work counted as free

@@ -205,13 +205,15 @@ class StreamingRunMixin:
             user_content = self._user_content_blocks(user_prompt, images, files)
             sources: list[Any] = []
             completed = False
+            events = runtime.stream(user_prompt, user_content=user_content)
             try:
-                async for event in runtime.stream(
-                    user_prompt, user_content=user_content
-                ):
+                async for event in events:
                     yield event
                 completed = True
             finally:
+                # A caller that stops early closes this generator; close the
+                # run underneath now, not whenever it is garbage-collected.
+                await events.aclose()
                 self._active_runtime = None
                 if self.rag is not None:
                     sources = self.rag.end_run()

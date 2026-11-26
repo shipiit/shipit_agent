@@ -8,6 +8,7 @@ from typing import Any
 from shipit_agent.core.models import Message
 from shipit_agent.llms.anthropic_messages import AnthropicMessagesMixin
 from shipit_agent.llms.anthropic_request import (
+    _CACHE_TTLS,
     _EFFORTS,
     CONTEXT_MANAGEMENT_BETA,
     INTERLEAVED_THINKING_BETA,
@@ -61,6 +62,7 @@ class AnthropicChatLLM(
         thinking_budget_tokens: int | None = None,
         betas: list[str] | None = None,
         prompt_caching: bool = True,
+        cache_ttl: str = "5m",
         interleaved_thinking: bool = False,
         context_management: dict[str, Any] | None = None,
         documents: list[dict[str, Any]] | None = None,
@@ -110,6 +112,12 @@ class AnthropicChatLLM(
         # serves them faster. Always safe on this native adapter (it only ever
         # talks to Anthropic), so it defaults on.
         self.prompt_caching = prompt_caching
+        #: How long a cached prefix lives: ``"5m"``, or ``"1h"`` for runs that
+        #: pause longer than that between steps (approvals, slow tools). An
+        #: hour's write costs twice the input price instead of 1.25 times.
+        if cache_ttl not in _CACHE_TTLS:
+            raise ValueError(f"cache_ttl must be one of {sorted(_CACHE_TTLS)}")
+        self.cache_ttl = cache_ttl
         self.client_kwargs = client_kwargs
         # One SDK client for the adapter's life, so calls share its connection
         # pool. Rebuilt only if the ``anthropic`` module itself is replaced.

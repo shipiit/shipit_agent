@@ -129,7 +129,12 @@ class GuardrailChecksMixin:
 
         if seen is not None and len(output) >= _REPEAT_MIN_CHARS:
             key = (name, _arguments_key(arguments))
-            if seen.get(key) == canonical_digest:
+            # A repeat is the same raw result AND the same view of it: a tool
+            # may show the model a different part of an unchanged result.
+            repeat_digest = canonical_digest
+            if has_semantic_output:
+                repeat_digest += hashlib.sha256(output.encode("utf-8", "replace")).hexdigest()
+            if seen.get(key) == repeat_digest:
                 metadata = getattr(tool_result, "metadata", None)
                 if isinstance(metadata, dict):
                     metadata.update(
@@ -153,7 +158,7 @@ class GuardrailChecksMixin:
                         else "]"
                     )
                 )
-            seen[key] = canonical_digest
+            seen[key] = repeat_digest
 
         if has_semantic_output:
             metadata = getattr(tool_result, "metadata", None)

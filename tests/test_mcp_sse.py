@@ -104,7 +104,8 @@ def test_an_agent_calls_a_tool_on_an_sse_server(sse_server) -> None:
     url, _ = sse_server
 
     async def run() -> str:
-        options = AgentOptions(llm=CallsStock(), tools=[], mcp_servers={"inv": {"type": "sse", "url": url}})
+        options = AgentOptions(llm=CallsStock(), tools=[], mcp_servers={"inv": {"type": "sse", "url": url}},
+                               allowed_tools=["inv__stock"])
         async for message in query(prompt="stock of SKU-7?", options=options):
             if isinstance(message, ResultMessage):
                 return message.result or ""

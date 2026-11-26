@@ -77,6 +77,7 @@ class AsyncAgentRuntime(AgentLoop, RuntimeCore):
         max_required_tool_text_chars: int = 2_048,
         max_completion_text_chars: int = 0,
         max_tool_argument_chars: int = 65_536,
+        stream_tool_input_json: bool = False,
         metadata: dict[str, Any] | None = None,
         history_messages: list[Message] | None = None,
         memory_store: MemoryStore | None = None,
@@ -134,6 +135,7 @@ class AsyncAgentRuntime(AgentLoop, RuntimeCore):
         )
         self.max_completion_text_chars = max(0, int(max_completion_text_chars or 0))
         self.max_tool_argument_chars = max(0, int(max_tool_argument_chars or 0))
+        self.stream_tool_input_json = bool(stream_tool_input_json)
         self.metadata = dict(metadata or {})
         self.history_messages = list(history_messages or [])
         self.memory_store = memory_store or InMemoryMemoryStore()

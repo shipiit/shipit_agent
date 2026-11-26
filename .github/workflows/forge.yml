@@ -200,7 +200,7 @@ jobs:
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: shipiit/forge@v2
+      - uses: shipiit/forge@a1ea1545019ac2450a07835823f9c4d5173391c3 # v2
         with:
           provider: ${{ secrets.SHIPIT_PROVIDER }}
           model: ${{ secrets.SHIPIT_MODEL }}

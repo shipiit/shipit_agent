@@ -218,6 +218,8 @@ print(result.output)
 
 Drives a real headless Chromium browser for pages that need full JavaScript execution, interaction, or anti-bot bypass that `open_url`'s simpler fetch can't handle.
 
+It opens public http(s) pages only: `file://` and private, loopback and cloud-metadata addresses are refused, for the page and for every request it makes. `PlaywrightBrowserTool(allow_private_hosts=True)` turns that off for trusted internal use.
+
 ### When to use
 
 - The page is a **single-page application** that loads content via XHR/fetch after initial render

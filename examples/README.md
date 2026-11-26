@@ -28,6 +28,7 @@ python -c "from shipit_agent import Agent; print('OK')"
 | **5** | [`05_custom_tool.py`](05_custom_tool.py) | Build and attach two custom tools — one as a wrapped function, one as a full Tool class. Real domain logic (haversine distance + compound interest). | ~15s | Any provider |
 | **6** | [`06_chat_session.py`](06_chat_session.py) | Persistent chat session with `FileSessionStore`. Remembers conversation across script restarts. Interactive REPL. | interactive | Any provider |
 | **7** | [`07_tool_search.py`](07_tool_search.py) | Semantic tool discovery with `ToolSearchTool` — both standalone (no LLM) and in an actual agent loop. | ~15s | Any provider |
+| **25** | [`25_agent_sdk_live.py`](25_agent_sdk_live.py) | The SDK layer live: streamed text and tool arguments, a typed custom tool, the one-hour prompt cache and cost per model. Same run from the terminal: `shipit sdk "..."`. | ~10s | `claude-haiku-5-5` |
 
 ## Running
 

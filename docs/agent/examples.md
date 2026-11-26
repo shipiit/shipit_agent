@@ -44,6 +44,12 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+It prints the result message when the run ends:
+
+```text
+success Fixed add() in calc.py: it subtracted. All 3 tests pass.
+```
 ## Review code into a structured report
 
 ```python
@@ -72,6 +78,14 @@ review = agent.run("Review the changes in `git diff main` for bugs.", output_sch
 for f in review.findings:
     print(f"{f.severity:7} {f.file}:{f.line}  {f.problem}")
 ```
+
+One line for each finding, already parsed into `Finding` objects:
+
+```text
+high    src/api/users.py:42  email is saved without being validated
+medium  src/api/users.py:57  the duplicate check runs after the insert
+low     tests/test_users.py:12  no test covers an empty name
+```
 ## Research with sources
 
 ```python
@@ -85,6 +99,15 @@ agent = Agent(
     prompt="Answer from sources you have opened. Cite each claim with its URL.",
 )
 print(agent.run("What changed in Python 3.14's free-threaded build?").output)
+```
+
+The answer cites the pages the agent opened:
+
+```text
+Python 3.14 makes the free-threaded build officially supported; it is no longer
+experimental (https://peps.python.org/pep-0779/).
+It is still a separate, optional build: the default interpreter keeps the GIL
+(https://docs.python.org/3/whatsnew/3.14.html).
 ```
 ## A support agent with your tools and a person in the loop
 
@@ -120,6 +143,13 @@ agent = Agent(
     prompt="You are a support agent for an online shop. Be brief and kind.",
 )
 print(agent.run("Order A-1043 arrived broken. I'd like my $40 back.").output)
+```
+
+The lookup runs on its own; the refund stops at the prompt until a person answers:
+
+```text
+Refund $40 on A-1043? [y/N] y
+I'm sorry your order arrived broken. I've refunded $40.00 on A-1043.
 ```
 ## A chat that remembers
 

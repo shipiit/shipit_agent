@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from shipit_agent.sessions.forking import fork_contents
 from shipit_agent.stores.session import SessionRecord, SessionStore
 
 __all__ = [
@@ -97,13 +98,24 @@ def fork_session(
     """Copy the session (up to and including a message) under a new id; that id."""
     record = _existing(store, session_id)
     messages = list(record.messages)
+    cut = False
     if up_to_message_id is not None:
         prefix, _, index = up_to_message_id.rpartition(":")
         if prefix != session_id or not index.isdigit() or int(index) >= len(messages):
             raise ValueError(f"{up_to_message_id!r} is not a message of session {session_id!r}")
-        messages = messages[: int(index) + 1]
+        end = int(index) + 1
+        # A tool call must keep its results: cutting between them leaves a
+        # conversation every provider refuses.
+        while end < len(messages) and (
+            messages[end].role == "tool" or messages[end].metadata.get("vision_bridge")
+        ):
+            end += 1
+        cut = end < len(messages)
+        messages = messages[:end]
     new_id = str(uuid.uuid4())
-    metadata = {key: value for key, value in record.metadata.items() if key != _TAG_KEY}
+    messages, metadata = fork_contents(
+        messages, {key: value for key, value in record.metadata.items() if key != _TAG_KEY}, cut=cut
+    )
     metadata["forked_from"] = session_id
     if title is not None:
         metadata[_TITLE_KEY] = title

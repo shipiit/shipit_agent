@@ -10,6 +10,7 @@ flow where the agent needs structured text rather than a screenshot.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
@@ -86,8 +87,14 @@ class PDFTool(_PDFActions):
         max_chars_default: int = 50_000,
         timeout_seconds: int = 30,
         prompt: str | None = None,
+        root_dir: str | Path = ".",
+        allow_private_hosts: bool = False,
     ) -> None:
         self.name = name
+        #: Local PDFs are read only from here (and ``extra_roots``).
+        self.root_dir = Path(root_dir)
+        self.extra_roots: tuple[Path, ...] = ()
+        self.allow_private_hosts = bool(allow_private_hosts)
         self.description = description
         self.max_chars_default = int(max_chars_default)
         self.timeout_seconds = int(timeout_seconds)
@@ -164,6 +171,11 @@ class PDFTool(_PDFActions):
                 text="No PDF source provided.",
                 metadata={"error": "missing_source"},
             )
+
+        # Where the PDF may come from is settled first, whether or not pypdf is installed.
+        refused = self._refusal(source)
+        if refused is not None:
+            return refused
 
         # Lazy import — keeps the base install pypdf-free.
         try:

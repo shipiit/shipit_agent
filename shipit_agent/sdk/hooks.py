@@ -24,14 +24,17 @@ from shipit_agent.safety.permission_rules import rule_names_tool
 
 from .tools import run_maybe_async
 
-__all__ = ["HOOK_EVENTS", "HookMatcher", "build_agent_hooks"]
+__all__ = ["HOOK_EVENTS", "SESSION_EVENTS", "HookMatcher", "build_agent_hooks"]
 
 logger = logging.getLogger(__name__)
 
 HOOK_EVENTS = (
     "PreToolUse", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "Stop",
     "SubagentStart", "SubagentStop", "PreCompact", "Notification", "PermissionRequest",
+    "SessionStart", "SessionEnd",  # fired around a session by .session_hooks, not inside a run
 )
+#: Fired around a session by ``.session_hooks``; callbacks only, not plugin command hooks.
+SESSION_EVENTS = ("SessionStart", "SessionEnd")
 _TOOL_EVENTS = frozenset({"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest"})
 _FAILED = object()
 
@@ -47,7 +50,8 @@ class HookMatcher:
 
 
 def build_agent_hooks(
-    spec: dict[str, list[HookMatcher]], *, base: dict[str, Any], into: AgentHooks | None = None
+    spec: dict[str, list[HookMatcher]], *, base: dict[str, Any], into: AgentHooks | None = None,
+    log: Any = None,
 ) -> AgentHooks:
     """Register every matcher in *spec* on an :class:`AgentHooks` (*into*, or a new one).
 
@@ -59,17 +63,34 @@ def build_agent_hooks(
         if event not in HOOK_EVENTS:
             raise ValueError(f"unknown hook event {event!r}; expected one of {', '.join(HOOK_EVENTS)}")
         for matcher in matchers:
-            _register(hooks, event, matcher, base)
+            _register(hooks, event, matcher, base, log)
     return hooks
 
 
-def _register(hooks: AgentHooks, event: str, matcher: HookMatcher, base: dict[str, Any]) -> None:
+def _caller(event: str, matcher: HookMatcher, base: dict[str, Any], log: Any = None) -> Callable[..., list[Any]]:
+    """Run *matcher*'s callbacks for *event* when the subject matches; their outputs."""
+
     def call(subject: str | None, data: dict[str, Any], tool_use_id: str | None = None) -> list[Any]:
         if subject is not None and not _matches(matcher.matcher, subject):
             return []
         payload = {**base, "hook_event_name": event, **data}
-        return [_invoke(cb, payload, tool_use_id, matcher) for cb in matcher.hooks]
+        if log is None:
+            return [_invoke(cb, payload, tool_use_id, matcher) for cb in matcher.hooks]
+        outputs = []
+        for cb in matcher.hooks:
+            name = getattr(cb, "__name__", type(cb).__name__)
+            hook_id = log.started(event, name)
+            errors: list[str] = []
+            output = _invoke(cb, payload, tool_use_id, matcher, errors)
+            log.finished(hook_id, event, name, output if output is not _FAILED else None, errors[0] if errors else None)
+            outputs.append(output)
+        return outputs
 
+    return call
+
+
+def _register(hooks: AgentHooks, event: str, matcher: HookMatcher, base: dict[str, Any], log: Any = None) -> None:
+    call = _caller(event, matcher, base, log)
     if event == "PreToolUse":
         def pre_tool(name: str, arguments: dict[str, Any]) -> Any:
             return _fold_pre_tool(call(name, {"tool_name": name, "tool_input": dict(arguments), "tool_use_id": None}))
@@ -145,7 +166,7 @@ def _matches(matcher: str | None, subject: str) -> bool:
 
 
 def _invoke(cb: Callable[..., Any], payload: dict[str, Any], tool_use_id: str | None,
-            matcher: HookMatcher) -> Any:
+            matcher: HookMatcher, errors: list[str] | None = None) -> Any:
     """One callback's output dict, or ``_FAILED`` when it raised or timed out."""
     context = {"signal": None}
     try:
@@ -161,9 +182,11 @@ def _invoke(cb: Callable[..., Any], payload: dict[str, Any], tool_use_id: str | 
                 output = future.result(timeout=matcher.timeout)
             finally:
                 pool.shutdown(wait=False)
-    except Exception:
+    except Exception as error:
         logger.warning("hook %s failed for %s", getattr(cb, "__name__", cb),
                        payload.get("hook_event_name"), exc_info=True)
+        if errors is not None:
+            errors.append(f"{type(error).__name__}: {error}")
         return _FAILED if matcher.on_failure == "block" else {}
     return output if isinstance(output, dict) else {}
 

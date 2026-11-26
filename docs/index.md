@@ -22,7 +22,7 @@ print(result.output)
 | **One agent loop** | Tool calling, parallel tools, retries, context compaction and a final answer on every run, whatever the model. |
 | **Any model** | Opus, Sonnet and Haiku, GPT, Gemini, Gemma, Llama, Mistral and more, through 18 provider profiles or LiteLLM. Switching is a one-line change. |
 | **The async SDK API** | `query()`, `AgentClient`, `AgentOptions`, hooks, permission modes, `@tool` and in-process MCP servers, with typed messages. |
-| **Tools that work** | 66 built-in tools (files, search, bash, web, sub-agents, GitHub, Slack, Jira and more) with read tracking, bounded output and safe defaults. |
+| **Tools that work** | 73 built-in tools (files, search, bash, web, sub-agents, GitHub, Slack, Jira and more) with read tracking, bounded output and safe defaults. |
 | **Safety you can see** | Permission modes and rules, approval callbacks, hooks, guardrails and an OS sandbox for commands. |
 | **Measured** | An 18-task benchmark ships in the repo; Anthropic Sonnet 5.5 and Gemma 4 both pass all 18. |
 
@@ -39,4 +39,4 @@ Both run the same loop, so everything in these docs applies to either.
 - **New here?** [Install](getting-started/install.md), then the [Quickstart](getting-started/quickstart.md), then [Core concepts](getting-started/concepts.md).
 - **Building a coding agent?** [Tools](agent/with-tools.md), [Permissions](guides/permissions.md), [Sandbox](guides/sandbox.md) and [Hooks](guides/hooks.md).
 - **Prefer async code and typed messages?** [Agent SDK API](guides/agent-sdk.md) lists every option.
-- **Upgrading from 2.x?** [Upgrading to 3.0](guides/upgrading.md).
+- **Upgrading from 3.x?** [Upgrading to 4.0](guides/upgrading-4.md) lists what changes. From 2.x, read [Upgrading to 3.0](guides/upgrading.md) first.

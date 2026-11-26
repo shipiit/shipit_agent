@@ -8,7 +8,7 @@ description: Answers to the questions people ask most about ShipIt Agent, from c
 
 ### What is ShipIt Agent?
 
-An open-source Python runtime for agents: a model that calls tools in a loop until a task is done. It ships the loop, 66 tools, permissions, hooks, sessions, memory, context management and an OS sandbox, and it works with any model that supports tool calling. See the [Overview](index.md).
+An open-source Python runtime for agents: a model that calls tools in a loop until a task is done. It ships the loop, 73 tools, permissions, hooks, sessions, memory, context management and an OS sandbox, and it works with any model that supports tool calling. See the [Overview](index.md).
 
 ### What is the SDK API?
 

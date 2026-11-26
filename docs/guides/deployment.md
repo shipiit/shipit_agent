@@ -21,7 +21,9 @@ shipit serve --port 8399 --api-key "$(openssl rand -hex 16)"
 | `GET /v1/models` | The served model id (`--name`, default `shipit`) |
 | `GET /health` | `{"status": "ok"}` and the process's stream generation |
 
-`--api-key` (or `SHIPIT_API_KEY`) makes every request send `Authorization: Bearer <key>`. Without one the server is open, which is only safe on `127.0.0.1`, its default host. `--provider`, `--model`, `--project-root`, `--role`, `--guardrails` and `--mcp` configure the agent it serves.
+`--api-key` (or `SHIPIT_API_KEY`) makes every request send `Authorization: Bearer <key>`. Without one the server is open only on `127.0.0.1`, its default host; bound to any other address it refuses to start without a key, so it never runs open and never prints a secret.
+
+Whatever the key, the server refuses requests a web page could send: a POST must be `application/json` (415 otherwise), a request with a browser `Origin` must name one passed with `--allow-origin` (403 otherwise), and on `127.0.0.1` the `Host` header must be a localhost name (421 otherwise), which stops DNS-rebinding pages. Keys are compared in constant time. `--provider`, `--model`, `--project-root`, `--role`, `--guardrails` and `--mcp` configure the agent it serves.
 
 !!! warning "One agent, one conversation"
     `shipit serve` serves a single `Agent`, and an agent carries earlier turns into its next run. Every caller therefore shares one conversation, and one caller's questions are sent to the model along with the next caller's. That suits a personal server. For several users, give each request its own agent, as below.

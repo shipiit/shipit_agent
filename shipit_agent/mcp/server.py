@@ -66,6 +66,9 @@ class RemoteMCPServer(ResourcesAndPromptsMixin, ToolDiscoveryMixin, MCPServer):
     cache: bool = False
     #: Warm-start freshness window (seconds). A cache older than this is a miss.
     cache_ttl: float = 24 * 60 * 60
+    #: Most cursor pages one listing may take; a server that never stops
+    #: sending new cursors fails discovery instead of looping forever.
+    max_discovery_pages: int = 100
     _discovered: bool = False
     _initialized: bool = False
     _handshook_generation: int = 0
@@ -123,14 +126,21 @@ class RemoteMCPServer(ResourcesAndPromptsMixin, ToolDiscoveryMixin, MCPServer):
         items: list[dict[str, Any]] = []
         cursor: str | None = None
         seen: set[str] = set()
-        while True:
+        for _ in range(max(1, self.max_discovery_pages)):
             params = {"cursor": cursor} if cursor is not None else {}
             result = self.transport.request(method, params)
-            items.extend(item for item in result.get(key, []) if isinstance(item, dict))
-            next_cursor = result.get("nextCursor")
+            page = result.get(key) if isinstance(result, dict) else None
+            next_cursor = result.get("nextCursor") if isinstance(result, dict) else None
+            if (
+                not isinstance(page, list)
+                or not all(isinstance(item, dict) for item in page)
+                or not (next_cursor is None or isinstance(next_cursor, str))
+            ):
+                raise MCPError(f"Invalid {method} page from MCP server '{self.name}'.")
+            items.extend(page)
             if next_cursor in (None, ""):
                 return items
-            next_cursor = str(next_cursor)
+            # The cursor is opaque: sent back exactly as received.
             if next_cursor in seen:
                 raise MCPError(
                     f"MCP server '{self.name}' repeated cursor {next_cursor!r} "
@@ -138,6 +148,10 @@ class RemoteMCPServer(ResourcesAndPromptsMixin, ToolDiscoveryMixin, MCPServer):
                 )
             seen.add(next_cursor)
             cursor = next_cursor
+        raise MCPError(
+            f"MCP server '{self.name}' sent more than max_discovery_pages={self.max_discovery_pages} "
+            f"pages for {method}."
+        )
 
     def invalidate_tools_cache(self) -> None:
         """Force live tool discovery on the next registry construction."""

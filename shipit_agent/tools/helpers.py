@@ -18,6 +18,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "multi_edit",
         "bash_job",
         "task_stop",
+        "monitor",
         "glob_files",
         "grep_files",
         "notebook_edit",
@@ -41,6 +42,10 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "present_plan",
         "synthesize_evidence",
         "todo",
+        "task_create",
+        "task_update",
+        "task_get",
+        "task_list",
         "verify_output",
     },
     "interaction": {
@@ -65,7 +70,7 @@ _TOOL_FAMILIES: dict[str, set[str]] = {
         "vision",
     },
     "data": {"sql"},
-    "memory & discovery": {"memory", "tool_search"},
+    "memory & discovery": {"memory", "tool_search", "list_mcp_resources", "read_mcp_resource"},
     "delegation": {"sub_agent"},
 }
 

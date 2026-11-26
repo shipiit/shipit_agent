@@ -87,10 +87,14 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
   OpenRouter · 100+ via LiteLLM. Native adapters where it matters, one interface everywhere.
 - **🛡️ Control plane** — a fast, rule-based **permission engine** (allow/deny/ask), **plan mode**
   (read-only research before acting), and **hooks that can block or rewrite** any tool call.
+- **🧩 Agent SDK API** — `query()` for a run, `AgentClient` for a conversation, typed messages,
+  live tool-input streaming, approvals, sessions and twelve hook events, on every provider.
+- **🔒 Secure by default** — SDK agents ask before acting, URL and browser tools cannot reach your
+  network, file tools stay in the project, and traces can be scrubbed before they are exported.
 - **⚡ Prompt caching** — cross-provider cache-read accounting (Anthropic/Bedrock/Vertex
   `cache_control` + OpenAI automatic caching) so repeated calls bill at a fraction of the cost.
-- **🧰 Tools & connectors** — 40+ built-in tools (bash, SQL, files, web search, code execution,
-  vision, PDF…) and 17 SaaS connectors (GitHub, Slack, Gmail, Jira, Salesforce, Stripe…).
+- **🧰 Tools & connectors** — 73 built-in tools (bash, SQL, files, web search, code execution,
+  vision, PDF, a task list, watched commands…) and 17 SaaS connectors (GitHub, Slack, Gmail, Jira, Salesforce, Stripe…).
 - **🔗 MCP** — connect Model Context Protocol servers over stdio, HTTP, or a persistent subprocess.
 - **🧠 Deep agents** — `GoalAgent`, `ReflectiveAgent`, `Supervisor`/`Worker`, `ShipCrew`, and the
   `create_deep_agent()` factory for autonomous, multi-step, multi-agent work.
@@ -100,6 +104,50 @@ print(agent.run("Find every TODO in this repo and summarize them.").output)
 - **🖥️ Computer use** — drive a real browser via screenshots + a vision model (works in Jupyter).
 - **📊 Production-ready** — sessions, memory consolidation, structured output with validation-retry,
   streaming events (+ SSE/WebSocket packets), tracing (file/OTel/LangSmith), and budgets.
+
+---
+
+## What's new in 4.0 — the Agent SDK API and safer defaults
+
+Released as 4.0.0. The [changelog](CHANGELOG.md) has every entry, and
+[Upgrading to 4.0](docs/guides/upgrading-4.md) says what to change in code you already have.
+
+**Agent SDK API**
+
+- `query()` and `AgentClient` stream the same message shapes as the Agent SDK: `message_start`,
+  content blocks with deltas, `message_stop`. Tool arguments stream live as the model writes them
+  on Anthropic, OpenAI-compatible and LiteLLM adapters.
+- `cache_ttl="1h"` for a one-hour prompt cache, `task_budget`, `resume_session_at`, `skills=[...]`,
+  and `RateLimitEvent` when a call is refused for its rate limit.
+- All twelve hook events, `SessionStart` and `SessionEnd` among them; `include_hook_events` reports
+  each callback in the stream; sub-agent messages are attributed to the call that started them.
+- MCP controls on the client (`get_mcp_status`, `toggle_mcp_server`, `reconnect_mcp_server`) and
+  the `list_mcp_resources` / `read_mcp_resource` tools.
+- New tools: `task_create`, `task_update`, `task_get`, `task_list`, and `monitor` for watching a
+  command. `recall_tool_result` can search with `query=`.
+- `shipit sdk "prompt"` runs the SDK layer from the terminal, live.
+- `chat.asend()`, `chat.astream()` and `chat.astream_packets()` for async code.
+
+**Security**
+
+- **Breaking:** SDK agents ask before running a tool that no rule allows. Reads and searches still
+  run freely. `permission_mode="bypassPermissions"` restores the old behaviour.
+- `open_url`, `fetch_url`, `download_file`, `pdf`, `research_brief`, `playwright_browse` and the
+  computer-use browser refuse private and cloud-metadata addresses, on every redirect.
+- `shipit serve` refuses foreign `Host` and `Origin` headers, and refuses to start off
+  `127.0.0.1` without a key.
+- `download_file` and the PDF tool stay inside the project. A hook that redacts a tool's output
+  now redacts what the model is sent.
+- `RedactingTraceStore` scrubs events before a tracing exporter sends them.
+- MCP replies must match the request's id; listings are bounded; `readOnlyHint` counts only as
+  JSON `true`.
+
+**Fixes worth knowing about**
+
+- A token budget is no longer bypassed when a provider leaves out a token count.
+- An edit with an empty `old_text` and `replace_all` no longer rewrites the file.
+- A session forked from an earlier message carries nothing said after it.
+- One session file per id; a streamed tool call keeps one id from start to finish.
 
 ---
 
@@ -233,6 +281,7 @@ shipit browse --show "cheapest SFO→JFK flight?"   # 🌐 computer use, watchab
 shipit run "prompt"                    # one-shot with live tool cards
 shipit chat                            # REPL with bottom-pinned input (TUI)
 shipit serve                           # your agent as an OpenAI-compatible API
+shipit sdk "prompt"                    # the Agent SDK API, live, with approvals on the terminal
 shipit code --mcp playwright "..."     # attach MCP servers (browser & more)
 shipit roles | models | mcp | tools    # catalogs
 ```
@@ -571,6 +620,21 @@ session.send("What was my name again?")          # → remembers across turns
 Persist across processes with `FileSessionStore`, and distill conversations into durable facts
 with `MemoryConsolidator`.
 
+From async code, such as a FastAPI handler or a WebSocket, use the async forms:
+
+```python
+reply = await session.asend("And what do I build?")
+
+async for event in session.astream("Summarise what you know about me."):
+    print(event.type, event.message)
+
+async for packet in session.astream_packets("Draft a bio.", transport="sse"):
+    ...  # write the packet to the response
+```
+
+Closing a stream early closes the run underneath it. `SessionManager` lists, resumes, forks and
+archives sessions; a fork cut at an earlier message carries nothing learned after it.
+
 ### Structured output
 
 ```python
@@ -724,6 +788,105 @@ with PlaywrightBrowserSession.launch(headless=True) as browser:
 Notion, Confluence, HubSpot, Salesforce, Stripe, Zendesk, Figma, LinkedIn — share a credential store
 with built-in OAuth helpers.
 
+## The Agent SDK API
+
+An async API with typed messages. It runs on shipit's own loop, so it works with every provider.
+
+```python
+from shipit_agent.sdk import AgentOptions, PermissionResultAllow, PermissionResultDeny, query
+
+
+async def can_use_tool(tool_name, tool_input, context):
+    if tool_name == "bash" and "deploy" in tool_input.get("command", ""):
+        return PermissionResultDeny(message="No deploys from the agent.")
+    return PermissionResultAllow()
+
+
+options = AgentOptions(
+    model="claude-sonnet-5-5",
+    allowed_tools=["Read", "Grep", "Bash(pytest *)"],    # pre-approved
+    disallowed_tools=["Bash(rm *)", "Read(~/.ssh/**)"],  # refused in every mode
+    can_use_tool=can_use_tool,                           # everything else
+    include_partial_messages=True,                       # live text and tool input
+    max_budget_usd=1.00,
+)
+
+async for message in query(prompt="Run the tests and fix what fails.", options=options):
+    print(message)
+```
+
+A conversation you keep open, with hooks:
+
+```python
+from shipit_agent.sdk import AgentClient, AgentOptions, HookMatcher
+
+
+async def no_secrets(input_data, tool_use_id, context):
+    if ".env" in str(input_data["tool_input"]):
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                       "permissionDecisionReason": "No reading .env files."}}
+    return {}
+
+
+options = AgentOptions(
+    model="claude-sonnet-5-5",
+    hooks={"PreToolUse": [HookMatcher("Read|Edit", [no_secrets])]},
+)
+
+async with AgentClient(options) as client:
+    await client.query("Read app.py and explain it.")
+    async for message in client.receive_response():
+        print(message)
+    await client.set_permission_mode("acceptEdits")
+    await client.query("Now add tests for it.")
+    async for message in client.receive_response():
+        print(message)
+```
+
+- **Messages:** `SystemMessage`, `AssistantMessage`, `UserMessage`, `StreamEvent`,
+  `RateLimitEvent` and a final `ResultMessage` with turns, tokens, cost and how the run ended.
+- **Permissions:** deny rules, ask rules, the mode, allow rules, then `can_use_tool`. A call that
+  nothing approves does not run; reads and searches need no approval.
+- **Hooks:** `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `Stop`,
+  `SubagentStart`, `SubagentStop`, `PreCompact`, `Notification`, `PermissionRequest`,
+  `SessionStart` and `SessionEnd`.
+- **Sessions:** `resume`, `continue_conversation`, `fork_session`, `resume_session_at`.
+- **Tools:** the built-ins by SDK name (`"Read"`, `"Bash"`, `"Monitor"`, `"TaskCreate"`, …), your
+  own with `@tool` and `create_sdk_mcp_server`, and any MCP server.
+- **From the terminal:** `shipit sdk "prompt" --allow "Bash(pytest *)"`.
+
+Options that only some providers support (`effort`, `thinking`, `betas`, `cache_ttl`) are applied
+where they exist and logged as ignored elsewhere. [Agent SDK guide →](docs/guides/agent-sdk.md)
+
+---
+
+## Secure by default
+
+An agent reads content it does not control, so the safe choice is the one you get without asking.
+
+| Default | What it means | To change it |
+| :- | :- | :- |
+| SDK agents ask before acting | Reads run freely; any other tool needs a rule, a mode or your approval. | `allowed_tools`, `can_use_tool`, `permission_mode` |
+| URL tools stay public | Private, loopback and cloud-metadata addresses are refused, on every redirect. | `OpenURLTool(allow_private_hosts=True)` |
+| Browser tools stay public | `playwright_browse` and the computer-use browser refuse `file://` and internal addresses. | `allow_private_hosts=True` |
+| Files stay in the project | Reads, writes, downloads and PDFs are held to the project root. | `add_dirs` |
+| The server needs a key off `127.0.0.1` | `shipit serve` refuses to start there without one. | `--api-key`, `SHIPIT_API_KEY` |
+| Redaction reaches the model | Replace a tool's output in a hook and the model reads the replacement. | — |
+
+Scrub traces before they are exported:
+
+```python
+from shipit_agent import Agent
+from shipit_agent.tracing_exporters import LangfuseExporter, RedactingTraceStore
+
+agent = Agent(llm=llm, trace_store=RedactingTraceStore(LangfuseExporter(), pii=True))
+```
+
+Keys, tokens and, with `pii=True`, emails, phone and card numbers are replaced before an event is
+sent. Run and session ids are kept. [Security →](docs/security.md)
+
+---
+
 ## MCP
 
 ```python
@@ -734,18 +897,24 @@ files  = connect_mcp("filesystem", args=["/my/project"])
 agent  = Agent.with_builtins(llm=llm, mcps=[github, files])
 ```
 
-A **prebuilt catalog** of 12 well-known servers (GitHub, Slack, Postgres, filesystem, Puppeteer,
+A **prebuilt catalog** of 28 well-known servers (GitHub, Slack, Postgres, filesystem, Puppeteer,
 Brave search, …) connects by name with fail-fast env/launcher validation — or bring your own
 server over **stdio**, **HTTP**, a **persistent subprocess**, or the 2025 **streamable-HTTP** spec
 (`MCPStreamableHTTPTransport`, with `bearer_token=` for hosted servers). Beyond tools, servers'
 **resources and prompt templates** are first-class (`list_resources()` / `read_resource()` /
-`get_prompt()` / `resource_tool()`).
+`get_prompt()` / `resource_tool()`), and the model can browse them itself with the
+`list_mcp_resources` and `read_mcp_resource` tools.
+
+A server's answers are checked: a reply must carry the request's id, listings stop at
+`max_discovery_pages`, `readOnlyHint` counts only as JSON `true`, and a rule that closes a server
+also closes its resources.
 
 ---
 
 ## Observability & cost
 
-- **Tracing** — `FileTraceStore`, OpenTelemetry, and LangSmith exporters.
+- **Tracing** — `FileTraceStore`, OpenTelemetry, Langfuse and LangSmith exporters. Wrap any of
+  them in `RedactingTraceStore` to scrub secrets and personal data before events are sent.
 - **Cost & budgets** — `CostTracker` prices every call from a model table; `Budget` enforces a
   ceiling (and flags unknown-model pricing instead of silently billing $0).
 - **Verifier network** — an optional cheap LLM that vetoes hallucinated tool calls and detects

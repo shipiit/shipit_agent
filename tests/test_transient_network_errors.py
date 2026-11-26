@@ -59,3 +59,79 @@ def test_a_run_survives_a_dropped_connection() -> None:
                    retry_policy=RetryPolicy(llm_retry_base_delay=0, llm_retry_max_delay=0)).run("hi")
     assert result.output == "recovered" and llm.calls == 2
     assert any(e.type == "llm_retry" for e in result.events)
+
+
+# ── a server error with no status: the SDK's mid-stream APIError ─────────────
+# Bedrock's OpenAI-compatible (Mantle) endpoint can fail inside a stream that
+# opened with 200. The OpenAI SDK raises a bare `APIError` for that — no status,
+# only the server's own words — and a Gemma run on DRK CACHE ended on
+# "The server had an error while processing your request. Sorry about that!".
+
+class APIError(Exception):
+    """Stands in for openai.APIError (matched by name), so these run without the openai package."""
+
+    def __init__(self, message: str, body: object) -> None:
+        super().__init__(message)
+        self.body = body
+
+
+def _api_error(message: str, body: object) -> Exception:
+    return APIError(message, body)
+
+
+def test_the_openai_sdks_own_error_is_read_the_same_way() -> None:
+    openai = pytest.importorskip("openai")
+    request = httpx.Request("POST", "https://bedrock-mantle.test/openai/v1/chat/completions")
+    assert is_transient_provider_error(openai.APIError(SERVER_SAYS, request, body={"type": "server_error"}))
+    assert not is_transient_provider_error(
+        openai.APIError("Incorrect API key provided", request, body={"type": "authentication_error"})
+    )
+
+
+SERVER_SAYS = "The server had an error while processing your request. Sorry about that!"
+
+
+@pytest.mark.parametrize("error", [
+    _api_error(SERVER_SAYS, {"type": "server_error", "code": None}),
+    _api_error(SERVER_SAYS, None),
+    _api_error("upstream failure", {"type": "server_error"}),
+    _api_error("Overloaded", {"type": "overloaded_error"}),
+    _api_error("Internal server error", {"type": "api_error"}),
+], ids=["body-and-text", "text-only", "body-only", "overloaded", "api-error"])
+def test_a_server_error_without_a_status_is_transient(error: Exception) -> None:
+    assert is_transient_provider_error(error)
+
+
+@pytest.mark.parametrize("error", [
+    _api_error("Unsupported parameter: 'foo'", {"type": "invalid_request_error"}),
+    _api_error("Incorrect API key provided", {"type": "authentication_error"}),
+    _api_error("something new", None),
+], ids=["bad-request", "auth", "unknown"])
+def test_a_refused_or_unknown_api_error_is_not(error: Exception) -> None:
+    assert not is_transient_provider_error(error)
+
+
+@pytest.mark.parametrize("error", [ValueError(SERVER_SAYS), KeyError("Internal server error")],
+                         ids=["ValueError", "KeyError"])
+def test_server_words_in_a_bug_are_not_a_server_error(error: Exception) -> None:
+    assert not is_transient_provider_error(error)
+
+
+class ServerErrorOnce:
+    model = "gemma"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def complete(self, **_):
+        self.calls += 1
+        if self.calls == 1:
+            raise _api_error(SERVER_SAYS, {"type": "server_error"})
+        return LLMResponse(content="recovered")
+
+
+def test_a_run_survives_a_server_error_without_a_status() -> None:
+    llm = ServerErrorOnce()
+    result = Agent(llm=llm, auto_use_skills=False,
+                   retry_policy=RetryPolicy(llm_retry_base_delay=0, llm_retry_max_delay=0)).run("hi")
+    assert result.output == "recovered" and llm.calls == 2

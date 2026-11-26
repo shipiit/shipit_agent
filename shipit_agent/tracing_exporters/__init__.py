@@ -10,11 +10,13 @@ from __future__ import annotations
 from .langfuse_exporter import LangfuseExporter
 from .langsmith_exporter import LangSmithExporter
 from .otel_exporter import OpenTelemetryExporter
+from .redacting import RedactingTraceStore
 from .watcher_exporter import WatcherExporter
 
 __all__ = [
     "LangfuseExporter",
     "LangSmithExporter",
     "OpenTelemetryExporter",
+    "RedactingTraceStore",
     "WatcherExporter",
 ]

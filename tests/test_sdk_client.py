@@ -83,7 +83,7 @@ def test_interrupt_stops_the_turn_between_steps() -> None:
     llm = _Model(script=[_call("slow"), _call("slow")])
 
     async def run() -> list[Any]:
-        options = AgentOptions(llm=llm, tools=[FunctionTool.from_callable(slow, name="slow")])
+        options = AgentOptions(llm=llm, tools=[FunctionTool.from_callable(slow, name="slow")], allowed_tools=["slow"])
         async with AgentClient(options) as client:
             await client.query("go")
             await asyncio.sleep(0.1)
@@ -105,12 +105,12 @@ def test_set_permission_mode_applies_to_later_calls() -> None:
                          _call("note_create", text="b"), LLMResponse(content="ok")])
 
     async def run() -> tuple[list[Any], list[Any]]:
-        # Plan mode refuses mutating tools; default mode lets this one run.
+        # Plan mode refuses mutating tools; bypassPermissions lets this one run.
         options = AgentOptions(llm=llm, tools=[FunctionTool.from_callable(_note, name="note_create")],
                                permission_mode="plan")
         async with AgentClient(options) as client:
             first = await _turn(client, "one")
-            await client.set_permission_mode("default")
+            await client.set_permission_mode("bypassPermissions")
             return first, await _turn(client, "two")
 
     first, second = asyncio.run(run())

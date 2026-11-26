@@ -20,6 +20,8 @@ from __future__ import annotations
 import html
 import re
 import urllib.parse
+
+from shipit_agent.tools.open_url.safe_fetch import safe_urlopen
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
@@ -142,7 +144,8 @@ class ResearchBriefTool:
             raise _NetError(f"blocked non-http(s) URL scheme: {scheme or 'none'}")
         req = urllib.request.Request(url, headers={"User-Agent": self.user_agent})
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:  # nosec B310 — scheme guarded above (http/https only)
+            # Search results are model-influenced: no private or metadata address, on any redirect hop.
+            with safe_urlopen(req, timeout=20) as resp:
                 raw = resp.read(2_000_000)  # cap at 2MB to avoid runaway pages
         except Exception as err:  # noqa: BLE001
             raise _NetError(str(err)) from err

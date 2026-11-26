@@ -247,7 +247,7 @@ class TestAgentIntegration:
         assert user_messages == ["remember alpha", "now beta"]
         assert isinstance(restarted.session_store, FileSessionStore)
         assert isinstance(restarted.memory_store, FileMemoryStore)
-        assert (tmp_path / ".shipit" / "sessions" / "main.json").is_file()
+        assert restarted.session_store._path_for("main").is_file()
         assert (tmp_path / ".shipit" / "memory.json").is_file()
 
     def test_optimized_project_agent_preserves_explicit_stores(self, tmp_path) -> None:

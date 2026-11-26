@@ -22,8 +22,9 @@ from typing import Any
 from .build import build_agent, llm_for_model
 from .checkpoints import FileCheckpoints
 from .options import AgentOptions
-from .query import run_messages
-from .status import context_usage, mcp_status
+from .query import init_data, run_messages
+from .session_hooks import with_context
+from .status import McpControls, context_usage
 from .types import Message, ResultMessage, UserMessage
 
 __all__ = ["AgentClient"]
@@ -40,7 +41,9 @@ class AgentClient:
         self._primary_llm: Any = None
         self._queue: asyncio.Queue[Any] = asyncio.Queue()
         self._runs: list[asyncio.Task[None]] = []
+        self._session_context = ""  # SessionStart's additions, for the first prompt only
         self._checkpoints: FileCheckpoints | None = None
+        self._mcp: McpControls | None = None
 
     async def __aenter__(self) -> "AgentClient":
         await self.connect()
@@ -54,9 +57,12 @@ class AgentClient:
         if self._agent is None:
             self._agent = _session_agent(self.options)
             self._primary_llm = self._agent.llm
+            self._mcp = McpControls(self._agent)
             if self.options.enable_file_checkpointing:
                 self._checkpoints = FileCheckpoints(self._agent.project_root)
                 self._agent.hooks.on_before_tool(self._checkpoints.before_tool)
+            resumed = bool(self.options.resume or self.options.continue_conversation)
+            self._session_context = await self._agent._sdk_session_hooks.start(resumed=resumed)
         if prompt is not None:
             await self.query(prompt)
 
@@ -82,7 +88,8 @@ class AgentClient:
         if previous is not None:
             await asyncio.gather(previous, return_exceptions=True)
         await self._queue.put(UserMessage(content=prompt, uuid=message_id))
-        async for message in run_messages(self._agent, prompt, self.options):
+        context, self._session_context = self._session_context, ""
+        async for message in run_messages(self._agent, with_context(prompt, context), self.options):
             await self._queue.put(message)
 
     async def receive_messages(self) -> AsyncIterator[Message]:
@@ -143,8 +150,26 @@ class AgentClient:
         return context_usage(await self._connected())
 
     async def get_mcp_status(self) -> dict[str, Any]:
-        """Each MCP server's state (``connected`` or ``failed``) and its tools."""
-        return await asyncio.to_thread(mcp_status, await self._connected())
+        """Each MCP server's state (``connected``, ``failed`` or ``disabled``) and its tools."""
+        return await asyncio.to_thread((await self._mcp_controls()).status)
+
+    async def reconnect_mcp_server(self, server_name: str) -> None:
+        """Restart a server's connection; raises ``KeyError`` for an unknown name."""
+        await asyncio.to_thread((await self._mcp_controls()).reconnect, server_name)
+
+    async def toggle_mcp_server(self, server_name: str, enabled: bool) -> None:
+        """Switch a server off or back on, from the next turn."""
+        (await self._mcp_controls()).toggle(server_name, enabled)
+
+    async def get_server_info(self) -> dict[str, Any] | None:
+        """The session's model, tools, MCP servers, agents and permission mode."""
+        return init_data(await self._connected(), self.options)
+
+    async def _mcp_controls(self) -> McpControls:
+        agent = await self._connected()
+        if self._mcp is None:
+            self._mcp = McpControls(agent)
+        return self._mcp
 
     async def stop_task(self, task_id: str) -> None:
         """Stop a background sub-agent task the agent started."""
@@ -162,6 +187,8 @@ class AgentClient:
             self._agent.cancel()
         await asyncio.gather(*self._runs, return_exceptions=True)
         self._runs.clear()
+        if self._agent is not None:
+            await self._agent._sdk_session_hooks.end()
         await self._queue.put(_CLOSED)
 
     async def _connected(self) -> Any:

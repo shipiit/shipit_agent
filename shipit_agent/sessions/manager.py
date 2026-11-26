@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import inspect
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
 from shipit_agent.stores.session import SessionRecord, SessionStore
+
+from .forking import fork_contents
 
 
 @dataclass(slots=True)
@@ -53,15 +56,18 @@ class SessionManager:
             raise ValueError(f"Session {session_id!r} not found")
 
         new_id = str(uuid.uuid4())
-        messages = (
-            record.messages[:from_message] if from_message > 0 else record.messages[:]
+        cut = 0 < from_message < len(record.messages)
+        messages, metadata = fork_contents(
+            record.messages[:from_message] if from_message > 0 else record.messages,
+            record.metadata,
+            cut=cut,
         )
         fork_name = record.metadata.get("name", session_id)
         new_record = SessionRecord(
             session_id=new_id,
             messages=messages,
             metadata={
-                **record.metadata,
+                **metadata,
                 "name": f"Fork of {fork_name}",
                 "forked_from": session_id,
                 "forked_at_message": from_message,
@@ -70,9 +76,11 @@ class SessionManager:
         self.session_store.save(new_record)
         return self._chat_session(agent, new_id)
 
-    @staticmethod
-    def _chat_session(agent: Any, session_id: str) -> Any:
-        try:
+    def _chat_session(self, agent: Any, session_id: str) -> Any:
+        """A chat on this manager's store, not the agent's own."""
+        parameters = inspect.signature(agent.chat_session).parameters
+        if "session_store" in parameters:
+            return agent.chat_session(session_id=session_id, session_store=self.session_store)
+        if "session_id" in parameters and parameters["session_id"].kind is not inspect.Parameter.POSITIONAL_ONLY:
             return agent.chat_session(session_id=session_id)
-        except TypeError:
-            return agent.chat_session(session_id)
+        return agent.chat_session(session_id)

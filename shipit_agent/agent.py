@@ -72,6 +72,7 @@ from shipit_agent.chat_session import AgentChatSession
 from shipit_agent.core.agent_mixin import UpgradeMixin
 from shipit_agent.core.models import AgentResult
 from shipit_agent.core.reasoning import ReasoningResult, ReasoningRuntime
+from shipit_agent.stores.session import SessionStore
 
 __all__ = ["Agent", "DEFAULT_SKILLS_PATH", "SkillLike"]
 
@@ -158,10 +159,16 @@ class Agent(
         return AgentDoctor(env=env).inspect(self)
 
     def chat_session(
-        self, *, session_id: str, trace_id: str | None = None
+        self,
+        *,
+        session_id: str,
+        trace_id: str | None = None,
+        session_store: SessionStore | None = None,
     ) -> AgentChatSession:
-        """Return a live multi-turn chat session backed by this agent."""
-        return AgentChatSession(agent=self, session_id=session_id, trace_id=trace_id)
+        """Return a live multi-turn chat session backed by this agent (on *session_store* when given)."""
+        return AgentChatSession(
+            agent=self, session_id=session_id, trace_id=trace_id, session_store=session_store
+        )
 
     def reason(
         self,

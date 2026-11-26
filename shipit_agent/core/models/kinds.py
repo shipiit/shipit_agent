@@ -18,6 +18,7 @@ EventType = Literal[
     "tool_group_started",
     "tool_called",
     "tool_input_delta",
+    "tool_input_json_delta",
     "tool_output_delta",
     "tool_completed",
     "tool_failed",

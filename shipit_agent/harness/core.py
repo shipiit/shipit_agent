@@ -32,6 +32,8 @@ class Harness:
     settings: HarnessSettings = field(default_factory=HarnessSettings)
     commands: dict[str, str] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    #: Leave the plugins' MCP servers out; the agent keeps only its own.
+    strict_mcp_config: bool = False
     #: This harness's hooks, built once. Agent.clone() copies an agent's
     #: hooks and applies the harness again, so they are merged by identity.
     _hooks: Any = field(default=None, repr=False)
@@ -97,7 +99,7 @@ class Harness:
         present = {getattr(server, "name", None) for server in agent.mcps}
         servers = {name: config for plugin in self.plugins for name, config in plugin.mcp_servers.items()
                    if name not in present}
-        if servers:
+        if servers and not self.strict_mcp_config:
             agent.mcps = [*agent.mcps, *mcp_servers(servers)]
         self._apply_rules(agent)
         if self._hooks is None:

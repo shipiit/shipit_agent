@@ -26,7 +26,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable
 
-from shipit_agent.sdk.hooks import HOOK_EVENTS, HookMatcher
+from shipit_agent.sdk.hooks import HOOK_EVENTS, SESSION_EVENTS, HookMatcher
 from shipit_agent.tools.subprocess_env import build_tool_env
 
 __all__ = ["command_hook_matchers"]
@@ -53,7 +53,7 @@ def command_hook_matchers(
     """
     found: dict[str, list[HookMatcher]] = {}
     for event, groups in config.items():
-        if event not in HOOK_EVENTS:
+        if event not in HOOK_EVENTS or event in SESSION_EVENTS:  # session events take callbacks only
             errors.append(f"{source}: hook event {event!r} is not supported; skipped")
             continue
         for group in groups if isinstance(groups, list) else []:

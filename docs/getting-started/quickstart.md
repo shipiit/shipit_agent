@@ -27,6 +27,14 @@ result = agent.run("Find the TODO comments in this project and group them by fil
 print(result.output)
 ```
 
+```text
+src/billing/invoice.py
+  41  TODO: handle partial refunds
+  88  TODO: remove after the March migration
+tests/test_invoice.py
+  12  TODO: cover the zero-amount case
+```
+
 `Agent.with_builtins()` gives the agent the built-in tools: reading and searching files, editing, bash, the web, a todo list, sub-agents and more. `project_root` is the folder the file tools and bash work in; they refuse paths outside it.
 
 `result` is an `AgentResult`. Besides `output`, it has every message, every event and every tool result. `result.metadata["usage"]` holds the token counts, and `result.metadata["run_summary"]` how the run went, including `estimated_cost_usd`.
@@ -77,6 +85,10 @@ agent = Agent(
 print(agent.run("Where is order A-1043?").output)
 ```
 
+```text
+Order A-1043 shipped on 3 November. Its tracking number is ZX-9917.
+```
+
 `read_only=True` tells the permission system the tool changes nothing, so it never needs approval. [Custom tools](../guides/custom-tools.md) covers tool classes, rich output and errors.
 
 ## 5. The same agent, through the SDK API
@@ -106,6 +118,11 @@ async def main() -> None:
 
 
 asyncio.run(main())
+```
+
+```text
+The test compared a string id to an int. I cast it in tests/test_orders.py.
+success 4 turns $0.0131
 ```
 
 `permission_mode="acceptEdits"` lets the agent edit files without asking; commands that delete files, push or reach outside the project still need approval. [Permissions](../guides/permissions.md) explains the modes.

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from shipit_agent.core.models import ToolCall
+from shipit_agent.core.models.tool_calls import new_tool_call_id
 from shipit_agent.llms.base import LLMResponse
 from shipit_agent.llms.litellm_adapter import (
     _extract_reasoning,
@@ -156,7 +157,9 @@ class OpenAIStreamingMixin:
             for frag in getattr(delta, "tool_calls", None) or []:
                 idx = getattr(frag, "index", 0) or 0
                 slot = calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
-                if getattr(frag, "id", None):
+                # The first id a call gets is its id to the end: one sent late
+                # would otherwise split the streamed call from the final one.
+                if getattr(frag, "id", None) and not slot["id"]:
                     slot["id"] = frag.id
                 fn = getattr(frag, "function", None)
                 if fn is not None:
@@ -169,6 +172,8 @@ class OpenAIStreamingMixin:
                     if getattr(fn, "arguments", None):
                         slot["arguments"] += fn.arguments
                         if on_tool_input is not None and slot["name"]:
+                            if not slot["id"]:
+                                slot["id"] = new_tool_call_id()
                             # The provider streams argument JSON in fragments
                             # exactly as Anthropic does; forward them so a
                             # renderer can show the file being written. The
@@ -176,7 +181,7 @@ class OpenAIStreamingMixin:
                             # send one until the call completes.
                             try:
                                 callback_result = on_tool_input(
-                                    slot["id"] or f"call_{idx}",
+                                    slot["id"],
                                     slot["name"],
                                     fn.arguments,
                                 )

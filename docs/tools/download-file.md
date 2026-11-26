@@ -27,7 +27,7 @@ agent.run("Download the CSV at https://example.com/sales.csv and tell me how man
 | `timeout_seconds` | `60` | Longest a download may take |
 | `allow_private_hosts` | `False` | Allow `localhost` and private network addresses |
 
-The model calls it with a `url`, an optional destination `path`, and `overwrite` (default `False`).
+The model calls it with a `url`, an optional destination `path`, and `overwrite` (default `False`). The `path` must stay inside `workspace_root` (or a folder added with `add_dirs`): an absolute path, `..`, `~` or a symlink leading elsewhere is refused with `path_outside_workspace`. `Edit(...)` and `Write(...)` permission rules apply to it.
 
 ## See also
 

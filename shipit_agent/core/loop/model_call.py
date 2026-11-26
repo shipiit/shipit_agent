@@ -123,6 +123,15 @@ class ModelCallMixin:
             ):
                 return False
 
+            if self.stream_tool_input_json and fragment:
+                _schedule_emit(
+                    "tool_input_json_delta",
+                    "",
+                    tool=tool_name,
+                    call_id=call_id,
+                    partial_json=fragment,
+                )
+
             parser = parsers.get(call_id)
             if parser is None:
                 field = streaming_field_for(tool_name)

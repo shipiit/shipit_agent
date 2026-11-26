@@ -111,7 +111,7 @@ class TestPypdfMissing:
     def test_pypdf_missing_returns_friendly_error(
         self, ctx: ToolContext, tmp_path: Path
     ) -> None:
-        tool = PDFTool()
+        tool = PDFTool(root_dir=tmp_path)
         fake = tmp_path / "x.pdf"
         fake.write_bytes(b"%PDF-1.4\n")
 
@@ -145,7 +145,7 @@ class TestErrors:
     def test_file_not_found(self, ctx: ToolContext, tmp_path: Path) -> None:
         pytest.importorskip("pypdf")
         missing = tmp_path / "does-not-exist.pdf"
-        out = PDFTool().run(ctx, action="page_count", source=str(missing))
+        out = PDFTool(root_dir=tmp_path).run(ctx, action="page_count", source=str(missing))
         assert out.metadata.get("error") == "file_not_found"
 
 
@@ -155,7 +155,7 @@ class TestErrors:
 class TestIntegration:
     def test_page_count(self, ctx: ToolContext, sample_pdf: Path) -> None:
         pytest.importorskip("pypdf")
-        out = PDFTool().run(ctx, action="page_count", source=str(sample_pdf))
+        out = PDFTool(root_dir=sample_pdf.parent).run(ctx, action="page_count", source=str(sample_pdf))
         assert out.metadata["page_count"] == 3
         assert out.text == "3 pages."
 
@@ -163,7 +163,7 @@ class TestIntegration:
         self, ctx: ToolContext, sample_pdf: Path
     ) -> None:
         pytest.importorskip("pypdf")
-        out = PDFTool().run(ctx, action="extract_text", source=str(sample_pdf))
+        out = PDFTool(root_dir=sample_pdf.parent).run(ctx, action="extract_text", source=str(sample_pdf))
         assert "Page one hello" in out.text
         assert "Page two world" in out.text
         assert "Page three end" in out.text
@@ -174,7 +174,7 @@ class TestIntegration:
         self, ctx: ToolContext, sample_pdf: Path
     ) -> None:
         pytest.importorskip("pypdf")
-        out = PDFTool().run(
+        out = PDFTool(root_dir=sample_pdf.parent).run(
             ctx, action="extract_text", source=str(sample_pdf), pages="1"
         )
         assert "Page one hello" in out.text
@@ -185,7 +185,7 @@ class TestIntegration:
         self, ctx: ToolContext, sample_pdf: Path
     ) -> None:
         pytest.importorskip("pypdf")
-        out = PDFTool().run(
+        out = PDFTool(root_dir=sample_pdf.parent).run(
             ctx, action="extract_text", source=str(sample_pdf), pages="1-2"
         )
         assert "Page one hello" in out.text
@@ -196,7 +196,7 @@ class TestIntegration:
         self, ctx: ToolContext, sample_pdf: Path
     ) -> None:
         pytest.importorskip("pypdf")
-        out = PDFTool().run(
+        out = PDFTool(root_dir=sample_pdf.parent).run(
             ctx,
             action="extract_text",
             source=str(sample_pdf),
@@ -211,7 +211,7 @@ class TestIntegration:
         self, ctx: ToolContext, sample_pdf: Path
     ) -> None:
         pytest.importorskip("pypdf")
-        out = PDFTool().run(
+        out = PDFTool(root_dir=sample_pdf.parent).run(
             ctx, action="extract_pages", source=str(sample_pdf)
         )
         pages = out.metadata["pages"]
@@ -227,7 +227,7 @@ class TestIntegration:
         self, ctx: ToolContext, sample_pdf: Path
     ) -> None:
         pytest.importorskip("pypdf")
-        out = PDFTool().run(ctx, action="metadata", source=str(sample_pdf))
+        out = PDFTool(root_dir=sample_pdf.parent).run(ctx, action="metadata", source=str(sample_pdf))
         md = out.metadata
         for key in (
             "title",
@@ -261,15 +261,15 @@ class TestIntegration:
             def __exit__(self, *exc: object) -> None:
                 self._buf.close()
 
-        def fake_urlopen(url: str, timeout: int = 30) -> _FakeResponse:
-            assert url.startswith("https://")
+        def fake_urlopen(url: str, timeout: int = 30, allow_private: bool = False) -> _FakeResponse:
+            assert url.startswith("https://") and allow_private is False
             return _FakeResponse(raw)
 
         with patch(
-            "shipit_agent.tools.pdf.actions.urllib.request.urlopen",
+            "shipit_agent.tools.pdf.actions.safe_urlopen",
             side_effect=fake_urlopen,
         ):
-            out = PDFTool().run(
+            out = PDFTool(root_dir=sample_pdf.parent).run(
                 ctx,
                 action="extract_text",
                 source="https://example.com/sample.pdf",

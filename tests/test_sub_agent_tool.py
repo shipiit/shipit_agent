@@ -420,6 +420,8 @@ class TestSchemaIsUnambiguous:
             # `required` list cannot express. An empty call is answered
             # with which of the two to pass.
             "web_search",
+            # `server` only narrows the list; an empty call lists every server's.
+            "list_mcp_resources",
         }
         for tool in get_builtin_tools(llm=None, project_root="."):
             parameters = tool.schema()["function"]["parameters"]

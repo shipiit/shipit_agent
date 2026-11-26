@@ -16,6 +16,8 @@ from urllib.parse import unquote, urlsplit
 
 from shipit_agent.tools.base import ToolContext, ToolOutput
 from shipit_agent.tools.open_url.open_url_tool import OpenURLTool, URLNotAllowedError
+from shipit_agent.tools.open_url.safe_fetch import safe_urlopen
+from shipit_agent.tools.paths import resolve_in_roots
 from .prompt import DOWNLOAD_FILE_PROMPT
 
 _CHUNK = 64 * 1024
@@ -47,6 +49,8 @@ class DownloadFileTool:
             "page's text, use open_url instead."
         )
         self.workspace_root = Path(workspace_root)
+        #: Folders beside the downloads folder a destination may also be in.
+        self.extra_roots: tuple[Path, ...] = ()
         self.max_bytes = int(max_bytes)
         self.timeout_seconds = int(timeout_seconds)
         # Reuse open_url's SSRF/scheme guard rather than re-implementing it.
@@ -98,12 +102,14 @@ class DownloadFileTool:
 
     def _resolve_target(self, url: str, override: str | None,
                         content_disposition: str | None) -> Path:
-        if override:
-            path = Path(override).expanduser()
-            if not path.is_absolute():
-                path = self.workspace_root / path
-        else:
-            path = self.workspace_root / self._filename_from(url, content_disposition)
+        # The destination is the model's choice, so it is held to the downloads
+        # folder (and any added folders): no absolute path, "..", "~" or
+        # symlink may take it elsewhere. Raises ValueError when it would.
+        root = self.workspace_root.resolve()
+        name = override if override else self._filename_from(url, content_disposition)
+        if str(name).startswith("~"):
+            raise ValueError(f"Path escapes project root: {name} is outside {root}")
+        path = resolve_in_roots(name, root, self.extra_roots)
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -122,7 +128,8 @@ class DownloadFileTool:
 
         req = _request.Request(url, headers={"User-Agent": "shipit-agent/1.0"})
         try:
-            response = _request.urlopen(req, timeout=self.timeout_seconds)  # nosec B310 — guarded above
+            response = safe_urlopen(req, timeout=self.timeout_seconds,
+                                    allow_private=self._guard.allow_private_hosts)
         except Exception as exc:
             return ToolOutput(
                 text=f"Download failed: {exc}",
@@ -140,9 +147,18 @@ class DownloadFileTool:
                     ),
                     metadata={"ok": False, "error": "too_large", "url": url},
                 )
-            target = self._resolve_target(
-                url, kwargs.get("path"), response.headers.get("Content-Disposition")
-            )
+            try:
+                target = self._resolve_target(
+                    url, kwargs.get("path"), response.headers.get("Content-Disposition")
+                )
+            except ValueError:
+                return ToolOutput(
+                    text=(
+                        f"Download refused: {kwargs.get('path')} is outside the downloads "
+                        f"folder ({self.workspace_root}). Pass a path inside it."
+                    ),
+                    metadata={"ok": False, "error": "path_outside_workspace", "url": url},
+                )
             if target.exists() and not kwargs.get("overwrite"):
                 return ToolOutput(
                     text=(

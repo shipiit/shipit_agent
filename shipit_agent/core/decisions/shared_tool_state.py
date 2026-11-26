@@ -25,6 +25,8 @@ class SharedToolStateMixin:
         """
 
         def sink(event: Any, label: str, task: str) -> None:
+            from shipit_agent.core.tool_runner import CURRENT_TOOL_CALL_ID
+
             self.emit(
                 state,
                 "sub_agent_event",
@@ -33,9 +35,22 @@ class SharedToolStateMixin:
                 task=task,
                 inner_type=event.type,
                 inner=dict(event.payload),
+                # The parent's tool call that started this child.
+                parent_tool_use_id=CURRENT_TOOL_CALL_ID.get(),
             )
 
         return sink
+
+    def _open_mcp_servers(self) -> list[Any]:
+        """The run's MCP servers, less those a deny rule closes entirely."""
+        from shipit_agent.safety.permission_rules import closes_mcp_server
+
+        engine = self.permissions
+        rules = [*getattr(engine, "deny", []), *getattr(engine, "hidden", [])] if engine is not None else []
+        return [
+            server for server in (self.mcps or [])
+            if not any(closes_mcp_server(rule, str(getattr(server, "name", ""))) for rule in rules)
+        ]
 
     def note_artifacts(self, state: Any, tool_name: str, result: Any) -> None:
         """Emit a card for each file a tool left behind.
@@ -120,6 +135,9 @@ class SharedToolStateMixin:
                 for tool in registry.values()
             ],
             "memory_store": self.memory_store,
+            # The MCP servers switched on for this run and not closed by a deny
+            # rule, for the resource tools.
+            "mcp_servers": self._open_mcp_servers(),
             "credential_store": self.credential_store,
             CONNECTIONS_KEY: self.connections,
             # Publishing the control plane is what makes delegation

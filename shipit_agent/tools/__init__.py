@@ -10,7 +10,7 @@ from .agent_tool import AgentTool
 from .ask_user import AskUserTool
 from .ask_user_async import AskUserAsyncTool
 from .artifact_builder import ArtifactBuilderTool
-from .bash import BashJobTool, BashTool
+from .bash import BashJobTool, BashTool, MonitorTool
 from .base import Tool, ToolContext, ToolOutput, ToolOutputChunk, ToolRunOutput
 from .formatting import clip_text
 from .code_execution import CodeExecutionTool
@@ -48,6 +48,8 @@ from .jira import JiraTool
 from .linear import LinearTool
 from .linkedin import LinkedInSearchTool
 from .memory import ClaudeMemoryTool, MemoryTool
+from .mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
+from .task_list import TaskCreateTool, TaskGetTool, TaskListTool, TaskUpdateTool
 from .notebook_edit import NotebookEditTool
 from .notion import NotionTool
 from .open_url import OpenURLTool
@@ -106,6 +108,13 @@ __all__ = [
     "DuckDuckGoSearchProvider",
     "EditFileTool",
     "MultiEditTool",
+    "ListMcpResourcesTool",
+    "ReadMcpResourceTool",
+    "MonitorTool",
+    "TaskCreateTool",
+    "TaskGetTool",
+    "TaskListTool",
+    "TaskUpdateTool",
     "EvidenceSynthesisTool",
     "FileReadTool",
     "FileWriteTool",

@@ -7,6 +7,16 @@ permissions. It runs on every provider shipit supports: Anthropic, OpenAI,
 Bedrock (gpt-oss, Gemma 4 and the rest), Gemini, Vertex, and others through
 LiteLLM.
 
+## Try it from the terminal
+
+```bash
+shipit sdk "Why does tests/test_api.py fail?" --tools Read,Grep,Bash --allow "Bash(pytest *)"
+```
+
+Text streams as it is written and tool calls as their arguments are written; a call that needs approval is asked about on the terminal, and refused when there is no terminal. The run ends with its turns, tokens, cache reads and cost. Flags: `--model`, `--tools`, `--allow`, `--deny`, `--mode`, `--max-turns`, `--budget`, `--cache-ttl`, `--cwd`, `--show-hooks`, `--subagent-text`, and `--json` for one message per line. [`examples/25_agent_sdk_live.py`](https://github.com/shipiit/shipit_agent/blob/main/examples/25_agent_sdk_live.py) does the same run in code.
+
+## In code
+
 ```python
 import asyncio
 
@@ -47,20 +57,27 @@ agent), so this is the same loop as `Agent.run()`, not a second one.
 | `allowed_tools` | Rules that pre-approve calls. They don't restrict the other tools. |
 | `disallowed_tools` | A bare name removes the tool. A scoped rule (`"Bash(rm *)"`) denies matching calls in every mode. |
 | `permission_mode` | `default`, `acceptEdits`, `plan`, `dontAsk` or `bypassPermissions`. |
-| `can_use_tool` | Decides calls that no rule, mode or hook settled. |
+| `can_use_tool` | Decides calls that no rule, mode or hook settled. Without it, such calls are refused. |
 | `hooks` | `{"PreToolUse": [HookMatcher(...)], ...}`, or an `AgentHooks`. |
 | `mcp_servers` | `{name: config}`: stdio, sse, http or `create_sdk_mcp_server(...)`. |
+| `skills` | `None` or `"all"` for every discovered skill, a list of exact skill names (or ids), or `[]` for none. A wildcard, a malformed name or a name no skill has raises `ValueError`. |
+| `include_hook_events` | Report each hook callback as `SystemMessage("hook_started")` and `SystemMessage("hook_response")`, with `hook_id`, `hook_name`, `hook_event`, `output` (the callback's output as JSON) and `outcome` (`success` or `error`, with the error in `stderr`). They arrive before the message for the call the hook ran on, and before the `ResultMessage`. |
+| `forward_subagent_text` | Include a sub-agent's text and thinking in its `AssistantMessage`s. By default only its tool calls and results appear. |
+| `task_budget` | `{"total": n}`: stop the run, between steps, once it has used n tokens (`error_max_budget_tokens`). |
+| `resume_session_at` | With `resume`: continue from that message of the session (a `SessionMessage.uuid`), in a copy. |
+| `strict_mcp_config` | Use only `mcp_servers`; servers that plugins declare are left out. |
 | `agents` | Sub-agent definitions (`description`, `prompt`, `tools`, `model`). |
 | `max_turns`, `max_budget_usd` | The step limit and the spend limit. |
 | `output_format` | `{"type": "json_schema", "schema": {...}}`. The parsed answer is in `ResultMessage.structured_output`. |
-| `include_partial_messages` | Also yield `StreamEvent` text deltas. |
+| `include_partial_messages` | Also yield `StreamEvent`s framed like the API stream: `message_start`, each text, `thinking` and `tool_use` block as start / delta / stop, then `message_delta` and `message_stop`. Text and tool input stream as they are written (Anthropic, OpenAI and the LiteLLM-based adapters stream tool input); thinking arrives in one delta. Under a slow consumer some pieces may be dropped; the `AssistantMessage` always has the complete input. |
 | `resume`, `fork_session`, `session_store`, `session_id` | Continue a saved session, or a copy of it. |
 | `continue_conversation` | Continue the most recently saved session in `session_store`. |
 | `enable_file_checkpointing` | Record files before the file tools change them, for `rewind_files`. |
 | `cwd`, `add_dirs` | The project root, and folders beside it the file tools may also use. |
 | `env` | Environment variables for the commands bash and code execution run, never this process's own. |
 | `sandbox` | Run bash and code execution in the OS sandbox, with the SDK's `SandboxSettings`. See [Sandbox](#sandbox). |
-| `effort`, `thinking`, `max_thinking_tokens`, `betas` | Passed to adapters that take them (Anthropic does). A thinking budget becomes adaptive thinking on models that reject budgets. |
+| `effort`, `thinking`, `max_thinking_tokens`, `betas` | Passed to adapters that take them (Anthropic does). A thinking budget becomes adaptive thinking on models that reject budgets. On other providers each one set is logged as a warning and ignored. |
+| `cache_ttl` | `"5m"` (default) or `"1h"`: how long a cached prompt prefix lives on Claude models; on other providers it is logged as a warning and ignored. See [Prompt caching](../agent/prompt-caching.md#a-one-hour-cache). |
 | `agent_options` | Any other `Agent` setting, under its shipit name. |
 
 ## Messages
@@ -77,8 +94,14 @@ The `ResultMessage` reports how the run went:
 
 - **How it ended:** `subtype` is one of `success`, `error_max_turns`, `error_max_budget_usd`, `error_max_budget_tokens`, `error_during_execution` or `error_max_structured_output_retries`. `is_error` says whether the run stopped short.
 - **Answer:** `result` and `structured_output`.
-- **Effort and cost:** `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd` and `usage`.
-- **Other details:** `stop_reason` and `permission_denials`.
+- **Effort and cost:** `num_turns`, `duration_ms`, `duration_api_ms`, `total_cost_usd` and `usage`. `model_usage` breaks tokens and estimated cost down by model (`inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `costUSD`).
+- **Other details:** `stop_reason`, `permission_denials`, and `terminal_reason` (`completed`, `max_turns`, `max_budget_usd`, `max_budget_tokens` or `error`).
+
+A sub-agent's tool calls and their results appear as `AssistantMessage`s and `UserMessage`s whose `parent_tool_use_id` is the id of the `sub_agent` call that started it; the parent's own messages have `None`. After each of its tool results, and once when it finishes, a `SystemMessage("task_progress")` reports the child's `usage` (`total_tokens`, `tool_uses`, `duration_ms`) and `last_tool_name`. A sub-agent never produces `StreamEvent`s or a `ResultMessage`.
+
+When the provider refuses a call for its rate limit (a 429), a `RateLimitEvent` comes just before the retry: `rate_limit_info["status"]` is `"rejected"` and `resets_at` is when the retry is due, in epoch seconds. Overloaded (529), server and network errors are retries, not rate limits, and arrive only as `SystemMessage("api_retry")`. `rate_limit_type` and `utilization` are always `None`: providers do not report them to an API key.
+
+Each `AssistantMessage` carries a `message_id`; with partial messages it is the id in that response's `message_start`.
 
 A run that raises still ends with a `ResultMessage`, with subtype `error_during_execution` and the error in `errors`.
 
@@ -99,9 +122,14 @@ calc = create_sdk_mcp_server("calc", tools=[add])
 options = AgentOptions(mcp_servers={"calc": calc}, allowed_tools=["mcp__calc__add"])
 ```
 
-- **Schema:** a full JSON Schema works as well as the `{"name": type}` shorthand.
+- **Schema:** a full JSON Schema, the `{"name": type}` shorthand, or a `TypedDict` (keys marked `NotRequired` are optional). `Annotated[float, "Latitude"]` gives a field its description.
 - **Errors:** return `"is_error": True` to report a failure the model can act on.
+- **Images:** an `image` block (`data` as base64, `mimeType`) is shown to the model as an image when it is PNG, JPEG, GIF or WebP. Only the first image of a result is shown.
+- **Resources:** `resource` and `resource_link` blocks reach the model as text. `structuredContent` is kept in the result's metadata for your own code.
+- **Annotations:** `annotations=ToolAnnotations(readOnlyHint=True)` (or a dict) lets calls to the tool run in parallel.
 - **Naming:** a server's tools are exposed as `<server>__<tool>`; rules may name them either way.
+
+Two built-in tools read the servers' resources: `list_mcp_resources` (the SDK's `ListMcpResources`) and `read_mcp_resource` (`ReadMcpResource`). Both answer in the SDK's JSON shapes, see only the servers switched on for the run, and are read-only. A deny rule that closes a whole server (`mcp__secrets__*`, or `mcp__*` for all) closes it to these tools too. They are not in the default tool set; name them in `tools` to use them.
 
 External servers use the same `mcp_servers` dict:
 
@@ -122,6 +150,21 @@ Rules are checked in the SDK's order:
 4. The permission mode.
 5. Allow rules.
 6. `can_use_tool`.
+7. Otherwise the call needs approval.
+
+As in the Claude Agent SDK, a tool that nothing above approves does not run.
+Reads and searches run without asking. Anything else (bash, file writes,
+your own tools, MCP tools) needs one of these:
+
+- a rule in `allowed_tools`, such as `"note_create"` or `"mcp__calc__add"`;
+- a mode that approves it: `acceptEdits` for file edits, `bypassPermissions`
+  for everything not denied;
+- a PreToolUse hook answering `allow`;
+- a yes from `can_use_tool`.
+
+With none of them, the model is told the call needs approval and carries on
+without it. A hook's `allow` settles only this last step: deny rules, ask
+rules and risky shell commands still decide first.
 
 | Rule | Covers |
 | :- | :- |
@@ -199,7 +242,44 @@ async def no_secrets(input_data, tool_use_id, context):
 options = AgentOptions(hooks={"PreToolUse": [HookMatcher("Read|Edit", [no_secrets], timeout=5)]})
 ```
 
-All ten events work: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `Notification` and `PermissionRequest`.
+All twelve events work: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `Notification`, `PermissionRequest`, `SessionStart` and `SessionEnd`.
+
+- **Session events:** `SessionStart` and `SessionEnd` fire once per `query()`, and once per `AgentClient` (on connect and on disconnect). `SessionStart` gets `source` (`"startup"` or `"resume"`; a matcher such as `HookMatcher("resume", ...)` selects on it), and its `additionalContext` is added to the first prompt. `SessionEnd` gets `reason`.
+
+### Session start and end
+
+```python
+from shipit_agent.sdk import AgentOptions, HookMatcher, query
+
+
+async def on_start(input_data, tool_use_id, context):
+    return {"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                   "additionalContext": "House rule: never edit files under migrations/."}}
+
+
+async def on_end(input_data, tool_use_id, context):
+    print("session ended:", input_data["reason"])
+    return {}
+
+
+options = AgentOptions(
+    model="claude-sonnet-5-5",
+    hooks={
+        "SessionStart": [HookMatcher("startup", [on_start])],  # not on resume
+        "SessionEnd": [HookMatcher(None, [on_end])],
+    },
+)
+
+async for message in query(prompt="Tidy the billing module.", options=options):
+    print(message)
+```
+
+```text
+SessionStart(source=startup)
+  added: never edit files under migrations/.
+Edit(src/billing.py)
+session ended: other
+```
 
 - **Inputs and outputs:** they use the SDK's field names, including `permissionDecision`, `updatedInput`, `updatedToolOutput`, `additionalContext` and `decision: "block"`.
 - **Failures:** a hook that raises or times out is skipped, unless its matcher sets `on_failure="block"`.
@@ -224,10 +304,62 @@ The client's methods:
 
 - `interrupt()` stops a turn between steps.
 - `set_model(model)` changes the model from the next call; `set_model(None)` goes back to the first one.
-- `get_context_usage()` and `get_mcp_status()` report on the session.
+- `get_context_usage()`, `get_mcp_status()` and `get_server_info()` report on the session.
+- `toggle_mcp_server(name, enabled)` switches a server off or back on from the next turn; `reconnect_mcp_server(name)` restarts its connection and raises if it will not start.
 - `stop_task(task_id)` stops a background sub-agent.
 
 Each response starts with a `UserMessage` echoing the prompt. Its `uuid` is what `rewind_files` takes.
+
+## Watching a command
+
+`monitor` is the SDK's `Monitor`: it runs a command in the background, and each line the command prints goes to the watch's log as it happens. The model reads the log as it would any background job's and is told when the watch ends; `task_stop` ends it early. Every watch has a deadline: `timeout_ms`, 300,000 by default, at most 1,800,000.
+
+```python
+from shipit_agent.sdk import AgentOptions, query
+
+options = AgentOptions(
+    model="claude-sonnet-5-5",
+    tools=["Bash", "Monitor", "Read"],
+    allowed_tools=["Monitor(npm run dev*)", "Read"],
+)
+
+async for message in query(prompt="Start the dev server, watch its log, and tell me when it is ready.", options=options):
+    print(message)
+```
+
+```text
+Monitor(npm run dev)
+  watch job_1 started, deadline 5 minutes
+  ready in 412 ms, http://localhost:5173
+The dev server is ready on port 5173.
+```
+
+The command goes through the bash tool's checks, environment and sandbox, and bash's permission rules cover it: `Bash(rm *)` in `disallowed_tools` also refuses `rm` under `monitor`. Only `command` sources are supported, not WebSocket ones. It is not in the default tool set.
+
+## A task list
+
+`task_create`, `task_update`, `task_get` and `task_list` are the SDK's `TaskCreate`, `TaskUpdate`, `TaskGet` and `TaskList`: a task list the model keeps during the run, changed one task at a time, where a task can block others. They answer in the SDK's JSON shapes; `status="deleted"` removes a task and its links, and ids are never reused. They are not in the default tool set, which has `todo`, a simpler checklist; name them in `tools` to use them. The SDK's `TaskOutput` has no counterpart: Claude Code removed it, and a background task's output is read from its file.
+
+```python
+from shipit_agent.sdk import AgentOptions, query
+
+tasks = ["TaskCreate", "TaskUpdate", "TaskGet", "TaskList"]
+options = AgentOptions(model="claude-sonnet-5-5", tools=["Read", "Edit", *tasks], allowed_tools=["Edit", *tasks])
+
+async for message in query(prompt="Plan the billing migration as tasks, then start the first one.", options=options):
+    print(message)
+```
+
+```text
+TaskCreate(Add annual billing)
+  {"task": {"id": "1", "subject": "Add annual billing"}}
+TaskCreate(Migrate invoices)
+  {"task": {"id": "2", "subject": "Migrate invoices"}}
+TaskUpdate(2, addBlockedBy=[1])
+  {"success": true, "updatedFields": ["blockedBy"]}
+TaskUpdate(1, status=in_progress)
+  {"statusChange": {"from": "pending", "to": "in_progress"}}
+```
 
 ## Background tasks
 
@@ -235,6 +367,29 @@ Both kinds of background work are tasks: a command started with `bash(background
 
 - **A new task** emits a `task_started` event.
 - **A finished task** emits `task_notification`. If it completed or failed, the model is also told in the conversation, with the output file or a summary, so it can react without polling.
+
+```python
+from shipit_agent.sdk import AgentClient, AgentOptions, SystemMessage
+
+options = AgentOptions(model="claude-sonnet-5-5", tools=["Bash", "Read"], allowed_tools=["Bash(pytest *)", "Read"])
+
+async with AgentClient(options) as client:
+    await client.query("Run the full test suite in the background and carry on reviewing src/.")
+    async for message in client.receive_response():
+        if isinstance(message, SystemMessage) and message.subtype == "task_started":
+            task_id = message.data["task_id"]
+            print("started", task_id)
+        elif isinstance(message, SystemMessage) and message.subtype == "task_notification":
+            print("finished", message.data["task_id"], message.data["status"])
+```
+
+```text
+Bash(pytest -q, background=True)
+  started job_1
+Read(src/pricing.py)
+  finished job_1 completed
+All 42 tests pass; pricing.py looks correct.
+```
 
 In the SDK stream these are `SystemMessage("task_started")` and `SystemMessage("task_notification")`. `task_stop` (the SDK's `TaskStop`, also matched by `KillShell` and `KillBash`) stops either kind by id, and so does `AgentClient.stop_task(task_id)`. A tool can join in by defining `list_background_tasks()` and `stop_background_task(task_id)` (see `shipit_agent.core.tasks`).
 

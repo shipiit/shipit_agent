@@ -106,3 +106,47 @@ class TestGuards:
 
         names = [t.name for t in get_builtin_tools(project_root=".")]
         assert "download_file" in names
+
+
+class TestStaysInItsFolder:
+    """The destination is the model's to choose, so it must not be able to leave the downloads folder."""
+
+    @pytest.mark.parametrize("path", ["../escape.bin", "../../escape.bin", "sub/../../escape.bin", "~/.bashrc",
+                                      "/tmp/escape.bin", "/etc/shipit-escape"])
+    def test_a_path_outside_the_folder_is_refused_and_nothing_is_written(self, tmp_path, http_server, path) -> None:
+        root = tmp_path / "downloads"
+        out = _tool(root).run(CTX, url=f"{http_server}/x", path=path)
+        assert out.metadata["ok"] is False and out.metadata["error"] == "path_outside_workspace"
+        assert "outside" in out.text
+        assert not (tmp_path / "escape.bin").exists()
+
+    def test_a_symlink_out_of_the_folder_is_refused(self, tmp_path, http_server) -> None:
+        root = tmp_path / "downloads"
+        root.mkdir()
+        (tmp_path / "elsewhere").mkdir()
+        (root / "link").symlink_to(tmp_path / "elsewhere")
+        out = _tool(root).run(CTX, url=f"{http_server}/x", path="link/file.bin")
+        assert out.metadata["error"] == "path_outside_workspace"
+        assert list((tmp_path / "elsewhere").iterdir()) == []
+
+    def test_an_added_folder_is_allowed(self, tmp_path, http_server) -> None:
+        extra = tmp_path / "data"
+        extra.mkdir()
+        tool = _tool(tmp_path / "downloads")
+        tool.extra_roots = (extra.resolve(),)
+        out = tool.run(CTX, url=f"{http_server}/x", path=str(extra / "file.bin"))
+        assert out.metadata.get("ok", True) is not False and (extra / "file.bin").exists()
+
+    def test_a_relative_workspace_root_still_works(self, tmp_path, http_server, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        out = _tool(".shipit_workspace/downloads").run(CTX, url=f"{http_server}/x", path="a/b.bin")
+        assert (tmp_path / ".shipit_workspace" / "downloads" / "a" / "b.bin").exists(), out.text
+
+
+def test_edit_and_write_rules_cover_download_file(tmp_path) -> None:
+    from shipit_agent.safety.permissions import PermissionDecision, PermissionEngine
+
+    engine = PermissionEngine(deny=["Edit(//etc/**)", "Write(secrets/**)"], root=str(tmp_path))
+    assert engine.check("download_file", {"url": "https://x/y", "path": "/etc/passwd"}).decision == PermissionDecision.DENY
+    assert engine.check("download_file", {"url": "https://x/y", "path": "secrets/k.pem"}).decision == PermissionDecision.DENY
+    assert engine.check("download_file", {"url": "https://x/y", "path": "data/k.csv"}).decision == PermissionDecision.ALLOW

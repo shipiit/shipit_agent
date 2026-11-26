@@ -43,6 +43,22 @@ for event in chat.stream("Which commit changed the export code?"):
     print(event.type, event.message)
 ```
 
+### From async code
+
+In a FastAPI handler or a WebSocket, use the async forms. They run on the event loop instead of a thread, and closing a stream early closes the run underneath it:
+
+```python
+reply = await chat.asend("And on Firefox?")
+
+async for event in chat.astream("Summarise what we know."):
+    print(event.type, event.message)
+
+async for packet in chat.astream_packets("Draft the fix.", transport="sse"):
+    await response.write(packet)
+```
+
+A run that fails ends the stream with a `run_failed` event; `send` and `asend` raise the error.
+
 ## Managing sessions
 
 `SessionManager` lists, resumes, forks and archives sessions in a store.

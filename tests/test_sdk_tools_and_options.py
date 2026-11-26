@@ -64,13 +64,15 @@ def test_a_type_mapping_becomes_a_json_schema() -> None:
 
 
 def test_an_sdk_server_tool_runs_and_its_text_comes_back() -> None:
-    messages = _messages(llm=_Calls(("calc__add", {"a": 2, "b": 3})), tools=[], mcp_servers={"calc": CALC})
+    messages = _messages(llm=_Calls(("calc__add", {"a": 2, "b": 3})), tools=[], mcp_servers={"calc": CALC},
+                         allowed_tools=["calc__add"])
     block = next(m for m in messages if isinstance(m, UserMessage)).content[0]
     assert (block.content, block.is_error) == ("5", False)
 
 
 def test_a_tool_reporting_is_error_is_a_failed_result() -> None:
-    messages = _messages(llm=_Calls(("calc__fail", {})), tools=[], mcp_servers={"calc": CALC})
+    messages = _messages(llm=_Calls(("calc__fail", {})), tools=[], mcp_servers={"calc": CALC},
+                         allowed_tools=["calc__fail"])
     block = next(m for m in messages if isinstance(m, UserMessage)).content[0]
     assert block.is_error is True and block.content == "quota exceeded"
 
@@ -183,3 +185,15 @@ def test_output_format_must_be_a_json_schema() -> None:
     with pytest.raises(ValueError, match="json_schema"):
         AgentOptions(output_format={"type": "text"}).output_schema()
     assert AgentOptions().output_schema() is None
+
+
+def test_cache_ttl_reaches_an_adapter_that_takes_it_and_a_bad_one_is_refused(tmp_path: Path) -> None:
+    llm = _Calls()
+    llm.cache_ttl = "5m"
+    build_agent(AgentOptions(llm=llm, cwd=tmp_path, tools=[], cache_ttl="1h"))
+    assert llm.cache_ttl == "1h"
+    plain = _Calls()
+    build_agent(AgentOptions(llm=plain, cwd=tmp_path, tools=[], cache_ttl="1h"))
+    assert not hasattr(plain, "cache_ttl")
+    with pytest.raises(ValueError, match="cache_ttl"):
+        build_agent(AgentOptions(llm=llm, cwd=tmp_path, tools=[], cache_ttl="2h"))

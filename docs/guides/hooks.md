@@ -38,13 +38,52 @@ result = agent.run("What is the weather in Tokyo?")
 
 ## Hook types
 
-| Hook | Signature | When it fires |
+The `Agent` class has thirteen hook points. The first five are the ones most code needs; the rest match the SDK API's hook events one for one, so a hook written for either works the same way.
+
+| Hook | Signature | When it fires, and what it may return |
 |---|---|---|
-| `before_llm` | `fn(messages: list, tools: list)` | Before each LLM completion call |
-| `after_llm` | `fn(response: LLMResponse)` | After each LLM completion returns |
-| `before_tool` | `fn(name: str, arguments: dict)` | Before a tool is executed |
-| `after_tool` | `fn(name: str, result: ToolResult)` | After a tool returns (success or error) |
-| `stop` | `fn(answer: str)` | When the agent is about to finish; return a reason to keep it working |
+| `user_prompt` | `fn(prompt: str)` | When a prompt arrives. Return text to rewrite it, or `False` to block the run. |
+| `before_llm` | `fn(messages: list, tools: list)` | Before each model call. |
+| `after_llm` | `fn(response: LLMResponse)` | After each model call returns. |
+| `before_tool` | `fn(name: str, arguments: dict)` | Before a tool runs. Return a decision to allow, deny or ask, or new arguments. |
+| `permission_request` | `fn(name: str, arguments: dict, reason: str)` | When a call would wait for a person. Return `{"decision": "allow"}` or `{"decision": "deny", "reason": ...}` to settle it. |
+| `after_tool` | `fn(name: str, result: ToolResult)` | After a tool returns, whether it succeeded or failed. |
+| `post_tool_use` | `fn(name: str, arguments: dict, result: ToolResult)` | After the `after_tool` hooks. Return `{"updated_output": text}` to replace what the model reads, or text to add to it. |
+| `post_tool_failure` | `fn(name: str, arguments: dict, error: str)` | When a tool fails. Return text to add to the failed result, such as how to recover. |
+| `subagent_start` | `fn(agent_type: str, task: str)` | Before a sub-agent starts. Return `False` to refuse it, or text to add to its brief. |
+| `subagent_stop` | `fn(agent_type: str, task: str, output: str, error: str)` | When a sub-agent ends. It only observes. |
+| `pre_compact` | `fn(messages: list, info: dict)` | Just before older turns are summarized. Return text to add to the summarizer's instructions. |
+| `notification` | `fn(message: str, notification_type: str)` | When a call is left waiting for approval, so a host can page someone. It only observes. |
+| `stop` | `fn(answer: str)` | When the agent is about to finish. Return a reason to keep it working. |
+
+Each has a decorator named `on_` plus the hook's name:
+
+```python
+from shipit_agent import AgentHooks
+
+hooks = AgentHooks()
+
+
+@hooks.on_user_prompt
+def add_the_branch(prompt: str) -> str:
+    return f"{prompt}\n\nYou are on the branch fix/login."
+
+
+@hooks.on_post_tool_failure
+def how_to_recover(name: str, arguments: dict, error: str) -> str | None:
+    if name == "bash":
+        return "If the command is missing, look in pyproject.toml for the right one."
+    return None
+
+
+@hooks.on_permission_request
+def approve_test_runs(name: str, arguments: dict, reason: str) -> dict | None:
+    if name == "bash" and str(arguments.get("command", "")).startswith("pytest"):
+        return {"decision": "allow"}
+    return None
+```
+
+Hook callbacks on the `Agent` class are plain functions; an `async def` hook raises a `TypeError` when it is called, so a check can never be skipped silently. The SDK API's hooks are async; session start and end hooks exist only there ([Agent SDK API](agent-sdk.md#session-start-and-end)).
 
 ## Registration
 

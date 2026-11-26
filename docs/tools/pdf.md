@@ -146,11 +146,13 @@ returns `"N pages."` plus `metadata.page_count`.
 
 ## `source` resolution
 
-- **`http://...` / `https://...`** — fetched via `urllib.request`
-  with `timeout_seconds` (default 30) and `OSError` / `URLError` /
-  `TimeoutError` surfaced as `url_fetch_failed`.
-- **Local path** — `~` is expanded; the path must exist and be a
-  regular file.
+- **`http://...` / `https://...`** — fetched with `timeout_seconds`
+  (default 30). Private, loopback and cloud-metadata addresses are
+  refused, on every redirect hop (`allow_private_hosts=True` turns that
+  off); failures are `url_fetch_failed`.
+- **Local path** — must be inside `root_dir` (default the working folder;
+  the agent passes its project root) or a folder added with `add_dirs`,
+  else `path_outside_project`. `Read(...)` rules apply to it.
 - Anything else is rejected as `file_not_found`.
 
 Downloads happen **into memory** — don't use this tool to process a

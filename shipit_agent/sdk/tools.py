@@ -23,7 +23,17 @@ from typing import Any, Awaitable, Callable
 from shipit_agent.mcp import MCPServer, MCPTool
 from shipit_agent.tools.base import ToolContext, ToolOutput
 
-__all__ = ["HOME_LOOP", "SdkMcpTool", "create_sdk_mcp_server", "run_maybe_async", "tool"]
+from .tool_results import ToolAnnotations, annotation_dict, json_schema, to_output
+
+__all__ = [
+    "HOME_LOOP",
+    "SdkMcpTool",
+    "ToolAnnotations",
+    "create_sdk_mcp_server",
+    "json_schema",
+    "run_maybe_async",
+    "tool",
+]
 
 #: The event loop of the code that started the run. Callbacks, hooks and tools
 #: run on the agent's worker threads; their coroutines are handed back to this
@@ -31,8 +41,6 @@ __all__ = ["HOME_LOOP", "SdkMcpTool", "create_sdk_mcp_server", "run_maybe_async"
 HOME_LOOP: contextvars.ContextVar[asyncio.AbstractEventLoop | None] = contextvars.ContextVar(
     "shipit_sdk_home_loop", default=None
 )
-
-_JSON_TYPES = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array", dict: "object"}
 
 Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]] | dict[str, Any]]
 
@@ -51,13 +59,17 @@ class SdkMcpTool:
 def tool(
     name: str,
     description: str,
-    input_schema: dict[str, Any],
-    annotations: dict[str, Any] | None = None,
+    input_schema: Any,
+    annotations: Any = None,
 ) -> Callable[[Handler], SdkMcpTool]:
-    """Make a function (sync or async, taking the arguments dict) a tool."""
+    """Make a function (sync or async, taking the arguments dict) a tool.
+
+    ``input_schema`` is a JSON Schema, a ``{"name": type}`` mapping or a
+    ``TypedDict``; ``annotations`` a dict or a :class:`ToolAnnotations`.
+    """
 
     def decorator(handler: Handler) -> SdkMcpTool:
-        return SdkMcpTool(name, description, json_schema(input_schema), handler, dict(annotations or {}))
+        return SdkMcpTool(name, description, json_schema(input_schema), handler, annotation_dict(annotations))
 
     return decorator
 
@@ -81,30 +93,11 @@ def create_sdk_mcp_server(
     return {"type": "sdk", "name": name, "instance": server}
 
 
-def json_schema(spec: dict[str, Any]) -> dict[str, Any]:
-    """A JSON Schema from a full schema, or from a ``{"name": type}`` mapping."""
-    if spec.get("type") == "object" or "properties" in spec:
-        return dict(spec)
-    properties = {key: {"type": _JSON_TYPES.get(value, "string")} for key, value in spec.items()}
-    return {"type": "object", "properties": properties, "required": list(spec)}
-
-
 def _bind(handler: Handler) -> Callable[..., ToolOutput]:
     def run(context: ToolContext, **arguments: Any) -> ToolOutput:
-        return _to_output(run_maybe_async(handler, dict(arguments)))
+        return to_output(run_maybe_async(handler, dict(arguments)))
 
     return run
-
-
-def _to_output(result: Any) -> ToolOutput:
-    if not isinstance(result, dict):
-        return ToolOutput(text=str(result))
-    parts = []
-    for block in result.get("content") or []:
-        if isinstance(block, dict) and block.get("type") == "text":
-            parts.append(str(block.get("text", "")))
-    text = "\n".join(parts)
-    return ToolOutput.error(text) if result.get("is_error") else ToolOutput(text=text)
 
 
 def run_maybe_async(fn: Callable[..., Any], *args: Any) -> Any:

@@ -24,7 +24,10 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from .serve_guard import is_loopback, key_matches, request_problem
 from .serve_handler import make_handler
+
+__all__ = ["AgentServer", "is_loopback"]
 
 
 def _jsonable(value: Any) -> Any:
@@ -51,10 +54,14 @@ class AgentServer:
         *,
         model_name: str = "shipit",
         api_key: str | None = None,
+        allowed_origins: list[str] | None = None,
     ) -> None:
         self.agent = agent
         self.model_name = model_name
         self.api_key = api_key
+        #: Browser origins that may call the server (a local web UI, say).
+        self.allowed_origins = frozenset(origin.rstrip("/") for origin in allowed_origins or [])
+        self.bound_host = "127.0.0.1"
         self._httpd: ThreadingHTTPServer | None = None
 
     # ------------------------------------------------------------------
@@ -63,8 +70,23 @@ class AgentServer:
     def _authorized(self, headers: Any) -> bool:
         if not self.api_key:
             return True
-        auth = headers.get("Authorization", "")
-        return auth == f"Bearer {self.api_key}"
+        return key_matches(headers.get("Authorization", ""), self.api_key)
+
+    def _request_problem(self, headers: Any, *, post: bool) -> tuple[int, str] | None:
+        return request_problem(headers, post=post, bound_host=self.bound_host, allowed_origins=self.allowed_origins)
+
+    def require_key_for(self, host: str) -> None:
+        """Bound off this machine, never serve keyless: refuse to start without a key.
+
+        No key is invented here: it would have to be printed to be usable, and
+        a printed key ends up in service and container logs.
+        """
+        self.bound_host = host
+        if not self.api_key and not is_loopback(host):
+            raise ValueError(
+                f"Serving on {host} needs a key: pass --api-key or set SHIPIT_API_KEY "
+                "(api_key= in code). Without one the server only binds 127.0.0.1."
+            )
 
     @staticmethod
     def _last_user_message(messages: list[dict[str, Any]]) -> str:
@@ -121,6 +143,7 @@ class AgentServer:
     # ------------------------------------------------------------------
     def start(self, *, host: str = "127.0.0.1", port: int = 8399) -> int:
         """Bind and start serving on a background thread; returns the port."""
+        self.require_key_for(host)
         self._httpd = ThreadingHTTPServer((host, port), self._make_handler())
         thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         thread.start()
@@ -128,6 +151,7 @@ class AgentServer:
 
     def serve_forever(self, *, host: str = "127.0.0.1", port: int = 8399) -> None:
         """Blocking serve (Ctrl+C to stop)."""
+        self.require_key_for(host)
         self._httpd = ThreadingHTTPServer((host, port), self._make_handler())
         try:
             self._httpd.serve_forever()

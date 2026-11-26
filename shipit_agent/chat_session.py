@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from contextlib import closing
 from typing import TYPE_CHECKING, Any, Callable
@@ -87,6 +88,41 @@ class AgentChatSession:
             return
         for event in self.stream(user_prompt):
             yield websocket_event_packet(event)
+
+    async def asend(self, user_prompt: str) -> AgentResult:
+        """:meth:`send` for async code: the turn runs on the event loop, not a thread."""
+        result = await self._session_agent().arun(user_prompt)
+        for event in result.events:
+            self._emit_event(event)
+        return result
+
+    async def astream(self, user_prompt: str, *, images: list[str] | None = None,
+                      files: list[str] | None = None) -> AsyncIterator[AgentEvent]:
+        """:meth:`stream` for async code. Closing it closes the run underneath."""
+        options = {}
+        if images:
+            options["images"] = images
+        if files:
+            options["files"] = files
+        events = self._session_agent().astream(user_prompt, **options)
+        try:
+            async for event in events:
+                self._emit_event(event)
+                yield event
+        finally:
+            # Awaited here, so a caller that stops early does not leave the
+            # run to be cleaned up by the garbage collector.
+            await events.aclose()
+
+    async def astream_packets(self, user_prompt: str, *, transport: str = "websocket") -> AsyncIterator[Any]:
+        """:meth:`stream_packets` for async code."""
+        pack = sse_event_packet if transport == "sse" else websocket_event_packet
+        events = self.astream(user_prompt)
+        try:
+            async for event in events:
+                yield pack(event)
+        finally:
+            await events.aclose()
 
     def send_result_packet(
         self, user_prompt: str, *, transport: str = "websocket"

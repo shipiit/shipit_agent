@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
+from dataclasses import replace
+
 from typing import Any
 
 from shipit_agent.safety.permissions import PermissionResult
@@ -30,26 +33,36 @@ class HookDispatchMixin:
     ) -> PermissionResult | None:
         """Run before-tool hooks and fold their decisions together.
 
-        Precedence: a DENY wins; then a DEFER; then an ASK; otherwise the
-        last ``updated_arguments`` rewrite is applied on an ALLOW. Returns
-        ``None`` when every hook is observe-only (backward compatible).
+        Precedence: a DENY wins; then a DEFER; then an ASK; otherwise an
+        ALLOW. Each hook sees the arguments as the hooks before it rewrote
+        them, so a check never approves arguments that are not the ones that
+        run, and the rewrites build on each other. Returns ``None`` when every
+        hook is observe-only (backward compatible).
         """
         outcome: PermissionResult | None = None
         deferred: PermissionResult | None = None
+        current = dict(arguments)
+        rewritten = False
         for fn in self.before_tool:
-            decision = _coerce_hook_decision(fn(name, arguments))
+            decision = _coerce_hook_decision(_sync(fn, fn(name, dict(current))))
             if decision is None:
                 continue
             if decision.denied:
                 return decision  # short-circuit on the first hard deny
+            if decision.updated_arguments is not None:
+                current, rewritten = dict(decision.updated_arguments), True
             if decision.deferred:
                 deferred = deferred or decision
             elif decision.needs_approval:
                 outcome = decision
             elif outcome is None or not outcome.needs_approval:
-                # ALLOW (possibly with a rewrite) — keep unless an ASK stands.
+                # ALLOW — keep unless an ASK stands.
                 outcome = decision
-        return deferred or outcome
+        result = deferred or outcome
+        if result is not None and rewritten:
+            # Whichever decision stands, the call runs with every rewrite applied.
+            result = replace(result, updated_arguments=current)
+        return result
 
     def run_after_tool(
         self, name: str, result: Any, arguments: dict[str, Any] | None = None
@@ -57,34 +70,37 @@ class HookDispatchMixin:
         """Run post-tool hooks, allowing each to replace or sanitize output."""
         current = self._run_after_tool_hooks(name, result)
         for fn in self.post_tool_use:
-            value = fn(name, dict(arguments or {}), current)
+            value = _sync(fn, fn(name, dict(arguments or {}), current))
             if isinstance(value, str):
                 value = {"additional_context": value}
             if not isinstance(value, dict) or not hasattr(current, "output"):
                 continue
             if value.get("updated_output") is not None:
-                current.output = str(value["updated_output"])
-            if str(value.get("additional_context") or "").strip():
-                current.output = f"{current.output}\n\n{str(value['additional_context']).strip()}"
+                _replace_output(current, str(value["updated_output"]))
+            context = str(value.get("additional_context") or "").strip()
+            if context:
+                current.output = f"{current.output}\n\n{context}"
+                if getattr(current, "model_text", None):
+                    current.model_text = f"{current.model_text}\n\n{context}"
         return current
 
     def _run_after_tool_hooks(self, name: str, result: Any) -> Any:
         current = result
         for fn in self.after_tool:
-            value = fn(name, current)
+            value = _sync(fn, fn(name, current))
             if value is None:
                 continue
             if isinstance(value, str) and hasattr(current, "output"):
-                current.output = value
+                _replace_output(current, value)
                 continue
             if isinstance(value, dict) and hasattr(current, "output"):
                 if "output" in value or "text" in value:
-                    current.output = str(value.get("output", value.get("text", "")))
+                    _replace_output(current, str(value.get("output", value.get("text", ""))))
                 if isinstance(value.get("metadata"), dict):
                     current.metadata.update(value["metadata"])
                 continue
             if hasattr(value, "text") and hasattr(current, "output"):
-                current.output = str(value.text)
+                _replace_output(current, str(value.text), getattr(value, "model_text", None))
                 current.metadata.update(dict(getattr(value, "metadata", {}) or {}))
                 continue
             if hasattr(value, "output"):
@@ -94,7 +110,7 @@ class HookDispatchMixin:
     def run_stop(self, answer: str) -> str | None:
         """The first reason a stop hook gives to keep going, or ``None``."""
         for fn in self.stop:
-            value = fn(answer)
+            value = _sync(fn, fn(answer))
             if isinstance(value, str) and value.strip():
                 return value.strip()
             if isinstance(value, dict) and str(value.get("decision", "")).lower() in (
@@ -110,7 +126,7 @@ class HookDispatchMixin:
         """Run start hooks: ``(allowed, refusal_reason, extra_context)``."""
         notes: list[str] = []
         for fn in self.subagent_start:
-            value = fn(agent_type, task)
+            value = _sync(fn, fn(agent_type, task))
             if value is False:
                 return False, "a sub-agent start hook refused it", ""
             if isinstance(value, str):
@@ -178,3 +194,40 @@ class HookDispatchMixin:
     def run_notification(self, message: str, notification_type: str) -> None:
         for fn in self.notification:
             fn(message, notification_type)
+
+
+#: Metadata that carries the original result to the model beside its text: an image.
+_MODEL_PAYLOAD_KEYS = ("image_base64", "media_type", "vision")
+
+
+def _replace_output(result: Any, text: str, model_text: str | None = None) -> None:
+    """Replace what a result says, everywhere the model would read it.
+
+    The model is sent ``model_text`` when a tool set one, and any image in the
+    metadata; a hook that redacts the output must replace those too, or the
+    model still receives what was redacted.
+    """
+    result.output = text
+    if hasattr(result, "model_text"):
+        result.model_text = model_text
+    metadata = getattr(result, "metadata", None)
+    if isinstance(metadata, dict):
+        for key in _MODEL_PAYLOAD_KEYS:
+            metadata.pop(key, None)
+
+
+def _sync(fn: Any, value: Any) -> Any:
+    """*value*, refusing an ``async`` hook's coroutine.
+
+    A coroutine is never awaited here, so it would read as "no decision" and
+    an async deny hook would let every call through without a word.
+    """
+    if inspect.isawaitable(value):
+        if inspect.iscoroutine(value):
+            value.close()
+        raise TypeError(
+            f"Hook {getattr(fn, '__name__', fn)!r} is async; AgentHooks callbacks must be synchronous "
+            "(use the Agent SDK's hooks for async callbacks)."
+        )
+    return value
+

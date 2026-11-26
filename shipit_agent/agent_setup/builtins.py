@@ -46,6 +46,7 @@ from shipit_agent.tools import (
     AskUserAsyncTool,
     AskUserTool,
     BashJobTool,
+    MonitorTool,
     BashTool,
     CodeExecutionTool,
     ConfluenceTool,
@@ -106,6 +107,8 @@ from shipit_agent.tools.apps import app_tools
 from shipit_agent.tools.connections import ConnectionsTool
 from shipit_agent.tools.describe_binding import DescribeBindingTool
 from shipit_agent.tools.give_up import GiveUpTool
+from shipit_agent.tools.mcp_resources import ListMcpResourcesTool, ReadMcpResourceTool
+from shipit_agent.tools.task_list import TaskCreateTool, TaskGetTool, TaskListTool, TaskUpdateTool
 from shipit_agent.tools.task_stop import TaskStopTool
 
 
@@ -146,7 +149,14 @@ def get_builtin_tool_map(
         # ── file operations ───────────────────────────────────────
         bash_tool,
         BashJobTool(bash_tool),
+        MonitorTool(bash_tool),
         TaskStopTool(),
+        ListMcpResourcesTool(),
+        ReadMcpResourceTool(),
+        TaskCreateTool(),
+        TaskUpdateTool(),
+        TaskGetTool(),
+        TaskListTool(),
         FileReadTool(root_dir=project_root),
         EditFileTool(root_dir=project_root),
         MultiEditTool(root_dir=project_root),
@@ -194,7 +204,7 @@ def get_builtin_tool_map(
         CodeExecutionTool(workspace_root=f"{workspace_root}/code_execution"),
         DashboardRenderTool(workspace_root=f"{workspace_root}/dashboards"),
         # ── content extraction ────────────────────────────────────
-        PDFTool(),
+        PDFTool(root_dir=project_root),
         VisionTool(llm=llm),
         # ── deliverables ──────────────────────────────────────────
         PresentFileTool(root_dir=workspace_root),

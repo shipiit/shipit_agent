@@ -102,6 +102,7 @@ class RunOptionsMixin:
             "max_required_tool_text_chars": self.max_required_tool_text_chars,
             "max_completion_text_chars": self.max_completion_text_chars,
             "max_tool_argument_chars": self.max_tool_argument_chars,
+            "stream_tool_input_json": self.stream_tool_input_json,
             "metadata": {
                 "agent_name": self.name,
                 "agent_description": self.description,

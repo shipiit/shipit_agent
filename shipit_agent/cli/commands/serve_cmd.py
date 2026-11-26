@@ -15,7 +15,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from shipit_agent.cli.serve import AgentServer
 
     agent = build_agent(args)
-    server = AgentServer(agent, model_name=args.name, api_key=args.api_key)
+    server = AgentServer(agent, model_name=args.name, api_key=args.api_key,
+                         allowed_origins=[o.strip() for o in (args.allow_origin or "").split(",") if o.strip()])
+    try:
+        server.require_key_for(args.host)
+    except ValueError as error:
+        ui.out(ui.style(f"  {error}", "warn"))
+        return 2
     shown = "localhost" if args.host in ("127.0.0.1", "localhost") else args.host
     ui.banner(
         "shipit agent is serving",
@@ -24,7 +30,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
             ("Chat endpoint", f"http://{shown}:{args.port}/v1/chat/completions"),
             ("Health", f"http://{shown}:{args.port}/health"),
             ("Model id", args.name),
-            ("Auth", "Bearer <api-key>" if args.api_key else "none (local)"),
+            ("Auth", "Bearer <api-key>" if server.api_key else "none (this machine only)"),
         ],
     )
     ui.out("  Point any OpenAI SDK at the base URL above.")
@@ -42,6 +48,8 @@ def register(sub: Any) -> None:
     parser.add_argument("--name", default="shipit", help="served model id")
     parser.add_argument("--api-key", default=os.environ.get("SHIPIT_API_KEY"),
                         help="require this Bearer key (default: open on loopback)")
+    parser.add_argument("--allow-origin", default=None,
+                        help="comma-separated browser origins that may call the server")
     parser.add_argument("--provider", default=None)
     parser.add_argument("--model", default=None)
     parser.add_argument("--role", default=None)

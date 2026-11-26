@@ -11,6 +11,274 @@ Nothing yet.
 
 ---
 
+## [4.0.0] — 2026-11-26
+
+### Security
+
+- **A web page can no longer drive `shipit serve`.** The server ran its agent,
+  bash included, for any request that reached it: with no key (the default) a
+  page open in the developer's browser could start a run with a `text/plain`
+  POST, which needs no CORS preflight, and a DNS-rebinding page could read the
+  reply. Now a POST must be `application/json`, a browser `Origin` must be one
+  passed with `--allow-origin` (`AgentServer(allowed_origins=...)`), and on a
+  loopback address the `Host` must be a localhost name. Bound anywhere else
+  the server needs a key and refuses to start without `--api-key` or
+  `SHIPIT_API_KEY`; it never invents one, since a generated key would have to
+  be printed and would end up in service logs. Keys are compared in constant
+  time.
+
+- **`download_file` stays in its folder.** The model's `path` could be
+  absolute, contain `..` or start with `~`, so a prompt-injected agent could
+  write a downloaded file to `~/.bashrc` or `~/.ssh/authorized_keys`, and
+  `Edit(...)` rules did not apply to the tool. The destination is now held to
+  the downloads folder (and folders added with `add_dirs`), and `Edit(...)`
+  and `Write(...)` rules cover it.
+- **A redaction hook now redacts what the model is sent.** When a tool gave
+  the model a separate view of its result (`ToolOutput.model_text`, as
+  `ToolOutput.from_records` and the browser workspace do), an after-tool hook
+  or an SDK `PostToolUse` hook that replaced the output changed only the shown
+  text; the model still received the original. Replacing the output now
+  replaces the model's view too and drops any image the result carried, and
+  added context reaches the model as well.
+- **Before-tool hooks see each other's rewrites.** Every hook was given the
+  call's original arguments, so a checking hook could approve values an
+  earlier hook had already rewritten, and a later plain "allow" dropped an
+  earlier rewrite, running the original arguments. Each hook now sees the
+  arguments as the hooks before it left them, and the call runs with every
+  rewrite applied.
+- **Session ids no longer share files.** `FileSessionStore` named a file by
+  the id with `/` turned into `_`, so `team/chat` and `team_chat` (and `Chat`
+  and `chat` on macOS and Windows disks) read and overwrote one conversation.
+  Files are now named by a hash of the exact id. Sessions saved by an older
+  version are still found under their own id and move to the new name on
+  their next save; `list_all` returns each session's exact id.
+- **A closed MCP server stays closed to the resource tools.** A deny rule for
+  a whole server (`mcp__secrets__*`, `mcp__*`) did not stop
+  `list_mcp_resources` and `read_mcp_resource`, which take the server as an
+  argument. Servers such a rule closes are now left out of what they can see;
+  a rule naming one tool of a server leaves its resources open.
+- **`shipit sdk`'s approval prompt shows the whole call, safely.** It
+  printed a model-written command raw, so carriage returns and escape codes
+  could redraw the prompt and disguise `curl … | sh` as something harmless,
+  and for most tools it showed only the tool's name. It now shows every
+  argument as JSON, with control characters as escapes and long values cut
+  with a note; the live view shows control characters in model text and tool
+  output as escapes too.
+- **URL tools cannot reach this machine or its network.** `fetch_url`
+  checked only the scheme, the PDF tool and `research_brief` fetched any
+  address, and `open_url` and `download_file` checked only the first URL, so
+  a redirect or a DNS-rebinding name reached internal services and cloud
+  metadata. All five now go through one fetcher that refuses private,
+  loopback, link-local and reserved addresses on every redirect hop, connects
+  to the address it checked, and handles only http and https; in the browser,
+  every request a page makes is checked. `allow_private_hosts=True` turns it
+  off.
+- **The browser tools cannot be pointed at this machine or its files.**
+  `playwright_browse` opened any URL the model gave it, `file:///…` and
+  internal addresses included, and returned the page; the computer-use
+  browser's `navigate` did the same. Both now open public http(s) pages only
+  and check every request the page makes. `allow_private_hosts=True`
+  (`PlaywrightBrowserTool(...)`, `PlaywrightBrowserSession.launch(...)`) turns
+  it off, which is needed to drive an app on `localhost`.
+- **The PDF tool reads local files only inside the project.** It opened any
+  path; local PDFs are now held to `root_dir` (the project root in an agent)
+  and added folders, and `Read(...)` rules apply to its `source`.
+- **Dependency minimums skip known-vulnerable releases.** The `pdf`,
+  `files`, `browser` and `rag-pdf` extras now need `pypdf>=6.21.4` (the PDF
+  tool parses PDFs from the web) and the LiteLLM-based extras
+  `litellm>=1.96.2`.
+- **An MCP server cannot mark a tool read-only by accident or by trick.**
+  `readOnlyHint` lets a tool through plan mode and lockdown, and any truthy
+  value counted, the string `"false"` included. Only JSON `true` counts now.
+- **An MCP call reports what actually happened.** A tool's static `metadata`
+  was applied last and could overwrite `ok`, `is_error` and `server`, so a
+  failed call could read as a success. The call's own outcome now wins, and a
+  result carrying only `structuredContent` is shown to the model instead of
+  "returned no content".
+- **An `async` hook is refused, not silently skipped.** An `AgentHooks`
+  callback written as `async def` returned an un-awaited coroutine, read as
+  "no decision", so an async deny hook let every call through. It now raises
+  `TypeError`; async callbacks belong in the Agent SDK's hooks.
+- **`Workspace.resolve` no longer lets a sibling folder in.** It compared
+  paths as strings, so `project-backup/` passed as inside `project/`.
+- **MCP over HTTP takes only the reply to the request it sent.** A reply with
+  another JSON-RPC `id` (including `true` or `"1"` for `1`), a body that is not
+  JSON, or a reply without a `result` object was accepted or crashed with a raw
+  error; each is now an `MCPError`. In streamed replies only the event with the
+  request's id counts, and the session id moves only on a reply that answers.
+- **MCP listings are bounded and checked.** A server sending endless new cursors
+  kept discovery looping; `RemoteMCPServer(max_discovery_pages=100)` now caps
+  it. A malformed `tools/list`, `resources/list` or `prompts/list` page fails
+  discovery instead of being half-read, and cursors go back exactly as sent.
+- **A session id longer than a file name saves again.** Looking for an
+  older version's file under that id crashed with "File name too long"; such
+  a file cannot exist, so it is now treated as absent.
+- **A fork from an earlier message knows nothing said after it.**
+  `SessionManager.fork(from_message=…)` and `fork_session(up_to_message_id=…)`
+  copied the original's verified facts, compaction summary and tool discovery,
+  all built from the later conversation. A cut fork now drops them; a whole
+  fork keeps them. Forks are deep copies, so changing one no longer changes
+  the original in an in-memory store.
+- **`SessionManager` runs chats on its own store.** Its chats were saved to the
+  agent's store instead. `Agent.chat_session()` takes `session_store=`, and the
+  manager passes its own.
+
+- **Breaking: SDK agents ask before running a tool no rule allows.** As in the
+  Claude Agent SDK, `query`, `AgentClient` and `shipit sdk` now run reads and
+  searches freely, and any other call needs `allowed_tools`, a mode that
+  approves it (`acceptEdits`, `bypassPermissions`), a PreToolUse hook's
+  `allow` or a yes from `can_use_tool`; with none, the model is told it needs
+  approval. Before, every unlisted call ran, so content the model read could
+  steer it into any tool. To keep the old behaviour, pass
+  `permission_mode="bypassPermissions"`. An unknown `permission_mode` is now
+  an error. The core `Agent` is unchanged.
+- **CI runs `shipiit/forge` at a fixed commit.** The two workflows used it
+  by the `v2` tag, which can be moved; they now pin the commit `v2` names
+  today, like every other action here.
+
+### Added
+
+- **`SessionStart` and `SessionEnd` hooks in the SDK layer.** They fire once
+  per `query()` and once per `AgentClient`. `SessionStart` reports `source`
+  (`startup` or `resume`) and can add context to the first prompt;
+  `SessionEnd` reports `reason`. All twelve SDK hook events now work.
+- **A chat session works from async code.** `chat.asend()`, `chat.astream()`
+  and `chat.astream_packets()` are the async forms of `send`, `stream` and
+  `stream_packets`, with the same history, callbacks and budgets.
+- **`recall_tool_result` can search.** `query="..."` returns the excerpt
+  around the first case-insensitive match in a large earlier result, so one
+  fact costs one small excerpt instead of paging through the whole result.
+  `matched` and `match_offset` are in the metadata; a miss returns no text.
+- **The SDK warns when an option does nothing on the chosen model.**
+  `effort`, `thinking`, `max_thinking_tokens`, `betas` and `cache_ttl` only
+  apply to adapters that support them (Anthropic). Set for any other provider,
+  each is now logged as a warning naming the adapter and model, instead of
+  being dropped silently.
+- **`RedactingTraceStore` scrubs events before an exporter sends them.**
+  Langfuse, LangSmith, OpenTelemetry and Watcher exporters shipped prompts,
+  tool arguments and tool output as they were. Wrap any of them to replace
+  secrets, values under credential keys and, with `pii=True`, personal data;
+  `redact=` adds your own rule. The run's own records are unchanged. Run, session
+  and trace ids are kept intact, so traces still join up.
+- **A one-hour prompt cache.** `AnthropicChatLLM(cache_ttl="1h")` and
+  `AgentOptions(cache_ttl="1h")` keep the cached prefix for an hour, for runs
+  that pause longer than five minutes between steps. Usage reports
+  `cache_creation_1h_input_tokens`, and cost estimates and budgets price those
+  writes at twice the input price.
+- **SDK tools can return images and resources.** An `image` block from an
+  `@tool` handler is shown to the model; `resource` and `resource_link` blocks
+  reach it as text; `structuredContent` is kept in the result's metadata.
+- **SDK tool schemas from `TypedDict` and `Annotated`.** `NotRequired` keys are
+  optional and `Annotated[type, "..."]` sets a field's description.
+  `ToolAnnotations` is exported for `annotations=`.
+- **MCP servers can be managed on a live session.** `AgentClient` gains
+  `toggle_mcp_server`, `reconnect_mcp_server` and `get_server_info`, and
+  `get_mcp_status` reports `disabled`. `AgentOptions(strict_mcp_config=True)`
+  leaves out the servers plugins declare.
+- **More on the SDK's messages.** `ResultMessage` has `model_usage` (tokens
+  and estimated cost per model), `terminal_reason` and `uuid`;
+  `AssistantMessage` has `message_id`.
+- **`shipit sdk "prompt"`** runs a prompt through the SDK layer from the
+  terminal: text and tool arguments stream live, calls that need approval
+  are asked about on the terminal (refused without one), and the run ends
+  with turns, tokens, cache reads and cost. `--json` prints one message per
+  line. `examples/25_agent_sdk_live.py` does the same in code.
+- **`monitor` tool**, the SDK's `Monitor`: watch a command's output in the
+  background until it ends or its deadline (default five minutes, at most
+  30). It runs under the bash tool's checks, environment, sandbox and job
+  table, and bash's permission rules cover it. Command sources only. Opt-in.
+- **Task-list tools.** `task_create`, `task_update`, `task_get` and
+  `task_list` (the SDK's `TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`)
+  keep a task list with owners and dependencies. Opt-in by name.
+- **MCP resource tools.** `list_mcp_resources` and `read_mcp_resource` (the
+  SDK's `ListMcpResources` and `ReadMcpResource`, under either spelling) list
+  and read the resources of the MCP servers switched on for the run.
+- **`include_hook_events`** reports each SDK hook callback as `hook_started`
+  and `hook_response` system messages, with its output and whether it failed.
+- **Sub-agent messages in the SDK stream.** A sub-agent's tool calls and
+  results arrive as messages with `parent_tool_use_id` naming the `sub_agent`
+  call that started it, followed by `task_progress` reports.
+  `forward_subagent_text=True` adds its text and thinking. Tool code can read
+  the running call's id from `shipit_agent.core.tool_runner.CURRENT_TOOL_CALL_ID`,
+  and `sub_agent_event` payloads now carry `parent_tool_use_id`.
+- **`AgentOptions(skills=[...])`** limits the main agent to the named skills
+  (`"all"` or `None` keeps every one, `[]` none). Wildcards, malformed names
+  and names no skill has raise `ValueError`.
+- **`RateLimitEvent` in the SDK stream.** A call refused for its rate limit
+  (429) is followed by a `RateLimitEvent` with `status="rejected"` and the
+  time the retry is due. Overloaded, server and network errors are not rate
+  limits and stay plain `api_retry` notices.
+- **`ToolSearch` and `ExitPlanMode`** in allow and deny rules name
+  `tool_search` and `present_plan`.
+- **Raw tool-argument events.** `Agent(stream_tool_input_json=True)` emits a
+  `tool_input_json_delta` event for each fragment of a tool call's JSON as the
+  model writes it. Off by default; the SDK turns it on with
+  `include_partial_messages`.
+- **`AgentOptions(task_budget={"total": n})`** stops a run once it has used n
+  tokens, and **`resume_session_at`** continues a saved session from one of
+  its messages, in a copy.
+
+### Changed
+
+- **`include_partial_messages` frames each response like the API stream.**
+  `shipit_agent.sdk` used to yield bare text deltas. A response is now
+  `message_start`, its blocks as `content_block_start` / `content_block_delta`
+  / `content_block_stop` with an `index`, then `message_delta` (stop reason and
+  usage) and `message_stop`, so streaming code written for the Claude Agent SDK
+  reads it the same way. Tool calls arrive as `tool_use` blocks before the
+  tool runs, with their arguments as `input_json_delta` pieces while the model
+  writes them (Anthropic, OpenAI and the LiteLLM-based adapters). Reasoning
+  arrives as a `thinking` block in one delta. A consumer slower than the
+  stream can lose some pieces; the `AssistantMessage` always carries the
+  complete input. A response cut mid-stream still ends with `message_stop`.
+
+### Fixed
+
+- **A browser chat is free again as soon as it has answered.** The browser
+  bridge sent a refusal (a bad model, a failed workspace action) before it
+  released the chat, so a client that replied at once could be told "This
+  chat is still running". The chat is now released first.
+- **Closing `agent.astream()` early closes the run.** The run underneath was
+  left for the garbage collector, so its cleanup ran late or at loop shutdown.
+  It is now closed as the stream closes.
+- **A token budget is not bypassed when a provider leaves out a count.** The
+  OpenAI, Anthropic and LiteLLM adapters recorded a missing or malformed
+  `prompt_tokens` / `completion_tokens` as `0`, so that work counted as free
+  and `max_task_tokens` / `max_session_tokens` never stopped the run. A count
+  the provider did not report is now left out, and a budgeted run stops with
+  `…_budget_usage_unavailable` as it was meant to. An explicit `0` is kept.
+- **A repeated call with a new view of the same result is sent.** The
+  repeat check compared only a tool's raw output, so a tool that returned the
+  same raw result with a different `model_text` had its new view replaced by
+  "No new data". A call is now a repeat only when the raw result and the
+  model's view are both unchanged.
+- **`recall_tool_result` clamps an offset past the end** and reports the real
+  position, instead of echoing the offset it was given.
+- **An edit with nothing to match no longer rewrites the file.** `edit_file`
+  and `multi_edit` with an empty `old_text` and `replace_all` inserted the new
+  text between every character of the file, and reported success. An empty
+  `old_text` is now refused with nothing written.
+- **A streamed tool call keeps one id.** OpenAI-compatible and LiteLLM
+  streams reported a call's argument fragments under a placeholder id when the
+  provider sent the real one late or not at all, and the finished call got a
+  different id, so a live view showed the call twice. The first id a call gets
+  is now its id to the end.
+- **Forking or resuming a session at a tool call keeps that call's results.**
+  `fork_session(up_to_message_id=...)` and `resume_session_at` cut the
+  conversation straight after the message, leaving a tool call with no result,
+  which providers refuse; the resumed run failed. The cut now includes the
+  call's results.
+- **A server error with no status is retried.** Bedrock's OpenAI-compatible
+  (Mantle) endpoint can fail inside a stream that opened with 200; the OpenAI
+  SDK then raises a bare `APIError` with no status, only the server's verdict
+  ("The server had an error while processing your request"). That was treated
+  as permanent, so a one-off failure ended a Gemma run. An SDK API error whose
+  body type is a server error (`server_error`, `api_error`, `overloaded_error`)
+  or whose message says so is now retried; a refused request is not, and a bug
+  that merely mentions a server error never is.
+
+---
+
 ## [3.1.1] — 2026-11-10
 
 ### Fixed
@@ -2907,7 +3175,8 @@ None — first stable release. Subsequent 1.x releases will maintain backward co
 
 ---
 
-[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/shipiit/shipit_agent/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/shipiit/shipit_agent/compare/v3.1.1...v4.0.0
 [3.1.1]: https://github.com/shipiit/shipit_agent/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/shipiit/shipit_agent/compare/v3.0.0...v3.1.0
 [1.0.18]: https://github.com/shipiit/shipit_agent/compare/v1.0.17...v1.0.18

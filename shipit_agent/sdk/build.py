@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from shipit_agent.safety.hooks import AgentHooks
 from shipit_agent.safety.permission_rules import rule_names_tool, sdk_tool_name
 
+from .hook_log import HookLog
 from .hooks import build_agent_hooks
 from .options import DEFAULT_TOOLS, AgentOptions
-from .permissions import permission_callback
+from .permissions import permission_callback, sdk_permissions
+from .session_hooks import SessionHooks
+from .skills_filter import limit_skills
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["build_agent", "llm_for_model"]
 
@@ -25,13 +31,17 @@ def build_agent(options: AgentOptions) -> Any:
     harness = _harness(options, root)
     model = options.model or (harness.settings.model if harness is not None else None)
     llm = options.llm if options.llm is not None else llm_for_model(model)
-    for name in ("effort", "thinking"):
+    if options.cache_ttl not in (None, "5m", "1h"):
+        raise ValueError('cache_ttl must be "5m" or "1h"')
+    for name in ("effort", "thinking", "cache_ttl"):
         value = getattr(options, name)
-        if value is not None and hasattr(llm, name):
+        if value is not None and _supports(llm, name, name):
             setattr(llm, name, value)
-    if options.max_thinking_tokens and options.thinking is None and hasattr(llm, "thinking_budget_tokens"):
+    if options.max_thinking_tokens and options.thinking is None and _supports(
+        llm, "thinking_budget_tokens", "max_thinking_tokens"
+    ):
         llm.thinking_budget_tokens = options.max_thinking_tokens
-    if options.betas and hasattr(llm, "betas"):
+    if options.betas and _supports(llm, "betas", "betas"):
         llm.betas = [*llm.betas, *(b for b in options.betas if b not in llm.betas)]
     tools = _with_sdk_questions(tools_for(options.tools, llm=llm, root=root), options.can_use_tool)
     for tool in tools if options.env else ():
@@ -65,8 +75,13 @@ def build_agent(options: AgentOptions) -> Any:
         "max_budget_usd": options.max_budget_usd,
         "fallback_model": options.fallback_model,
     }
+    if options.include_partial_messages:
+        settings["stream_tool_input_json"] = True
+    if options.task_budget is not None:
+        settings["max_task_tokens"] = _task_tokens(options.task_budget)
     if options.can_use_tool is not None:
         settings["permission_callback"] = permission_callback(options.can_use_tool)
+    settings["permissions"] = sdk_permissions(options.permission_mode, options.can_use_tool)
     if options.agents:
         settings["agents"] = dict(options.agents)
     if options.session_store is not None:
@@ -74,12 +89,28 @@ def build_agent(options: AgentOptions) -> Any:
     session_id = _session_id(options)
     if session_id:
         settings["session_id"] = session_id
+    log = HookLog() if options.include_hook_events else None
     if options.hooks is not None:
-        settings["hooks"] = _hooks(options, root)
+        settings["hooks"] = _hooks(options, root, log)
     if harness is not None:
         settings["harness"] = harness
     settings.update(options.agent_options)
-    return Agent(**settings)
+    agent = Agent(**settings)
+    agent._sdk_hook_log = log
+    agent._sdk_session_hooks = SessionHooks(options.hooks, base=_hook_base(options, root), log=log)
+    limit_skills(agent, options.skills)
+    return agent
+
+
+def _supports(llm: Any, attribute: str, option: str) -> bool:
+    """Whether *llm* has *attribute*; if not, say that *option* is ignored rather than drop it silently."""
+    if hasattr(llm, attribute):
+        return True
+    logger.warning(
+        "AgentOptions.%s is ignored: the %s adapter for model %r does not support it",
+        option, type(llm).__name__, getattr(llm, "model", None),
+    )
+    return False
 
 
 def llm_for_model(model: str | None) -> Any:
@@ -194,10 +225,21 @@ def _harness(options: AgentOptions, root: Path) -> Any:
         return None
     from shipit_agent.harness import Harness
 
-    return Harness.load(root, plugins=list(options.plugins), setting_sources=options.setting_sources)
+    harness = Harness.load(root, plugins=list(options.plugins), setting_sources=options.setting_sources)
+    harness.strict_mcp_config = options.strict_mcp_config
+    return harness
+
+
+def _task_tokens(budget: Any) -> int:
+    total = budget.get("total") if isinstance(budget, dict) else None
+    if isinstance(total, bool) or not isinstance(total, int) or total <= 0:
+        raise ValueError('task_budget must be {"total": n} with n a positive number of tokens')
+    return total
 
 
 def _session_id(options: AgentOptions) -> str | None:
+    if options.resume_session_at is not None and options.resume is None:
+        raise ValueError("resume_session_at needs resume: the session to continue from")
     if options.resume is None and options.continue_conversation:
         if options.session_store is None:
             raise ValueError("continue_conversation needs a session_store to continue from")
@@ -206,10 +248,10 @@ def _session_id(options: AgentOptions) -> str | None:
         return options.session_id
     if options.session_store is None or options.session_store.load(options.resume) is None:
         raise ValueError(f"resume={options.resume!r}: no such session in session_store")
-    if options.fork_session:
+    if options.fork_session or options.resume_session_at is not None:
         from .sessions import fork_session
 
-        return fork_session(options.session_store, options.resume)
+        return fork_session(options.session_store, options.resume, up_to_message_id=options.resume_session_at)
     return options.resume
 
 
@@ -222,13 +264,17 @@ def _latest_session(store: Any) -> str | None:
     return latest[1].session_id
 
 
-def _hooks(options: AgentOptions, root: Path) -> AgentHooks:
+def _hooks(options: AgentOptions, root: Path, log: HookLog | None = None) -> AgentHooks:
     if isinstance(options.hooks, AgentHooks):
         return options.hooks
-    base = {
+    return build_agent_hooks(dict(options.hooks), base=_hook_base(options, root), log=log)
+
+
+def _hook_base(options: AgentOptions, root: Path) -> dict[str, Any]:
+    """The fields every hook input carries."""
+    return {
         "session_id": options.session_id or "",
         "transcript_path": "",
         "cwd": str(root),
         "permission_mode": options.permission_mode,
     }
-    return build_agent_hooks(dict(options.hooks), base=base)

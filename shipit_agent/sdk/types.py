@@ -14,6 +14,7 @@ __all__ = [
     "AssistantMessage",
     "ContentBlock",
     "Message",
+    "RateLimitEvent",
     "ResultMessage",
     "StreamEvent",
     "SystemMessage",
@@ -81,6 +82,8 @@ class AssistantMessage:
     stop_reason: str | None = None
     session_id: str | None = None
     uuid: str | None = None
+    #: The id of the model response this message is part of.
+    message_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -116,6 +119,12 @@ class ResultMessage:
     errors: list[str] = field(default_factory=list)
     #: The call a hook deferred; resume the session to settle it.
     deferred_tool_use: dict[str, Any] | None = None
+    #: Tokens and estimated cost per model (``inputTokens``, ``costUSD``, ...);
+    #: ``usage`` is the run's total.
+    model_usage: dict[str, dict[str, Any]] | None = None
+    #: Why the loop stopped: ``completed``, ``max_turns``, ``max_budget_usd``, ``error``, ...
+    terminal_reason: str | None = None
+    uuid: str | None = None
 
 
 @dataclass(slots=True)
@@ -128,4 +137,20 @@ class StreamEvent:
     parent_tool_use_id: str | None = None
 
 
-Message = Union[UserMessage, AssistantMessage, SystemMessage, ResultMessage, StreamEvent]
+@dataclass(slots=True)
+class RateLimitEvent:
+    """The provider refused a call for its rate limit; the run waits and retries.
+
+    ``rate_limit_info`` has ``status`` (always ``"rejected"``: a run only learns
+    of a limit when a call is refused), ``resets_at`` (epoch seconds when the
+    retry is due, or ``None`` when it was immediate), ``rate_limit_type`` and
+    ``utilization`` (``None``: providers do not report them to an API key)
+    and ``raw`` (the retry's details).
+    """
+
+    rate_limit_info: dict[str, Any]
+    uuid: str
+    session_id: str
+
+
+Message = Union[UserMessage, AssistantMessage, SystemMessage, ResultMessage, StreamEvent, RateLimitEvent]

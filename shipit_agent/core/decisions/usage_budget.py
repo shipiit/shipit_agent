@@ -33,6 +33,7 @@ class UsageBudgetMixin:
             response.usage.get("completion_tokens", 0),
             read,
             write,
+            response.usage.get("cache_creation_1h_input_tokens", 0),
         )
         self._total_context_input += total_input
         purpose = (
@@ -56,6 +57,7 @@ class UsageBudgetMixin:
             "total_tokens",
             "cache_read_input_tokens",
             "cache_creation_input_tokens",
+            "cache_creation_1h_input_tokens",
         ):
             self._total_usage[key] += response.usage.get(key, 0)
         spent = total_input + response.usage.get("completion_tokens", 0)
@@ -98,6 +100,7 @@ class UsageBudgetMixin:
             counted.get("completion_tokens", 0),
             read,
             write,
+            counted.get("cache_creation_1h_input_tokens", 0),
         )
         self._total_context_input += total_input
         self._purpose_usage["main"] += tokens
@@ -108,22 +111,24 @@ class UsageBudgetMixin:
             "total_tokens",
             "cache_read_input_tokens",
             "cache_creation_input_tokens",
+            "cache_creation_1h_input_tokens",
         ):
             self._total_usage[key] += counted.get(key, 0)
         return tokens
 
     def _bucket(
-        self, model: Any, uncached: int, output: int, read: int, write: int
+        self, model: Any, uncached: int, output: int, read: int, write: int, write_1h: int = 0
     ) -> None:
         if not model:
             return
         bucket = self._usage_by_model.setdefault(
-            str(model), {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+            str(model), {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "cache_write_1h": 0}
         )
         bucket["input"] += uncached
         bucket["output"] += output
         bucket["cache_read"] += read
         bucket["cache_write"] += write
+        bucket["cache_write_1h"] += write_1h
 
     def budget_stop_message(self) -> str:
         reason = str(self.metadata.get("incomplete_reason") or "")

@@ -4,7 +4,8 @@
     .venv/bin/python notebooks/guides/build.py g01 g03    # some
     .venv/bin/python notebooks/guides/build.py --no-run   # write cells only (new guides)
 
-Each src/gNN_*.py defines TITLE and CELLS, a list of md(...) and code(...).
+Each src/gNN_*.py defines TITLE and CELLS, a list of md(...) and code(...), and may
+define SINCE, the release it was written for ("4.0").
 Running executes the notebook from this folder, so build_llm_from_env() finds
 the repo's .env, then scrubs home paths and the user name from the outputs.
 """
@@ -94,6 +95,8 @@ def build(source: Path, run: bool) -> Path:
     module = _load(source)
     nb = nbformat.v4.new_notebook()
     nb.metadata["kernelspec"] = {"name": "python3", "display_name": "Python 3", "language": "python"}
+    if getattr(module, "SINCE", ""):
+        nb.metadata["shipit"] = {"since": module.SINCE}  # the release a guide was written for
     for kind, text in module.CELLS:
         nb.cells.append(nbformat.v4.new_markdown_cell(text) if kind == "md" else nbformat.v4.new_code_cell(text))
     if run:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -51,22 +52,44 @@ class FileSessionStore:
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
     def _path_for(self, session_id: str) -> Path:
-        safe = session_id.replace("/", "_")
-        return self.root_dir / f"{safe}.json"
+        # Named by a hash of the exact id: any two different ids, whatever
+        # their characters or case, get different files, all inside root_dir.
+        digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+        return self.root_dir / f"s-{digest}.json"
+
+    def _legacy_path_for(self, session_id: str) -> Path | None:
+        """The file an older version saved this id in (slashes made underscores), if there is one in the folder."""
+        name = session_id.replace("/", "_")
+        if not name or name in (".", "..") or "\\" in name or "\x00" in name:
+            return None
+        path = self.root_dir / f"{name}.json"
+        try:
+            return path if path.exists() else None
+        except OSError:
+            return None  # e.g. longer than a file name may be, so never saved under it
+
+    @staticmethod
+    def _read(path: Path) -> SessionRecord | None:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(raw, dict) or not isinstance(raw.get("session_id"), str):
+            return None
+        return SessionRecord(
+            session_id=raw["session_id"],
+            messages=[Message.from_dict(item) for item in raw.get("messages", [])],
+            metadata=dict(raw.get("metadata", {})),
+        )
 
     def load(self, session_id: str) -> SessionRecord | None:
         path = self._path_for(session_id)
-        if not path.exists():
-            return None
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        return SessionRecord(
-            session_id=raw["session_id"],
-            messages=[
-                Message.from_dict(item)
-                for item in raw.get("messages", [])
-            ],
-            metadata=dict(raw.get("metadata", {})),
-        )
+        if path.exists():
+            return self._read(path)
+        # A file from an older version counts only if it holds exactly this id.
+        legacy = self._legacy_path_for(session_id)
+        record = self._read(legacy) if legacy is not None else None
+        return record if record is not None and record.session_id == session_id else None
 
     def save(self, record: SessionRecord) -> None:
         path = self._path_for(record.session_id)
@@ -76,14 +99,21 @@ class FileSessionStore:
             "metadata": record.metadata,
         }
         _atomic_write_text(path, json.dumps(payload, indent=2))
+        legacy = self._legacy_path_for(record.session_id)
+        if legacy is not None and legacy != path:
+            old = self._read(legacy)
+            if old is not None and old.session_id == record.session_id:
+                legacy.unlink(missing_ok=True)
 
     def list_all(self) -> list[SessionRecord]:
-        records: list[SessionRecord] = []
-        for path in sorted(self.root_dir.glob("*.json")):
-            record = self.load(path.stem)
-            if record is not None:
-                records.append(record)
-        return records
+        found: dict[str, SessionRecord] = {}
+        # New-style files first, so a session saved by both versions is listed once, as saved now.
+        paths = sorted(self.root_dir.glob("*.json"), key=lambda p: (not p.name.startswith("s-"), p.name))
+        for path in paths:
+            record = self._read(path)
+            if record is not None and record.session_id not in found:
+                found[record.session_id] = record
+        return list(found.values())
 
 
 def _atomic_write_text(path: Path, text: str) -> None:

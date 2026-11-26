@@ -38,7 +38,15 @@ def make_handler(server: AgentServer) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(data)
 
+        def _refused(self, *, post: bool) -> bool:
+            problem = server._request_problem(self.headers, post=post)
+            if problem is not None:
+                self._json(problem[0], {"error": {"message": problem[1]}})
+            return problem is not None
+
         def do_GET(self) -> None:
+            if self._refused(post=False):
+                return
             if self.path == "/health":
                 from shipit_agent.observability.streaming import STREAM_GENERATION
 
@@ -139,6 +147,8 @@ def make_handler(server: AgentServer) -> type[BaseHTTPRequestHandler]:
                     pass
 
         def do_POST(self) -> None:
+            if self._refused(post=True):
+                return
             if self.path in ("/v1/stream", "/stream"):
                 self._run_sse()
                 return

@@ -35,6 +35,7 @@ class CostBudgetMixin:
                             b["output"],
                             cache_read_tokens=b["cache_read"],
                             cache_write_tokens=b["cache_write"],
+                            cache_write_1h_tokens=b.get("cache_write_1h", 0),
                         )
                         for name, b in self._usage_by_model.items()
                     ),
@@ -54,6 +55,7 @@ class CostBudgetMixin:
                         usage.get("completion_tokens", 0),
                         cache_read_tokens=usage.get("cache_read_input_tokens", 0),
                         cache_write_tokens=usage.get("cache_creation_input_tokens", 0),
+                        cache_write_1h_tokens=usage.get("cache_creation_1h_input_tokens", 0),
                     ),
                     6,
                 )

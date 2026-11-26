@@ -49,6 +49,7 @@ CONTRACTS: dict[str, ToolContract] = {
     "bash": _act(SHELL_EXEC, await_decision=True, destructive=True),
     "bash_job": _act(SHELL_EXEC, await_decision=True),
     "task_stop": _act(SHELL_EXEC, await_decision=True),
+    "monitor": _act(SHELL_EXEC, await_decision=True, destructive=True),
     "run_code": _act(CODE_EXEC, await_decision=True, destructive=True),
     # Same reasoning as run_code: the argument is arbitrary code, so the tag
     # says nothing about what this particular call does. Each env call inside
@@ -125,9 +126,15 @@ CONTRACTS: dict[str, ToolContract] = {
     "verify_output": OBSERVE,
     "build_prompt": OBSERVE,
     "tool_search": OBSERVE,
+    "list_mcp_resources": OBSERVE,
+    "read_mcp_resource": OBSERVE,
     "describe_binding": OBSERVE,
     # Listing and requesting connections changes nothing itself.
     "connections": OBSERVE,
     "todo": _act(AGENT_STATE, auto=True),
+    "task_create": _act(AGENT_STATE, auto=True),
+    "task_update": _act(AGENT_STATE, auto=True),
+    "task_get": OBSERVE,
+    "task_list": OBSERVE,
     "memory": _act(MEMORY_WRITE, auto=True),
 }

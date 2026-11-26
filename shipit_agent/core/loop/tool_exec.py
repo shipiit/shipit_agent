@@ -228,6 +228,7 @@ class ToolExecutionMixin:
                 {
                     "name": tool_call.name,
                     "arguments": dict(decision.updated_arguments),
+                    "id": getattr(tool_call, "id", ""),
                 },
             )()
 

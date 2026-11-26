@@ -33,16 +33,18 @@ from urllib.parse import urlparse
 
 from shipit_agent.tools.bash.command_risk import command_segments
 
-__all__ = ["RuleBehavior", "is_scoped", "rule_matches", "rule_names_tool", "sdk_tool_name"]
+__all__ = ["RuleBehavior", "closes_mcp_server", "is_scoped", "rule_matches", "rule_names_tool", "sdk_tool_name"]
 
 RuleBehavior = Literal["allow", "deny", "ask"]
 
 #: SDK tool names, lower-cased, and the shipit tools each one names.
 _SDK_NAMES: dict[str, tuple[str, ...]] = {
-    "bash": ("bash",),
-    "read": ("read_file", "glob_files", "grep_files"),
-    "edit": ("edit_file", "write_file", "multi_edit", "notebook_edit"),
-    "write": ("write_file",),
+    # Monitor runs a command as bash does, so bash rules cover it too.
+    "bash": ("bash", "monitor"),
+    "monitor": ("monitor",),
+    "read": ("read_file", "glob_files", "grep_files", "pdf"),
+    "edit": ("edit_file", "write_file", "multi_edit", "notebook_edit", "download_file"),
+    "write": ("write_file", "download_file"),
     "multiedit": ("multi_edit",),
     "notebookedit": ("notebook_edit",),
     "glob": ("glob_files",),
@@ -57,14 +59,27 @@ _SDK_NAMES: dict[str, tuple[str, ...]] = {
     "taskstop": ("task_stop",),
     "killshell": ("task_stop",),
     "killbash": ("task_stop",),
+    "toolsearch": ("tool_search",),
+    "exitplanmode": ("present_plan",),
+    "taskcreate": ("task_create",),
+    "taskupdate": ("task_update",),
+    "taskget": ("task_get",),
+    "tasklist": ("task_list",),
+    "listmcpresources": ("list_mcp_resources",),
+    "listmcpresourcestool": ("list_mcp_resources",),
+    "readmcpresource": ("read_mcp_resource",),
+    "readmcpresourcetool": ("read_mcp_resource",),
 }
 
 #: Which argument a specifier is matched against, by shipit tool.
-_COMMAND_TOOLS = frozenset({"bash"})
+_COMMAND_TOOLS = frozenset({"bash", "monitor"})
 _PATH_TOOLS = frozenset(
-    {"read_file", "glob_files", "grep_files", "edit_file", "write_file", "multi_edit", "notebook_edit"}
+    {"read_file", "glob_files", "grep_files", "edit_file", "write_file", "multi_edit", "notebook_edit", "download_file",
+     "pdf"}
 )
 _URL_TOOLS = frozenset({"open_url"})
+#: The argument holding the path, for tools that do not call it ``path``.
+_PATH_ARGUMENT = {"pdf": "source"}
 
 _SCOPED = re.compile(r"^\s*([^()\s]+)\s*\((.*)\)\s*$", re.DOTALL)
 
@@ -73,6 +88,19 @@ def sdk_tool_name(name: str) -> str | None:
     """The shipit tool an SDK tool name stands for (``"Read"`` is ``read_file``), or ``None``."""
     tools = _SDK_NAMES.get(name.strip().lower().replace("_", ""))
     return tools[0] if tools else None
+
+
+def closes_mcp_server(rule: str, server: str) -> bool:
+    """Whether *rule* covers every tool of MCP server *server* (``mcp__srv__*``, ``mcp__*``).
+
+    A rule that names one of the server's tools leaves the rest of it, and its
+    resources, open.
+    """
+    name = rule.strip()
+    if is_scoped(name) or not name.startswith("mcp__"):
+        return False
+    # A tool name no server would choose: only a wildcard over the whole server matches it.
+    return fnmatch.fnmatchcase(f"{server}__\x00every-tool", name[len("mcp__"):])
 
 
 def is_scoped(rule: str) -> bool:
@@ -117,7 +145,10 @@ def rule_matches(
     if tool_name in _COMMAND_TOOLS:
         return _command_rule(specifier, arguments.get("command"), behavior)
     if tool_name in _PATH_TOOLS:
-        return _path_rule(specifier, arguments.get("path"), root or os.getcwd())
+        target = arguments.get(_PATH_ARGUMENT.get(tool_name, "path"))
+        if isinstance(target, str) and target.startswith(("http://", "https://")):
+            return False  # a URL source is not a path
+        return _path_rule(specifier, target, root or os.getcwd())
     if tool_name in _URL_TOOLS:
         return _domain_rule(specifier, arguments.get("url"))
     return False

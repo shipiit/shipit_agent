@@ -193,6 +193,23 @@ Live delta metadata excludes the heavy canonical fields (`raw_result`, content
 blocks, and structured content) so a large response is not duplicated into
 every event. They remain available on the canonical `ToolResult`.
 
+## What a server cannot slip past
+
+A server's answers are checked before they reach the agent:
+
+- **Replies must answer the request.** An HTTP reply whose JSON-RPC `id` is not
+  the request's, a body that is not JSON, or a reply with no `result` object is
+  an `MCPError`. In a streamed (SSE) reply, only the event with the request's id
+  counts, and the session id moves only on a reply that answers.
+- **Listings are bounded.** `tools/list`, `resources/list` and `prompts/list`
+  take at most `max_discovery_pages` cursor pages (default 100). A malformed page
+  fails discovery instead of leaving a partial catalog.
+- **Read-only means literal `true`.** `readOnlyHint` lets a tool through plan
+  mode and lockdown only when it is JSON `true`.
+- **A call reports what happened.** A tool's static `metadata` never overrides
+  `ok`, `is_error` or `server`, and a result with only `structuredContent` is
+  shown to the model.
+
 ## Debugging
 
 - Use `agent.doctor()` to get a health report including MCP server reachability

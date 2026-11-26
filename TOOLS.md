@@ -54,8 +54,8 @@ Runtime data passed into tools:
 | Tool | Purpose | Main Fields | Notes |
 | --- | --- | --- | --- |
 | `WebSearchTool` | Provider-backed web search. | `provider`, `api_key`, `provider_config`, `name`, `description`, `prompt` | Supports `playwright`, `duckduckgo`, `brave`, `serper`, and `tavily`. |
-| `OpenURLTool` | Fetch and extract content from a URL. | `timeout`, `max_chars`, `user_agent`, `name`, `description`, `prompt` | Good after search when the model needs direct page content. |
-| `PlaywrightBrowserTool` | Inspect rendered pages. | `name`, `description`, `prompt` | Better than raw fetch for interactive or JS-heavy pages. |
+| `OpenURLTool` | Fetch and extract content from a URL. | `timeout`, `max_chars`, `user_agent`, `allow_private_hosts`, `name`, `description`, `prompt` | Good after search when the model needs direct page content. Public http(s) addresses only, on every redirect, unless `allow_private_hosts=True`. |
+| `PlaywrightBrowserTool` | Inspect rendered pages. | `allow_private_hosts`, `name`, `description`, `prompt` | Better than raw fetch for interactive or JS-heavy pages. Refuses `file://` and private addresses, and checks every request the page makes, unless `allow_private_hosts=True`. |
 
 ### Human In The Loop
 
@@ -111,6 +111,26 @@ These are safe “thinking tools.” They do not expose private chain-of-thought
 | Tool | Purpose | Main Fields | Notes |
 | --- | --- | --- | --- |
 | `SubAgentTool` | Delegate bounded work to another agent. | `llm`, `name`, `description`, `prompt` | Useful when one sub-task should be isolated from the main run. |
+
+### Tasks And Background Work
+
+| Tool | Tool id | Purpose | Notes |
+| --- | --- | --- | --- |
+| `TaskCreateTool` | `task_create` | Add a task to the run's task list. | Takes `subject`, `description`, optional `activeForm` and `metadata`. Ids are never reused. |
+| `TaskUpdateTool` | `task_update` | Change one task. | `status` is `pending`, `in_progress`, `completed` or `deleted`; `addBlocks` / `addBlockedBy` link tasks. |
+| `TaskGetTool` | `task_get` | Read one task in full. | Returns its description, status and what it blocks. |
+| `TaskListTool` | `task_list` | List every task. | Each with its status, owner and what blocks it. |
+| `MonitorTool` | `monitor` | Run a command in the background and log each line it prints. | Goes through the bash tool's checks, environment and sandbox; bash permission rules cover it. `timeout_ms` defaults to 300,000 and is at most 1,800,000. |
+
+The four task tools and `monitor` are not in the SDK API's default tool set: name them in `tools=[...]` (`"TaskCreate"`, `"Monitor"`, …). `todo` remains the simpler single-call list.
+
+### MCP Resources And Recall
+
+| Tool | Tool id | Purpose | Notes |
+| --- | --- | --- | --- |
+| `ListMcpResourcesTool` | `list_mcp_resources` | List the resources attached MCP servers offer. | Optional `server`. A server closed by a deny rule is left out. |
+| `ReadMcpResourceTool` | `read_mcp_resource` | Read one resource by `server` and `uri`. | Text comes back as text; other content is described. |
+| `RecallToolResult` | `recall_tool_result` | Read a slice of a large earlier result by `call_id`. | `offset` and `limit` page through it; `query` returns the excerpt around the first case-insensitive match. Installed by the runtime when a result was trimmed from context. |
 
 ## How To Create A New Tool
 

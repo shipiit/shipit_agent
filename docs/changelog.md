@@ -132,6 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SessionStart` and `SessionEnd` hooks in the SDK layer.** They fire once
+  per `query()` and once per `AgentClient`. `SessionStart` reports `source`
+  (`startup` or `resume`) and can add context to the first prompt;
+  `SessionEnd` reports `reason`. All twelve SDK hook events now work.
 - **A chat session works from async code.** `chat.asend()`, `chat.astream()`
   and `chat.astream_packets()` are the async forms of `send`, `stream` and
   `stream_packets`, with the same history, callbacks and budgets.

@@ -24,14 +24,17 @@ from shipit_agent.safety.permission_rules import rule_names_tool
 
 from .tools import run_maybe_async
 
-__all__ = ["HOOK_EVENTS", "HookMatcher", "build_agent_hooks"]
+__all__ = ["HOOK_EVENTS", "SESSION_EVENTS", "HookMatcher", "build_agent_hooks"]
 
 logger = logging.getLogger(__name__)
 
 HOOK_EVENTS = (
     "PreToolUse", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "Stop",
     "SubagentStart", "SubagentStop", "PreCompact", "Notification", "PermissionRequest",
+    "SessionStart", "SessionEnd",  # fired around a session by .session_hooks, not inside a run
 )
+#: Fired around a session by ``.session_hooks``; callbacks only, not plugin command hooks.
+SESSION_EVENTS = ("SessionStart", "SessionEnd")
 _TOOL_EVENTS = frozenset({"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest"})
 _FAILED = object()
 
@@ -64,7 +67,9 @@ def build_agent_hooks(
     return hooks
 
 
-def _register(hooks: AgentHooks, event: str, matcher: HookMatcher, base: dict[str, Any], log: Any = None) -> None:
+def _caller(event: str, matcher: HookMatcher, base: dict[str, Any], log: Any = None) -> Callable[..., list[Any]]:
+    """Run *matcher*'s callbacks for *event* when the subject matches; their outputs."""
+
     def call(subject: str | None, data: dict[str, Any], tool_use_id: str | None = None) -> list[Any]:
         if subject is not None and not _matches(matcher.matcher, subject):
             return []
@@ -81,6 +86,11 @@ def _register(hooks: AgentHooks, event: str, matcher: HookMatcher, base: dict[st
             outputs.append(output)
         return outputs
 
+    return call
+
+
+def _register(hooks: AgentHooks, event: str, matcher: HookMatcher, base: dict[str, Any], log: Any = None) -> None:
+    call = _caller(event, matcher, base, log)
     if event == "PreToolUse":
         def pre_tool(name: str, arguments: dict[str, Any]) -> Any:
             return _fold_pre_tool(call(name, {"tool_name": name, "tool_input": dict(arguments), "tool_use_id": None}))

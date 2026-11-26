@@ -242,7 +242,9 @@ async def no_secrets(input_data, tool_use_id, context):
 options = AgentOptions(hooks={"PreToolUse": [HookMatcher("Read|Edit", [no_secrets], timeout=5)]})
 ```
 
-All ten events work: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `Notification` and `PermissionRequest`.
+All twelve events work: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `Notification`, `PermissionRequest`, `SessionStart` and `SessionEnd`.
+
+- **Session events:** `SessionStart` and `SessionEnd` fire once per `query()`, and once per `AgentClient` (on connect and on disconnect). `SessionStart` gets `source` (`"startup"` or `"resume"`; a matcher such as `HookMatcher("resume", ...)` selects on it), and its `additionalContext` is added to the first prompt. `SessionEnd` gets `reason`.
 
 - **Inputs and outputs:** they use the SDK's field names, including `permissionDecision`, `updatedInput`, `updatedToolOutput`, `additionalContext` and `decision: "block"`.
 - **Failures:** a hook that raises or times out is skipped, unless its matcher sets `on_failure="block"`.

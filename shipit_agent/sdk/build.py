@@ -13,6 +13,7 @@ from .hook_log import HookLog
 from .hooks import build_agent_hooks
 from .options import DEFAULT_TOOLS, AgentOptions
 from .permissions import permission_callback, sdk_permissions
+from .session_hooks import SessionHooks
 from .skills_filter import limit_skills
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ def build_agent(options: AgentOptions) -> Any:
     settings.update(options.agent_options)
     agent = Agent(**settings)
     agent._sdk_hook_log = log
+    agent._sdk_session_hooks = SessionHooks(options.hooks, base=_hook_base(options, root), log=log)
     limit_skills(agent, options.skills)
     return agent
 
@@ -265,10 +267,14 @@ def _latest_session(store: Any) -> str | None:
 def _hooks(options: AgentOptions, root: Path, log: HookLog | None = None) -> AgentHooks:
     if isinstance(options.hooks, AgentHooks):
         return options.hooks
-    base = {
+    return build_agent_hooks(dict(options.hooks), base=_hook_base(options, root), log=log)
+
+
+def _hook_base(options: AgentOptions, root: Path) -> dict[str, Any]:
+    """The fields every hook input carries."""
+    return {
         "session_id": options.session_id or "",
         "transcript_path": "",
         "cwd": str(root),
         "permission_mode": options.permission_mode,
     }
-    return build_agent_hooks(dict(options.hooks), base=base, log=log)

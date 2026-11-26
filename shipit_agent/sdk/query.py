@@ -15,6 +15,7 @@ from typing import Any
 from .build import build_agent
 from .convert import MessageStream, error_result
 from .options import AgentOptions
+from .session_hooks import with_context
 from .tools import HOME_LOOP
 from .types import Message, ResultMessage, SystemMessage
 
@@ -32,8 +33,14 @@ async def query(
     """
     options = options or AgentOptions()
     if isinstance(prompt, str):
-        async for message in run_messages(build_agent(options), prompt, options):
-            yield message
+        agent = build_agent(options)
+        session = agent._sdk_session_hooks
+        context = await session.start(resumed=bool(options.resume or options.continue_conversation))
+        try:
+            async for message in run_messages(agent, with_context(prompt, context), options):
+                yield message
+        finally:
+            await session.end()
         return
     from .client import AgentClient
 

@@ -23,6 +23,7 @@ from .build import build_agent, llm_for_model
 from .checkpoints import FileCheckpoints
 from .options import AgentOptions
 from .query import init_data, run_messages
+from .session_hooks import with_context
 from .status import McpControls, context_usage
 from .types import Message, ResultMessage, UserMessage
 
@@ -40,6 +41,7 @@ class AgentClient:
         self._primary_llm: Any = None
         self._queue: asyncio.Queue[Any] = asyncio.Queue()
         self._runs: list[asyncio.Task[None]] = []
+        self._session_context = ""  # SessionStart's additions, for the first prompt only
         self._checkpoints: FileCheckpoints | None = None
         self._mcp: McpControls | None = None
 
@@ -59,6 +61,8 @@ class AgentClient:
             if self.options.enable_file_checkpointing:
                 self._checkpoints = FileCheckpoints(self._agent.project_root)
                 self._agent.hooks.on_before_tool(self._checkpoints.before_tool)
+            resumed = bool(self.options.resume or self.options.continue_conversation)
+            self._session_context = await self._agent._sdk_session_hooks.start(resumed=resumed)
         if prompt is not None:
             await self.query(prompt)
 
@@ -84,7 +88,8 @@ class AgentClient:
         if previous is not None:
             await asyncio.gather(previous, return_exceptions=True)
         await self._queue.put(UserMessage(content=prompt, uuid=message_id))
-        async for message in run_messages(self._agent, prompt, self.options):
+        context, self._session_context = self._session_context, ""
+        async for message in run_messages(self._agent, with_context(prompt, context), self.options):
             await self._queue.put(message)
 
     async def receive_messages(self) -> AsyncIterator[Message]:
@@ -182,6 +187,8 @@ class AgentClient:
             self._agent.cancel()
         await asyncio.gather(*self._runs, return_exceptions=True)
         self._runs.clear()
+        if self._agent is not None:
+            await self._agent._sdk_session_hooks.end()
         await self._queue.put(_CLOSED)
 
     async def _connected(self) -> Any:

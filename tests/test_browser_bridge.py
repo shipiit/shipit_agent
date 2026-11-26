@@ -127,3 +127,30 @@ def test_invalid_model_is_a_client_error_without_losing_chat(bridge, model):
     assert '"type": "done"' in post(
         bridge, "/chat", {"session_id": sid, "prompt": "still working"}
     )
+
+
+class _SlowToRelease:
+    """A chat lock that is slow to let go, as a busy machine is: the reply must not be sent first."""
+
+    def __init__(self, lock):
+        self._lock = lock
+
+    def acquire(self, blocking=True):
+        return self._lock.acquire(blocking)
+
+    def release(self):
+        import time
+
+        time.sleep(0.3)
+        self._lock.release()
+
+
+def test_a_refused_chat_is_free_again_by_the_time_the_client_hears_about_it(bridge):
+    sid = new(bridge)
+    chat, lock = bridge[0].sessions[sid]
+    bridge[0].sessions[sid] = (chat, _SlowToRelease(lock))
+    for _ in range(3):
+        with pytest.raises(urllib.error.HTTPError) as error:
+            post(bridge, "/chat", {"session_id": sid, "prompt": "hello", "model": "not-configured"})
+        assert error.value.code == 400
+    assert '"type": "done"' in post(bridge, "/chat", {"session_id": sid, "prompt": "still working"})

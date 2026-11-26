@@ -228,6 +228,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A browser chat is free again as soon as it has answered.** The browser
+  bridge sent a refusal (a bad model, a failed workspace action) before it
+  released the chat, so a client that replied at once could be told "This
+  chat is still running". The chat is now released first.
 - **Closing `agent.astream()` early closes the run.** The run underneath was
   left for the garbage collector, so its cleanup ran late or at loop shutdown.
   It is now closed as the stream closes.

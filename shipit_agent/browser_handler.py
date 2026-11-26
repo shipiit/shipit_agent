@@ -126,6 +126,9 @@ def make_handler(bridge: BrowserBridge):
                     lock.release()
                     self.reply(200, {"deleted": True})
                     return
+            # A JSON answer is sent only after the chat is free again: a client
+            # that reacts to it at once must not find the chat "still running".
+            answer: tuple[int, dict] | None = None
             try:
                 if self.path == "/workspace/apply":
                     tool = bridge.workspace_tools.get(sid)
@@ -149,9 +152,9 @@ def make_handler(bridge: BrowserBridge):
                                 )
                             )
                             chat.session_store.save(record)
-                        self.reply(200, result)
+                        answer = (200, result)
                     except (ValueError, OSError) as exc:
-                        self.reply(400, {"error": str(exc)})
+                        answer = (400, {"error": str(exc)})
                     return
                 try:
                     prompt = browser_prompt(body)
@@ -169,7 +172,7 @@ def make_handler(bridge: BrowserBridge):
                         )
                     chat.agent = chat.agent.clone(llm=model["llm"])
                 except ValueError as exc:
-                    self.reply(400, {"error": str(exc)})
+                    answer = (400, {"error": str(exc)})
                     return
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
@@ -228,4 +231,6 @@ def make_handler(bridge: BrowserBridge):
                         pass
             finally:
                 lock.release()
+                if answer is not None:
+                    self.reply(*answer)
     return Handler

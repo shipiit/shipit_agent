@@ -5,7 +5,7 @@ description: The built-in tools, how to choose which an agent gets, and how to a
 
 # Tools
 
-A tool is something the model can do: read a file, run a command, search the web, post to Slack. shipit has 66 built in, and you can add your own as functions, classes, MCP servers or other agents.
+A tool is something the model can do: read a file, run a command, search the web, post to Slack. shipit has 73 built in, and you can add your own as functions, classes, MCP servers or other agents.
 
 ## The built-in tools
 

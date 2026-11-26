@@ -135,6 +135,7 @@ nav:
       - Quickstart: getting-started/quickstart.md
       - Configure a model: getting-started/environment.md
       - Core concepts: getting-started/concepts.md
+      - Upgrading to 4.0: guides/upgrading-4.md
       - Upgrading to 3.0: guides/upgrading.md
       - Changelog: changelog.md
   - Build an agent:

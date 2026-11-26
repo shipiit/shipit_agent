@@ -115,13 +115,46 @@ def test_the_key_is_still_required(served: Any) -> None:
     assert _send(port, Authorization="Bearer sekrit") == 200
 
 
-def test_off_this_machine_a_key_is_generated_when_none_was_given() -> None:
+@pytest.mark.parametrize("host", ["0.0.0.0", "192.168.1.20", "::", "example.internal"])
+def test_off_this_machine_the_server_refuses_to_start_without_a_key(host: str) -> None:
     server = AgentServer(Agent(llm=_Model()))
-    assert server.require_key_for("0.0.0.0") is True and server.api_key and len(server.api_key) >= 32
+    with pytest.raises(ValueError, match="--api-key"):
+        server.start(host=host, port=0)
+    assert server.api_key is None  # none is invented: a key nobody was shown locks everyone out
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
+def test_on_this_machine_no_key_is_needed(host: str) -> None:
+    server = AgentServer(Agent(llm=_Model()))
+    server.require_key_for(host)
+    assert server.api_key is None
+
+
+def test_a_given_key_is_kept_off_this_machine() -> None:
     keyed = AgentServer(Agent(llm=_Model()), api_key="mine")
-    assert keyed.require_key_for("0.0.0.0") is False and keyed.api_key == "mine"
-    local = AgentServer(Agent(llm=_Model()))
-    assert local.require_key_for("127.0.0.1") is False and local.api_key is None
+    keyed.require_key_for("0.0.0.0")
+    assert keyed.api_key == "mine"
+
+
+def test_shipit_serve_exits_with_the_reason_and_prints_no_key(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import argparse
+
+    from shipit_agent.cli.commands import serve_cmd
+
+    monkeypatch.setattr(serve_cmd, "build_agent", lambda args: Agent(llm=_Model()))
+    served: list[str] = []
+    monkeypatch.setattr(AgentServer, "serve_forever", lambda self, **kw: served.append(kw["host"]))
+    args = argparse.Namespace(name="shipit", api_key=None, allow_origin="", host="0.0.0.0", port=8399)
+    assert serve_cmd.cmd_serve(args) == 2
+    output = capsys.readouterr()
+    assert served == [] and "--api-key" in output.out + output.err
+
+    args.api_key = "sekrit-value-123"
+    assert serve_cmd.cmd_serve(args) == 0
+    output = capsys.readouterr()
+    assert served == ["0.0.0.0"] and "sekrit-value-123" not in output.out + output.err
 
 
 @pytest.mark.parametrize(("host", "expected"), [

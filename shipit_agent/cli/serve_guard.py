@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import hmac
 import ipaddress
-import secrets
 from typing import Any
 
-__all__ = ["is_loopback", "key_matches", "new_key", "request_problem"]
+__all__ = ["is_loopback", "key_matches", "request_problem"]
 
 _LOOPBACK_NAMES = frozenset({"localhost", "localhost.", "ip6-localhost"})
 
@@ -34,10 +33,6 @@ def is_loopback(host: str) -> bool:
         return ipaddress.ip_address(name).is_loopback
     except ValueError:
         return False
-
-
-def new_key() -> str:
-    return secrets.token_urlsafe(32)
 
 
 def key_matches(header: str, key: str) -> bool:

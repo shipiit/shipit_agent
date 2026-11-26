@@ -24,7 +24,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from .serve_guard import is_loopback, key_matches, new_key, request_problem
+from .serve_guard import is_loopback, key_matches, request_problem
 from .serve_handler import make_handler
 
 __all__ = ["AgentServer", "is_loopback"]
@@ -75,13 +75,18 @@ class AgentServer:
     def _request_problem(self, headers: Any, *, post: bool) -> tuple[int, str] | None:
         return request_problem(headers, post=post, bound_host=self.bound_host, allowed_origins=self.allowed_origins)
 
-    def require_key_for(self, host: str) -> bool:
-        """Bound off this machine, never serve keyless: generate a key. True when one was generated."""
+    def require_key_for(self, host: str) -> None:
+        """Bound off this machine, never serve keyless: refuse to start without a key.
+
+        No key is invented here: it would have to be printed to be usable, and
+        a printed key ends up in service and container logs.
+        """
         self.bound_host = host
-        if self.api_key or is_loopback(host):
-            return False
-        self.api_key = new_key()
-        return True
+        if not self.api_key and not is_loopback(host):
+            raise ValueError(
+                f"Serving on {host} needs a key: pass --api-key or set SHIPIT_API_KEY "
+                "(api_key= in code). Without one the server only binds 127.0.0.1."
+            )
 
     @staticmethod
     def _last_user_message(messages: list[dict[str, Any]]) -> str:

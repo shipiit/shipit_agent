@@ -16,8 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reply. Now a POST must be `application/json`, a browser `Origin` must be one
   passed with `--allow-origin` (`AgentServer(allowed_origins=...)`), and on a
   loopback address the `Host` must be a localhost name. Bound anywhere else
-  the server always needs a key and generates one if none was given. Keys are
-  compared in constant time.
+  the server needs a key and refuses to start without `--api-key` or
+  `SHIPIT_API_KEY`; it never invents one, since a generated key would have to
+  be printed and would end up in service logs. Keys are compared in constant
+  time.
 
 - **`download_file` stays in its folder.** The model's `path` could be
   absolute, contain `..` or start with `~`, so a prompt-injected agent could

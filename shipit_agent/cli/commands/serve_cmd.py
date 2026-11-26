@@ -17,7 +17,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
     agent = build_agent(args)
     server = AgentServer(agent, model_name=args.name, api_key=args.api_key,
                          allowed_origins=[o.strip() for o in (args.allow_origin or "").split(",") if o.strip()])
-    generated = server.require_key_for(args.host)
+    try:
+        server.require_key_for(args.host)
+    except ValueError as error:
+        ui.out(ui.style(f"  {error}", "warn"))
+        return 2
     shown = "localhost" if args.host in ("127.0.0.1", "localhost") else args.host
     ui.banner(
         "shipit agent is serving",
@@ -29,9 +33,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
             ("Auth", "Bearer <api-key>" if server.api_key else "none (this machine only)"),
         ],
     )
-    if generated:
-        # Off this machine the server never runs open. The key is shown once, here.
-        ui.out(ui.style(f"  No --api-key was given, so this one was generated: {server.api_key}", "warn"))
     ui.out("  Point any OpenAI SDK at the base URL above.")
     ui.out(ui.style("  To stop: press Ctrl+C.", "dim"))
     server.serve_forever(host=args.host, port=args.port)

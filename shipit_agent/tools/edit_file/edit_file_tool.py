@@ -107,6 +107,15 @@ class EditFileTool:
         old_text = str(kwargs.get("old_text", ""))
         new_text = str(kwargs.get("new_text", ""))
         replace_all = bool(kwargs.get("replace_all", False))
+        if not old_text:
+            # "" matches between every character: replace_all would write
+            # new_text len(file)+1 times.
+            return ToolOutput.error(
+                "Edit failed: old_text is empty, so there is nothing to replace. Copy the "
+                "exact text to change from the file, or use write_file to replace the whole "
+                "file. No changes were made.",
+                path=str(path), error="empty_old_text",
+            )
 
         # Read raw bytes and decode strictly. Reading with errors="replace"
         # would turn invalid bytes into U+FFFD, and writing the result back

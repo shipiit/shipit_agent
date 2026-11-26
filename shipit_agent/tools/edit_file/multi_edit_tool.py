@@ -138,6 +138,13 @@ class MultiEditTool:
             old_text = str(edit.get("old_text", ""))
             new_text = str(edit.get("new_text", ""))
             replace_all = bool(edit.get("replace_all", False))
+            if not old_text:
+                return ToolOutput.error(
+                    f"multi_edit failed at edit #{index}: old_text is empty, so there is "
+                    "nothing to replace. Copy the exact text to change from the file "
+                    "(no changes written).",
+                    path=str(path), error="empty_old_text", failed_edit=index,
+                )
             count = working.count(old_text)
             if count == 0 and changed_since_read:
                 return ToolOutput(

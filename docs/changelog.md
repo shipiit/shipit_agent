@@ -209,6 +209,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An edit with nothing to match no longer rewrites the file.** `edit_file`
+  and `multi_edit` with an empty `old_text` and `replace_all` inserted the new
+  text between every character of the file, and reported success. An empty
+  `old_text` is now refused with nothing written.
 - **A streamed tool call keeps one id.** OpenAI-compatible and LiteLLM
   streams reported a call's argument fragments under a placeholder id when the
   provider sent the real one late or not at all, and the finished call got a
